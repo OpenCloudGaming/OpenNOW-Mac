@@ -61,7 +61,7 @@ struct ControllerCatalogView: View {
     let topInset: CGFloat
     let onSwitch: (LoginAccount) -> Void
     let onAddAccount: () -> Void
-    let onSignOut: () -> Void
+    let onSignOut: (LoginAccount) -> Void
     let onForget: (LoginAccount) -> Void
 
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
@@ -204,9 +204,29 @@ struct ControllerCatalogView: View {
                         topInset: topInset,
                         isRefreshingCatalog: viewModel.isCatalogRefreshInProgress,
                         perform: controllerViewModel.executeActionMenuItem,
+                        openAccountOptions: { account in controllerViewModel.openAccountOptions(for: account) },
                         close: controllerViewModel.closeActionMenu
                     )
                     .transition(.opacity)
+                }
+            }
+            .overlay {
+                if let account = controllerViewModel.accountOptionsTarget {
+                    ControllerAccountOptionsOverlay(
+                        account: account,
+                        stage: controllerViewModel.accountOptionsStage,
+                        rows: controllerViewModel.accountOptionRows(for: account),
+                        rowIndex: controllerViewModel.accountOptionsRowIndex,
+                        confirmIndex: controllerViewModel.accountOptionsConfirmIndex,
+                        glyphs: activeGlyphs,
+                        layout: layout,
+                        topInset: topInset,
+                        selectRow: { row in controllerViewModel.selectAccountOptionRow(row, account: account) },
+                        selectConfirm: { index in controllerViewModel.selectAccountOptionsConfirm(index, account: account) },
+                        close: controllerViewModel.closeAccountOptions
+                    )
+                    .transition(.opacity)
+                    .zIndex(41)
                 }
             }
         }
@@ -220,6 +240,7 @@ struct ControllerCatalogView: View {
                     onSwitch: onSwitch,
                     onAddAccount: onAddAccount,
                     onSignOut: onSignOut,
+                    onForget: onForget,
                     onExitControllerMode: { controllerModeEnabled = false }
                 )
             )
@@ -280,7 +301,15 @@ struct ControllerCatalogView: View {
 
     /// Stays in the view: `ControllerHint` is the hint bar's own glyph vocabulary, not shell state.
     private var hints: [ControllerHint] {
-        if controllerViewModel.isActionMenuVisible { return [.move, .select, .back] }
+        if controllerViewModel.isAccountOptionsVisible { return [.move, .select, .back] }
+        if controllerViewModel.isActionMenuVisible {
+            var hints: [ControllerHint] = [.move, .select, .back]
+            let menuItems = actionMenuItems
+            if menuItems.indices.contains(controllerViewModel.actionMenuIndex), case .account = menuItems[controllerViewModel.actionMenuIndex] {
+                hints.append(.accountOptions)
+            }
+            return hints
+        }
         if controllerViewModel.isSearchKeyboardVisible { return [.move, .select, .back] }
         if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { return [.move, .select, .back, .clear] }
         if controllerViewModel.isDetailLightboxVisible { return [.move, .back] }

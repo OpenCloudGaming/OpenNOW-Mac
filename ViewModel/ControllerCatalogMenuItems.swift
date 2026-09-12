@@ -94,9 +94,8 @@ enum ControllerActionMenuItem {
     case favorites
     case recordings
     case settings
-    case switchAccount(LoginAccount, needsSignIn: Bool)
+    case account(LoginAccount, isActive: Bool, needsSignIn: Bool)
     case addAccount
-    case signOut
 
     var title: String {
         switch self {
@@ -108,10 +107,10 @@ enum ControllerActionMenuItem {
         case .favorites: return "Go to Favorites"
         case .recordings: return "Open Recordings"
         case .settings: return "Open Settings"
-        case .switchAccount(let account, let needsSignIn):
+        case .account(let account, let isActive, let needsSignIn):
+            if isActive { return account.displayName }
             return needsSignIn ? "Sign in as \(account.displayName)" : "Switch to \(account.displayName)"
         case .addAccount: return "Add Account"
-        case .signOut: return "Sign Out"
         }
     }
 
@@ -132,11 +131,35 @@ enum ControllerActionMenuItem {
         case .favorites: return "heart.fill"
         case .recordings: return "play.rectangle.fill"
         case .settings: return "gearshape.fill"
-        case .switchAccount: return "person.crop.circle"
+        case .account(_, let isActive, let needsSignIn):
+            if isActive { return "checkmark" }
+            return needsSignIn ? "person.crop.circle.badge.exclamationmark" : "person.crop.circle"
         case .addAccount: return "person.badge.plus"
-        case .signOut: return "rectangle.portrait.and.arrow.right"
         }
     }
+}
+
+/// The row list inside the per-account options overlay opened from an `.account` row in the
+/// controller actions menu. The caller omits `signOut` for an account with no usable session.
+enum ControllerAccountOptionRow: Equatable {
+    case signOut
+    case forget
+
+    func title(accountDisplayName: String) -> String {
+        switch self {
+        case .signOut: return "Sign Out of \(accountDisplayName)"
+        case .forget: return "Forget \(accountDisplayName)"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .signOut: return "rectangle.portrait.and.arrow.right"
+        case .forget: return "xmark.circle"
+        }
+    }
+
+    var isDestructive: Bool { self == .forget }
 }
 struct ControllerSearchPicker: Equatable {
     /// Stands for "no filter from this group". Filter groups are single-choice, so without it a

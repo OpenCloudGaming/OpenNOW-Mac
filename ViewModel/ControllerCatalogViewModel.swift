@@ -65,8 +65,16 @@ struct ControllerCatalogHost {
     var signedOutAccountEmails: Set<String> = []
     var onSwitch: (LoginAccount) -> Void = { _ in }
     var onAddAccount: () -> Void = {}
-    var onSignOut: () -> Void = {}
+    var onSignOut: (LoginAccount) -> Void = { _ in }
+    var onForget: (LoginAccount) -> Void = { _ in }
     var onExitControllerMode: () -> Void = {}
+}
+
+/// Which body the per-account options overlay is showing. `.confirmForget` replaces `.options`
+/// rather than stacking over it, mirroring the desktop dropdown's in-place confirm.
+enum ControllerAccountOptionsStage: Equatable {
+    case options
+    case confirmForget
 }
 
 @MainActor
@@ -108,6 +116,13 @@ final class ControllerCatalogViewModel: ObservableObject {
     @Published var isDetailLightboxVisible = false
     @Published var isDetailMoreMenuVisible = false
     @Published var detailMoreActionIndex = 0
+    /// The account an `.account` action-menu row opened the options overlay for. Layers over the
+    /// action menu rather than replacing it, so `nil` means the overlay is closed.
+    @Published var accountOptionsTarget: LoginAccount?
+    @Published var accountOptionsStage = ControllerAccountOptionsStage.options
+    @Published var accountOptionsRowIndex = 0
+    /// 0 = Cancel, 1 = Forget Account.
+    @Published var accountOptionsConfirmIndex = 0
 
     // Library and Favorites are no longer standalone destinations — they are reached from the
     // Home rails' Show All (revamped, filterable catalog view), so they are omitted from the nav.
@@ -118,8 +133,10 @@ final class ControllerCatalogViewModel: ObservableObject {
     let navigationItems: [ControllerNavigationItem] = [.home, .recordings, .settings, .actions]
 
     var hasControllerOverlay: Bool {
-        isActionMenuVisible || isSearchVisible || isDetailVisible
+        isActionMenuVisible || isSearchVisible || isDetailVisible || isAccountOptionsVisible
     }
+
+    var isAccountOptionsVisible: Bool { accountOptionsTarget != nil }
 
     func selectedGameIndex(for section: CatalogSectionModel, gameCount: Int) -> Int {
         guard gameCount > 0 else { return 0 }
@@ -289,12 +306,30 @@ final class ControllerCatalogViewModel: ObservableObject {
         var items: [ControllerActionMenuItem] = [.refresh]
         if catalog.isBrowseMode { items.append(.clearSearch) }
         items.append(contentsOf: [.home, .recordings, .desktopMode, .settings])
-        for account in host.accounts where account.id != catalog.account.id {
-            items.append(.switchAccount(account, needsSignIn: host.signedOutAccountEmails.contains(account.email)))
+        // Active account first (it must be listed at all, or it can never be forgotten on a pad),
+        // then the rest in the order the host handed them over.
+        var accounts = host.accounts
+        if let activeIndex = accounts.firstIndex(where: { $0.id == catalog.account.id }) {
+            accounts.insert(accounts.remove(at: activeIndex), at: 0)
+        }
+        for account in accounts {
+            items.append(.account(
+                account,
+                isActive: account.id == catalog.account.id,
+                needsSignIn: host.signedOutAccountEmails.contains(account.email)
+            ))
         }
         items.append(.addAccount)
-        items.append(.signOut)
         return items
+    }
+
+    /// Rows offered by the per-account options overlay. Sign Out is omitted for an account with no
+    /// usable session — there is nothing to end.
+    func accountOptionRows(for account: LoginAccount) -> [ControllerAccountOptionRow] {
+        var rows: [ControllerAccountOptionRow] = []
+        if !host.signedOutAccountEmails.contains(account.email) { rows.append(.signOut) }
+        rows.append(.forget)
+        return rows
     }
 
     /// The row itself: the action anybody came for, and a door to the rest.

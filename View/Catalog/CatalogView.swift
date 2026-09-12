@@ -132,7 +132,7 @@ struct CatalogView: View {
     let signedOutAccountEmails: Set<String>
     let onSwitch: (LoginAccount) -> Void
     let onAddAccount: () -> Void
-    let onSignOut: () -> Void
+    let onSignOut: (LoginAccount) -> Void
     let onForget: (LoginAccount) -> Void
     let onRefreshAuth: () async -> Bool
     let onWindowTitleChange: (String?) -> Void
@@ -161,7 +161,7 @@ struct CatalogView: View {
         pendingGameShortcut: Binding<GFNGameShortcut?>,
         onSwitch: @escaping (LoginAccount) -> Void,
         onAddAccount: @escaping () -> Void,
-        onSignOut: @escaping () -> Void,
+        onSignOut: @escaping (LoginAccount) -> Void,
         onForget: @escaping (LoginAccount) -> Void,
         onRefreshAuth: @escaping () async -> Bool,
         onWindowTitleChange: @escaping (String?) -> Void

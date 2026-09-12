@@ -208,35 +208,45 @@ extension LoginViewModel {
         }
     }
 
-    func signOutCurrentSession() async {
-        OpenNOWLog.info(.auth, "Signing out current session")
-        let signedOutAccounts = accounts.filter(\.isActive)
-        let signedOutEmails = Set(signedOutAccounts.map(\.email))
-        for account in accounts {
-            account.isActive = false
-            account.authStatus = JarvisAuthStatus.notLoggedIn.rawValue
-        }
-        for session in sessions {
+    func signOutAccount(_ account: LoginAccount) async {
+        OpenNOWLog.info(.auth, "Signing out account=\(account.email)")
+        let wasActive = account.isActive
+        let userId = account.userId
+        let email = account.email
+        account.isActive = false
+        account.authStatus = JarvisAuthStatus.notLoggedIn.rawValue
+        for session in sessions where session.accountEmail == email {
             session.isActive = false
             // Signing out has to revoke the local grant, not just hide it: the refresh token
             // outlives the access token by far, so leaving it behind means sign-out never happened.
             // Other saved accounts keep their tokens — they were not the ones signed out.
-            if signedOutEmails.contains(session.accountEmail) { session.purgeTokens() }
+            session.purgeTokens()
         }
-        // `purgeTokens` above only reaches the copy keyed by the session id. The auth service keeps
-        // its own, keyed by the profile identity, and this view model's Jarvis session store is a
-        // no-op — so without this call the same refresh token stays in the keychain after sign-out.
-        for account in signedOutAccounts {
-            authService.endSavedSession(userId: account.userId, email: account.email)
+        // The auth service keeps its own copy of this account's tokens, keyed by the profile
+        // identity rather than the session id, so `purgeTokens` above does not reach it.
+        authService.endSavedSession(userId: userId, email: email)
+        if wasActive {
+            clearPendingOAuthState()
+            currentAuthorizationURL = ""
+            oauthCallbackText = ""
+            cancelReauthentication()
         }
-        clearPendingOAuthState()
-        currentAuthorizationURL = ""
-        oauthCallbackText = ""
         trySave()
-        cancelReauthentication()
         refreshSignedOutAccounts()
-        await jarvisAuthService.clearSession()
-        successMessage = "Signed out."
-        OpenNOWLog.info(.auth, "Sign out completed")
+        // Only the active account owns the shared Jarvis session; clearing it while signing out a
+        // background account would sign out whoever is actually streaming.
+        if wasActive { await jarvisAuthService.clearSession() }
+        successMessage = "Signed out of \(account.displayName)."
+        OpenNOWLog.info(.auth, "Sign out completed account=\(email)")
+    }
+
+    func signOutCurrentSession() async {
+        OpenNOWLog.info(.auth, "Signing out current session")
+        guard let activeAccount = accounts.first(where: \.isActive) else {
+            // No account is active: nothing to end. Matches the prior behavior, which looped
+            // over zero accounts and no-op'd rather than clearing the shared Jarvis session.
+            return
+        }
+        await signOutAccount(activeAccount)
     }
 }

@@ -86,6 +86,9 @@ enum ControllerHint: Equatable {
     case clear
     case page
     case more
+    /// Shown only while an `.account` row is focused in the controller actions menu, naming the
+    /// secondary button that opens that account's Sign Out / Forget overlay.
+    case accountOptions
 }
 
 struct ControllerHintBar: View {
@@ -148,6 +151,7 @@ struct ControllerHintItem: View {
         case .clear: return [glyphs.actions]
         case .page: return [glyphs.pageLeft, glyphs.pageRight]
         case .more: return [glyphs.actions]
+        case .accountOptions: return [glyphs.search]
         }
     }
 
@@ -162,6 +166,7 @@ struct ControllerHintItem: View {
         case .clear: return "CLEAR"
         case .page: return "PAGE"
         case .more: return "MORE"
+        case .accountOptions: return "OPTIONS"
         }
     }
 }

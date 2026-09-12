@@ -299,6 +299,10 @@ final class LoginViewModel: ObservableObject {
         Task { await signOutCurrentSession() }
     }
 
+    func signOut(_ account: LoginAccount) {
+        Task { await signOutAccount(account) }
+    }
+
     func refreshActiveSession() async -> Bool {
         guard let activeAccount else { return false }
         return await restoreAccountSession(activeAccount)

@@ -308,6 +308,7 @@ struct ControllerActionMenuOverlay: View {
     let topInset: CGFloat
     let isRefreshingCatalog: Bool
     let perform: (ControllerActionMenuItem) -> Void
+    let openAccountOptions: (LoginAccount) -> Void
     let close: () -> Void
 
     @Environment(\.opnUIScale) private var uiScale
@@ -323,31 +324,37 @@ struct ControllerActionMenuOverlay: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 8 * uiScale) {
                         ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                            let isFocused = index == selectedIndex
                             Button { perform(item) } label: {
                                 HStack(spacing: 13 * uiScale) {
                                     if item.isRefresh, isRefreshingCatalog {
                                         ProgressView()
                                             .controlSize(.small)
-                                            .tint(index == selectedIndex ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                                            .tint(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
                                             .scaleEffect(0.82)
                                             .frame(width: 28 * uiScale)
                                     } else {
                                         Image(systemName: item.icon)
                                             .catalogFont(size: 15, weight: .bold)
-                                            .foregroundStyle(index == selectedIndex ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                                            .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
                                             .frame(width: 28 * uiScale)
                                     }
                                     Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
                                         .catalogFont(size: 15, weight: .bold)
-                                        .foregroundStyle(index == selectedIndex ? .black.opacity(0.88) : .white.opacity(0.88))
+                                        .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.88))
                                         .lineLimit(1)
                                     Spacer(minLength: 0)
+                                    // The secondary action: only shown on a focused account row, so
+                                    // it never reads as a control on rows that have no options.
+                                    if isFocused, case .account(let account, _, _) = item {
+                                        accountOptionsChip(account: account)
+                                    }
                                 }
                                 .padding(.horizontal, 14 * uiScale)
                                 .frame(height: 48 * uiScale)
-                                .background(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+                                .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.055))
                                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-                                .openNowFocusRing(index == selectedIndex)
+                                .openNowFocusRing(isFocused)
                             }
                             .buttonStyle(.plain)
                             .disabled(item.isRefresh && isRefreshingCatalog)
@@ -365,5 +372,133 @@ struct ControllerActionMenuOverlay: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
+    }
+
+    private func accountOptionsChip(account: LoginAccount) -> some View {
+        Button { openAccountOptions(account) } label: {
+            HStack(spacing: 5 * uiScale) {
+                ControllerGlyphPill(glyph: glyphs.search)
+                Text("OPTIONS")
+                    .catalogFont(size: 10, weight: .bold)
+                    .tracking(0.5)
+            }
+            .foregroundStyle(.black.opacity(0.86))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ControllerAccountOptionsOverlay: View {
+    let account: LoginAccount
+    let stage: ControllerAccountOptionsStage
+    let rows: [ControllerAccountOptionRow]
+    let rowIndex: Int
+    let confirmIndex: Int
+    let glyphs: ControllerInputGlyphSet
+    let layout: ControllerLayoutMetrics
+    let topInset: CGFloat
+    let selectRow: (ControllerAccountOptionRow) -> Void
+    let selectConfirm: (Int) -> Void
+    let close: () -> Void
+
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Color.black.opacity(0.58).onTapGesture(perform: close)
+            VStack(alignment: .leading, spacing: 0) {
+                ControllerOverlayHeader(title: headerTitle, subtitle: headerSubtitle, glyphs: glyphs, close: close)
+                    .padding(.horizontal, 22 * uiScale)
+                    .padding(.top, 22 + topInset)
+                    .padding(.bottom, 12 * uiScale)
+                Group {
+                    switch stage {
+                    case .options: optionsList
+                    case .confirmForget: confirmForgetBody
+                    }
+                }
+                .padding(.horizontal, 22 * uiScale)
+                .padding(.bottom, 22 * uiScale)
+            }
+            .frame(maxWidth: 420 * uiScale, maxHeight: .infinity, alignment: .topLeading)
+            .background(OpenNOWDesign.Surface.deep.opacity(0.98))
+            .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
+            .padding(.leading, layout.leadingInset)
+            .padding(.trailing, layout.trailingInset)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+    }
+
+    private var headerTitle: String { account.displayName }
+
+    private var headerSubtitle: String {
+        switch stage {
+        case .options: return "Account options"
+        case .confirmForget: return "Forget \(account.displayName)?"
+        }
+    }
+
+    private var optionsList: some View {
+        VStack(spacing: 8 * uiScale) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                let isFocused = index == rowIndex
+                Button { selectRow(row) } label: {
+                    HStack(spacing: 13 * uiScale) {
+                        Image(systemName: row.icon)
+                            .catalogFont(size: 15, weight: .bold)
+                            .foregroundStyle(isFocused ? .black.opacity(0.86) : (row.isDestructive ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accent))
+                            .frame(width: 28 * uiScale)
+                        Text(row.title(accountDisplayName: account.displayName))
+                            .catalogFont(size: 15, weight: .bold)
+                            .foregroundStyle(isFocused ? .black.opacity(0.88) : (row.isDestructive ? OpenNOWDesign.Semantic.destructive : .white.opacity(0.88)))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 14 * uiScale)
+                    .frame(height: 48 * uiScale)
+                    .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                    .openNowFocusRing(isFocused)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Matches the desktop confirm's copy exactly, including the extra sentence that only applies
+    /// when the account being forgotten is the signed-in one.
+    private var confirmForgetBody: some View {
+        VStack(alignment: .leading, spacing: 16 * uiScale) {
+            Text(confirmBodyText)
+                .catalogFont(size: 14, weight: .medium)
+                .foregroundStyle(.white.opacity(0.78))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10 * uiScale) {
+                confirmButton(title: "Cancel", index: 0, destructive: false)
+                confirmButton(title: "Forget Account", index: 1, destructive: true)
+            }
+        }
+    }
+
+    private var confirmBodyText: String {
+        guard account.isActive else { return "Removes the saved sign-in from this Mac." }
+        return "Removes the saved sign-in from this Mac. You'll be signed out, and you'll need your password next time."
+    }
+
+    private func confirmButton(title: String, index: Int, destructive: Bool) -> some View {
+        let isFocused = index == confirmIndex
+        return Button { selectConfirm(index) } label: {
+            Text(title.uppercased())
+                .catalogFont(size: 13, weight: .bold)
+                .tracking(0.6)
+                .foregroundStyle(isFocused ? .black.opacity(0.88) : (destructive ? OpenNOWDesign.Semantic.destructive : .white.opacity(0.82)))
+                .frame(maxWidth: .infinity)
+                .frame(height: 44 * uiScale)
+                .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.075))
+                .overlay { Rectangle().stroke(destructive ? OpenNOWDesign.Semantic.destructive.opacity(0.5) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                .openNowFocusRing(isFocused, onAccentFill: true)
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -139,6 +139,10 @@ extension ControllerCatalogViewModel {
     }
 
     private func handleActionMenuInput(_ command: ControllerInputCommand) {
+        if isAccountOptionsVisible {
+            handleAccountOptionsInput(command)
+            return
+        }
         let items = actionMenuItems
         switch command {
         case .move(.up): moveActionMenuIndex(delta: -1, itemCount: items.count)
@@ -147,6 +151,11 @@ extension ControllerCatalogViewModel {
             guard items.indices.contains(actionMenuIndex) else { return }
             executeActionMenuItem(items[actionMenuIndex])
         case .back, .menu, .actions: closeActionMenu()
+        // The secondary action: with an `.account` row focused, X opens that account's options
+        // rather than doing nothing, which is all this command did in the action menu before.
+        case .search:
+            guard items.indices.contains(actionMenuIndex), case .account(let account, _, _) = items[actionMenuIndex] else { return }
+            openAccountOptions(for: account)
         default: break
         }
     }
@@ -614,6 +623,7 @@ extension ControllerCatalogViewModel {
 
     func closeActionMenu() {
         isActionMenuVisible = false
+        closeAccountOptions()
     }
 
     func executeActionMenuItem(_ item: ControllerActionMenuItem) {
@@ -635,14 +645,16 @@ extension ControllerCatalogViewModel {
             catalog.showCatalogDestination(Self.destination(for: item))
         case .desktopMode:
             host.onExitControllerMode()
-        case .switchAccount(let account, _):
+        case .account(let account, let isActive, _):
+            // The active row has nowhere to go - confirming it just closes the menu, same as
+            // clicking the active row in the desktop dropdown.
+            guard !isActive else { return }
             host.onSwitch(account)
         case .addAccount:
             host.onAddAccount()
-        case .signOut:
-            host.onSignOut()
         }
     }
+
 
     /// The catalog destination each navigation menu item selects. `home` is the only item the
     /// caller routes here besides these two, so anything else is a caller mistake.

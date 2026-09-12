@@ -10,7 +10,7 @@ struct CatalogTopBar: View {
     @Binding var showsMainMenu: Bool
     @Binding var showsAccountMenu: Bool
     let onSwitch: (LoginAccount) -> Void
-    let onSignOut: () -> Void
+    let onSignOut: (LoginAccount) -> Void
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.openWindow) private var openWindow

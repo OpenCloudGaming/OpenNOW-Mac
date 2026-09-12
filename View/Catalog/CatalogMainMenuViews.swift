@@ -9,7 +9,7 @@ struct CatalogMainMenuOverlay: View {
     let viewModel: CatalogViewModel
     @Binding var isPresented: Bool
     let topInset: CGFloat
-    let onSignOut: () -> Void
+    let onSignOut: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
@@ -47,7 +47,7 @@ struct CatalogMainMenuOverlay: View {
 struct CatalogMainMenuPanel: View {
     let viewModel: CatalogViewModel
     @Binding var isPresented: Bool
-    let onSignOut: () -> Void
+    let onSignOut: (LoginAccount) -> Void
     let availableHeight: CGFloat
     @Environment(\.opnUIScale) private var uiScale
 
@@ -127,9 +127,9 @@ struct CatalogMainMenuPanel: View {
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            CatalogMainMenuRow(title: "Sign Out", subtitle: viewModel.account.displayName, systemImage: "rectangle.portrait.and.arrow.right", isActive: false, role: .destructive) {
+            CatalogMainMenuRow(title: "Sign Out", subtitle: viewModel.account.displayName, systemImage: "rectangle.portrait.and.arrow.right", isActive: false) {
                 isPresented = false
-                onSignOut()
+                onSignOut(viewModel.account)
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
             .padding(.vertical, OpenNOWDesign.Spacing.small(scale: uiScale))
@@ -163,234 +163,6 @@ struct CatalogMainMenuPanel: View {
         case .library: return "Games synced from connected stores"
         case .favorites: return "Saved games for quick access"
         }
-    }
-}
-
-struct CatalogAccountDropdownOverlay: View {
-    let viewModel: CatalogViewModel
-    let accounts: [LoginAccount]
-    let signedOutAccountEmails: Set<String>
-    @Binding var isPresented: Bool
-    let topInset: CGFloat
-    let onSwitch: (LoginAccount) -> Void
-    let onAddAccount: () -> Void
-    let onSignOut: () -> Void
-    let onForget: (LoginAccount) -> Void
-    @Environment(\.opnUIScale) private var uiScale
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .topTrailing) {
-                if isPresented {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { isPresented = false }
-
-                    // Grows out of the avatar it hangs from instead of fading in place. Anchored
-                    // top-trailing so the corner under the button stays put while it opens.
-                    CatalogAccountDropdownPanel(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $isPresented, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
-                        .opnTransition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
-                        .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
-                        .padding(.trailing, 22)
-                }
-            }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-        }
-        .opnMotion(OpenNOWDesign.Motion.panel, value: isPresented)
-        .allowsHitTesting(isPresented)
-        .onExitCommand(perform: isPresented ? { isPresented = false } : nil)
-    }
-}
-
-struct CatalogAccountDropdownPanel: View {
-    let viewModel: CatalogViewModel
-    let accounts: [LoginAccount]
-    let signedOutAccountEmails: Set<String>
-    @Binding var isPresented: Bool
-    let onSwitch: (LoginAccount) -> Void
-    let onAddAccount: () -> Void
-    let onSignOut: () -> Void
-    let onForget: (LoginAccount) -> Void
-    @Environment(\.opnUIScale) private var uiScale
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
-                CatalogAccountAvatar(account: viewModel.account, size: 44 * uiScale)
-                VStack(alignment: .leading, spacing: 3 * uiScale) {
-                    Text(viewModel.account.displayName)
-                        .catalogFont(size: 15, weight: .medium)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(viewModel.subscriptionStatus.membershipTier.uppercased())
-                        .catalogFont(size: 10, weight: .bold)
-                        .tracking(0.6)
-                        .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-                        .frame(height: OpenNOWDesign.Spacing.card(scale: uiScale))
-                        .background(OpenNOWDesign.accent)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(height: 1)
-
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
-                Text("ACCOUNTS")
-                    .catalogFont(size: 10, weight: .bold)
-                    .tracking(1.1)
-                    .foregroundStyle(.white.opacity(0.42))
-                    .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
-                    .padding(.vertical, 5 * uiScale)
-                ForEach(accounts) { account in
-                    let isActive = account === viewModel.account
-                    // A signed-out account still has a row here, but nothing to restore: say so
-                    // rather than let the switch fail with a message no one sees.
-                    let needsSignIn = !isActive && signedOutAccountEmails.contains(account.email)
-                    CatalogAccountDropdownRow(
-                        title: account.displayName,
-                        subtitle: needsSignIn ? "Signed out — sign in again" : nil,
-                        systemImage: isActive ? "checkmark" : (needsSignIn ? "person.crop.circle.badge.exclamationmark" : "person"),
-                        isActive: isActive,
-                        role: nil
-                    ) {
-                        isPresented = false
-                        if !isActive {
-                            onSwitch(account)
-                        }
-                    }
-                }
-                // Signing in an extra account never signs the current one out, so this belongs in
-                // the account list rather than behind Sign Out.
-                CatalogAccountDropdownRow(
-                    title: "Add Account",
-                    subtitle: "Sign in without signing out",
-                    systemImage: "plus",
-                    isActive: false,
-                    role: nil
-                ) {
-                    isPresented = false
-                    onAddAccount()
-                }
-            }
-            .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
-            .padding(.top, OpenNOWDesign.Spacing.section(scale: uiScale))
-            .padding(.bottom, OpenNOWDesign.Spacing.small(scale: uiScale))
-
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(height: 1)
-
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
-                CatalogAccountDropdownRow(
-                    title: "Sign Out",
-                    subtitle: nil,
-                    systemImage: "rectangle.portrait.and.arrow.right",
-                    isActive: false,
-                    role: nil
-                ) {
-                    isPresented = false
-                    onSignOut()
-                }
-                ForEach(accounts) { account in
-                    CatalogAccountDropdownRow(
-                        title: "Forget \(account.displayName)",
-                        subtitle: nil,
-                        systemImage: "xmark.circle",
-                        isActive: false,
-                        role: .destructive
-                    ) {
-                        isPresented = false
-                        onForget(account)
-                    }
-                }
-            }
-            .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
-            .padding(.vertical, OpenNOWDesign.Spacing.small(scale: uiScale))
-        }
-        .frame(width: CatalogVendorLayout.accountMenuWidth(scale: uiScale), alignment: .topLeading)
-        .background(OpenNOWDesign.Surface.overlay.opacity(0.985))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(OpenNOWDesign.accent)
-                .frame(height: 2)
-        }
-        .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(Color.white.opacity(0.10))
-                .frame(width: 1)
-        }
-        .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
-    }
-}
-
-struct CatalogAccountDropdownRow: View {
-    let title: String
-    let subtitle: String?
-    let systemImage: String?
-    let isActive: Bool
-    let role: ButtonRole?
-    let action: () -> Void
-    @Environment(\.opnUIScale) private var uiScale
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
-                if let systemImage {
-                    ZStack {
-                        Rectangle()
-                            .fill(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
-                        Image(systemName: systemImage)
-                            .catalogFont(size: 13, weight: .bold)
-                            .foregroundStyle(iconColor)
-                    }
-                    .frame(width: 30 * uiScale, height: 30 * uiScale)
-                }
-                VStack(alignment: .leading, spacing: 2 * uiScale) {
-                    Text(title)
-                        .catalogFont(size: 14, weight: .bold)
-                        .foregroundStyle(titleColor)
-                        .lineLimit(1)
-                    if let subtitle {
-                        Text(subtitle)
-                            .catalogFont(size: 11, weight: .medium)
-                            .foregroundStyle(.white.opacity(0.52))
-                            .lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-            .padding(.trailing, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 42 * uiScale)
-            .background(rowBackground)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.opnPressable)
-        .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
-        .accessibilityLabel(title)
-    }
-
-    private var rowBackground: Color {
-        if isActive { return OpenNOWDesign.accent.opacity(0.095) }
-        return Color.white.opacity(isHovering ? 0.085 : 0)
-    }
-
-    private var titleColor: Color {
-        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
-    }
-
-    private var iconColor: Color {
-        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? .black : .white.opacity(isHovering ? 0.96 : 0.82)
     }
 }
 

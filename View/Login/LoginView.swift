@@ -23,7 +23,7 @@ struct LoginView: View {
                     pendingGameShortcut: $viewModel.pendingGameShortcut,
                     onSwitch: viewModel.activateAccount,
                     onAddAccount: viewModel.beginAddAccount,
-                    onSignOut: viewModel.signOut,
+                    onSignOut: { account in viewModel.signOut(account) },
                     onForget: viewModel.forgetAccount,
                     onRefreshAuth: viewModel.refreshActiveSession,
                     onWindowTitleChange: onWindowTitleChange
