@@ -29,6 +29,19 @@ struct StreamHUDFocusNavigationTests {
         #expect(StreamHUDFocusEntry.rows(of: wide) == [[0, 1, 2, 3], [4, 5]])
     }
 
+    @Test func aFifthTileWrapsOntoItsOwnRowAndStaysInTheColumn() {
+        let entries = [
+            entry("mic", group: "controls", columns: 4), entry("audio", group: "controls", columns: 4),
+            entry("rec", group: "controls", columns: 4), entry("stats", group: "controls", columns: 4),
+            entry("full-screen", group: "controls", columns: 4),
+            entry("pointer", group: "input", columns: 4), entry("quit", group: "input", columns: 4),
+        ]
+        #expect(StreamHUDFocusEntry.rows(of: entries) == [[0, 1, 2, 3], [4], [5, 6]])
+        #expect(StreamHUDFocusEntry.focusID(from: "mic", direction: .down, in: entries) == "full-screen")
+        #expect(StreamHUDFocusEntry.focusID(from: "full-screen", direction: .down, in: entries) == "pointer")
+        #expect(StreamHUDFocusEntry.focusID(from: "stats", direction: .right, in: entries) == "full-screen")
+    }
+
     @Test func downKeepsTheColumn() {
         #expect(StreamHUDFocusEntry.focusID(from: "mic", direction: .down, in: hud) == "pointer")
         #expect(StreamHUDFocusEntry.focusID(from: "stats", direction: .down, in: hud) == "quit")

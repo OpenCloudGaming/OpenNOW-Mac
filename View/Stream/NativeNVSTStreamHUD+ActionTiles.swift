@@ -53,6 +53,13 @@ extension NativeNVSTMediaStreamSurface {
                           isActive: model.nativeStatsVisible,
                           isDisabled: !model.sidebarCapabilities.supports(.floatingStats),
                           action: model.toggleNativeStatsHUD),
+            NativeHUDTile(id: "full-screen",
+                          title: model.streamWindowIsFullScreen ? "Leave Full Screen" : "Enter Full Screen",
+                          subtitle: model.streamWindowIsFullScreen ? "Full screen" : "Windowed",
+                          systemName: model.streamWindowIsFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                          isActive: model.streamWindowIsFullScreen,
+                          isDisabled: model.nativeView?.window == nil,
+                          action: model.toggleNativeFullScreen),
         ]
     }
 

@@ -144,6 +144,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var networkPathTask: Task<Void, Never>?
     @Published var networkPathAvailable = true
     @Published var pointerLocked = false
+    /// Mirrors the stream window. The style mask only flips once AppKit finishes its transition,
+    /// and the green button, ⌃⌘F and the menu bar change it without going through the HUD.
+    @Published var streamWindowIsFullScreen = false
     @Published var pillarboxFillModeIndex = 0
     @Published var upscalingModeIndex = 0
     @Published var upscalingTargetIndex = 1
@@ -184,6 +187,14 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var restorePointerLockOnKeyboardHide = false
     var restoreManualCaptureOnKeyboardHide = false
     var restoreManualCaptureOnHUDHide = false
+    var fullScreenObserverTokens: [any NSObjectProtocol] = []
+    /// True between `willEnter`/`willExit` and the matching `did` notification. A second toggle
+    /// inside the animation cancels AppKit's transition and strands the window's aspect lock.
+    var isFullScreenTransitioning = false
+    var fullScreenTransitionWatchdog: Task<Void, Never>?
+    /// AppKit's transition animates for well under a second. Past this the transition failed, which
+    /// it only reports through delegate callbacks that post no notification.
+    static let fullScreenTransitionTimeout = Duration.seconds(2)
     let onScreenKeyboard = StreamOnScreenKeyboardModel()
 
     func startIfNeeded() {

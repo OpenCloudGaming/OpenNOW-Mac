@@ -36,6 +36,7 @@ enum OpenNOWWindowFitting {
     @MainActor
     private static func fitPendingMainWindow() {
         guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == mainWindowIdentifier }) else { return }
+        enableFullScreen(for: window)
         let fitted = fittedFrame(for: window)
         // Once it is on screen there is nothing left to fix quietly, and resizing then is the flash
         // this exists to avoid. Stop listening either way.
@@ -43,6 +44,15 @@ enum OpenNOWWindowFitting {
             window.setFrame(fitted, display: false)
         }
         removeEarlyFitting()
+    }
+
+    /// Granted while the window is still invisible, not when the stream HUD first asks for it: a
+    /// SwiftUI `Window` scene handed `.fullScreenPrimary` mid-session enters full screen but can
+    /// refuse to leave it, live-confirmed and documented in `RemoteCoOpGuestView`.
+    @MainActor
+    private static func enableFullScreen(for window: NSWindow) {
+        guard !window.collectionBehavior.contains(.fullScreenPrimary) else { return }
+        window.collectionBehavior.insert(.fullScreenPrimary)
     }
 
     @MainActor

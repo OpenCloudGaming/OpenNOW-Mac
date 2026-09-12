@@ -30,6 +30,7 @@ extension NativeNVSTHostViewModel {
         networkPathTask = nil
         networkPathAvailable = true
         cancelNativeShortcutTasks()
+        removeNativeFullScreenObservers()
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
         let inputDispatcher = self.inputDispatcher
@@ -83,6 +84,7 @@ extension NativeNVSTHostViewModel {
     private func resetSessionUIState() {
         isConnected = false
         pointerLocked = false
+        streamWindowIsFullScreen = false
         unifiedHUDVisible = false
         streamControlsVisible = false
         nativeStatsVisible = false

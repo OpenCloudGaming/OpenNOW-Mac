@@ -47,6 +47,61 @@ extension NativeNVSTHostViewModel {
             self?.requestNativeMicrophoneEnabled(enabled, source: "push-to-talk")
         }
         configureInput(for: view)
+        installNativeFullScreenObservers(for: view)
+    }
+
+    /// The HUD's full-screen tile reads `streamWindowIsFullScreen` rather than the style mask, so it
+    /// also stays honest when the window is toggled by the green button, ⌃⌘F or the menu bar.
+    func installNativeFullScreenObservers(for view: NativeWebRTCStreamView) {
+        removeNativeFullScreenObservers()
+        guard let window = view.window else { return }
+        streamWindowIsFullScreen = window.styleMask.contains(.fullScreen)
+        let center = NotificationCenter.default
+        let transitions: [(name: NSNotification.Name, isTransitioning: Bool, isFullScreen: Bool)] = [
+            (NSWindow.willEnterFullScreenNotification, true, true),
+            (NSWindow.didEnterFullScreenNotification, false, true),
+            (NSWindow.willExitFullScreenNotification, true, false),
+            (NSWindow.didExitFullScreenNotification, false, false),
+        ]
+        for transition in transitions {
+            let token = center.addObserver(forName: transition.name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.isFullScreenTransitioning = transition.isTransitioning
+                    guard !transition.isTransitioning else {
+                        self.startFullScreenTransitionWatchdog()
+                        return
+                    }
+                    self.fullScreenTransitionWatchdog?.cancel()
+                    self.fullScreenTransitionWatchdog = nil
+                    self.streamWindowIsFullScreen = transition.isFullScreen
+                }
+            }
+            fullScreenObserverTokens.append(token)
+        }
+    }
+
+    /// AppKit reports a refused transition through `windowDidFailToEnter/ExitFullScreen`, which post
+    /// no notification, so without this the latch would stay set and the tile inert for the session.
+    private func startFullScreenTransitionWatchdog() {
+        fullScreenTransitionWatchdog?.cancel()
+        fullScreenTransitionWatchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: NativeNVSTHostViewModel.fullScreenTransitionTimeout)
+            guard !Task.isCancelled, let self else { return }
+            self.fullScreenTransitionWatchdog = nil
+            self.isFullScreenTransitioning = false
+            guard let window = self.nativeView?.window else { return }
+            self.streamWindowIsFullScreen = window.styleMask.contains(.fullScreen)
+        }
+    }
+
+    func removeNativeFullScreenObservers() {
+        let center = NotificationCenter.default
+        fullScreenObserverTokens.forEach { center.removeObserver($0) }
+        fullScreenObserverTokens.removeAll()
+        fullScreenTransitionWatchdog?.cancel()
+        fullScreenTransitionWatchdog = nil
+        isFullScreenTransitioning = false
     }
 
     /// Every callback below is stored *on the view*, and the view model holds the view - so each one

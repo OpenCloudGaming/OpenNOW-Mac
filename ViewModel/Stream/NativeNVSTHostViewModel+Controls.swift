@@ -22,6 +22,7 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "controls", columns: 4, action: toggleNativeLocalAudioMute),
             StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, group: "controls", columns: 4, action: toggleNativeRecording),
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "controls", columns: 4, action: toggleNativeStatsHUD),
+            StreamHUDFocusEntry(id: "full-screen", isDisabled: nativeView?.window == nil, group: "controls", columns: 4, action: toggleNativeFullScreen),
             StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected, group: "input", columns: 4, action: toggleNativePointerLock),
             StreamHUDFocusEntry(id: "cursor-policy", isDisabled: !isConnected, group: "input", columns: 4, action: cycleCursorPolicy),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, group: "input", columns: 4, action: toggleNativeAntiAFKMouseMovement),
@@ -476,6 +477,20 @@ extension NativeNVSTHostViewModel {
         guard isConnected, !isEnding, !didEnd else { return }
         nativeStatsVisible.toggle()
         WebRTCMediaTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "OpenNOW NVST stats shown." : "OpenNOW NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
+    }
+
+    /// The window owns the transition: nothing here touches the style mask, collection behaviour,
+    /// aspect ratio or frame - `OpenNOWWindowFitting` grants `.fullScreenPrimary` before the window
+    /// is first painted, which is the only point the window server takes it reliably.
+    /// A second toggle mid-animation cancels AppKit's entry, so transitions are refused, not queued.
+    func toggleNativeFullScreen() {
+        guard let window = nativeView?.window, !isFullScreenTransitioning else { return }
+        guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
+        // Read before the toggle: `.fullScreen` is only inserted once the transition finishes.
+        let willEnterFullScreen = !window.styleMask.contains(.fullScreen)
+        window.toggleFullScreen(nil)
+        showNativeTransientStreamMessage(willEnterFullScreen ? "Entering full screen" : "Leaving full screen")
+        WebRTCMediaTelemetry.capture("nvst.ui.fullscreen.toggle", level: .info, message: willEnterFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.", attributes: ["applicationID": configuration.applicationID, "fullScreen": String(willEnterFullScreen)])
     }
 
     func startNativeStatsPolling(path: NativeNVSTStreamingPath) {
