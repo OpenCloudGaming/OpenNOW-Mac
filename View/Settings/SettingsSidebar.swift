@@ -86,7 +86,7 @@ enum SettingsNewBadges {
     static func group(for row: OpenNOWNewSettings.Row) -> CatalogSettingsGroup {
         switch row {
         case .surroundSound: .audio
-        case .sessionReadyAction, .steamBigPictureMode: .general
+        case .sessionReadyAction, .steamBigPictureMode, .homeLayout: .general
         }
     }
 

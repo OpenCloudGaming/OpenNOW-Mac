@@ -95,7 +95,23 @@ struct SkeletonBlock: View {
 struct CatalogRailSkeletonView: View {
     var title: String?
     var tileCount = 6
+    var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
+
+    private var tileSize: CGSize {
+        guard isPosterLayout else {
+            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+        }
+        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale), height: CatalogPosterLayout.posterTileHeight(scale: uiScale))
+    }
+
+    private var rowHeight: CGFloat {
+        isPosterLayout ? CatalogPosterLayout.tileRowHeight(scale: uiScale) : CatalogVendorLayout.tileRowHeight(scale: uiScale)
+    }
+
+    /// Top and bottom margins are equal in both layouts, so this is the one true source for both -
+    /// no separate branch needed, and no way for it to drift out of sync with `rowHeight`.
+    private var tileVerticalMargin: CGFloat { (rowHeight - tileSize.height) / 2 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -117,14 +133,13 @@ struct CatalogRailSkeletonView: View {
             HStack(spacing: 0) {
                 ForEach(0..<tileCount, id: \.self) { _ in
                     SkeletonBlock(cornerRadius: 2)
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                        .frame(width: tileSize.width, height: tileSize.height)
                         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
-                        .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-                    .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
-                        .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+                        .padding(.top, tileVerticalMargin)
+                        .padding(.bottom, tileVerticalMargin)
                 }
             }
-            .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(height: rowHeight, alignment: .top)
             .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
             .padding(.bottom, 4 * uiScale)
         }
@@ -141,10 +156,31 @@ struct CatalogRailSkeletonView: View {
 struct CatalogGridSkeletonView: View {
     var tileCount = 12
     var isScrollable = true
+    var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
 
+    private var tileSize: CGSize {
+        guard isPosterLayout else {
+            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+        }
+        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale), height: CatalogPosterLayout.posterTileHeight(scale: uiScale))
+    }
+
+    private var adaptiveMinimum: CGFloat {
+        isPosterLayout
+            ? CatalogPosterLayout.slotWidth(scale: uiScale)
+            : CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
+    }
+
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4 * uiScale, alignment: .top)]
+        [GridItem(.adaptive(minimum: adaptiveMinimum), spacing: 4 * uiScale, alignment: .top)]
+    }
+
+    /// Derived from the row height the loaded tiles claim, so a placeholder row can never reserve a
+    /// different height than the grid that replaces it.
+    private var tileVerticalMargin: CGFloat {
+        guard isPosterLayout else { return CatalogVendorLayout.tileTopMargin(scale: uiScale) }
+        return CatalogPosterLayout.tileTopMargin(scale: uiScale)
     }
 
     var body: some View {
@@ -163,10 +199,10 @@ struct CatalogGridSkeletonView: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
             ForEach(0..<tileCount, id: \.self) { _ in
                 SkeletonBlock(cornerRadius: 2)
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .frame(width: tileSize.width, height: tileSize.height)
                     .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
-                    .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-                    .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+                    .padding(.top, tileVerticalMargin)
+                    .padding(.bottom, tileVerticalMargin)
             }
         }
         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))

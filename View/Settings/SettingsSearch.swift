@@ -98,6 +98,7 @@ enum SettingsSearchIndex {
 
     private static let generalEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Interface Scale", .general, "interface", keywords: ["ui", "size", "zoom", "text size", "5k"]),
+        SettingsSearchEntry("Home Layout", .general, "home-layout", keywords: ["poster", "box art", "classic", "portrait", "tiles", "carousel", "hero", "banner", "grid"]),
         SettingsSearchEntry("When the Stream Is Ready", .general, "session-ready", keywords: ["notification", "alert", "queue", "bring to front", "focus", "off", "disable"]),
         SettingsSearchEntry("Steam Big Picture Mode", .general, "game-launch", keywords: ["launcher", "gamepad friendly", "steam", "tv", "couch"]),
         SettingsSearchEntry("Rich Presence", .general, "discord", keywords: ["discord", "status", "friends", "profile"]),

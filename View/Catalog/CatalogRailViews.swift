@@ -176,10 +176,14 @@ struct CatalogRailView: View {
 struct CatalogDestinationGridView: View {
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
+    var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4 * uiScale, alignment: .top)]
+        let minimum = isPosterLayout
+            ? CatalogPosterLayout.slotWidth(scale: uiScale)
+            : CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
+        return [GridItem(.adaptive(minimum: minimum), spacing: 4 * uiScale, alignment: .top)]
     }
 
     var body: some View {
@@ -201,35 +205,60 @@ struct CatalogDestinationGridView: View {
             .padding(.top, 24 * uiScale)
 
             if section.isPlaceholder {
-                CatalogGridSkeletonView(isScrollable: false)
+                CatalogGridSkeletonView(isScrollable: false, isPosterLayout: isPosterLayout)
             } else {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
                     ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
-                        CatalogGameTile(
-                            game: game,
-                            imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
-                            isSelected: isSelected(game),
-                            isSelectionActive: viewModel.selectedGame != nil,
-                            isQueuedForPatching: viewModel.isQueuedForPatching(game),
-                            isResumableSession: viewModel.isResumableSessionGame(game),
-                            showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
-                            onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
-                            onPlay: { viewModel.launch(game: game) },
-                            onMarkOwned: {
-                                viewModel.selectGame(game, inSection: section.id)
-                                viewModel.handleUnownedSelectedVariantPrimaryAction()
-                            },
-                            onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
-                            onHoverChanged: { viewModel.isPointerInsideGameTile = $0 }
-                        )
+                        tile(for: game)
                     }
                 }
                 .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                 .padding(.bottom, 12 * uiScale)
             }
         }
-        .onAppear { prefetchGridImages() }
-        .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchGridImages() }
+        .onAppear { prefetchVisibleImages() }
+        .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchVisibleImages() }
+    }
+
+    @ViewBuilder
+    private func tile(for game: OPNCatalogGameObject) -> some View {
+        if isPosterLayout {
+            CatalogPosterTile(
+                game: game,
+                imageURL: viewModel.optimizedImageURL(game.bestPosterImageURL, width: 512),
+                isSelected: isSelected(game),
+                isSelectionActive: viewModel.selectedGame != nil,
+                isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                isResumableSession: viewModel.isResumableSessionGame(game),
+                showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
+                onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
+                onPlay: { viewModel.launch(game: game) },
+                onMarkOwned: {
+                    viewModel.selectGame(game, inSection: section.id)
+                    viewModel.handleUnownedSelectedVariantPrimaryAction()
+                },
+                onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
+                onHoverChanged: { viewModel.isPointerInsideGameTile = $0 }
+            )
+        } else {
+            CatalogGameTile(
+                game: game,
+                imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
+                isSelected: isSelected(game),
+                isSelectionActive: viewModel.selectedGame != nil,
+                isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                isResumableSession: viewModel.isResumableSessionGame(game),
+                showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
+                onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
+                onPlay: { viewModel.launch(game: game) },
+                onMarkOwned: {
+                    viewModel.selectGame(game, inSection: section.id)
+                    viewModel.handleUnownedSelectedVariantPrimaryAction()
+                },
+                onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
+                onHoverChanged: { viewModel.isPointerInsideGameTile = $0 }
+            )
+        }
     }
 
     private func isSelected(_ game: OPNCatalogGameObject) -> Bool {
@@ -237,8 +266,12 @@ struct CatalogDestinationGridView: View {
         return CatalogViewModel.looseIdentityMatches(selectedGame, game)
     }
 
-    private func prefetchGridImages() {
-        viewModel.prefetchGridImages(section: section)
+    private func prefetchVisibleImages() {
+        guard isPosterLayout else {
+            viewModel.prefetchGridImages(section: section)
+            return
+        }
+        viewModel.prefetchPosterImages(section: section, games: section.games)
     }
 }
 

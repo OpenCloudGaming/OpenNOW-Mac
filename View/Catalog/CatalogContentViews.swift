@@ -16,6 +16,7 @@ struct CatalogContentView: View {
     @State private var isPointerInsideDetailPanel = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.opnUIScale) private var uiScale
+    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
     /// Seconds between hero rotations. Driven by a `.task` loop rather than a `Timer.publish`
     /// stored on this struct: the struct is rebuilt on every re-render, which restarts a stored
     /// publisher's interval before it ever fires.
@@ -118,10 +119,10 @@ struct CatalogContentView: View {
                                     .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
                             }
                             if isGridDestination, sections.isEmpty, isLoadingInitialSections {
-                                CatalogGridSkeletonView(isScrollable: false)
+                                CatalogGridSkeletonView(isScrollable: false, isPosterLayout: isPosterHome)
                                     .padding(.top, 24 * uiScale)
                             } else if isGridDestination, let section = sections.first {
-                                CatalogDestinationGridView(viewModel: viewModel, section: section)
+                                CatalogDestinationGridView(viewModel: viewModel, section: section, isPosterLayout: isPosterHome)
                                 if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
                                     GameDetailPanel(
                                         viewModel: viewModel,
@@ -143,7 +144,7 @@ struct CatalogContentView: View {
                                             .frame(height: 0)
                                             .id(railAnchor)
                                     }
-                                    CatalogRailView(viewModel: viewModel, section: section, availableWidth: viewport.size.width, onShowAll: { viewModel.openShowAll(section) })
+                                    sectionRail(section, availableWidth: viewport.size.width)
                                     if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
                                         GameDetailPanel(
                                             viewModel: viewModel,
@@ -163,7 +164,7 @@ struct CatalogContentView: View {
                                 // instead of displacing anything already on screen.
                                 if sections.isEmpty, isLoadingInitialSections {
                                     ForEach(0..<3, id: \.self) { _ in
-                                        CatalogRailSkeletonView()
+                                        CatalogRailSkeletonView(isPosterLayout: isPosterHome)
                                     }
                                 }
                             }
@@ -227,6 +228,10 @@ struct CatalogContentView: View {
         viewModel.isLoading || viewModel.isLoadingPanels
     }
 
+    private var isPosterHome: Bool {
+        (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+    }
+
     private var selectedRailScrollAnchor: String? {
         guard let selectedGame = viewModel.selectedGame else { return nil }
         return "rail-\(viewModel.selectedSectionId)-\(selectedGame.catalogIdentity)"
@@ -246,6 +251,15 @@ struct CatalogContentView: View {
 
     private func shouldUseGrid(for destination: CatalogDestination) -> Bool {
         !viewModel.isBrowseMode && (destination == .library || destination == .favorites)
+    }
+
+    @ViewBuilder
+    private func sectionRail(_ section: CatalogSectionModel, availableWidth: CGFloat) -> some View {
+        if isPosterHome {
+            CatalogPosterRailView(viewModel: viewModel, section: section, availableWidth: availableWidth, onShowAll: { viewModel.openShowAll(section) })
+        } else {
+            CatalogRailView(viewModel: viewModel, section: section, availableWidth: availableWidth, onShowAll: { viewModel.openShowAll(section) })
+        }
     }
 
     private func selectedGameBelongs(to section: CatalogSectionModel) -> Bool {
