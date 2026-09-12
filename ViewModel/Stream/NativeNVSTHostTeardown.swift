@@ -30,6 +30,8 @@ extension NativeNVSTHostViewModel {
         networkPathTask = nil
         networkPathAvailable = true
         cancelNativeShortcutTasks()
+        sessionReadyFullScreenTask?.cancel()
+        sessionReadyFullScreenTask = nil
         removeNativeFullScreenObservers()
         endStreamingPerformanceMode()
         nativeView?.remoteInputEnabled = false
@@ -196,6 +198,8 @@ extension NativeNVSTHostViewModel {
         networkPathTask = nil
         networkPathAvailable = true
         cancelNativeShortcutTasks()
+        sessionReadyFullScreenTask?.cancel()
+        sessionReadyFullScreenTask = nil
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
         nativeView?.setPointerLocked(false)

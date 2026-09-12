@@ -1,6 +1,7 @@
 //  What happens when a launch that was queued or provisioning becomes ready to play while OpenNOW
-//  is not the frontmost application: a system notification, or the app coming to the front on its
-//  own. Either way a long queue can be waited out in another window.
+//  is not the frontmost application: a system notification, the app coming to the front on its own,
+//  or the app coming forward and the stream window entering full screen. Either way a long queue
+//  can be waited out in another window.
 //
 
 import AppKit
@@ -13,12 +14,14 @@ enum OpenNOWSessionReadyAction {
         case off
         case notification
         case bringToFront
+        case fullScreen
 
         var label: String {
             switch self {
             case .off: "Off"
             case .notification: "Notification"
             case .bringToFront: "Bring to Front"
+            case .fullScreen: "Full Screen"
             }
         }
     }
@@ -50,8 +53,13 @@ enum OpenNOWSessionReadyAction {
         }
     }
 
+    /// The window does not exist yet when the seat reports ready, so the stream host asks for the
+    /// transition once it presents the session rather than it being driven from here.
+    static var isFullScreenRequestedWhenReady: Bool { mode == .fullScreen }
+
     /// Runs the chosen action unless the app is already frontmost, in which case the stream
-    /// surface itself is the announcement.
+    /// surface itself is the announcement. Full screen still needs the app in front, so it raises
+    /// the app here and leaves the transition itself to the stream host.
     static func sessionDidBecomeReady(title: String) {
         guard !NSApplication.shared.isActive else { return }
         switch mode {
@@ -59,7 +67,7 @@ enum OpenNOWSessionReadyAction {
             break
         case .notification:
             postNotification(title: title)
-        case .bringToFront:
+        case .bringToFront, .fullScreen:
             bringToFront()
         }
     }
