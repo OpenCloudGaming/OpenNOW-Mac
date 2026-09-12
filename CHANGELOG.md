@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.8.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.7.1...v0.8.0) (2026-09-12)
+
+
+### Features
+
+* add beta update channel ([62ce6f1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/62ce6f179f0d2c9da0f311bb1dba35cf01028b03))
+* add steam big picture mode ([08a5879](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/08a58791919be5658c1544714ab03ab8575a4253))
+* improve account management menu ([57dbe3e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/57dbe3e132dae1ea18a7a7bb354beffb5b082122))
+* improved stream starting screen details ([d8bbfd2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d8bbfd26700271c6438f71632cf3b47610dd5615))
+* **nvst:** mouse input cursor policy ([0923c75](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0923c751a1a3e8f2a221ff42f7c15810afcfb786))
+
+
+### Bug Fixes
+
+* **design:** resolve SwiftUI drawing layer classes dynamically to boost interface scale density ([2a14a59](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/2a14a598a7dff57251541542ddcb934588654a78))
+* manual update check clears the Later deferral ([a321d81](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a321d81f6e19f8f5246e9e32890540e59d7bd473))
+* new settings badge alignment ([f95fde8](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f95fde8ed79cedd8f7e4333e195ecfd7a701a04b))
+* preserve Mac mouse capture across cursor updates and focus changes ([#25](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/25)) ([b9142f2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b9142f22a560f39fdc9012db3bb9f73b9bab0314))
+* repair heartbeat lifecycles and cut telemetry logging overhead ([8988183](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8988183b65a7be63cefbd8a91a391b096e519eeb))
+* sign in when region differs from its language ([c398536](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c3985368b10cd98845d7f5af683e9433539d34aa))
+* splash startup stall ([8a0b74a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8a0b74a3868d416595c0980a7908ef51ca38e566))
+* stop the catalog relaying out after the launch splash ([1a0a49f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1a0a49fbeefaabac1129c61fef85bad2e0a60d35))
+* update channel settings search ([666bd4a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/666bd4a3391e13b074b37eecfd61d568e9231d34))
+
 ## [0.7.1](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.7.0...v0.7.1) (2026-09-08)
 
 
