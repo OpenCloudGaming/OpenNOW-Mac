@@ -3,19 +3,8 @@ import Testing
 @testable import OpenNOW
 
 @MainActor private func makeCursorCaptureWindow() -> (NSWindow, NativeWebRTCStreamView) {
-    let location = NSEvent.mouseLocation
-    let window = NSWindow(
-        contentRect: NSRect(x: location.x - 640, y: location.y - 360, width: 1280, height: 720),
-        styleMask: [.titled, .closable, .miniaturizable, .resizable],
-        backing: .buffered,
-        defer: false
-    )
-    let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
-    view.mouseInputMode = .absolute
-    view.confinesCursorToWindowInAbsoluteMode = true
-    view.cursorAssociationHandler = { _ in .success }
+    let (window, view) = makeAbsoluteCursorCaptureWindow()
     view.hidesCursorWhilePointerLocked = false
-    window.contentView = view
     return (window, view)
 }
 

@@ -170,12 +170,19 @@ public final class NativeWebRTCStreamView: NSView {
     var cursorAssociationHandler: (Bool) -> CGError = {
         CGAssociateMouseAndMouseCursorPosition(boolean_t($0 ? 1 : 0))
     }
+    var cursorLocationProvider: () -> CGPoint = { NSEvent.mouseLocation }
+    var cursorWarpHandler: ((CGPoint) -> Void)?
     // `internal(set)` rather than `private(set)`: the type's own extensions in the neighbouring
     // files write these, and the public contract is unchanged — nothing outside the module can.
     public internal(set) var isPointerLocked = false
     public internal(set) var isAbsoluteCursorConfined = false
     public internal(set) var isEmittingNeutralizingAbsolutePosition = false
     public var isCursorCaptured: Bool { isPointerLocked || isAbsoluteCursorConfined }
+    /// A cursor rect and a pointer capture only mean anything for the key window of the active app.
+    /// Taking either while another app is frontmost steals a pointer this window cannot even draw in.
+    public var isFrontmostInputTarget: Bool {
+        NSApplication.shared.isActive && window?.isKeyWindow == true
+    }
     public var locksPointerWhenRelativeModeSelected = false
     public var confinesCursorToWindowInAbsoluteMode = false {
         didSet {

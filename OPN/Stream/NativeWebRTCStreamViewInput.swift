@@ -46,7 +46,7 @@ extension NativeWebRTCStreamView {
         guard pointerLockMonitor == nil else { return }
         pointerLockMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged, .scrollWheel]) { [weak self] event in
             guard let self, self.isCursorCaptured else { return event }
-            guard NSApplication.shared.isActive, self.window?.isKeyWindow == true else {
+            guard self.isFrontmostInputTarget else {
                 self.handleFocusLoss()
                 return event
             }
@@ -87,7 +87,7 @@ extension NativeWebRTCStreamView {
         guard absoluteCursorGlobalMonitor == nil else { return }
         absoluteCursorGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, self.isAbsoluteCursorConfined, NSApplication.shared.isActive, self.window?.isKeyWindow == true else { return }
+                guard let self, self.isAbsoluteCursorConfined, self.isFrontmostInputTarget else { return }
                 self.constrainAssociatedAbsoluteCursor()
             }
         }
@@ -102,24 +102,16 @@ extension NativeWebRTCStreamView {
     func installPointerLockNotifications() {
         guard pointerLockNotificationTokens.isEmpty else { return }
         let center = NotificationCenter.default
-        let appToken = center.addObserver(forName: NSApplication.didResignActiveNotification, object: NSApplication.shared, queue: .main) { [weak self] _ in
+        let focusLost: @Sendable (Notification) -> Void = { [weak self] _ in
             MainActor.assumeIsolated { self?.handleFocusLoss() }
         }
-        let windowToken = center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.handleFocusLoss() }
+        let focusGained: @Sendable (Notification) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleFocusGain() }
         }
-        let appActiveToken = center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: NSApplication.shared, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.restoreInputFocus()
-                self?.applyLocalCursorPolicy()
-            }
-        }
-        let windowKeyToken = center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.restoreInputFocus()
-                self?.applyLocalCursorPolicy()
-            }
-        }
+        let appToken = center.addObserver(forName: NSApplication.didResignActiveNotification, object: NSApplication.shared, queue: .main, using: focusLost)
+        let windowToken = center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main, using: focusLost)
+        let appActiveToken = center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: NSApplication.shared, queue: .main, using: focusGained)
+        let windowKeyToken = center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main, using: focusGained)
         pointerLockNotificationTokens = [appToken, windowToken, appActiveToken, windowKeyToken]
     }
 
@@ -130,6 +122,10 @@ extension NativeWebRTCStreamView {
     }
 
     func moveCursor(toScreenPoint point: CGPoint) {
+        if let cursorWarpHandler {
+            cursorWarpHandler(point)
+            return
+        }
         let screen = NSScreen.screens.first { $0.frame.contains(point) } ?? window?.screen
         guard let screen,
               let screenNumber = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
@@ -280,7 +276,7 @@ extension NativeWebRTCStreamView {
 
     func emitCurrentAbsoluteMousePosition(timestamp: MediaTimestamp) {
         guard let window else { return }
-        let screenPoint = NSEvent.mouseLocation
+        let screenPoint = cursorLocationProvider()
         let windowPoint = window.convertPoint(fromScreen: screenPoint)
         let viewPoint = convert(windowPoint, from: nil)
         guard let event = absoluteMouseEvent(at: viewPoint, timestamp: timestamp) else { return }
@@ -296,6 +292,13 @@ extension NativeWebRTCStreamView {
     func handleFocusLoss() {
         releasePressedInputs()
         setPointerLocked(false)
+        applyLocalCursorPolicy()
+    }
+
+    func handleFocusGain() {
+        restoreInputFocus()
+        // restoreInputFocus() early-returns with remote input off, an overlay capturing input, or a
+        // non-key window, and the cursor policy still needs to reflect that unchanged state.
         applyLocalCursorPolicy()
     }
 

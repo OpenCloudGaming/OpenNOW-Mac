@@ -218,7 +218,7 @@ extension NativeNVSTHostViewModel {
         let restoreManualCapture = restoreManualCaptureOnKeyboardHide
         restorePointerLockOnKeyboardHide = false
         restoreManualCaptureOnKeyboardHide = false
-        guard NSApplication.shared.isActive, nativeView?.window?.isKeyWindow == true else { return }
+        guard nativeView?.isFrontmostInputTarget == true else { return }
         // A capture the player took by hand comes back as one: restoring it as an ordinary lock
         // would hand it to the next seat cursor notification to release.
         if restoreManualCapture {
@@ -452,8 +452,7 @@ extension NativeNVSTHostViewModel {
             // Same gate as the line above, and for the same reason: `enablePointerLock` does not
             // consult `remoteInputEnabled`, so an unguarded restore would take the pointer back
             // during an outage, behind the recovery overlay.
-            if restoreManualCapture, networkPathAvailable, NSApplication.shared.isActive,
-               nativeView?.window?.isKeyWindow == true {
+            if restoreManualCapture, networkPathAvailable, nativeView?.isFrontmostInputTarget == true {
                 nativeView?.setManualPointerCapture(true)
             }
         }

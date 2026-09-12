@@ -170,18 +170,7 @@ private struct MouseButtonTransition: Equatable {
 }
 
 @Test @MainActor func absoluteMouseCaptureConfinesToWindowAndPreservesClick() throws {
-    let mouseLocation = NSEvent.mouseLocation
-    let window = NSWindow(
-        contentRect: NSRect(x: mouseLocation.x - 640, y: mouseLocation.y - 360, width: 1280, height: 720),
-        styleMask: [.titled, .closable, .miniaturizable, .resizable],
-        backing: .buffered,
-        defer: false
-    )
-    let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
-    view.mouseInputMode = .absolute
-    view.confinesCursorToWindowInAbsoluteMode = true
-    view.cursorAssociationHandler = { _ in .success }
-    window.contentView = view
+    let (window, view) = makeAbsoluteCursorCaptureWindow()
     defer { view.setPointerLocked(false) }
     var events: [UserInputEvent] = []
     view.onInputEvent = { events.append($0) }

@@ -15,7 +15,7 @@ extension NativeWebRTCStreamView {
         }
         cursorAssociationGeneration &+= 1
         isPointerLocked = true
-        pointerLockRestoreLocation = NSEvent.mouseLocation
+        pointerLockRestoreLocation = cursorLocationProvider()
         window?.acceptsMouseMovedEvents = true
         window?.makeFirstResponder(self)
         updatePointerLockCursorVisibility()
@@ -60,10 +60,31 @@ extension NativeWebRTCStreamView {
         notifyPointerLockChanged(false)
     }
 
+    public func setPointerLocked(_ locked: Bool) {
+        if locked {
+            guard !isPointerLocked else { return }
+            enablePointerLock()
+        } else {
+            releasePressedMouseButtons()
+            disablePointerLock()
+            disableAbsoluteCursorConfinement()
+        }
+    }
+
+    public func restoreInputFocus() {
+        guard remoteInputEnabled, !localOverlayCapturesInput, isFrontmostInputTarget else { return }
+        window?.makeFirstResponder(self)
+        // Not gated on Direct Mouse Input: relative mode is reached by following the seat into
+        // mouselook as well as by choosing it, and coming back from the HUD or the on-screen
+        // keyboard without retaking the pointer would leave the game aiming with a free cursor
+        // that walks straight out of the window.
+        if locksPointerWhenRelativeModeSelected, mouseInputMode == .relative { setPointerLocked(true) }
+    }
+
     func captureAbsoluteCursorIfNeeded() {
         guard remoteInputEnabled, directMouseInputEnabled, confinesCursorToWindowInAbsoluteMode,
               mouseInputMode == .absolute, !isPointerLocked, !isAbsoluteCursorConfined, window != nil else { return }
-        guard Self.confinedCursorPoint(NSEvent.mouseLocation, to: window?.frame ?? .zero) != nil else { return }
+        guard Self.confinedCursorPoint(cursorLocationProvider(), to: window?.frame ?? .zero) != nil else { return }
         isAbsoluteCursorConfined = true
         window?.acceptsMouseMovedEvents = true
         installPointerLockMonitor()
@@ -91,7 +112,7 @@ extension NativeWebRTCStreamView {
 
     @discardableResult
     func constrainAssociatedAbsoluteCursor() -> Bool {
-        let cursor = NSEvent.mouseLocation
+        let cursor = cursorLocationProvider()
         guard isAbsoluteCursorConfined, let window, let confined = Self.confinedCursorPoint(cursor, to: window.frame), confined != cursor else { return false }
         moveCursor(toScreenPoint: confined)
         let windowPoint = window.convertPoint(fromScreen: confined)
@@ -133,6 +154,9 @@ extension NativeWebRTCStreamView {
         if mode == .relative {
             if remoteInputEnabled { setPointerLocked(true) }
         } else if isPointerLocked {
+            // Guarded because `setPointerLocked(false)` also drops held buttons and absolute
+            // confinement; still reachable, as the on-screen keyboard restores a lock without
+            // consulting the mode.
             setPointerLocked(false)
         }
     }
