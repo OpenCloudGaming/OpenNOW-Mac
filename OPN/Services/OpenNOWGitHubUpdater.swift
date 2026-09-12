@@ -43,7 +43,6 @@ struct OpenNOWUpdateDownloadProgress: Sendable, Equatable {
 actor OpenNOWGitHubUpdater {
     private enum UpdateError: LocalizedError {
         case invalidResponse(String)
-        case noReleaseAsset
         case notBundledApp
         case downloadFailed(String)
         case extractionFailed
@@ -54,8 +53,6 @@ actor OpenNOWGitHubUpdater {
             switch self {
             case .invalidResponse(let message), .downloadFailed(let message), .validationFailed(let message), .installerLaunchFailed(let message):
                 message
-            case .noReleaseAsset:
-                "The latest GitHub release does not include an OpenNOW macOS zip asset."
             case .notBundledApp:
                 "Updates can only be installed from the packaged OpenNOW.app bundle."
             case .extractionFailed:
@@ -70,44 +67,66 @@ actor OpenNOWGitHubUpdater {
     private let repository: String
     let session: URLSession
     private let releaseDateFormatter = ISO8601DateFormatter()
+    /// One version line costs five releases (four betas plus the stable), so ten entries still hold
+    /// an installable release when the newest slots are drafts or are still being built.
+    private let releasePageSize = 10
 
-    init(owner: String, repository: String) {
+    init(owner: String, repository: String, currentVersion: String? = nil, session: URLSession? = nil) {
         self.owner = owner
         self.repository = repository
-        currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        self.currentVersion = currentVersion ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+        self.session = session ?? Self.releaseSession()
+    }
 
+    private static func releaseSession() -> URLSession {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 600
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        session = URLSession(configuration: configuration)
+        return URLSession(configuration: configuration)
     }
 
-    /// Stable only ever sees `releases/latest` (GitHub excludes prereleases and drafts from it by
-    /// design). Beta sees the newest release regardless of prerelease status, so a beta subscriber
-    /// still gets a plain stable release the moment it ships, rather than waiting for the next beta.
+    /// Stable only ever sees non-prerelease releases. Beta takes the highest version whatever its
+    /// prerelease flag, so a beta subscriber gets a plain stable release the moment it ships.
     func checkForUpdate(channel: OpenNOWUpdateChannel = .stable) async throws -> OpenNOWGitHubRelease? {
-        let json: [String: Any]
-        switch channel {
-        case .stable:
-            let data = try await fetchReleaseData(path: "releases/latest", operation: "updater.releaseMetadata")
-            let decoded = try JSONSerialization.jsonObject(with: data)
-            guard let latest = decoded as? [String: Any] else {
-                throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
-            }
-            json = latest
-        case .beta:
-            let data = try await fetchReleaseData(path: "releases?per_page=1", operation: "updater.releaseMetadata")
-            let decoded = try JSONSerialization.jsonObject(with: data)
-            guard let entries = decoded as? [[String: Any]], let newest = entries.first(where: { ($0["draft"] as? Bool) != true }) else {
-                throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
-            }
-            json = newest
+        // A release record exists before its archive finishes building and uploading, so finding no
+        // installable asset means "not published yet" rather than a failed update check.
+        guard let candidate = try await installableCandidate(channel: channel) else {
+            logInfo("GitHub release metadata carried no installable macOS asset channel=\(channel.rawValue) currentVersion=\(currentVersion)")
+            return nil
+        }
+        logInfo("GitHub release metadata received latestVersion=\(candidate.version) currentVersion=\(currentVersion) channel=\(channel.rawValue)")
+        return Self.compareVersion(candidate.version, to: currentVersion) > 0 ? candidate : nil
+    }
+
+    private func installableCandidate(channel: OpenNOWUpdateChannel) async throws -> OpenNOWGitHubRelease? {
+        let data = try await fetchReleaseData(path: "releases?per_page=\(releasePageSize)", operation: "updater.releaseMetadata")
+        let decoded = try JSONSerialization.jsonObject(with: data)
+        guard let entries = decoded as? [[String: Any]] else {
+            throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
         }
 
-        let release = try release(from: json)
-        logInfo("GitHub release metadata received latestVersion=\(release.version) currentVersion=\(currentVersion) channel=\(channel.rawValue)")
-        return compareVersion(release.version, to: currentVersion) > 0 ? release : nil
+        // GitHub orders releases by the tagged commit's date, which a hotfix cut from an older
+        // branch inverts, so the offer is the highest version rather than the first entry.
+        let candidate = entries
+            .filter { ($0["draft"] as? Bool) != true }
+            .filter { channel == .beta || ($0["prerelease"] as? Bool) != true }
+            .compactMap { installableRelease(from: $0) }
+            .max { Self.compareVersion($0.version, to: $1.version) < 0 }
+        if let candidate { return candidate }
+        guard channel == .stable else { return nil }
+        // A long beta line, or a run of releases whose archives never landed, can push every stable
+        // release off that window; `releases/latest` reaches past it however deep it sits.
+        return try await latestStableRelease()
+    }
+
+    private func latestStableRelease() async throws -> OpenNOWGitHubRelease? {
+        let data = try await fetchReleaseData(path: "releases/latest", operation: "updater.releaseMetadata")
+        let decoded = try JSONSerialization.jsonObject(with: data)
+        guard let latest = decoded as? [String: Any] else {
+            throw UpdateError.invalidResponse("GitHub release metadata was not valid JSON.")
+        }
+        return installableRelease(from: latest)
     }
 
     /// Backs the About page's release history. Drafts are excluded; releases without a macOS asset
@@ -285,7 +304,7 @@ actor OpenNOWGitHubUpdater {
         let tagName = json["tag_name"] as? String ?? ""
         let publishedText = json["published_at"] as? String ?? json["created_at"] as? String
         return OpenNOWReleaseSummary(
-            version: normalizedVersion(tagName),
+            version: Self.normalizedVersion(tagName),
             tagName: tagName,
             releaseNotes: json["body"] as? String ?? "",
             releaseURL: json["html_url"] as? String ?? "",
@@ -294,9 +313,10 @@ actor OpenNOWGitHubUpdater {
         )
     }
 
-    private func release(from json: [String: Any]) throws -> OpenNOWGitHubRelease {
+    private func installableRelease(from json: [String: Any]) -> OpenNOWGitHubRelease? {
         let summary = summary(from: json)
-        let assets = json["assets"] as? [[String: Any]] ?? []
+        // GitHub lists an asset while its upload is still running; only a completed one serves bytes.
+        let assets = (json["assets"] as? [[String: Any]] ?? []).filter { ($0["state"] as? String ?? "uploaded") == "uploaded" }
         let selectedAsset = assets.first { asset in
             let name = asset["name"] as? String ?? ""
             return name.hasPrefix("OpenNOW-") && name.hasSuffix("-macOS.zip")
@@ -306,12 +326,12 @@ actor OpenNOWGitHubUpdater {
         }
 
         guard let selectedAsset else {
-            throw UpdateError.noReleaseAsset
+            return nil
         }
         let assetName = selectedAsset["name"] as? String ?? ""
         let assetDownloadURL = selectedAsset["browser_download_url"] as? String ?? ""
         guard !summary.version.isEmpty, !assetDownloadURL.isEmpty else {
-            throw UpdateError.noReleaseAsset
+            return nil
         }
 
         return OpenNOWGitHubRelease(
@@ -355,11 +375,11 @@ actor OpenNOWGitHubUpdater {
         guard executableExists else {
             throw UpdateError.validationFailed("The downloaded app bundle did not contain an executable OpenNOW app binary.")
         }
-        guard let candidateVersion, compareVersion(candidateVersion, to: expectedVersion) == 0 else {
+        guard let candidateVersion, Self.normalizedVersion(candidateVersion) == Self.normalizedVersion(expectedVersion) else {
             throw UpdateError.validationFailed("The downloaded app bundle version was \(candidateVersion ?? "missing"), but the GitHub release expected \(expectedVersion).")
         }
-        let effectiveCurrentVersion = compareVersion(installedVersion, to: currentVersion) > 0 ? installedVersion : currentVersion
-        guard compareVersion(candidateVersion, to: effectiveCurrentVersion) > 0 else {
+        let effectiveCurrentVersion = Self.compareVersion(installedVersion, to: currentVersion) > 0 ? installedVersion : currentVersion
+        guard Self.compareVersion(candidateVersion, to: effectiveCurrentVersion) > 0 else {
             throw UpdateError.validationFailed("OpenNOW is already on version \(effectiveCurrentVersion). Relaunch OpenNOW and check for updates again if the app still shows an older version.")
         }
         guard verifyCodeSignature(for: candidateURL) else {
@@ -448,32 +468,6 @@ actor OpenNOWGitHubUpdater {
         } catch {
             logInfo("Update quarantine attribute could not be cleared error=\(error.localizedDescription)")
         }
-    }
-
-    private func normalizedVersion(_ version: String) -> String {
-        let trimmed = version.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.lowercased().hasPrefix("v") ? String(trimmed.dropFirst()) : trimmed
-    }
-
-    private func compareVersion(_ left: String, to right: String) -> Int {
-        let separators = CharacterSet(charactersIn: ".-_")
-        let leftParts = normalizedVersion(left).components(separatedBy: separators)
-        let rightParts = normalizedVersion(right).components(separatedBy: separators)
-        let count = max(leftParts.count, rightParts.count)
-
-        for index in 0..<count {
-            let leftPart = index < leftParts.count ? leftParts[index] : "0"
-            let rightPart = index < rightParts.count ? rightParts[index] : "0"
-            if let leftNumber = Int(leftPart), let rightNumber = Int(rightPart) {
-                if leftNumber < rightNumber { return -1 }
-                if leftNumber > rightNumber { return 1 }
-            } else {
-                let result = leftPart.compare(rightPart, options: [.caseInsensitive, .numeric])
-                if result == .orderedAscending { return -1 }
-                if result == .orderedDescending { return 1 }
-            }
-        }
-        return 0
     }
 
     private func shellQuoted(_ value: String) -> String {
