@@ -9,7 +9,7 @@ struct OpenNOWStartupTelemetry: View, Equatable {
     let metrics: OpenNOWStartupMetrics
 
     /// The last station settles at 0.84, so progress past that changes nothing on this layer.
-    static func == (lhs: OpenNOWStartupTelemetry, rhs: OpenNOWStartupTelemetry) -> Bool {
+    nonisolated static func == (lhs: OpenNOWStartupTelemetry, rhs: OpenNOWStartupTelemetry) -> Bool {
         min(lhs.stage.progress, 0.85) == min(rhs.stage.progress, 0.85)
             && lhs.stage.duration == rhs.stage.duration
             && lhs.metrics == rhs.metrics

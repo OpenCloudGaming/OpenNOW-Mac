@@ -109,10 +109,16 @@ extension NativeWebRTCStreamView {
             MainActor.assumeIsolated { self?.handleFocusLoss() }
         }
         let appActiveToken = center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: NSApplication.shared, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyLocalCursorPolicy() }
+            MainActor.assumeIsolated {
+                self?.restoreInputFocus()
+                self?.applyLocalCursorPolicy()
+            }
         }
         let windowKeyToken = center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyLocalCursorPolicy() }
+            MainActor.assumeIsolated {
+                self?.restoreInputFocus()
+                self?.applyLocalCursorPolicy()
+            }
         }
         pointerLockNotificationTokens = [appToken, windowToken, appActiveToken, windowKeyToken]
     }

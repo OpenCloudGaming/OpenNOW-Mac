@@ -8,7 +8,7 @@ struct OpenNOWStartupRail: View, Equatable {
 
     /// The bar is quantised twice over - whole cells, whole percent - so it only has a new frame
     /// to draw when one of those steps, not on every tick between them.
-    static func == (lhs: OpenNOWStartupRail, rhs: OpenNOWStartupRail) -> Bool {
+    nonisolated static func == (lhs: OpenNOWStartupRail, rhs: OpenNOWStartupRail) -> Bool {
         lhs.percent == rhs.percent
             && lhs.filledCount == rhs.filledCount
             && lhs.stage.statusText == rhs.stage.statusText
@@ -17,8 +17,8 @@ struct OpenNOWStartupRail: View, Equatable {
             && lhs.metrics == rhs.metrics
     }
 
-    fileprivate var percent: Int { Int((stage.progress * 100).rounded()) }
-    fileprivate var filledCount: Int { Int((Double(metrics.railCells) * stage.progress).rounded(.down)) }
+    nonisolated fileprivate var percent: Int { Int((stage.progress * 100).rounded()) }
+    nonisolated fileprivate var filledCount: Int { Int((Double(metrics.railCells) * stage.progress).rounded(.down)) }
 
     var body: some View {
         let scale = metrics.uiScale

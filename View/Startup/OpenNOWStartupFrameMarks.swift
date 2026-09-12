@@ -7,7 +7,7 @@ struct OpenNOWStartupFrameMarks: View, Equatable {
     let metrics: OpenNOWStartupMetrics
 
     /// Everything here is keyed off `frameMarks`, which is settled by 26% of the run.
-    static func == (lhs: OpenNOWStartupFrameMarks, rhs: OpenNOWStartupFrameMarks) -> Bool {
+    nonisolated static func == (lhs: OpenNOWStartupFrameMarks, rhs: OpenNOWStartupFrameMarks) -> Bool {
         lhs.stage.frameMarks == rhs.stage.frameMarks && lhs.metrics == rhs.metrics
     }
 
