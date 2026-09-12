@@ -95,7 +95,7 @@ public final class OPNAuthService: @unchecked Sendable {
         let deviceId = generateOpenNOWDeviceId()
         let redirectUri = "http://localhost:\(port)"
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
-        let locale = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
+        let locale = OPNLocale.currentGFNLocale()
         telemetry.recordBreadcrumb("Jarvis OAuth login starting", attributes: ["provider_idp_id": selectedProviderIdpId])
 
         Task { [weak self] in
@@ -118,6 +118,9 @@ public final class OPNAuthService: @unchecked Sendable {
                 } readyHandler: {
                     Task { @MainActor in
                         self.telemetry.recordBreadcrumb("Jarvis OAuth browser opened", attributes: ["provider_idp_id": selectedProviderIdpId])
+                        // NVIDIA answers a malformed authorization request with an opaque
+                        // SCHEMA_VIOLATION page, so the request that produced it has to be in the log.
+                        OpenNOWLog.info(.auth, "OAuth authorize locale=\(locale) redirect=\(redirectUri) idp=\(selectedProviderIdpId) rawLocale=\(Locale.current.identifier)")
                         NSWorkspace.shared.open(loginRequest.url)
                     }
                 }
@@ -260,7 +263,7 @@ public final class OPNAuthService: @unchecked Sendable {
             Task { @MainActor in completion(true, "") }
             return
         }
-        let resolvedLocale = locale.isEmpty ? Locale.current.identifier.replacingOccurrences(of: "-", with: "_") : locale
+        let resolvedLocale = locale.isEmpty ? OPNLocale.currentGFNLocale() : OPNLocale.normalizedLocale(locale)
         guard let url = StarfleetOAuthRequestFactory.logoutURL(idToken: idToken, locale: resolvedLocale, postLogoutRedirectURI: Self.oAuthRedirectURI, configuration: .gfnPC) else {
             clearSession()
             Task { @MainActor in completion(false, "Invalid logout URL") }

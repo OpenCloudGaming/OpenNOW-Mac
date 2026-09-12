@@ -7,6 +7,26 @@ import Foundation
 import SwiftData
 
 extension LoginViewModel {
+    /// NVIDIA hands back its own diagnostics ("Error in idp callback", "idp_id not found"), which
+    /// say nothing to a player. Each one gets the recovery that actually applies to it.
+    nonisolated static func signInGuidance(for rawMessage: String) -> String {
+        let message = rawMessage.trimmed
+        let lowercased = message.lowercased()
+        if lowercased.contains("idp callback") {
+            return "NVIDIA could not finish the sign-in. Try SIGN IN WITH A CODE, and check whether play.geforcenow.com signs in with this account."
+        }
+        if lowercased.contains("idp_id") {
+            return "NVIDIA rejected this service provider. Pick another provider, or try SIGN IN WITH A CODE."
+        }
+        if lowercased.contains("schema") || lowercased.contains("invalid_request") {
+            return "NVIDIA rejected the sign-in request. Try SIGN IN WITH A CODE, and report this with your Language & Region settings."
+        }
+        if lowercased.contains("access_denied") || lowercased.contains("cancel") {
+            return "Sign-in was cancelled before NVIDIA finished."
+        }
+        return message
+    }
+
     func beginOAuth() async {
         validationMessage = ""
         successMessage = ""
@@ -32,8 +52,8 @@ extension LoginViewModel {
             self.oauthCallbackText = ""
 
             guard success else {
-                self.validationMessage = error.isEmpty ? "\(loginProvider.title) sign-in failed." : error
-                OpenNOWLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
+                self.validationMessage = error.isEmpty ? "\(loginProvider.title) sign-in failed." : Self.signInGuidance(for: error)
+                OpenNOWLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(error)")
                 return
             }
 
@@ -80,8 +100,8 @@ extension LoginViewModel {
             self.oauthCallbackText = ""
 
             guard success else {
-                self.validationMessage = error.isEmpty ? "\(loginProvider.title) device-code sign-in failed." : error
-                OpenNOWLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(self.validationMessage)")
+                self.validationMessage = error.isEmpty ? "\(loginProvider.title) device-code sign-in failed." : Self.signInGuidance(for: error)
+                OpenNOWLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(error)")
                 return
             }
 

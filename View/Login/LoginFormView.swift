@@ -448,14 +448,14 @@ private struct SignInModal: View {
                 viewModel.rememberSession = true
                 viewModel.launchDeviceCodeThroughTermsGate()
             } label: {
-                Text("BROWSER SIGN-IN")
+                Text("SIGN IN WITH A CODE")
                     .font(.uiSans(size: 12, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(0.8)
             }
             .buttonStyle(.plain)
             .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
-            .accessibilityHint("Opens NVIDIA browser authentication")
+            .accessibilityHint("Shows a code to enter at nvidia.com, for when the browser sign-in fails")
 
             if !viewModel.deviceCodeUserCode.isEmpty {
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {

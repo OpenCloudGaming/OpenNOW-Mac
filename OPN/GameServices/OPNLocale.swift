@@ -59,19 +59,22 @@ final class OPNLocale: NSObject {
 
     @objc(normalizedLocale:)
     static func normalizedLocale(_ rawLocale: String) -> String {
-        let normalized = rawLocale.replacingOccurrences(of: "-", with: "_")
-        if normalized.isEmpty { return "en_US" }
-
-        guard let separator = normalized.firstIndex(of: "_") else {
-            let language = normalized.lowercased()
+        // `Locale.current.identifier` carries ICU keywords when the region, calendar or measurement
+        // system is overridden ("en_JP@rg=jpzzzz"); NVIDIA rejects those with SCHEMA_VIOLATION.
+        let base = rawLocale.split(separator: "@", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        let components = base.replacingOccurrences(of: "-", with: "_")
+            .split(separator: "_", omittingEmptySubsequences: true)
+        guard let language = components.first?.lowercased(), !language.isEmpty else { return "en_US" }
+        guard let region = components.dropFirst().first(where: isRegionSubtag)?.uppercased() else {
             return language == "en" ? "en_US" : language
         }
+        return "\(language)_\(region)"
+    }
 
-        let language = String(normalized[..<separator]).lowercased()
-        let regionStart = normalized.index(after: separator)
-        let region = String(normalized[regionStart...]).uppercased()
-        if language.isEmpty { return "en_US" }
-        return region.isEmpty ? language : "\(language)_\(region)"
+    /// Script and variant subtags ("zh_Hans_CN", "en_US_POSIX") sit where a region could, so the
+    /// region is the first following subtag actually shaped like one.
+    private static func isRegionSubtag(_ subtag: Substring) -> Bool {
+        (subtag.count == 2 && subtag.allSatisfy(\.isLetter)) || (subtag.count == 3 && subtag.allSatisfy(\.isNumber))
     }
 
     private static func appendUnique(_ locale: String, to locales: inout [String]) {

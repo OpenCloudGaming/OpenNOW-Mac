@@ -468,8 +468,8 @@ final class LoginViewModel: ObservableObject {
     }
 
     static func userFacingError(_ error: Error) -> String {
-        if let jarvisError = error as? JarvisAuthError { return jarvisError.localizedDescription }
-        return error.localizedDescription
+        if let jarvisError = error as? JarvisAuthError { return signInGuidance(for: jarvisError.localizedDescription) }
+        return signInGuidance(for: error.localizedDescription)
     }
 
     private static func randomOAuthString(length: Int) -> String {

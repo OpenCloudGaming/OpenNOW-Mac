@@ -263,7 +263,6 @@ extension OPNStreamPreferences {
     }
 
     static func currentCloudVariablesLocale() -> String {
-        let identifier = Locale.current.identifier.replacingOccurrences(of: "-", with: "_")
-        return identifier.isEmpty ? "en_US" : identifier
+        OPNLocale.normalizedLocale(Locale.current.identifier)
     }
 }

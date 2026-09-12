@@ -387,11 +387,18 @@ public enum JarvisSessionParser {
         for pair in query.split(separator: "&") {
             let components = pair.split(separator: "=", maxSplits: 1).map(String.init)
             guard components.count == 2 else { continue }
-            let key = components[0].removingPercentEncoding ?? components[0]
-            let value = components[1].removingPercentEncoding ?? ""
+            let key = decodeFormComponent(components[0])
+            let value = decodeFormComponent(components[1])
             params[key] = value
         }
         return params
+    }
+
+    /// Query values arrive form-encoded, so a literal space is `+` — NVIDIA's error text reached
+    /// the user as "Error+in+idp+callback" until this decoded it.
+    private static func decodeFormComponent(_ component: String) -> String {
+        let spaced = component.replacingOccurrences(of: "+", with: " ")
+        return spaced.removingPercentEncoding ?? spaced
     }
 
     public static func jwtClaims(_ idToken: String) -> [String: Any] {
