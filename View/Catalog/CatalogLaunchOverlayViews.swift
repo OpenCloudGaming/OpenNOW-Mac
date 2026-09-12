@@ -104,10 +104,11 @@ struct VendorStreamLaunchLoadingOverlay: View {
         let configuration = viewModel.activeStreamConfiguration
         StreamLaunchLoadingScreen(
             title: progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW",
-            stage: viewModel.activeStreamAdPlayback == nil ? StreamLaunchLoadingStage.label(stepIndex: progress?.currentStepIndex ?? -1, queuePosition: progress?.queuePosition) : "Sponsored break",
+            stepIndex: progress?.currentStepIndex ?? -1,
             artworkURL: configuration?.loadingArtworkURL,
             queuePosition: progress?.queuePosition,
             accessoryPresented: viewModel.activeStreamAdPlayback != nil,
+            stageOverride: viewModel.activeStreamAdPlayback != nil ? "Sponsored break" : nil,
             cancelAction: viewModel.cancelActiveStreamLaunch
         ) {
             if let ad = viewModel.activeStreamAdPlayback {

@@ -17,6 +17,9 @@ enum WebRTCMediaStreamTheme {
     static let textTertiary = Color.white.opacity(0.52)
     static let warning = Color.orange
     static let danger = Color.red
+    /// The 0.54 dim DESIGN.md already documented in prose for stream overlays, now a symbol instead
+    /// of a bare literal duplicated at every call site.
+    static let scrim = Color.black.opacity(0.54)
 
     static func dockWidth(for width: CGFloat) -> CGFloat {
         min(344, max(268, width * 0.72))

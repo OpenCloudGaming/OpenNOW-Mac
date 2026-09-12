@@ -37,8 +37,8 @@ Token sources of truth:
   Nested or elevated panels, gradient stops.
 - **Tile Tray** (#292929): `Surface.tileTray`. Grid/tile containers in the catalog.
 - **Field** (#1F1F1F): `Surface.field`. Input backgrounds on app-shell forms.
-- **Scrim** (#000000 @ 0.58 app, 0.54 stream): `Surface.scrim`. Full-cover dim behind
-  modals and overlays.
+- **Scrim** (#000000 @ 0.58 app, 0.54 stream): `Surface.scrim` /
+  `WebRTCMediaStreamTheme.scrim`. Full-cover dim behind modals and overlays.
 - **Deep** (#121312): `Surface.deep`. Full-page backdrops for settings-style flows
   (Settings, Steam Controller test/mapping surfaces).
 - **Overlay** (#171717): `Surface.overlay`. Menu and Show All page backdrops.
@@ -106,8 +106,8 @@ Weights: `regular`, `medium`, `bold`.
 - Login vendor surfaces use Hanken Grotesk 14pt bold; general app-shell controls may use the
   system font at the same sizes when the Hanken Grotesk face is not required.
 
-System rounded/monospaced fonts remain only in legacy stream overlays (launch overlay,
-Twitch panel, transient message pills). Do not use them in new code.
+System rounded/monospaced fonts remain only in legacy stream overlays (Twitch panel,
+transient message pills). Do not use them in new code.
 
 ## Spacing
 
@@ -488,17 +488,43 @@ pairs for Return/Backspace, matching the physical-keyboard passthrough.
 
 ### Stream Launch Loading Screen (`StreamLaunchLoadingScreen`)
 
-Full-cover black surface with blurred loading artwork, a top-to-bottom scrim
-gradient, and an accent radial glow. Centered stack: signal indicator, 32pt bold
-title (24 compact), eyebrow stage line (11pt bold, tracking 1.5, white @ 0.72) with
-a glowing accent status dot, optional queue badge, Cancel button, and a 3px
-indeterminate progress bar. The queue badge and Cancel button follow the standard
-square spec — 1px Stroke Regular `Rectangle`s, no capsules: badge is black @ 0.48
-with an accent @ 0.38 stroke (13pt bold, 14 horizontal padding, height 32); Cancel
-is the Secondary button (white @ 0.08 fill, 13pt bold, 16 horizontal padding,
-height 34). The embedded ad player accessory is a square `Rectangle` card with a
-1px Stroke Regular and floating-layer shadow; its countdown badge is black @ 0.72,
-square.
+Full-bleed black surface: blurred loading artwork (10pt blur, 14pt overscan) behind a
+two-strip scrim — full `WebRTCMediaStreamTheme.scrim` (0.54) in the top 22% and bottom
+34% of the frame, clear through the middle — and a 2px accent top bar. Corner-anchored
+layout: the 32pt bold title (24 compact) sits top-leading in Text Primary; a fixed-footprint
+hero region sits centered; a footer band sits bottom, holding the eyebrow line and the
+5-segment step rail.
+
+The hero region reserves one footprint per breakpoint (640×418 full, 380×272 compact,
+both derived from the embedded ad player's real video-plus-two-line-info-bar height) whether it
+holds the `StreamLaunchStagePlate` or the mandatory free-tier ad player — swapping between
+them never resizes the region. The plate is a wide letterbox (full hero width × 84, 64
+compact; Surface Chrome @ 0.55, 1px Stroke Regular, four accent corner brackets) carrying
+the stage word alone — 22pt bold (16 compact), tracking 4 (2.6 compact), uppercase, Accent
+Soft — with a thin accent sweep travelling leading-to-trailing once every 2.4s
+(`Motion.heroFrameInterval`, omitted under Reduce Motion). It contains no circle and no
+corner radius.
+
+It carries no step number. The eyebrow and the rail directly below already say where in
+the sequence this is, and a third rendering of that same count — at the largest size on
+the screen — was the one element of this surface that read as decoration rather than
+information. For the same reason the plate is the only place the stage word appears:
+queueing renames the headline to "WAITING IN QUEUE" rather than adding a line about it.
+
+The footer's eyebrow carries the position, not the stage: `STEP n OF 5` (11pt bold,
+tracking 1.4, Text Tertiary), with an Accent Soft trailing phrase appended only when there
+is something the plate cannot say — "POSITION n" while queued, "SPONSORED BREAK" during
+the ad (which replaces the plate entirely, so the eyebrow takes over the headline), or both
+when a queue position was still active when the ad began. The step count never drops out.
+Below it, the step rail is five equal `Rectangle` segments
+(8pt tall, 6pt compact) sized off `StreamLaunchStep`: passed is accent @ 0.72, current is
+full accent with a 1px Stroke Strong border, pending is a Stroke Subtle outline only —
+the same fill/scale values as the startup rail's filled/unfilled/head cells. Below each
+segment at full width only, an 8pt caption repeats that step's title. Cancel
+(`OpenNOWModalSecondaryButtonStyle`, unchanged shared object) sits trailing on the eyebrow
+row, its 36pt row height reserved even when no cancel action is offered.
+
+The screen renders at 100 % interface scale like every other transient splash.
 
 ### Steam Controller Sheets (test / mapping)
 
@@ -588,7 +614,7 @@ Seven SwiftLint custom rules in `.swiftlint.yml` check the "Don't" list mechanic
 - Don't use native SwiftUI `Menu` for app-shell overflow actions — it renders rounded
   system chrome; use the styled Overflow Menu dropdown instead.
 - Don't use system rounded or monospaced font designs on new surfaces; they are legacy
-  in the launch overlay, Twitch panel, and transient message pills only.
+  in the Twitch panel and transient message pills only.
 - Don't introduce new accent colors or hardcode hex values outside the token files.
 - Don't use accent for large fills, backgrounds, or destructive actions.
 - Don't rely on shadows for hierarchy on flat panels; use strokes and fill tints.

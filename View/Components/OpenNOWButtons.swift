@@ -51,7 +51,7 @@ struct OpenNOWModalSecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
             .frame(height: 36 * uiScale)
             .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 

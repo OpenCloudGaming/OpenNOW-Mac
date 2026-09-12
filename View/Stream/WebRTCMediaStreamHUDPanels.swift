@@ -67,7 +67,7 @@ extension WebRTCMediaStreamSurface {
     var launchOverlay: some View {
         StreamLaunchLoadingScreen(
             title: configuration.title,
-            stage: StreamLaunchLoadingStage.label(stepIndex: loadingStepIndex),
+            stepIndex: loadingStepIndex,
             artworkURL: configuration.loadingArtworkURL
         ) { EmptyView() }
     }
