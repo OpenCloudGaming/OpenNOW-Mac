@@ -19,7 +19,7 @@ struct ContentView: View {
     @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
     /// Read at the true root, above anywhere the app forces `.preferredColorScheme`, so it always
     /// reflects what macOS is actually set to rather than an override further down the tree.
-    @Environment(\.colorScheme) private var systemColorScheme
+    @EnvironmentObject private var systemAppearance: OpenNOWSystemAppearance
 
     private var tileDensity: CGFloat {
         (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
@@ -34,12 +34,12 @@ struct ContentView: View {
     }
 
     /// Bumped on every surface that rebuilds a subtree to invalidate the cached palette statics.
-    private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)" }
+    private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)-\(systemAppearance.isDark)" }
 
     var body: some View {
         // Written here, not from `onChange`: the subtrees keyed on `themeIdentity` rebuild during
         // this same body pass, and an `onChange` would not have run yet when they draw.
-        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemColorScheme)
+        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
         ZStack {
             LoginView(viewModel: viewModel, accounts: accounts) { title in
                 root.setWindowTitle(title)

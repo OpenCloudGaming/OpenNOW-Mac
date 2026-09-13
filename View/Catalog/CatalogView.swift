@@ -146,7 +146,7 @@ struct CatalogView: View {
     @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
     @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
-    @Environment(\.colorScheme) private var systemColorScheme
+    @EnvironmentObject private var systemAppearance: OpenNOWSystemAppearance
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -175,7 +175,7 @@ struct CatalogView: View {
         OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
     }
 
-    private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)" }
+    private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)-\(systemAppearance.isDark)" }
 
     /// Nil under Match System, so the window inherits whatever macOS is set to rather than pinning
     /// a scheme the palette would then have to agree with.
@@ -215,7 +215,7 @@ struct CatalogView: View {
     var body: some View {
         // Same reason as `ContentView`: the panes keyed on `themeIdentity` rebuild inside this body
         // pass, so the palette has to be resolved before they draw rather than in an `onChange`.
-        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemColorScheme)
+        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
                 GeometryReader { proxy in

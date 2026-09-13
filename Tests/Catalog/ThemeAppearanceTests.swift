@@ -142,3 +142,16 @@ private func blended(
         #expect(ratio >= 1.2)
     }
 }
+
+/// Match System resolves against what macOS is set to. The app forces a window appearance for Dark
+/// and Light, so reading the scheme back out of the environment would feed the app's own override
+/// in as the system answer and leaving Light would resolve straight back to Light.
+@MainActor @Test func matchSystemResolvesAgainstTheOperatingSystemNotTheForcedWindow() {
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .light, systemColorScheme: .dark)
+    #expect(OpenNOWDesign.isLightAppearance)
+
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .dark)
+    #expect(!OpenNOWDesign.isLightAppearance, "Match System stayed light after leaving the light appearance")
+
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+}
