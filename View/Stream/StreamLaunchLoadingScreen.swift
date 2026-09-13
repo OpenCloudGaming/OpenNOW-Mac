@@ -28,9 +28,10 @@ enum StreamLaunchLoadingStage {
 }
 
 /// Full-cover screen shown between the user clicking Play and the first video frame, on all three
-/// transports (native NVST, WebRTC, and the catalog's ad-gated free-tier launch). Queueing and the
-/// ad only ever change the eyebrow's trailing phrase and the hero region's content, never the
-/// reserved layout around them - which is what keeps the screen from jumping as states arrive.
+/// transports (native NVST, WebRTC, and the catalog's ad-gated free-tier launch). The hero rides
+/// centered with the cancel button directly beneath it: the plate stage keeps the hero at the
+/// plate's own height, the ad swells it to 16:9, and the vertical budget cap keeps short (windowed)
+/// sizes from clipping the title.
 struct StreamLaunchLoadingScreen<Accessory: View>: View {
     let title: String
     let stepIndex: Int
@@ -39,6 +40,9 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     let accessoryPresented: Bool
     let stageOverride: String?
     let cancelAction: (() -> Void)?
+    /// Measured window title-bar height (`WindowTopInsetReader`). The screen bleeds under the bar,
+    /// so the title's top padding grows by this much or the bar swallows the padding entirely.
+    let windowTopInset: CGFloat
     private let accessory: Accessory
 
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
@@ -55,6 +59,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
          accessoryPresented: Bool = false,
          stageOverride: String? = nil,
          cancelAction: (() -> Void)? = nil,
+         windowTopInset: CGFloat = 0,
          @ViewBuilder accessory: () -> Accessory) {
         self.title = title.isEmpty ? "GeForce NOW" : title
         self.stepIndex = stepIndex
@@ -63,6 +68,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         self.accessoryPresented = accessoryPresented
         self.stageOverride = stageOverride
         self.cancelAction = cancelAction
+        self.windowTopInset = windowTopInset
         self.accessory = accessory()
     }
 
@@ -79,16 +85,23 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                 VStack(spacing: 0) {
                     titleRow(compact: compact)
-                        .padding(.top, compact ? OpenNOWDesign.Spacing.large : OpenNOWDesign.Spacing.xLarge)
+                        .padding(.top, (compact ? OpenNOWDesign.Spacing.large : OpenNOWDesign.Spacing.xLarge) + windowTopInset)
                         .padding(.leading, hPad)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Spacer(minLength: OpenNOWDesign.Spacing.xLarge)
+                    Spacer(minLength: 0)
 
                     heroRegion(proxy: proxy, compact: compact)
                         .frame(maxWidth: .infinity, alignment: .center)
 
-                    Spacer(minLength: OpenNOWDesign.Spacing.xLarge)
+                    if let cancelAction {
+                        Button("Cancel", action: cancelAction)
+                            .buttonStyle(OpenNOWModalSecondaryButtonStyle())
+                            .accessibilityLabel("Cancel stream launch")
+                            .padding(.top, OpenNOWDesign.Spacing.small)
+                    }
+
+                    Spacer(minLength: 0)
 
                     footerBand(compact: compact)
                         .padding(.horizontal, hPad)
@@ -125,7 +138,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                             .resizable()
                             .scaledToFill()
                             .frame(width: proxy.size.width + 14, height: proxy.size.height + 14)
-                            .blur(radius: 10)
+                            .blur(radius: 18)
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .clipped()
                     }
@@ -161,11 +174,23 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     // MARK: - Hero region
 
     private func heroRegion(proxy: GeometryProxy, compact: Bool) -> some View {
-        let adWidth = min(compact ? 380 : 640, proxy.size.width - 2 * hPad(compact: compact))
+        let horizontalLimit = proxy.size.width - 2 * hPad(compact: compact)
+        // Windowed sizes can leave less height than the 16:9 hero wants. Cap the hero to what is
+        // left once the title, footer, and cancel row are reserved, so the centered column never
+        // overflows and clips the title's top padding. No floor: a tiny window gets a tiny hero
+        // rather than a clipped title.
+        let reservedHeight: CGFloat = (compact ? 200 : 280) + windowTopInset
+        let verticalBudget = max(58, proxy.size.height - reservedHeight)
+        let plateWidth = min(compact ? 380 : 640, horizontalLimit)
+        let adWidth = min(plateWidth, ((verticalBudget - 58) * 16 / 9).rounded())
         let videoHeight = (adWidth * 9 / 16).rounded()
         // VendorEmbeddedSessionAdPlayer's info bar is two text lines (title + subtitle), not one -
         // 24pt vertical padding plus that stack runs ~58pt, not the single-line ~44pt estimate.
         let heroHeight = videoHeight + 58
+        // The plate is one line, so the region collapses to the plate's own height and the cancel
+        // button sits right beneath it instead of floating in the reserved ad space.
+        let regionSize = accessoryPresented ? CGSize(width: adWidth, height: heroHeight)
+                                            : CGSize(width: plateWidth, height: compact ? 64 : 84)
 
         return ZStack {
             if accessoryPresented {
@@ -177,33 +202,23 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
             } else {
                 StreamLaunchStagePlate(
                     stageWord: plateWord,
-                    width: adWidth,
+                    width: plateWidth,
                     height: compact ? 64 : 84,
                     reduceMotion: isMotionReduced
                 )
             }
         }
-        .frame(width: adWidth, height: heroHeight)
+        .frame(width: regionSize.width, height: regionSize.height)
     }
 
     // MARK: - Footer band
 
     private func footerBand(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
-            HStack(alignment: .center, spacing: OpenNOWDesign.Spacing.medium) {
-                eyebrowText
-                    .font(.catalogText(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .lineLimit(1)
-                Spacer(minLength: OpenNOWDesign.Spacing.medium)
-                if let cancelAction {
-                    Button("Cancel", action: cancelAction)
-                        .buttonStyle(OpenNOWModalSecondaryButtonStyle())
-                        .accessibilityLabel("Cancel stream launch")
-                }
-            }
-            // Reserved whether or not Cancel is offered, so its appearance never shoves the rail.
-            .frame(minHeight: 36)
+            eyebrowText
+                .font(.catalogText(size: 11, weight: .bold))
+                .tracking(1.4)
+                .lineLimit(1)
 
             HStack(spacing: OpenNOWDesign.Spacing.xxSmall) {
                 ForEach(StreamLaunchStep.allCases, id: \.rawValue) { step in
