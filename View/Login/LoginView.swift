@@ -7,6 +7,17 @@ struct LoginView: View {
     let onWindowTitleChange: (String?) -> Void
 
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
+
+    /// Sign-in cannot reach Settings, but it inherits the appearance chosen in a previous session -
+    /// and its own labels come from that palette, so forcing dark here would paint them into it.
+    private var preferredColorScheme: ColorScheme? {
+        switch OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark {
+        case .system: nil
+        case .dark: .dark
+        case .light: .light
+        }
+    }
     @FocusState private var focusedField: LoginField?
 
     var body: some View {
@@ -47,7 +58,7 @@ struct LoginView: View {
         }
         .onChange(of: viewModel.requestedFocus) { _, field in focusedField = field }
         .onChange(of: viewModel.activeSession?.id) { _, _ in onWindowTitleChange(nil) }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(preferredColorScheme)
     }
 
     private var loginWindow: some View {

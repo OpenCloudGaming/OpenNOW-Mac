@@ -77,10 +77,10 @@ struct StoreConnectionsOverview: View {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text("Library ownership sync")
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 Text("Connected stores can sync library ownership before launch.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
             Spacer(minLength: 0)
             SettingsStatusPill(title: "CONNECTED", value: "\(connectedCount)/\(totalCount)", positive: connectedCount > 0, uiScale: uiScale)
@@ -102,16 +102,16 @@ struct StoreConnectionRow: View {
         let supportsLinking = definition?.isAccountLinkingSupported == true || account?.hasAccountLinkingData == true
         HStack(alignment: .center, spacing: 16 * uiScale) {
             Rectangle()
-                .fill(isConnected ? OpenNOWDesign.accent : Color.white.opacity(0.18))
+                .fill(isConnected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong)
                 .frame(width: 4 * uiScale, height: 46 * uiScale)
             StoreIcon(displayName: displayName, imageURL: iconURL, isConnected: isConnected, uiScale: uiScale)
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(displayName)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(isConnected ? .white : .white.opacity(0.86))
+                    .foregroundStyle(isConnected ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.primary)
                 Text(statusText(account))
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(isConnected ? .white.opacity(0.62) : .white.opacity(0.44))
+                    .foregroundStyle(isConnected ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
             }
             Spacer(minLength: 12 * uiScale)
             SettingsStatusPill(title: isConnected ? "LINKED" : "AVAILABLE", value: isConnected ? connectionDetail(account) : "Not linked", positive: isConnected, uiScale: uiScale)
@@ -124,7 +124,7 @@ struct StoreConnectionRow: View {
         }
         .padding(12 * uiScale)
         .background(isConnected ? OpenNOWDesign.accent.opacity(0.095) : SettingsVendorLayout.row)
-        .overlay { Rectangle().stroke(isConnected ? OpenNOWDesign.accent.opacity(0.34) : Color.white.opacity(0.08), lineWidth: 1) }
+        .overlay { Rectangle().stroke(isConnected ? OpenNOWDesign.accent.opacity(0.34) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private func statusText(_ account: CatalogStoreAccount?) -> String {
@@ -153,7 +153,7 @@ struct StoreIcon: View {
     var body: some View {
         ZStack {
             Rectangle()
-                .fill(isConnected ? OpenNOWDesign.accent.opacity(0.18) : Color.white.opacity(0.075))
+                .fill(isConnected ? OpenNOWDesign.accent.opacity(0.18) : OpenNOWDesign.Fill.neutral(0.075))
             if let url = resolvedImageURL {
                 StoreRemoteIconImage(url: url, displayName: displayName, isConnected: isConnected, uiScale: uiScale)
             } else {
@@ -161,7 +161,7 @@ struct StoreIcon: View {
             }
         }
         .frame(width: 42 * uiScale, height: 42 * uiScale)
-        .overlay { Rectangle().stroke(isConnected ? OpenNOWDesign.accent.opacity(0.42) : Color.white.opacity(0.12), lineWidth: 1) }
+        .overlay { Rectangle().stroke(isConnected ? OpenNOWDesign.accent.opacity(0.42) : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .accessibilityHidden(true)
     }
 
@@ -222,11 +222,11 @@ struct StoreLocalIconImage: View {
         if monogram.isEmpty {
             Image(systemName: "link")
                 .font(.settingsFont(size: 17 * uiScale, weight: .bold))
-                .foregroundStyle(isConnected ? OpenNOWDesign.accent : .white.opacity(0.56))
+                .foregroundStyle(isConnected ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
         } else {
             Text(monogram)
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(isConnected ? OpenNOWDesign.accent : .white.opacity(0.56))
+                .foregroundStyle(isConnected ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }

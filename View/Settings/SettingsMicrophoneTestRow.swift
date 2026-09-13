@@ -16,10 +16,10 @@ struct SettingsMicrophoneTestRow: View {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text("Microphone Test")
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 Text(message ?? "Opens the selected input device without starting a stream, so the microphone can be checked before playing.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsLabelColumn(uiScale: uiScale)
@@ -40,7 +40,7 @@ struct SettingsMicrophoneTestRow: View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.07))
+                    .fill(OpenNOWDesign.Fill.neutral(0.07))
                 Rectangle()
                     .fill(OpenNOWDesign.accent.opacity(isActive ? 0.9 : 0.25))
                     .frame(width: min(max(level, 0), 1) * proxy.size.width)

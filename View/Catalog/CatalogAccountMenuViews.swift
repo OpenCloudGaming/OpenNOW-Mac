@@ -59,7 +59,7 @@ struct CatalogAccountDropdownPanel: View {
                 VStack(alignment: .leading, spacing: 3 * uiScale) {
                     Text(viewModel.account.displayName)
                         .catalogFont(size: 15, weight: .medium)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .lineLimit(1)
                     Text(viewModel.subscriptionStatus.membershipTier.uppercased())
                         .catalogFont(size: 10, weight: .bold)
@@ -75,7 +75,7 @@ struct CatalogAccountDropdownPanel: View {
             .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
 
             if let pendingForget {
@@ -96,7 +96,7 @@ struct CatalogAccountDropdownPanel: View {
                     Text("ACCOUNTS")
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(1.1)
-                        .foregroundStyle(.white.opacity(0.42))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
                         .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
                         .padding(.vertical, 5 * uiScale)
                     ForEach(accounts) { account in
@@ -158,7 +158,7 @@ struct CatalogAccountDropdownPanel: View {
         }
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(width: 1)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
@@ -193,7 +193,7 @@ struct CatalogAccountDropdownRow: View {
                     if let systemImage {
                         ZStack {
                             Rectangle()
-                                .fill(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                                .fill(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                             Image(systemName: systemImage)
                                 .catalogFont(size: 13, weight: .bold)
                                 .foregroundStyle(iconColor)
@@ -208,7 +208,7 @@ struct CatalogAccountDropdownRow: View {
                         if let subtitle {
                             Text(subtitle)
                                 .catalogFont(size: 11, weight: .medium)
-                                .foregroundStyle(.white.opacity(0.52))
+                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                                 .lineLimit(1)
                         }
                     }
@@ -248,17 +248,17 @@ struct CatalogAccountDropdownRow: View {
 
     private var rowBackground: Color {
         if isActive { return OpenNOWDesign.accent.opacity(0.095) }
-        return Color.white.opacity(isHovering ? 0.085 : 0)
+        return OpenNOWDesign.Fill.neutral(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
         if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
+        return isActive ? OpenNOWDesign.Text.primary : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
         if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? .black : .white.opacity(isHovering ? 0.96 : 0.82)
+        return isActive ? OpenNOWDesign.onAccent : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 }
 
@@ -275,7 +275,7 @@ private struct CatalogAccountDropdownRowActionButton: View {
                 .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(tintColor)
                 .frame(width: 26 * uiScale, height: 26 * uiScale)
-                .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+                .background(OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)
@@ -286,7 +286,7 @@ private struct CatalogAccountDropdownRowActionButton: View {
 
     private var tintColor: Color {
         if rowAction.isDestructive { return OpenNOWDesign.Semantic.destructive }
-        return .white.opacity(isHovering ? 0.96 : 0.72)
+        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
     }
 }
 
@@ -304,10 +304,10 @@ private struct CatalogAccountForgetConfirmationView: View {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text("Forget \(account.displayName)?")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 Text(bodyText)
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
@@ -348,11 +348,11 @@ private struct CatalogAccountConfirmButton: View {
     }
 
     private var foreground: Color {
-        isDestructive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
+        isDestructive ? OpenNOWDesign.Text.primary : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 
     private var background: Color {
         if isDestructive { return OpenNOWDesign.Semantic.destructive.opacity(isHovering ? 0.90 : 0.78) }
-        return Color.white.opacity(isHovering ? 0.16 : 0.08)
+        return OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08)
     }
 }

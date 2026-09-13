@@ -66,13 +66,13 @@ struct CatalogImageFallback: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color.white.opacity(0.10), Color.white.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: [OpenNOWDesign.Fill.neutral(0.10), OpenNOWDesign.Fill.neutral(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
             if isLoading {
                 SkeletonBlock()
             } else {
                 Image(systemName: "play.rectangle.fill")
                     .catalogFont(size: 34, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.78))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.78))
                     .offset(x: iconOffsetX)
             }
         }
@@ -99,7 +99,7 @@ struct CatalogMessageView: View {
                     .fill(OpenNOWDesign.accent.opacity(0.13))
                 Image(systemName: systemImage)
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
             }
             .frame(width: 36, height: 36)
             .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
@@ -107,12 +107,12 @@ struct CatalogMessageView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(presentation.title)
                     .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.90))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let hint = presentation.hint {
                     Text(hint)
                         .catalogFont(size: 12, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.60))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -121,12 +121,12 @@ struct CatalogMessageView: View {
                 Button { copy(details) } label: {
                     Text(copiedDetails ? "COPIED" : "COPY DETAILS")
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.76))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .tracking(0.7)
                         .padding(.horizontal, 10)
                         .frame(height: 28)
-                        .background(Color.white.opacity(0.065))
-                        .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+                        .background(OpenNOWDesign.Fill.neutral(0.065))
+                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
             }
@@ -134,7 +134,7 @@ struct CatalogMessageView: View {
                 Button(action: onGenerateDiagnostics) {
                     Text(Self.diagnosticsTitle(for: diagnosticsState))
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accent)
+                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accentInk)
                         .tracking(0.7)
                         .padding(.horizontal, 10)
                         .frame(height: 28)
@@ -149,19 +149,19 @@ struct CatalogMessageView: View {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .catalogFont(size: 11, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.065))
-                        .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+                        .background(OpenNOWDesign.Fill.neutral(0.065))
+                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .help("Dismiss")
             }
         }
         .padding(14)
-        .background(Color.white.opacity(0.060))
+        .background(OpenNOWDesign.Fill.neutral(0.060))
         .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private static func diagnosticsTitle(for state: AboutDiagnosticsState) -> String {
@@ -295,7 +295,7 @@ struct CatalogDetailImageArrow: View {
                 .frame(width: 34 * uiScale, height: 34 * uiScale)
                 .frame(width: 48 * uiScale, height: 48 * uiScale)
                 .background(.black.opacity(0.28), in: Circle())
-                .overlay { Circle().stroke(Color.white.opacity(0.22), lineWidth: 1) }
+                .overlay { Circle().stroke(OpenNOWDesign.Stroke.strong, lineWidth: 1) }
         }
         .buttonStyle(.plain)
     }
@@ -318,7 +318,7 @@ struct CatalogFavoriteButton: View {
                 .catalogFont(size: iconSize, weight: .bold)
                 .foregroundStyle(isFavorite ? .black.opacity(0.88) : OpenNOWDesign.Semantic.favorite)
                 .frame(width: side * uiScale, height: side * uiScale)
-                .background(isFavorite ? OpenNOWDesign.Semantic.favorite : Color.white.opacity(0.08))
+                .background(isFavorite ? OpenNOWDesign.Semantic.favorite : OpenNOWDesign.Fill.neutral(0.08))
                 .overlay {
                     Rectangle().strokeBorder(OpenNOWDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
                 }

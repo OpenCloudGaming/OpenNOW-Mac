@@ -24,6 +24,21 @@ extension CatalogViewModel {
         prefetchImages(urls)
     }
 
+    /// Poster rails show more tiles per screen than wide rails, hence the larger prefix. No
+    /// `bestWideImageURL` - nothing in Poster draws it.
+    func prefetchPosterImages(section: CatalogSectionModel, games: [OPNCatalogGameObject]) {
+        var urls: [URL] = []
+        var seen = Set<String>()
+        for game in games.prefix(10) {
+            appendPrefetchURL(game.bestPosterImageURL, width: 512, urls: &urls, seen: &seen)
+            appendPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &urls, seen: &seen)
+        }
+        for tile in section.tiles.prefix(4) {
+            appendPrefetchURL(tile.imageUrl, width: 768, urls: &urls, seen: &seen)
+        }
+        prefetchImages(urls)
+    }
+
     /// A grid shows far more at once than a rail, hence the larger prefix.
     func prefetchGridImages(section: CatalogSectionModel) {
         var urls: [URL] = []

@@ -81,12 +81,12 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, height: metrics.height)
 
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OpenNOWDesign.Fixed.accent)
                 .frame(width: 8)
                 .frame(maxHeight: .infinity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .background(.black)
+        .background(OpenNOWDesign.Fixed.surfaceDeep)
     }
 
     private func marketingColumn(metrics: VendorLoginWallMetrics, headlineSize: CGFloat, logoWidth: CGFloat, logoHeight: CGFloat, showsBullets: Bool) -> some View {
@@ -99,13 +99,13 @@ struct LoginFormView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("OPENNOW")
                     .font(.uiSans(size: 11, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.Fixed.accent)
                     .tracking(1.4)
                     .padding(.bottom, OpenNOWDesign.Spacing.xxSmall)
 
                 Text("Get In. Game On.")
                     .font(.uiSans(size: headlineSize, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
                     .lineLimit(1)
                     .padding(.bottom, OpenNOWDesign.Spacing.medium)
 
@@ -124,7 +124,7 @@ struct LoginFormView: View {
                 Text("GET IN")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VendorGetInButtonStyle(size: .large))
+            .buttonStyle(VendorGetInButtonStyle(size: .large, isOnFixedDarkSurface: true))
             .frame(maxWidth: 260)
             .accessibilityHint("Opens the GeForce NOW sign-in window")
         }
@@ -218,12 +218,12 @@ private struct ProviderCard: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.uiSans(size: 12, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                 }
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+            .background(isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
             .overlay {
                 Rectangle()
                     .stroke(isSelected ? OpenNOWDesign.accent : (isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular), lineWidth: isSelected ? 2 : 1)
@@ -265,11 +265,11 @@ private struct SavedAccountCard: View {
                 Text(needsSignIn ? "SIGN IN AGAIN" : "CONTINUE")
                     .font(.uiSans(size: 11, weight: .bold))
                     .tracking(0.8)
-                    .foregroundStyle(needsSignIn ? OpenNOWDesign.Text.secondary : OpenNOWDesign.accent)
+                    .foregroundStyle(needsSignIn ? OpenNOWDesign.Text.secondary : OpenNOWDesign.accentInk)
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+            .background(isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
             .overlay {
                 Rectangle()
                     .stroke(isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular, lineWidth: 1)
@@ -293,7 +293,7 @@ private struct VendorContentString: View {
                 .padding(.top, OpenNOWDesign.Spacing.xxSmall)
             Text(text)
                 .font(.uiSans(size: 14, weight: .regular))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -371,7 +371,7 @@ private struct SignInModal: View {
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall) {
                     Text(banner.label)
                         .font(.uiSans(size: 11, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .tracking(0.8)
                     Text(banner.message)
                         .font(.uiSans(size: 13, weight: .regular))
@@ -382,12 +382,12 @@ private struct SignInModal: View {
                         Button("Keep using the current account", action: onClose)
                             .buttonStyle(.plain)
                             .font(.uiSans(size: 12, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                     }
                 }
                 .padding(OpenNOWDesign.Spacing.small)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.06))
+                .background(OpenNOWDesign.Stroke.subtle)
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
 
@@ -450,7 +450,7 @@ private struct SignInModal: View {
             } label: {
                 Text("SIGN IN WITH A CODE")
                     .font(.uiSans(size: 12, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(0.8)
             }
             .buttonStyle(.plain)
@@ -478,7 +478,7 @@ private struct SignInModal: View {
             if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                 Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
                     .font(.uiSans(size: 13, weight: .regular))
-                    .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accent : .orange)
+                    .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.warning)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -497,7 +497,7 @@ private struct ModalCloseButton: View {
                 .font(.uiSans(size: 11, weight: .bold))
                 .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                 .frame(width: 28, height: 28)
-                .background(isHovering ? Color.white.opacity(0.08) : Color.clear)
+                .background(isHovering ? OpenNOWDesign.Stroke.subtle : Color.clear)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -521,7 +521,7 @@ private struct TermsOfUseDialog: View {
                 HStack(spacing: OpenNOWDesign.Spacing.small) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.uiSans(size: 20, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                     Text("GeForce NOW Terms of Use")
                         .font(.uiSans(size: 20, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
@@ -537,10 +537,10 @@ private struct TermsOfUseDialog: View {
                     HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
                         Image(systemName: "link")
                             .font(.uiSans(size: 11, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                         Link("Read the full GeForce NOW Terms of Use", destination: touURL)
                             .font(.uiSans(size: 13, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                     }
                 }
             }
@@ -568,10 +568,10 @@ private struct VendorTermsDeclineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.uiSans(size: 13, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium)
             .frame(height: 36)
-            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .background(configuration.isPressed ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }

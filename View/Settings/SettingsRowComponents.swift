@@ -8,7 +8,7 @@ struct SettingsDivider: View {
 
     var body: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.08))
+            .fill(OpenNOWDesign.Stroke.subtle)
             .frame(height: 1)
             .padding(.vertical, 14 * uiScale)
     }
@@ -23,11 +23,11 @@ struct SettingsInfoRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 16 * uiScale) {
             Text(label.uppercased())
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.44))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
                 .frame(width: 150 * uiScale, alignment: .leading)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.82))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
@@ -41,6 +41,9 @@ struct SettingsOptionRow: View {
     let options: [String]
     let selectedIndex: Int
     var enabled: [Bool] = []
+    /// One swatch per option, drawn ahead of its label. Empty for every plain text row; a caller
+    /// opts in only when the option IS a colour, so a reader can see it rather than read its name.
+    var swatchColors: [Color] = []
     var isNew = false
     let uiScale: CGFloat
     let action: (Int) -> Void
@@ -79,7 +82,7 @@ struct SettingsOptionRow: View {
             SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(subtitle)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.58))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -92,13 +95,20 @@ struct SettingsOptionRow: View {
                         guard index != selectedIndex else { return }
                         action(index)
                     } label: {
-                        Text(options[index])
-                            .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                            .foregroundStyle(index == selectedIndex ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
-                            .padding(.horizontal, 12 * uiScale)
-                            .frame(height: 32 * uiScale)
-                            .background(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
-                            .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
+                        HStack(spacing: 7 * uiScale) {
+                            if swatchColors.indices.contains(index) {
+                                // The selected chip is already painted in its own colour, so a
+                                // swatch there would be a square of the fill on the fill.
+                                swatch(color: swatchColors[index], isSelected: index == selectedIndex)
+                            }
+                            Text(options[index])
+                                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                                .foregroundStyle(index == selectedIndex ? OpenNOWDesign.onAccent : (optionEnabled ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted))
+                        }
+                        .padding(.horizontal, 12 * uiScale)
+                        .frame(height: 32 * uiScale)
+                        .background(index == selectedIndex ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(optionEnabled ? 0.07 : 0.035))
+                        .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)
@@ -108,6 +118,20 @@ struct SettingsOptionRow: View {
     }
 
     /// Walks to the next selectable option, skipping any the page has disabled.
+    @ViewBuilder private func swatch(color: Color, isSelected: Bool) -> some View {
+        if isSelected {
+            Image(systemName: "checkmark")
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
+                .foregroundStyle(OpenNOWDesign.onAccent)
+                .frame(width: 12 * uiScale, height: 12 * uiScale)
+        } else {
+            Rectangle()
+                .fill(color)
+                .frame(width: 12 * uiScale, height: 12 * uiScale)
+                .overlay { Rectangle().stroke(OpenNOWDesign.Fill.neutral(0.3), lineWidth: 1) }
+        }
+    }
+
     private func cycleOption(_ delta: Int) {
         guard !options.isEmpty else { return }
         var index = selectedIndex
@@ -132,7 +156,7 @@ struct Toggle: View {
     let uiScale: CGFloat
     @State private var isHovering = false
 
-    private var onColor: Color { isInert ? Color.white.opacity(0.3) : OpenNOWDesign.accent }
+    private var onColor: Color { isInert ? OpenNOWDesign.Fill.neutral(0.3) : OpenNOWDesign.accent }
 
     private var trackWidth: CGFloat { 34 * uiScale }
     private var trackHeight: CGFloat { 18 * uiScale }
@@ -143,10 +167,10 @@ struct Toggle: View {
         Button { isOn.toggle() } label: {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Rectangle()
-                    .fill(isOn ? onColor : Color.white.opacity(isHovering ? 0.12 : 0.09))
-                    .overlay { Rectangle().stroke(isOn ? onColor : Color.white.opacity(0.16), lineWidth: 1) }
+                    .fill(isOn ? onColor : (isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle))
+                    .overlay { Rectangle().stroke(isOn ? onColor : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 Rectangle()
-                    .fill(isOn ? Color.black.opacity(0.85) : Color.white.opacity(0.72))
+                    .fill(isOn ? Color.black.opacity(0.85) : OpenNOWDesign.Fill.neutral(0.72))
                     .frame(width: knobSize, height: knobSize)
                     .padding(knobInset)
             }
@@ -192,7 +216,7 @@ struct SettingsToggleRow: View {
                 if showsSubtitle {
                     Text(subtitle)
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -239,21 +263,21 @@ private struct SettingsFieldRow<Field: View>: View {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(title)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 Text(subtitle)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsLabelColumn(uiScale: uiScale)
             field(Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
                 .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 36 * uiScale)
-                .background(Color.white.opacity(0.07))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                .background(OpenNOWDesign.Surface.field)
+                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 .focused($isFieldFocused)
                 .onAppear { draft = text }
                 .onChange(of: text) { _, value in
@@ -346,7 +370,7 @@ struct SettingsSliderRow: View {
             SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(valueText)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accentInk)
         }
     }
 
@@ -362,6 +386,10 @@ struct SettingsSliderRow: View {
         Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
             .frame(height: 20 * uiScale)
             .tint(OpenNOWDesign.accent)
+            .background(alignment: .center) {
+                guard OpenNOWDesign.isLightAppearance else { return AnyView(EmptyView()) }
+                return AnyView(Rectangle().fill(OpenNOWDesign.Fill.neutral(0.30)).frame(height: 4 * uiScale))
+            }
     }
 }
 
@@ -399,7 +427,7 @@ struct SettingsActionButton: View {
     }
 
     private var backgroundColor: Color {
-        guard isEnabled else { return Color.white.opacity(0.045) }
+        guard isEnabled else { return OpenNOWDesign.Fill.neutral(0.045) }
         switch tone {
         case .primary: return OpenNOWDesign.accent.opacity(isHovering ? 0.88 : 1)
         case .secondary: return OpenNOWDesign.accent.opacity(isHovering ? 0.22 : 0.14)
@@ -407,15 +435,15 @@ struct SettingsActionButton: View {
     }
 
     private var foregroundColor: Color {
-        guard isEnabled else { return .white.opacity(0.32) }
+        guard isEnabled else { return OpenNOWDesign.Text.muted }
         switch tone {
-        case .primary: return .black
-        case .secondary: return OpenNOWDesign.accent
+        case .primary: return OpenNOWDesign.onAccent
+        case .secondary: return OpenNOWDesign.accentInk
         }
     }
 
     private var strokeColor: Color {
-        guard isEnabled else { return Color.white.opacity(0.08) }
+        guard isEnabled else { return OpenNOWDesign.Stroke.subtle }
         return tone == .primary ? OpenNOWDesign.accent : OpenNOWDesign.accent.opacity(0.34)
     }
 }
@@ -430,19 +458,19 @@ struct SettingsStatusPill: View {
         VStack(alignment: .trailing, spacing: 3 * uiScale) {
             Text(title.uppercased())
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
                 .tracking(0.8)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? OpenNOWDesign.accent : .white.opacity(0.66))
+                .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(minWidth: 94 * uiScale, alignment: .trailing)
         .frame(height: 40 * uiScale)
-        .background(Color.white.opacity(positive ? 0.055 : 0.035))
-        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.24) : Color.white.opacity(0.08), lineWidth: 1) }
+        .background(OpenNOWDesign.Fill.neutral(positive ? 0.055 : 0.035))
+        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.24) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -454,15 +482,15 @@ struct SettingsMessageView: View {
     var body: some View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: systemImage)
-                .foregroundStyle(OpenNOWDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accentInk)
             Text(message)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
             Spacer()
         }
         .padding(12 * uiScale)
-        .background(Color.white.opacity(0.07))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        .background(OpenNOWDesign.Fill.neutral(0.07))
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 

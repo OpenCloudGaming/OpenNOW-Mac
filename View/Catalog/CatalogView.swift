@@ -6,9 +6,9 @@ import ImageIO
 import SwiftUI
 
 enum CatalogVendorLayout {
-    static let appBarBackground = OpenNOWDesign.Surface.appBar
-    static let mallSurface = OpenNOWDesign.Surface.app
-    static let tileTray = OpenNOWDesign.Surface.tileTray
+    static var appBarBackground: Color { OpenNOWDesign.Surface.appBar }
+    static var mallSurface: Color { OpenNOWDesign.Surface.app }
+    static var tileTray: Color { OpenNOWDesign.Surface.tileTray }
     /// Hover growth stops just short of the neighbouring tile's artwork: a tile is 352pt wide in a
     /// 368pt slot, so anything past 192/176 = 1.09 crosses into the tile beside it, which a rail
     /// cannot order around (a `LazyHStack` paints its children in index order and ignores `zIndex`).
@@ -45,13 +45,15 @@ enum CatalogVendorLayout {
     /// margin only above, a hovered tile grew ~13pt past the bottom of its own frame and closed the
     /// gap to the row below to a few points, while the top still looked right.
     static func tileBottomMargin(scale: CGFloat) -> CGFloat { baseTileTopMargin * scale }
-    /// Height one tile claims in a rail, both margins included.
-    static func tileRowHeight(scale: CGFloat) -> CGFloat {
-        wideTileHeight(scale: scale) + tileTopMargin(scale: scale) + tileBottomMargin(scale: scale)
+    /// Height one tile claims in a rail, both margins included. Density scales the tile alone: the
+    /// margins are Interface Scale's territory, so a denser page packs tiles closer without also
+    /// shrinking the gutters around them.
+    static func tileRowHeight(scale: CGFloat, density: CGFloat = 1.0) -> CGFloat {
+        wideTileHeight(scale: scale, density: density) + tileTopMargin(scale: scale) + tileBottomMargin(scale: scale)
     }
     static func cardTrayHeight(scale: CGFloat) -> CGFloat { baseCardTrayHeight * scale }
-    static func wideTileWidth(scale: CGFloat) -> CGFloat { baseWideTileWidth * scale }
-    static func wideTileHeight(scale: CGFloat) -> CGFloat { baseWideTileHeight * scale }
+    static func wideTileWidth(scale: CGFloat, density: CGFloat = 1.0) -> CGFloat { baseWideTileWidth * scale * density }
+    static func wideTileHeight(scale: CGFloat, density: CGFloat = 1.0) -> CGFloat { baseWideTileHeight * scale * density }
     static func heroFallbackHeight(scale: CGFloat) -> CGFloat { baseHeroFallbackHeight * scale }
     static func heroMaxHeight(scale: CGFloat) -> CGFloat { baseHeroMaxHeight * scale }
     static func detailPanelMinHeight(scale: CGFloat) -> CGFloat { baseDetailPanelMinHeight * scale }
@@ -141,9 +143,17 @@ struct CatalogView: View {
 
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
+    @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
+    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
+    @EnvironmentObject private var systemAppearance: OpenNOWSystemAppearance
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
+    /// The theme the catalog page has actually been rebuilt for. It lags `themeIdentity` while
+    /// Settings is open so picking a colour repaints Settings instantly without rebuilding every
+    /// rail and tile behind it; the catalog catches up when the reader returns to it.
+    @State private var appliedCatalogThemeIdentity = ""
     @State private var streamWindowTopInset: CGFloat = 0
     @State private var catalogWindowTopInset: CGFloat = 0
 
@@ -152,6 +162,30 @@ struct CatalogView: View {
     }
 
     private var isCatalogPageActive: Bool { viewModel.selectedMainPage == .games }
+
+    private var tileDensity: CGFloat {
+        (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
+    }
+
+    private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
+        OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
+    }
+
+    private var appearancePreference: OpenNOWThemePreferences.Appearance {
+        OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
+    }
+
+    private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)-\(systemAppearance.isDark)" }
+
+    /// Nil under Match System, so the window inherits whatever macOS is set to rather than pinning
+    /// a scheme the palette would then have to agree with.
+    private var preferredColorScheme: ColorScheme? {
+        switch OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark {
+        case .system: nil
+        case .dark: .dark
+        case .light: .light
+        }
+    }
 
     init(
         account: LoginAccount,
@@ -179,6 +213,9 @@ struct CatalogView: View {
     }
 
     var body: some View {
+        // Same reason as `ContentView`: the panes keyed on `themeIdentity` rebuild inside this body
+        // pass, so the palette has to be resolved before they draw rather than in an `onChange`.
+        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
                 GeometryReader { proxy in
@@ -212,6 +249,7 @@ struct CatalogView: View {
                     } else {
                         VStack(spacing: 0) {
                             CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                                .id(themeIdentity)
                             ZStack {
                                 // The catalog stays mounted underneath Settings and Recordings
                                 // rather than being swapped out for them. Tearing it down drops
@@ -220,13 +258,16 @@ struct CatalogView: View {
                                 // whole page - a second or more of pinned CPU on a plain page
                                 // switch. Hidden, it costs a layout it has already done.
                                 CatalogContentView(viewModel: viewModel, isActive: isCatalogPageActive)
+                                    .id(appliedCatalogThemeIdentity)
                                     .opacity(isCatalogPageActive ? 1 : 0)
                                     .disabled(!isCatalogPageActive)
                                     .accessibilityHidden(!isCatalogPageActive)
                                 if viewModel.selectedMainPage == .settings {
                                     SettingsView(viewModel: viewModel)
+                                        .id(themeIdentity)
                                 } else if viewModel.selectedMainPage == .recordings {
                                     RecordingsView()
+                                        .id(themeIdentity)
                                 }
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -273,6 +314,7 @@ struct CatalogView: View {
                 }
                 .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)
+                .environment(\.opnTileDensity, tileDensity)
             }
 
             if viewModel.isStreamLaunchLoadingVisible {
@@ -300,8 +342,16 @@ struct CatalogView: View {
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onChange(of: themeIdentity, initial: true) { @MainActor _, newIdentity in
+            guard isCatalogPageActive else { return }
+            appliedCatalogThemeIdentity = newIdentity
+        }
+        .onChange(of: viewModel.selectedMainPage) { @MainActor _, _ in
+            guard isCatalogPageActive else { return }
+            appliedCatalogThemeIdentity = themeIdentity
+        }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(preferredColorScheme)
     }
 
     private func updateWindowTitleForActiveStream() {

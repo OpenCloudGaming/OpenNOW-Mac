@@ -37,7 +37,7 @@ struct RecordingCropOverlay: View {
             ZStack(alignment: .topLeading) {
                 // Everything outside the crop, dimmed. Four rectangles rather than an even-odd
                 // path so the crop stays hit-testable underneath.
-                Color.black.opacity(0.55)
+                OpenNOWDesign.Surface.scrim
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .mask {
                         ZStack(alignment: .topLeading) {
@@ -54,7 +54,7 @@ struct RecordingCropOverlay: View {
                 thirdsGuides(crop: crop)
 
                 Rectangle()
-                    .fill(Color.white.opacity(0.001))
+                    .fill(OpenNOWDesign.Fill.neutral(0.001))
                     .frame(width: crop.width, height: crop.height)
                     .overlay { Rectangle().stroke(OpenNOWDesign.accent, lineWidth: 1.5) }
                     .offset(x: crop.minX, y: crop.minY)
@@ -109,7 +109,7 @@ struct RecordingCropOverlay: View {
                 path.addLine(to: CGPoint(x: crop.maxX, y: y))
             }
         }
-        .stroke(Color.white.opacity(0.24), lineWidth: 1)
+        .stroke(OpenNOWDesign.Stroke.strong, lineWidth: 1)
         .allowsHitTesting(false)
     }
 

@@ -20,6 +20,7 @@ struct CatalogRailView: View {
     /// Which tile the pointer is on, so the row can raise it above the tiles drawn after it.
     @State private var hoveredTileIdentity: String?
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     private var games: [OPNCatalogGameObject] {
         var visibleGames = section.visibleGames(expanded: false)
@@ -50,14 +51,14 @@ struct CatalogRailView: View {
             HStack {
                 Text(section.title)
                     .catalogFont(size: 20, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if canShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
             }
             .frame(height: 28 * uiScale)
@@ -109,7 +110,7 @@ struct CatalogRailView: View {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
-                        .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale))
+                        .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity))
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                         .padding(.bottom, 4 * uiScale)
                     }
@@ -176,10 +177,15 @@ struct CatalogRailView: View {
 struct CatalogDestinationGridView: View {
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
+    var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4 * uiScale, alignment: .top)]
+        let minimum = isPosterLayout
+            ? CatalogPosterLayout.slotWidth(scale: uiScale, density: tileDensity)
+            : CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
+        return [GridItem(.adaptive(minimum: minimum), spacing: 4 * uiScale, alignment: .top)]
     }
 
     var body: some View {
@@ -187,12 +193,12 @@ struct CatalogDestinationGridView: View {
             HStack(alignment: .lastTextBaseline, spacing: 20 * uiScale) {
                 Text(section.title)
                     .catalogFont(size: 24, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 if !section.isPlaceholder {
                     Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
+                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.86))
                         .tracking(0.8)
                 }
                 Spacer(minLength: 0)
@@ -201,35 +207,60 @@ struct CatalogDestinationGridView: View {
             .padding(.top, 24 * uiScale)
 
             if section.isPlaceholder {
-                CatalogGridSkeletonView(isScrollable: false)
+                CatalogGridSkeletonView(isScrollable: false, isPosterLayout: isPosterLayout)
             } else {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
                     ForEach(Array(section.games.enumerated()), id: \.element.catalogIdentity) { _, game in
-                        CatalogGameTile(
-                            game: game,
-                            imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
-                            isSelected: isSelected(game),
-                            isSelectionActive: viewModel.selectedGame != nil,
-                            isQueuedForPatching: viewModel.isQueuedForPatching(game),
-                            isResumableSession: viewModel.isResumableSessionGame(game),
-                            showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
-                            onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
-                            onPlay: { viewModel.launch(game: game) },
-                            onMarkOwned: {
-                                viewModel.selectGame(game, inSection: section.id)
-                                viewModel.handleUnownedSelectedVariantPrimaryAction()
-                            },
-                            onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
-                            onHoverChanged: { viewModel.isPointerInsideGameTile = $0 }
-                        )
+                        tile(for: game)
                     }
                 }
                 .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                 .padding(.bottom, 12 * uiScale)
             }
         }
-        .onAppear { prefetchGridImages() }
-        .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchGridImages() }
+        .onAppear { prefetchVisibleImages() }
+        .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchVisibleImages() }
+    }
+
+    @ViewBuilder
+    private func tile(for game: OPNCatalogGameObject) -> some View {
+        if isPosterLayout {
+            CatalogPosterTile(
+                game: game,
+                imageURL: viewModel.optimizedImageURL(game.bestPosterImageURL, width: 512),
+                isSelected: isSelected(game),
+                isSelectionActive: viewModel.selectedGame != nil,
+                isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                isResumableSession: viewModel.isResumableSessionGame(game),
+                showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
+                onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
+                onPlay: { viewModel.launch(game: game) },
+                onMarkOwned: {
+                    viewModel.selectGame(game, inSection: section.id)
+                    viewModel.handleUnownedSelectedVariantPrimaryAction()
+                },
+                onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
+                onHoverChanged: { viewModel.isPointerInsideGameTile = $0 }
+            )
+        } else {
+            CatalogGameTile(
+                game: game,
+                imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
+                isSelected: isSelected(game),
+                isSelectionActive: viewModel.selectedGame != nil,
+                isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                isResumableSession: viewModel.isResumableSessionGame(game),
+                showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
+                onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
+                onPlay: { viewModel.launch(game: game) },
+                onMarkOwned: {
+                    viewModel.selectGame(game, inSection: section.id)
+                    viewModel.handleUnownedSelectedVariantPrimaryAction()
+                },
+                onQueueForPatching: { viewModel.queuePatchingLaunch(game: game) },
+                onHoverChanged: { viewModel.isPointerInsideGameTile = $0 }
+            )
+        }
     }
 
     private func isSelected(_ game: OPNCatalogGameObject) -> Bool {
@@ -237,8 +268,12 @@ struct CatalogDestinationGridView: View {
         return CatalogViewModel.looseIdentityMatches(selectedGame, game)
     }
 
-    private func prefetchGridImages() {
-        viewModel.prefetchGridImages(section: section)
+    private func prefetchVisibleImages() {
+        guard isPosterLayout else {
+            viewModel.prefetchGridImages(section: section)
+            return
+        }
+        viewModel.prefetchPosterImages(section: section, games: section.games)
     }
 }
 
@@ -267,26 +302,27 @@ struct CatalogSeeMoreTile: View {
     let action: () -> Void
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 12) {
                 Image(systemName: "ellipsis")
                     .catalogFont(size: 34, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                 Text(title.uppercased())
                     .catalogFont(size: 16, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
             }
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
-            .background(Color(red: 43 / 255, green: 43 / 255, blue: 43 / 255))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
+            .background(OpenNOWDesign.Surface.tileTray)
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.strong, lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)
@@ -301,12 +337,13 @@ struct CatalogPanelActionTile: View {
     let action: () -> Void
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.84)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 5) {
@@ -314,7 +351,7 @@ struct CatalogPanelActionTile: View {
                         Text(tile.subtitle.uppercased())
                             .catalogFont(size: 10, weight: .bold)
                             .tracking(0.8)
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                             .lineLimit(1)
                     }
                     Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
@@ -331,14 +368,14 @@ struct CatalogPanelActionTile: View {
                 }
                 .padding(14)
             }
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
-            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
+            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
@@ -372,11 +409,11 @@ struct VendorActiveSessionHomeBanner: View {
             VStack(alignment: .leading, spacing: 2 * uiScale) {
                 Text("SESSION ACTIVE")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.2)
                 Text(title)
                     .catalogFont(size: 14, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(1)
             }
 
@@ -399,7 +436,7 @@ struct VendorActiveSessionHomeBanner: View {
         .background(OpenNOWDesign.Surface.chrome)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
         }
     }
@@ -411,16 +448,16 @@ private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .catalogFont(size: 11, weight: .bold)
-            .foregroundStyle(primary ? .black : .white.opacity(0.86))
+            .foregroundStyle(primary ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.primary)
             .tracking(0.8)
             .padding(.horizontal, 14)
             .frame(height: 28)
             .background(primary
                 ? OpenNOWDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
-                : Color.white.opacity(configuration.isPressed ? 0.10 : 0.055))
+                : OpenNOWDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055))
             .overlay {
                 if !primary {
-                    Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1)
                 }
             }
     }

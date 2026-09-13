@@ -125,9 +125,14 @@ struct OpenNOWApp: App {
         }
     }
 
+    /// What macOS is set to, watched in one place: Match System reads it, and both content roots
+    /// resolve the palette from it.
+    @StateObject private var systemAppearance = OpenNOWSystemAppearance()
+
     var body: some Scene {
         Window("OpenNOW", id: "main") {
             ContentView()
+                .environmentObject(systemAppearance)
         }
         .defaultSize(width: 1100, height: 680)
         .modelContainer(sharedModelContainer)

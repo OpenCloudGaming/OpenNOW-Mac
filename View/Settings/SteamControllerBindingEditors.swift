@@ -18,7 +18,7 @@ extension SteamControllerMappingView {
         return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
             Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(combo.isEmpty ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.accent)
+                .foregroundStyle(combo.isEmpty ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.accentInk)
             let columns = [GridItem(.adaptive(minimum: 64 * uiScale), spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale))]
             LazyVGrid(columns: columns, alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                 ForEach(SteamControllerGripComboTarget.all) { chip in
@@ -138,7 +138,7 @@ extension SteamControllerMappingView {
                     Spacer()
                     Text(String(format: "%.0f%%", binding.wrappedValue.sensitivity * 100))
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .monospacedDigit()
                 }
                 Slider(value: binding.sensitivity, in: 0.1...4.0)

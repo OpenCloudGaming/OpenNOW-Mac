@@ -14,6 +14,11 @@ import Foundation
 enum CatalogArtworkType {
     static let wide = ["MARQUEE_HERO_IMAGE"]
     static let landscape = ["HERO_IMAGE", "FEATURE_IMAGE", "KEY_ART", "TV_BANNER"]
+    /// The only types authored taller than wide.
+    static let portrait = ["GAME_BOX_ART", "BOX_ART", "BOXART"]
+    /// Key art is authored portrait or square, so it crops into a poster frame far better than a
+    /// landscape asset does - the vendor ships it for many titles that carry no box art at all.
+    static let poster = portrait + ["KEY_ART", "KEY_IMAGE"]
     /// Above this the band is wider than any 16:9 asset by more than a tenth of its height.
     static let wideBandAspectRatio: CGFloat = 2.0
 }
@@ -81,8 +86,17 @@ extension OPNCatalogGameObject {
         return heroImageUrl
     }
 
+    var bestPosterImageURL: String {
+        firstImageURL(ofTypes: CatalogArtworkType.poster) ?? bestTileImageURL
+    }
+
+    /// False means the poster tile is showing a centre crop of a landscape frame.
+    var hasPosterArtwork: Bool {
+        firstImageURL(ofTypes: CatalogArtworkType.poster) != nil
+    }
+
     var bestStorePickerPosterURL: String {
-        firstImageURL(ofTypes: ["GAME_BOX_ART", "BOX_ART", "BOXART", "KEY_ART", "KEY_IMAGE"]) ?? bestTileImageURL
+        firstImageURL(ofTypes: CatalogArtworkType.poster) ?? bestTileImageURL
     }
 
     var bestWideImageURL: String {

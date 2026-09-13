@@ -334,11 +334,11 @@ private struct ControllerHeader: View {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text("GEFORCE NOW")
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.6)
                 Text(headerTitle)
                     .catalogFont(size: 24, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
             }
             Spacer(minLength: 0)
             HStack(spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
@@ -409,7 +409,7 @@ private struct ControllerDesktopModeButton: View {
                 .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.Text.primary)
                 .frame(width: 40 * uiScale, height: 34 * uiScale)
-                .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.08))
+                .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.08))
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 .openNowFocusRing(isFocused)
         }
@@ -450,10 +450,10 @@ private struct ControllerNavigationBar: View {
                                     .catalogFont(size: 12, weight: .bold)
                                     .tracking(0.8)
                             }
-                            .foregroundStyle(active ? .black.opacity(0.86) : .white.opacity(0.78))
+                            .foregroundStyle(active ? .black.opacity(0.86) : OpenNOWDesign.Text.secondary)
                             .padding(.horizontal, 14 * uiScale)
                             .frame(height: 40 * uiScale)
-                            .background(active ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+                            .background(active ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
                             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
                             .openNowFocusRing(selected)
                         }
@@ -587,13 +587,13 @@ private struct ControllerSearchEntryBar: View {
                     .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
                 Text("Search")
                     .catalogFont(size: 14, weight: .medium)
-                    .foregroundStyle(isFocused ? .black.opacity(0.82) : .white.opacity(0.62))
+                    .foregroundStyle(isFocused ? .black.opacity(0.82) : OpenNOWDesign.Text.tertiary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16 * uiScale)
             .frame(height: 44 * uiScale)
-            .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+            .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
             .openNowFocusRing(isFocused)
         }

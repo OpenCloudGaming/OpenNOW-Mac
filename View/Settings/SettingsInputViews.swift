@@ -65,10 +65,10 @@ struct InputSettingsPage: View {
             VStack(alignment: .leading, spacing: 2 * uiScale) {
                 Text("Input Monitoring Permission Required")
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 Text("Grant permission in System Settings → Privacy & Security → Input Monitoring, or streams keep using the accelerated pointer.")
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
             Spacer()
             Button("Grant Permission") {
@@ -82,15 +82,15 @@ struct InputSettingsPage: View {
         SettingsCard(title: "Controller Mode", uiScale: uiScale) {
             HStack(alignment: .center, spacing: 18 * uiScale) {
                 Rectangle()
-                    .fill(controllerModeEnabled ? OpenNOWDesign.accent : Color.white.opacity(0.18))
+                    .fill(controllerModeEnabled ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong)
                     .frame(width: 4 * uiScale, height: 58 * uiScale)
                 VStack(alignment: .leading, spacing: 6 * uiScale) {
                     Text(controllerModeEnabled ? "Controller mode is active" : "Desktop catalog mode is active")
                         .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text("Controller mode replaces the catalog with a TV-style interface built for gamepads, while keeping keyboard and pointer fallback available.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12 * uiScale)
@@ -118,17 +118,17 @@ struct InputSettingsPage: View {
             HStack(alignment: .center, spacing: 12 * uiScale) {
                 Image(systemName: isAnyControllerConnected ? "gamecontroller.fill" : "keyboard")
                     .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
                     .background(OpenNOWDesign.accent.opacity(0.12))
                     .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text(isAnyControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(isAnyControllerConnected ? "Hints use symbols exposed by the connected game controller whenever the system provides them." : "Connect a controller to switch hints from keyboard keys to controller button glyphs automatically.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)

@@ -10,7 +10,7 @@ struct VendorLaunchFlowOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.82)
+            OpenNOWDesign.Surface.app.opacity(0.94)
                 .ignoresSafeArea()
             RadialGradient(
                 colors: [OpenNOWDesign.accent.opacity(0.20), .clear],
@@ -46,8 +46,8 @@ struct VendorActiveSessionCard: View {
                         VendorLaunchSessionRow(label: "Server", value: active.serverIp)
                     }
                     .padding(14)
-                    .background(Color.white.opacity(0.055))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+                    .background(OpenNOWDesign.Fill.neutral(0.055))
+                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
                 }
                 if !viewModel.launchFlowError.isEmpty {
                     VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
@@ -76,7 +76,7 @@ struct VendorLaunchProgressCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(progressTitle)
                     .font(.catalogText(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 VendorIndeterminateProgressBar()
                     .frame(height: 4)
                 if !viewModel.launchFlowError.isEmpty {
@@ -145,7 +145,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
 
                 Text("AD · \(playback.countdownText)")
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .padding(.vertical, 7)
                     .background(Color.black.opacity(0.72))
@@ -157,11 +157,11 @@ struct VendorEmbeddedSessionAdPlayer: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(ad.title)
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .lineLimit(1)
                     Text("Sponsored message required before your free-tier session continues")
                         .catalogFont(size: 11, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .lineLimit(1)
                 }
 
@@ -170,7 +170,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
                 HStack(spacing: 9) {
                     Image(systemName: volume <= 0.01 ? "speaker.slash.fill" : "speaker.wave.2.fill")
                         .font(.uiSans(size: 12, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                     Slider(value: $volume, in: 0...1)
                         .frame(width: 140)
                         .onChange(of: volume) { _, nextVolume in
@@ -230,7 +230,7 @@ struct VendorLaunchPanel<Content: View>: View {
                 Button { } label: {
                     Text("LAUNCH STATUS")
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .tracking(1.4)
                 }
                 .buttonStyle(.plain)
@@ -243,11 +243,11 @@ struct VendorLaunchPanel<Content: View>: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title.uppercased())
                     .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.2)
                 Text(subtitle.isEmpty ? "GeForce NOW" : subtitle)
                     .catalogFont(size: 28, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(2)
             }
             .padding(.horizontal, 26)
@@ -260,7 +260,7 @@ struct VendorLaunchPanel<Content: View>: View {
         }
         .frame(minWidth: 360, idealWidth: 640, maxWidth: 640)
         .background(OpenNOWDesign.Surface.app)
-        .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.55), radius: 28, y: 18)
     }
 }
@@ -274,16 +274,16 @@ struct VendorLaunchStepHeader: View {
         HStack(alignment: .top, spacing: 14) {
             Text(index)
                 .catalogFont(size: 12, weight: .bold)
-                .foregroundStyle(.black)
+                .foregroundStyle(OpenNOWDesign.onAccent)
                 .frame(width: 26, height: 26)
                 .background(OpenNOWDesign.accent)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .catalogFont(size: 16, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 Text(message)
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.70))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -298,11 +298,11 @@ struct VendorLaunchSessionRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label.uppercased())
                 .catalogFont(size: 10, weight: .bold)
-                .foregroundStyle(.white.opacity(0.48))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .frame(width: 130, alignment: .leading)
             Text(value.isEmpty ? "-" : value)
                 .catalogFont(size: 13, weight: .medium)
-                .foregroundStyle(.white.opacity(0.86))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(1)
         }
     }
@@ -323,15 +323,15 @@ struct VendorLaunchInlineMessage: View {
                 if let hint = presentation.hint {
                     Text(hint)
                         .catalogFont(size: 11, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
             }
         }
-        .foregroundStyle(warning ? Color.yellow.opacity(0.86) : .white.opacity(0.72))
+        .foregroundStyle(warning ? OpenNOWDesign.Semantic.warning.opacity(0.86) : OpenNOWDesign.Text.secondary)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.045))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+        .background(OpenNOWDesign.Fill.neutral(0.045))
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -339,7 +339,7 @@ struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .catalogFont(size: 12, weight: .bold)
-            .foregroundStyle(.black)
+            .foregroundStyle(OpenNOWDesign.onAccent)
             .tracking(0.8)
             .padding(.horizontal, 18)
             .frame(height: 38)
@@ -351,11 +351,11 @@ struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .catalogFont(size: 12, weight: .bold)
-            .foregroundStyle(.white.opacity(configuration.isPressed ? 0.68 : 0.86))
+            .foregroundStyle(configuration.isPressed ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.primary)
             .tracking(0.8)
             .padding(.horizontal, 16)
             .frame(height: 38)
-            .background(Color.white.opacity(configuration.isPressed ? 0.10 : 0.055))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+            .background(OpenNOWDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }

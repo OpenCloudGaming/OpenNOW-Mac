@@ -108,7 +108,7 @@ struct VendorSplashLoadingView: View {
                                 .frame(width: isCompact ? 188 : 260, height: 4)
                             Text(message)
                                 .font(.uiSans(size: 13, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.72))
+                                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
                         }
                     }
 
@@ -116,7 +116,7 @@ struct VendorSplashLoadingView: View {
                         Button(action: onCancel) {
                             Text("CANCEL")
                                 .font(.uiSans(size: 13, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
                                 .tracking(0.3)
                         }
                         .buttonStyle(VendorSplashCancelButtonStyle())
@@ -137,8 +137,8 @@ private struct VendorSplashCancelButtonStyle: ButtonStyle {
         configuration.label
             .padding(.horizontal, OpenNOWDesign.Spacing.medium)
             .frame(height: 34)
-            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .background(configuration.isPressed ? OpenNOWDesign.Fixed.ink(0.14) : OpenNOWDesign.Fixed.ink(0.10))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 
@@ -155,9 +155,9 @@ struct VendorIndeterminateProgressBar: View {
 
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(.white.opacity(0.24))
+                        .fill(OpenNOWDesign.Fixed.ink(0.22))
                     Rectangle()
-                        .fill(OpenNOWDesign.accent)
+                        .fill(OpenNOWDesign.Fixed.accent)
                         .frame(width: indicatorWidth)
                         .offset(x: phase * width)
                 }
@@ -168,11 +168,16 @@ struct VendorIndeterminateProgressBar: View {
 }
 
 struct GFNHeroArtwork: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         GeometryReader { proxy in
-            if reduceMotion {
+            if isMotionReduced {
                 artwork(proxy: proxy, motionTime: 0, isAnimated: false)
             } else {
                 TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.ambientFrameInterval)) { timeline in
@@ -345,6 +350,6 @@ struct AccountAvatar: View {
             .frame(width: size, height: size)
             // DESIGN.md radius exception: the login vendor icon button, at size * 0.32.
             // swiftlint:disable:next design_no_corner_radius
-            .background(OpenNOWDesign.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
+            .background(OpenNOWDesign.Fixed.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
     }
 }
