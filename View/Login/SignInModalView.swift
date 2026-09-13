@@ -45,11 +45,12 @@ struct SignInModal: View {
             }
             .padding(OpenNOWDesign.Spacing.xLarge)
         }
-        // Height stays intrinsic. A finite `maxHeight` here would not cap the panel — it takes the
-        // proposed height clamped to the max, and the parent proposes the whole window — so the
-        // background and border painted a full-height panel with the content centred in it.
-        // Overflow is already handled by the `ViewThatFits` above, whose ScrollView branch expands.
+        // Height stays intrinsic up to the window's. Without the cap a ScrollView child reports its
+        // full content height as its ideal size, so ViewThatFits picks it and the modal then paints
+        // past the window edge — the cut-off QR. At the cap the modal stops resizing and the
+        // content scrolls instead.
         .frame(width: panelWidth)
+        .frame(maxHeight: max(availableSize.height - OpenNOWDesign.Spacing.pageHorizontal * 2, 320))
         .background(OpenNOWDesign.Surface.panel)
         .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
@@ -331,8 +332,7 @@ struct SignInModal: View {
                             isProviderMenuPresented = false
                             afterSelect?()
                         }
-                    },
-                    visibleItemCount: 4
+                    }
                 )
                 .padding(.top, OpenNOWDesign.Spacing.xxSmall)
             }

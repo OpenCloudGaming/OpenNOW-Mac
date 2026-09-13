@@ -266,9 +266,10 @@ checkmark. Dismisses on outside click, Escape, or selection, and closes when the
 underlying item set changes.
 
 The sign-in modal's provider picker renders `OpenNOWDropdownPanel` inline instead
-(expanding below the trigger, `visibleItemCount: 4`), because an overlay panel
-inside the modal's nested scroll containers loses sibling z-order and paints
-behind the tab content.
+(expanding below the trigger, uncapped), because an overlay panel inside the
+modal's nested scroll containers loses sibling z-order and paints behind the tab
+content. The modal itself is height-capped to the window and owns the only
+scrollbar — a second, inner one for the picker produced double scroll bars.
 Rows: full width, height 30, 12
 (Control Row) horizontal padding, Hanken Grotesk 12pt bold — Text Secondary resting,
 Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
