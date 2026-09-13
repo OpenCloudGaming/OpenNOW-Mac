@@ -97,10 +97,9 @@ struct SettingsOptionRow: View {
                     } label: {
                         HStack(spacing: 7 * uiScale) {
                             if swatchColors.indices.contains(index) {
-                                Rectangle()
-                                    .fill(swatchColors[index])
-                                    .frame(width: 12 * uiScale, height: 12 * uiScale)
-                                    .overlay { Rectangle().stroke(OpenNOWDesign.Fill.neutral(0.3), lineWidth: 1) }
+                                // The selected chip is already painted in its own colour, so a
+                                // swatch there would be a square of the fill on the fill.
+                                swatch(color: swatchColors[index], isSelected: index == selectedIndex)
                             }
                             Text(options[index])
                                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
@@ -119,6 +118,20 @@ struct SettingsOptionRow: View {
     }
 
     /// Walks to the next selectable option, skipping any the page has disabled.
+    @ViewBuilder private func swatch(color: Color, isSelected: Bool) -> some View {
+        if isSelected {
+            Image(systemName: "checkmark")
+                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
+                .foregroundStyle(OpenNOWDesign.onAccent)
+                .frame(width: 12 * uiScale, height: 12 * uiScale)
+        } else {
+            Rectangle()
+                .fill(color)
+                .frame(width: 12 * uiScale, height: 12 * uiScale)
+                .overlay { Rectangle().stroke(OpenNOWDesign.Fill.neutral(0.3), lineWidth: 1) }
+        }
+    }
+
     private func cycleOption(_ delta: Int) {
         guard !options.isEmpty else { return }
         var index = selectedIndex
