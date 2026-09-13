@@ -7,6 +7,7 @@ struct ThemeSettingsPage: View {
     @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
     @AppStorage(OpenNOWThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OpenNOWThemePreferences.TileTitleVisibility.onHover.rawValue
     @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isMotionReduced = false
+    @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
 
     private var selectedHomeLayoutIndex: Int {
         let mode = OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic
@@ -23,8 +24,20 @@ struct ThemeSettingsPage: View {
         return OpenNOWThemePreferences.TileTitleVisibility.allCases.firstIndex(of: visibility) ?? 0
     }
 
+    private var selectedAccentColorIndex: Int {
+        let preset = OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
+        return OpenNOWThemePreferences.AccentColor.allCases.firstIndex(of: preset) ?? 0
+    }
+
+    private var accentColorSwatches: [Color] {
+        OpenNOWThemePreferences.AccentColor.allCases.map {
+            Color(.sRGB, red: $0.components.red, green: $0.components.green, blue: $0.components.blue)
+        }
+    }
+
     static let sections: [SettingsSection] = [
         SettingsSection("interface", "Interface"),
+        SettingsSection("accent", "Accent Colour"),
         SettingsSection("home-layout", "Home Layout"),
         SettingsSection("tiles", "Tiles"),
         SettingsSection("motion", "Motion"),
@@ -43,6 +56,14 @@ struct ThemeSettingsPage: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsSection("interface")
+
+            SettingsCard(title: "Accent Colour", uiScale: uiScale) {
+                SettingsOptionRow(title: "Accent Colour", subtitle: "The highlight colour used across buttons, selection, and focus throughout the app.", options: OpenNOWThemePreferences.AccentColor.allCases.map(\.label), selectedIndex: selectedAccentColorIndex, swatchColors: accentColorSwatches, isNew: OpenNOWNewSettings.isNew(.accentColor), uiScale: uiScale) { index in
+                    OpenNOWNewSettings.acknowledge(.accentColor)
+                    accentColorRawValue = OpenNOWThemePreferences.AccentColor.allCases[index].rawValue
+                }
+            }
+            .settingsSection("accent")
 
             SettingsCard(title: "Home Layout", uiScale: uiScale) {
                 SettingsOptionRow(title: "Home Layout", subtitle: "How the keyboard-and-mouse home page is laid out. Classic keeps today's featured banner and wide landscape tiles. Poster switches to rows of tall, portrait box-art tiles. Controller mode is unaffected.", options: OpenNOWHomeLayout.Mode.allCases.map(\.label), selectedIndex: selectedHomeLayoutIndex, isNew: OpenNOWNewSettings.isNew(.homeLayout), uiScale: uiScale) { index in

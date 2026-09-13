@@ -15,9 +15,14 @@ struct ContentView: View {
     @StateObject private var root = AppRootViewModel()
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
+    @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
 
     private var tileDensity: CGFloat {
         (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
+    }
+
+    private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
+        OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
     }
 
     var body: some View {
@@ -29,7 +34,9 @@ struct ContentView: View {
 
             // Above the catalog and the stream surface, below the startup splash: an update prompt
             // must never cover the launch animation, and must never be covered by a game.
+            // Can outlive `CatalogView`'s own accent invalidation (signed out), so it gets its own.
             OpenNOWUpdateOverlay()
+                .id(accentColorRawValue)
                 .zIndex(90)
 
             if root.isShowingStartupLoading {
@@ -54,6 +61,9 @@ struct ContentView: View {
             .background(OpenNOWInterfaceScaleDensityBooster(scale: uiScale))
             .environment(\.opnUIScale, uiScale)
             .environment(\.opnTileDensity, tileDensity)
+            .onChange(of: accentColorRawValue, initial: true) { _, _ in
+                OpenNOWDesign.applyAccent(accentColorPreset)
+            }
             .onDisappear { root.unbind() }
             // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`
             // before it calls `onAppear`, so the two would race.

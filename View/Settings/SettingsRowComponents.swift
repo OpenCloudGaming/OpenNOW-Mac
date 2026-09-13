@@ -41,6 +41,9 @@ struct SettingsOptionRow: View {
     let options: [String]
     let selectedIndex: Int
     var enabled: [Bool] = []
+    /// One swatch per option, drawn ahead of its label. Empty for every plain text row; a caller
+    /// opts in only when the option IS a colour, so a reader can see it rather than read its name.
+    var swatchColors: [Color] = []
     var isNew = false
     let uiScale: CGFloat
     let action: (Int) -> Void
@@ -92,13 +95,21 @@ struct SettingsOptionRow: View {
                         guard index != selectedIndex else { return }
                         action(index)
                     } label: {
-                        Text(options[index])
-                            .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                            .foregroundStyle(index == selectedIndex ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
-                            .padding(.horizontal, 12 * uiScale)
-                            .frame(height: 32 * uiScale)
-                            .background(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
-                            .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
+                        HStack(spacing: 7 * uiScale) {
+                            if swatchColors.indices.contains(index) {
+                                Rectangle()
+                                    .fill(swatchColors[index])
+                                    .frame(width: 12 * uiScale, height: 12 * uiScale)
+                                    .overlay { Rectangle().stroke(Color.white.opacity(0.3), lineWidth: 1) }
+                            }
+                            Text(options[index])
+                                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                                .foregroundStyle(index == selectedIndex ? .black : .white.opacity(optionEnabled ? 0.82 : 0.34))
+                        }
+                        .padding(.horizontal, 12 * uiScale)
+                        .frame(height: 32 * uiScale)
+                        .background(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(optionEnabled ? 0.07 : 0.035))
+                        .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)

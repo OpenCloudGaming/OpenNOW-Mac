@@ -144,6 +144,7 @@ struct CatalogView: View {
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
+    @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -158,6 +159,10 @@ struct CatalogView: View {
 
     private var tileDensity: CGFloat {
         (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
+    }
+
+    private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
+        OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
     }
 
     init(
@@ -281,6 +286,9 @@ struct CatalogView: View {
                 .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)
                 .environment(\.opnTileDensity, tileDensity)
+                // `OpenNOWDesign.accent` is a static, so nothing here re-renders when it changes on
+                // its own; bumping identity with the preset forces this branch to rebuild instead.
+                .id(accentColorRawValue)
             }
 
             if viewModel.isStreamLaunchLoadingVisible {
@@ -308,6 +316,9 @@ struct CatalogView: View {
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onChange(of: accentColorRawValue, initial: true) { @MainActor _, _ in
+            OpenNOWDesign.applyAccent(accentColorPreset)
+        }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(.dark)
     }

@@ -181,7 +181,84 @@ enum OpenNOWDesign {
         }
     }
 
-    static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
+    /// Cached so the 384 call sites never touch UserDefaults per read. Plain global, not
+    /// main-actor isolated: some readers are `ButtonStyle` bodies, which aren't either.
+    nonisolated(unsafe) private static var resolvedAccent = accentColor(for: .cloudGreen)
+
+    /// Cached beside the accent for the same reason: the stream HUD reads it every render.
+    nonisolated(unsafe) private static var resolvedAccentSoft = softAccentColor(for: .cloudGreen)
+
+    static var accent: Color { resolvedAccent }
+
+    /// The lightened accent, for text and glyphs that sit on a dark surface beside an accent fill.
+    static var accentSoft: Color { resolvedAccentSoft }
+
+    static func applyAccent(_ preset: OpenNOWThemePreferences.AccentColor) {
+        resolvedAccent = accentColor(for: preset)
+        resolvedAccentSoft = softAccentColor(for: preset)
+    }
+
+    private static func accentColor(for preset: OpenNOWThemePreferences.AccentColor) -> Color {
+        let components = preset.components
+        return Color(red: components.red, green: components.green, blue: components.blue)
+    }
+
+    private static func softAccentColor(for preset: OpenNOWThemePreferences.AccentColor) -> Color {
+        let components = preset.components
+        let lightened = lightenedAccentComponents(red: components.red, green: components.green, blue: components.blue)
+        return Color(red: lightened.red, green: lightened.green, blue: lightened.blue)
+    }
+
+    /// Fixed amount `accentSoft` lightens by: brightness climbs and saturation falls by the same
+    /// amount in HSB space, both clamped to their natural range, so the hue never shifts. Chosen to
+    /// reproduce today's shipping accentSoft (0.67, 1.0, 0.36) from Cloud Green (0.46, 0.90, 0.10).
+    static let accentLightenAmount = 0.25
+
+    /// Pure so the lightening can be tested without touching `Color`. `amount` moves brightness up
+    /// and saturation down together, which is what "lighter" means in HSB without shifting hue.
+    static func lightenedAccentComponents(
+        red: Double,
+        green: Double,
+        blue: Double,
+        amount: Double = accentLightenAmount
+    ) -> (red: Double, green: Double, blue: Double) {
+        let maximum = max(red, green, blue)
+        let minimum = min(red, green, blue)
+        let delta = maximum - minimum
+        let brightness = maximum
+        let saturation = maximum == 0 ? 0 : delta / maximum
+        let lightenedBrightness = min(1, brightness + amount)
+
+        guard delta > 0 else {
+            return (lightenedBrightness, lightenedBrightness, lightenedBrightness)
+        }
+
+        let hue: Double
+        switch maximum {
+        case red: hue = 60 * (((green - blue) / delta).truncatingRemainder(dividingBy: 6))
+        case green: hue = 60 * ((blue - red) / delta + 2)
+        default: hue = 60 * ((red - green) / delta + 4)
+        }
+        let normalizedHue = hue < 0 ? hue + 360 : hue
+
+        let lightenedSaturation = max(0, saturation - amount)
+        let chroma = lightenedBrightness * lightenedSaturation
+        let huePrime = normalizedHue / 60
+        let secondary = chroma * (1 - abs(huePrime.truncatingRemainder(dividingBy: 2) - 1))
+        let matchValue = lightenedBrightness - chroma
+
+        let sector: (red: Double, green: Double, blue: Double)
+        switch huePrime {
+        case 0..<1: sector = (chroma, secondary, 0)
+        case 1..<2: sector = (secondary, chroma, 0)
+        case 2..<3: sector = (0, chroma, secondary)
+        case 3..<4: sector = (0, secondary, chroma)
+        case 4..<5: sector = (secondary, 0, chroma)
+        default: sector = (chroma, 0, secondary)
+        }
+
+        return (sector.red + matchValue, sector.green + matchValue, sector.blue + matchValue)
+    }
 
     static func clamped(_ value: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
         min(max(value, minimum), maximum)

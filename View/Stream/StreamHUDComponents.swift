@@ -5,8 +5,14 @@ import Foundation
 import SwiftUI
 
 enum WebRTCMediaStreamTheme {
-    static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
-    static let accentSoft = Color(red: 0.67, green: 1.0, blue: 0.36)
+    /// Same resolved colour the rest of the app paints with, so the HUD follows the user's
+    /// chosen accent instead of a hardcoded green. The stream view is deliberately never
+    /// invalidated while a session is live, so a mid-session accent change still waits for the
+    /// next render, same as before this read became dynamic.
+    static var accent: Color { OpenNOWDesign.accent }
+
+    static var accentSoft: Color { OpenNOWDesign.accentSoft }
+
     static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
     static let surface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
     static let panel = Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255)
