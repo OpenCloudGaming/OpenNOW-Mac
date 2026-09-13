@@ -267,7 +267,15 @@ struct SignInModal: View {
 
     private var browserContent: some View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
-            serviceProviderSection
+            serviceProviderHeader
+
+            providerDropdown()
+
+            if viewModel.isLoadingProviders {
+                Text("Loading provider list...")
+                    .font(.uiSans(size: 12, weight: .regular))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+            }
 
             Button {
                 viewModel.rememberSession = true
@@ -313,75 +321,46 @@ struct SignInModal: View {
         }
     }
 
-    private var serviceProviderSection: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
-            Text("SERVICE PROVIDER")
-                .font(.uiSans(size: 11, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
-                .tracking(0.8)
-
-            VStack(spacing: OpenNOWDesign.Spacing.xSmall) {
-                ForEach(viewModel.providers) { provider in
-                    ProviderCard(
-                        provider: provider,
-                        isSelected: provider.id == viewModel.selectedProvider.id
-                    ) { viewModel.selectProvider(provider) }
-                    .disabled(viewModel.isLoadingProviders || viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+    private func providerDropdown(afterSelect: (() -> Void)? = nil) -> some View {
+        OpenNOWDropdownMenu(
+            items: viewModel.providers.map { provider in
+                OpenNOWDropdownItem(
+                    id: provider.id,
+                    title: provider.title,
+                    isSelected: provider.id == viewModel.selectedProvider.id
+                ) {
+                    viewModel.selectProvider(provider)
+                    afterSelect?()
                 }
-            }
-
-            if viewModel.isLoadingProviders {
-                Text("Loading provider list...")
-                    .font(.uiSans(size: 12, weight: .regular))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
-            }
-        }
-    }
-}
-
-private struct ProviderCard: View {
-    let provider: LoginProvider
-    let isSelected: Bool
-    let action: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: OpenNOWDesign.Spacing.small) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(provider.title)
-                        .font(.uiSans(size: 14, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
-                        .lineLimit(1)
-                    if !provider.loginProviderCode.isEmpty {
-                        Text(provider.loginProviderCode)
-                            .font(.uiSans(size: 11, weight: .regular))
-                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer(minLength: OpenNOWDesign.Spacing.small)
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.uiSans(size: 12, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accentInk)
-                }
+            },
+            isDisabled: viewModel.isLaunchingOAuth || viewModel.isAuthenticating || viewModel.isRequestingDeviceCode,
+            visibleItemCount: 4,
+            matchesTriggerWidth: false
+        ) {
+            HStack(spacing: 8) {
+                Text(viewModel.selectedProvider.title)
+                    .font(.uiSans(size: 13, weight: .bold))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.uiSans(size: 10, weight: .bold))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
-            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .background(isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
-            .overlay {
-                Rectangle()
-                    .stroke(isSelected ? OpenNOWDesign.accent : (isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular), lineWidth: isSelected ? 2 : 1)
-            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .background(OpenNOWDesign.Fill.neutral(0.08))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var serviceProviderHeader: some View {
+        Text("SERVICE PROVIDER")
+            .font(.uiSans(size: 11, weight: .bold))
+            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+            .tracking(0.8)
     }
 }
 

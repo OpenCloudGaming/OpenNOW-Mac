@@ -254,8 +254,11 @@ Square dropdown replacing native `Menu` for every app-shell dropdown: game detai
 Built from `OpenNOWDropdownPanel` + `OpenNOWDropdownRow`
 (`View/Components/OpenNOWDropdown.swift`). Panel: Panel Raised background, 1px
 Stroke Regular, 4 (Menu Panel Vertical) padding, minimum width 208 (expands to the
-trigger's width when the trigger is wider, e.g. the login provider picker),
-leading-aligned to the trigger and anchored 4pt below it, no shadow. When the panel would extend past the
+trigger's width when the trigger is wider unless `matchesTriggerWidth` is false —
+the login provider picker stays at minimum width), leading-aligned to the trigger
+and anchored 4pt below it, no shadow. `visibleItemCount` caps the panel at that
+many rows (30 each) and scrolls the rest, with 12pt of trailing content margin so
+the scroll indicator clears the row text. When the panel would extend past the
 window's bottom edge it constrains to the available space below and scrolls.
 Rows: full width, height 30, 12
 (Control Row) horizontal padding, Hanken Grotesk 12pt bold — Text Secondary resting,
