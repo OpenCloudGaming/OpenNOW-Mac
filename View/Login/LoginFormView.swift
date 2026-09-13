@@ -86,7 +86,7 @@ struct LoginFormView: View {
                 .frame(maxHeight: .infinity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .background(OpenNOWDesign.Surface.deep)
+        .background(OpenNOWDesign.Fixed.surfaceDeep)
     }
 
     private func marketingColumn(metrics: VendorLoginWallMetrics, headlineSize: CGFloat, logoWidth: CGFloat, logoHeight: CGFloat, showsBullets: Bool) -> some View {
@@ -99,13 +99,13 @@ struct LoginFormView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("OPENNOW")
                     .font(.uiSans(size: 11, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OpenNOWDesign.accent)
                     .tracking(1.4)
                     .padding(.bottom, OpenNOWDesign.Spacing.xxSmall)
 
                 Text("Get In. Game On.")
                     .font(.uiSans(size: headlineSize, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
                     .lineLimit(1)
                     .padding(.bottom, OpenNOWDesign.Spacing.medium)
 
@@ -293,7 +293,7 @@ private struct VendorContentString: View {
                 .padding(.top, OpenNOWDesign.Spacing.xxSmall)
             Text(text)
                 .font(.uiSans(size: 14, weight: .regular))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
