@@ -88,6 +88,13 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                     heroRegion(proxy: proxy, compact: compact)
                         .frame(maxWidth: .infinity, alignment: .center)
 
+                    if let cancelAction {
+                        Button("Cancel", action: cancelAction)
+                            .buttonStyle(OpenNOWModalSecondaryButtonStyle())
+                            .accessibilityLabel("Cancel stream launch")
+                            .padding(.top, OpenNOWDesign.Spacing.small)
+                    }
+
                     Spacer(minLength: OpenNOWDesign.Spacing.xLarge)
 
                     footerBand(compact: compact)
@@ -125,7 +132,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                             .resizable()
                             .scaledToFill()
                             .frame(width: proxy.size.width + 14, height: proxy.size.height + 14)
-                            .blur(radius: 10)
+                            .blur(radius: 18)
                             .frame(width: proxy.size.width, height: proxy.size.height)
                             .clipped()
                     }
@@ -161,7 +168,16 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     // MARK: - Hero region
 
     private func heroRegion(proxy: GeometryProxy, compact: Bool) -> some View {
-        let adWidth = min(compact ? 380 : 640, proxy.size.width - 2 * hPad(compact: compact))
+        // Windowed sizes can leave less height than the 16:9 hero wants. Cap the hero to what is
+        // left once the title, footer, and cancel row are reserved, so the centered column never
+        // overflows and clips the title's top padding.
+        let reservedHeight: CGFloat = compact ? 240 : 260
+        let verticalBudget = max(compact ? 150 : 180, proxy.size.height - reservedHeight)
+        let adWidth = min(
+            compact ? 380 : 640,
+            proxy.size.width - 2 * hPad(compact: compact),
+            ((verticalBudget - 58) * 16 / 9).rounded()
+        )
         let videoHeight = (adWidth * 9 / 16).rounded()
         // VendorEmbeddedSessionAdPlayer's info bar is two text lines (title + subtitle), not one -
         // 24pt vertical padding plus that stack runs ~58pt, not the single-line ~44pt estimate.
@@ -194,18 +210,6 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                 .font(.catalogText(size: 11, weight: .bold))
                 .tracking(1.4)
                 .lineLimit(1)
-
-            Group {
-                if let cancelAction {
-                    Button("Cancel", action: cancelAction)
-                        .buttonStyle(OpenNOWModalSecondaryButtonStyle())
-                        .accessibilityLabel("Cancel stream launch")
-                } else {
-                    Color.clear
-                }
-            }
-            // Reserved whether or not Cancel is offered, so its appearance never shoves the rail.
-            .frame(maxWidth: .infinity, minHeight: 36)
 
             HStack(spacing: OpenNOWDesign.Spacing.xxSmall) {
                 ForEach(StreamLaunchStep.allCases, id: \.rawValue) { step in
