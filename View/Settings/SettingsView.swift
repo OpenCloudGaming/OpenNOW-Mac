@@ -3,11 +3,11 @@ import CryptoKit
 import SwiftUI
 
 enum SettingsVendorLayout {
-    static let surface = OpenNOWDesign.Surface.deep
-    static let sidebar = OpenNOWDesign.Surface.field
-    static let card = OpenNOWDesign.Surface.panel
-    static let cardRaised = OpenNOWDesign.Surface.panelRaised
-    static let row = OpenNOWDesign.Fill.neutral(0.045)
+    static var surface: Color { OpenNOWDesign.Surface.deep }
+    static var sidebar: Color { OpenNOWDesign.Surface.field }
+    static var card: Color { OpenNOWDesign.Surface.panel }
+    static var cardRaised: Color { OpenNOWDesign.Surface.panelRaised }
+    static var row: Color { OpenNOWDesign.Fill.neutral(0.045) }
 }
 
 extension Font {

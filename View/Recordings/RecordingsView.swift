@@ -3,12 +3,12 @@ import AVKit
 import SwiftUI
 
 enum RecordingsLayout {
-    static let sidebar = OpenNOWDesign.Surface.deep
-    static let surface = OpenNOWDesign.Surface.deep
-    static let card = OpenNOWDesign.Fill.neutral(0.055)
-    static let raised = OpenNOWDesign.Fill.neutral(0.085)
-    static let stroke = OpenNOWDesign.Stroke.subtle
-    static let strongStroke = OpenNOWDesign.Stroke.strong
+    static var sidebar: Color { OpenNOWDesign.Surface.deep }
+    static var surface: Color { OpenNOWDesign.Surface.deep }
+    static var card: Color { OpenNOWDesign.Fill.neutral(0.055) }
+    static var raised: Color { OpenNOWDesign.Fill.neutral(0.085) }
+    static var stroke: Color { OpenNOWDesign.Stroke.subtle }
+    static var strongStroke: Color { OpenNOWDesign.Stroke.strong }
     static let danger = Color(red: 1, green: 78 / 255, blue: 78 / 255)
 }
 

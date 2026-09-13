@@ -6,9 +6,9 @@ import ImageIO
 import SwiftUI
 
 enum CatalogVendorLayout {
-    static let appBarBackground = OpenNOWDesign.Surface.appBar
-    static let mallSurface = OpenNOWDesign.Surface.app
-    static let tileTray = OpenNOWDesign.Surface.tileTray
+    static var appBarBackground: Color { OpenNOWDesign.Surface.appBar }
+    static var mallSurface: Color { OpenNOWDesign.Surface.app }
+    static var tileTray: Color { OpenNOWDesign.Surface.tileTray }
     /// Hover growth stops just short of the neighbouring tile's artwork: a tile is 352pt wide in a
     /// 368pt slot, so anything past 192/176 = 1.09 crosses into the tile beside it, which a rail
     /// cannot order around (a `LazyHStack` paints its children in index order and ignores `zIndex`).
@@ -149,6 +149,10 @@ struct CatalogView: View {
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
+    /// The theme the catalog page has actually been rebuilt for. It lags `themeIdentity` while
+    /// Settings is open so picking a colour repaints Settings instantly without rebuilding every
+    /// rail and tile behind it; the catalog catches up when the reader returns to it.
+    @State private var appliedCatalogThemeIdentity = ""
     @State private var streamWindowTopInset: CGFloat = 0
     @State private var catalogWindowTopInset: CGFloat = 0
 
@@ -237,6 +241,7 @@ struct CatalogView: View {
                     } else {
                         VStack(spacing: 0) {
                             CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                                .id(themeIdentity)
                             ZStack {
                                 // The catalog stays mounted underneath Settings and Recordings
                                 // rather than being swapped out for them. Tearing it down drops
@@ -245,13 +250,16 @@ struct CatalogView: View {
                                 // whole page - a second or more of pinned CPU on a plain page
                                 // switch. Hidden, it costs a layout it has already done.
                                 CatalogContentView(viewModel: viewModel, isActive: isCatalogPageActive)
+                                    .id(appliedCatalogThemeIdentity)
                                     .opacity(isCatalogPageActive ? 1 : 0)
                                     .disabled(!isCatalogPageActive)
                                     .accessibilityHidden(!isCatalogPageActive)
                                 if viewModel.selectedMainPage == .settings {
                                     SettingsView(viewModel: viewModel)
+                                        .id(themeIdentity)
                                 } else if viewModel.selectedMainPage == .recordings {
                                     RecordingsView()
+                                        .id(themeIdentity)
                                 }
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -299,9 +307,6 @@ struct CatalogView: View {
                 .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)
                 .environment(\.opnTileDensity, tileDensity)
-                // `OpenNOWDesign.accent` is a static, so nothing here re-renders when it changes on
-                // its own; bumping identity with the preset forces this branch to rebuild instead.
-                .id(themeIdentity)
             }
 
             if viewModel.isStreamLaunchLoadingVisible {
@@ -329,6 +334,14 @@ struct CatalogView: View {
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onChange(of: themeIdentity, initial: true) { @MainActor _, newIdentity in
+            guard isCatalogPageActive else { return }
+            appliedCatalogThemeIdentity = newIdentity
+        }
+        .onChange(of: viewModel.selectedMainPage) { @MainActor _, _ in
+            guard isCatalogPageActive else { return }
+            appliedCatalogThemeIdentity = themeIdentity
+        }
         .onChange(of: accentColorRawValue, initial: true) { @MainActor _, _ in
             OpenNOWDesign.applyAccent(accentColorPreset)
         }
