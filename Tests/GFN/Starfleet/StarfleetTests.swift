@@ -86,10 +86,31 @@ private actor SequencedStarfleetTransport: StarfleetHTTPTransport {
     #expect(body.contains("display_name=OpenNOW"))
     #expect(body.contains("idp_id=idp"))
 
-    let request = try #require(StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body))
+    let request = try #require(StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body, deviceId: "device"))
     #expect(request.url?.absoluteString == "https://login.nvidia.com/device/authorize")
     #expect(request.httpMethod == "POST")
     #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/x-www-form-urlencoded; charset=UTF-8")
+}
+
+@Test func starfleetDeviceFlowPresentsSteamDeckIdentity() throws {
+    let body = StarfleetOAuthRequestFactory.deviceAuthorizeBody(deviceId: "device", displayName: "OpenNOW", providerIdpId: "idp", configuration: .steamDeck)
+    #expect(body.contains("client_id=q61ddeJrVt7O90Nl-P-N7I36yctih4Ml6FyXLrb6j-U"))
+    #expect(body.contains("device_id=device"))
+
+    let request = try #require(StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body, deviceId: "device", configuration: .steamDeck))
+    #expect(request.value(forHTTPHeaderField: "x-device-id") == "device")
+    #expect(request.value(forHTTPHeaderField: "nv-client-id") == "q61ddeJrVt7O90Nl-P-N7I36yctih4Ml6FyXLrb6j-U")
+    #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "WEBRTC")
+    #expect(request.value(forHTTPHeaderField: "nv-client-type") == "BROWSER")
+    #expect(request.value(forHTTPHeaderField: "nv-client-platform-name") == "browser")
+    #expect(request.value(forHTTPHeaderField: "nv-browser-type") == "CHROME")
+    #expect(request.value(forHTTPHeaderField: "nv-device-os") == "STEAMOS")
+    #expect(request.value(forHTTPHeaderField: "nv-device-type") == "CONSOLE")
+    #expect(request.value(forHTTPHeaderField: "nv-device-model") == "STEAMDECK")
+    #expect(request.value(forHTTPHeaderField: "nv-device-make") == "VALVE")
+    #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
+    #expect(request.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
+    #expect(request.value(forHTTPHeaderField: "User-Agent") == Starfleet.deviceFlowUserAgent)
 }
 
 @Test func starfleetBuildsDeviceCodeAndLogoutRequests() throws {
