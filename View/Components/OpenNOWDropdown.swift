@@ -69,7 +69,8 @@ struct OpenNOWDropdownPanel: View {
             }
         }
         .padding(.vertical, OpenNOWDesign.Spacing.menuPanelVertical(scale: uiScale))
-        .frame(width: width ?? Self.minimumWidth(scale: uiScale))
+        .frame(maxWidth: width == nil ? .infinity : nil)
+        .frame(width: width)
         .background(OpenNOWDesign.Surface.panelRaised)
         .overlay {
             Rectangle()
@@ -90,7 +91,6 @@ struct OpenNOWDropdownMenu<Label: View>: View {
     let items: [OpenNOWDropdownItem]
     var isDisabled = false
     var visibleItemCount: Int?
-    var matchesTriggerWidth = true
     @ViewBuilder let label: () -> Label
 
     @Environment(\.opnUIScale) private var uiScale
@@ -139,8 +139,7 @@ struct OpenNOWDropdownMenu<Label: View>: View {
     }
 
     private var panelWidth: CGFloat {
-        guard matchesTriggerWidth else { return OpenNOWDropdownPanel.minimumWidth(scale: uiScale) }
-        return max(OpenNOWDropdownPanel.minimumWidth(scale: uiScale), triggerSize.width)
+        max(OpenNOWDropdownPanel.minimumWidth(scale: uiScale), triggerSize.width)
     }
 
     @ViewBuilder

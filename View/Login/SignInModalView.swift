@@ -14,6 +14,7 @@ struct SignInModal: View {
     let onClose: () -> Void
 
     @State private var selectedTab: SignInTab = .browser
+    @State private var isProviderMenuPresented = false
 
     private var panelWidth: CGFloat {
         max(min(520, availableSize.width - OpenNOWDesign.Spacing.pageHorizontal * 2), 280)
@@ -161,40 +162,11 @@ struct SignInModal: View {
 
     private var qrCodeContent: some View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
-            Text("SERVICE PROVIDER")
-                .font(.uiSans(size: 11, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
-                .tracking(0.8)
+            serviceProviderHeader
 
-            OpenNOWDropdownMenu(
-                items: viewModel.providers.map { provider in
-                    OpenNOWDropdownItem(
-                        id: provider.id,
-                        title: provider.title,
-                        isSelected: provider.id == viewModel.selectedProvider.id
-                    ) {
-                        viewModel.selectProvider(provider)
-                        viewModel.rememberSession = true
-                        viewModel.launchDeviceCodeThroughTermsGate()
-                    }
-                }
-            ) {
-                HStack(spacing: 8) {
-                    Text(viewModel.selectedProvider.title)
-                        .font(.uiSans(size: 13, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.uiSans(size: 10, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
-                }
-                .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .background(OpenNOWDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
-                .contentShape(Rectangle())
+            providerDropdown {
+                viewModel.rememberSession = true
+                viewModel.launchDeviceCodeThroughTermsGate()
             }
 
             if !viewModel.deviceCodeUserCode.isEmpty {
@@ -322,37 +294,48 @@ struct SignInModal: View {
     }
 
     private func providerDropdown(afterSelect: (() -> Void)? = nil) -> some View {
-        OpenNOWDropdownMenu(
-            items: viewModel.providers.map { provider in
-                OpenNOWDropdownItem(
-                    id: provider.id,
-                    title: provider.title,
-                    isSelected: provider.id == viewModel.selectedProvider.id
-                ) {
-                    viewModel.selectProvider(provider)
-                    afterSelect?()
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                isProviderMenuPresented.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Text(viewModel.selectedProvider.title)
+                        .font(.uiSans(size: 13, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: isProviderMenuPresented ? "chevron.up" : "chevron.down")
+                        .font(.uiSans(size: 10, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                 }
-            },
-            isDisabled: viewModel.isLaunchingOAuth || viewModel.isAuthenticating || viewModel.isRequestingDeviceCode,
-            visibleItemCount: 4,
-            matchesTriggerWidth: false
-        ) {
-            HStack(spacing: 8) {
-                Text(viewModel.selectedProvider.title)
-                    .font(.uiSans(size: 13, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
-                    .lineLimit(1)
-                Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.uiSans(size: 10, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .background(OpenNOWDesign.Fill.neutral(0.08))
+                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
-            .frame(maxWidth: .infinity)
-            .frame(height: 36)
-            .background(OpenNOWDesign.Fill.neutral(0.08))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating || viewModel.isRequestingDeviceCode)
+            .accessibilityLabel("Service provider, \(viewModel.selectedProvider.title)")
+
+            if isProviderMenuPresented {
+                OpenNOWDropdownPanel(
+                    items: viewModel.providers.map { provider in
+                        OpenNOWDropdownItem(
+                            id: provider.id,
+                            title: provider.title,
+                            isSelected: provider.id == viewModel.selectedProvider.id
+                        ) {
+                            viewModel.selectProvider(provider)
+                            isProviderMenuPresented = false
+                            afterSelect?()
+                        }
+                    },
+                    visibleItemCount: 4
+                )
+                .padding(.top, OpenNOWDesign.Spacing.xxSmall)
+            }
         }
     }
 

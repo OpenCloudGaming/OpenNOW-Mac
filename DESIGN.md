@@ -250,16 +250,25 @@ Full-width rectangular button, height 38, Hanken Grotesk 12pt bold (tracking 0.4
 ### Dropdown Menu (`OpenNOWDropdownMenu`)
 
 Square dropdown replacing native `Menu` for every app-shell dropdown: game detail
-"⋮" actions, catalog sort and filter groups, recordings sort, login provider picker.
-Built from `OpenNOWDropdownPanel` + `OpenNOWDropdownRow`
+"⋮" actions, catalog sort and filter groups, recordings sort. Built from
+`OpenNOWDropdownPanel` + `OpenNOWDropdownRow`
 (`View/Components/OpenNOWDropdown.swift`). Panel: Panel Raised background, 1px
 Stroke Regular, 4 (Menu Panel Vertical) padding, minimum width 208 (expands to the
-trigger's width when the trigger is wider unless `matchesTriggerWidth` is false —
-the login provider picker stays at minimum width), leading-aligned to the trigger
-and anchored 4pt below it, no shadow. `visibleItemCount` caps the panel at that
-many rows (30 each) and scrolls the rest, with 12pt of trailing content margin so
-the scroll indicator clears the row text. When the panel would extend past the
+trigger's width when the trigger is wider), leading-aligned to the trigger and
+anchored 4pt below it, no shadow. `visibleItemCount` caps the panel at that many
+rows (30 each) and scrolls the rest, with 12pt of trailing content margin so the
+scroll indicator clears the row text. When the panel would extend past the
 window's bottom edge it constrains to the available space below and scrolls.
+Rows: full width, height 30, 12
+(Control Row) horizontal padding, Hanken Grotesk 12pt bold — Text Secondary resting,
+Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
+checkmark. Dismisses on outside click, Escape, or selection, and closes when the
+underlying item set changes.
+
+The sign-in modal's provider picker renders `OpenNOWDropdownPanel` inline instead
+(expanding below the trigger, `visibleItemCount: 4`), because an overlay panel
+inside the modal's nested scroll containers loses sibling z-order and paints
+behind the tab content.
 Rows: full width, height 30, 12
 (Control Row) horizontal padding, Hanken Grotesk 12pt bold — Text Secondary resting,
 Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
