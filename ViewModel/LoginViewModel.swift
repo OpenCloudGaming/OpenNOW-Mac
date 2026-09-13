@@ -25,6 +25,7 @@ final class LoginViewModel: ObservableObject {
     @Published var pendingGameShortcut: GFNGameShortcut?
     @Published var deviceCodeUserCode = ""
     @Published var deviceCodeVerificationURI = ""
+    @Published var isRequestingDeviceCode = false
     /// Accounts whose keychain tokens are gone — signed out, or forgotten mid-flight. Their rows
     /// stay in the account list forever, so the UI needs this to tell them from switchable ones.
     @Published private(set) var signedOutAccountEmails: Set<String> = []
@@ -171,6 +172,7 @@ final class LoginViewModel: ObservableObject {
         loginLaunchGeneration += 1
         isLaunchingOAuth = false
         isAuthenticating = false
+        isRequestingDeviceCode = false
         deviceCodeUserCode = ""
         deviceCodeVerificationURI = ""
         validationMessage = "Sign-in cancelled. Choose GET IN to try again."

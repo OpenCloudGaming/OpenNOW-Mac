@@ -1,8 +1,8 @@
 import SwiftUI
 
 private enum SignInTab: String, CaseIterable, Identifiable {
-    case qrCode = "QR Code"
     case browser = "Browser"
+    case qrCode = "QR Code"
 
     var id: String { rawValue }
 }
@@ -13,7 +13,7 @@ struct SignInModal: View {
     let availableSize: CGSize
     let onClose: () -> Void
 
-    @State private var selectedTab: SignInTab = .qrCode
+    @State private var selectedTab: SignInTab = .browser
 
     private var panelWidth: CGFloat {
         max(min(520, availableSize.width - OpenNOWDesign.Spacing.pageHorizontal * 2), 280)
@@ -54,7 +54,7 @@ struct SignInModal: View {
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
         .onExitCommand(perform: onClose)
         .onAppear {
-            if selectedTab == .qrCode && viewModel.deviceCodeUserCode.isEmpty && !viewModel.isLaunchingOAuth {
+            if selectedTab == .qrCode, viewModel.deviceCodeUserCode.isEmpty, !viewModel.isRequestingDeviceCode {
                 viewModel.rememberSession = true
                 viewModel.launchDeviceCodeThroughTermsGate()
             }
@@ -88,7 +88,7 @@ struct SignInModal: View {
                 let isSelected = selectedTab == tab
                 Button {
                     selectedTab = tab
-                    if tab == .qrCode && viewModel.deviceCodeUserCode.isEmpty && !viewModel.isLaunchingOAuth {
+                    if tab == .qrCode, viewModel.deviceCodeUserCode.isEmpty, !viewModel.isRequestingDeviceCode {
                         viewModel.rememberSession = true
                         viewModel.launchDeviceCodeThroughTermsGate()
                     }
@@ -161,7 +161,41 @@ struct SignInModal: View {
 
     private var qrCodeContent: some View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
-            providerDropdownSection
+            Text("SERVICE PROVIDER")
+                .font(.uiSans(size: 11, weight: .bold))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .tracking(0.8)
+
+            OpenNOWDropdownMenu(
+                items: viewModel.providers.map { provider in
+                    OpenNOWDropdownItem(
+                        id: provider.id,
+                        title: provider.title,
+                        isSelected: provider.id == viewModel.selectedProvider.id
+                    ) {
+                        viewModel.selectProvider(provider)
+                        viewModel.rememberSession = true
+                        viewModel.launchDeviceCodeThroughTermsGate()
+                    }
+                }
+            ) {
+                HStack(spacing: 8) {
+                    Text(viewModel.selectedProvider.title)
+                        .font(.uiSans(size: 13, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.uiSans(size: 10, weight: .bold))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                }
+                .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .background(OpenNOWDesign.Fill.neutral(0.08))
+                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .contentShape(Rectangle())
+            }
 
             if !viewModel.deviceCodeUserCode.isEmpty {
                 VStack(spacing: OpenNOWDesign.Spacing.small) {
@@ -204,7 +238,7 @@ struct SignInModal: View {
                         .tracking(0.6)
                     }
                     .buttonStyle(.plain)
-                    .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+                    .disabled(viewModel.isRequestingDeviceCode || viewModel.isAuthenticating)
                 }
                 .frame(maxWidth: .infinity)
             } else {
@@ -212,55 +246,21 @@ struct SignInModal: View {
                     viewModel.rememberSession = true
                     viewModel.launchDeviceCodeThroughTermsGate()
                 } label: {
-                    Text(viewModel.isLaunchingOAuth ? "GETTING CODE..." : "GET QR CODE")
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 4) {
+                        if viewModel.isRequestingDeviceCode {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text(viewModel.isRequestingDeviceCode ? "GETTING CODE..." : "GET QR CODE")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(VendorGetInButtonStyle())
-                .disabled(viewModel.isLaunchingOAuth || viewModel.isAuthenticating)
+                .disabled(viewModel.isRequestingDeviceCode || viewModel.isAuthenticating)
             }
 
             if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                 statusMessageView
-            }
-        }
-    }
-
-    private var providerDropdownSection: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
-            Text("SERVICE PROVIDER")
-                .font(.uiSans(size: 11, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
-                .tracking(0.8)
-
-            OpenNOWDropdownMenu(
-                items: viewModel.providers.map { provider in
-                    OpenNOWDropdownItem(
-                        id: provider.id,
-                        title: provider.title,
-                        isSelected: provider.id == viewModel.selectedProvider.id
-                    ) {
-                        viewModel.selectProvider(provider)
-                        viewModel.rememberSession = true
-                        viewModel.launchDeviceCodeThroughTermsGate()
-                    }
-                }
-            ) {
-                HStack(spacing: 8) {
-                    Text(viewModel.selectedProvider.title)
-                        .font(.uiSans(size: 13, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.uiSans(size: 10, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
-                }
-                .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .background(OpenNOWDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
-                .contentShape(Rectangle())
             }
         }
     }
