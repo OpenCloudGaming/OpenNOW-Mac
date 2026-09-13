@@ -4,6 +4,16 @@ struct CatalogShowAllPage: View {
     @Bindable var viewModel: CatalogViewModel
     let onBack: () -> Void
     @State private var isSortMenuPresented = false
+    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
+
+    private var isPosterLayout: Bool {
+        (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+    }
+
+    private func gridImageURL(for game: OPNCatalogGameObject) -> URL? {
+        guard isPosterLayout else { return viewModel.optimizedImageURL(game.bestWideImageURL, width: 620) }
+        return viewModel.optimizedImageURL(game.bestPosterImageURL, width: 512)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -49,7 +59,7 @@ struct CatalogShowAllPage: View {
             }
             .animation(.easeOut(duration: 0.2), value: viewModel.showsCatalogLoadingIndicator)
             if viewModel.isLoading && viewModel.catalogGames.isEmpty {
-                CatalogGridSkeletonView()
+                CatalogGridSkeletonView(isPosterLayout: isPosterLayout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
             } else {
@@ -58,7 +68,7 @@ struct CatalogShowAllPage: View {
                     games: viewModel.catalogGames,
                     selectedGame: viewModel.selectedGame,
                     isQueuedForPatching: { viewModel.isQueuedForPatching($0) },
-                    imageURL: { viewModel.optimizedImageURL($0.bestWideImageURL, width: 620) },
+                    imageURL: { gridImageURL(for: $0) },
                     onSelect: { viewModel.toggleGameSelection($0, inSection: viewModel.selectedShowAllSection?.id ?? "") },
                     onPlay: { viewModel.launch(game: $0) },
                     onMarkOwned: { game in

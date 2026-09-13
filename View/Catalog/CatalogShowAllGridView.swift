@@ -13,6 +13,11 @@ struct CatalogShowAllGridView: NSViewRepresentable {
     let onPlay: (OPNCatalogGameObject) -> Void
     let onMarkOwned: (OPNCatalogGameObject) -> Void
     let onQueueForPatching: (OPNCatalogGameObject) -> Void
+    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
+
+    var isPosterLayout: Bool {
+        (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+    }
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -60,10 +65,12 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         collectionView.frame.size.width = width
 
         let scale = context.environment.opnUIScale
-        let scaleChanged = context.coordinator.scale != scale
+        let layoutChanged = context.coordinator.scale != scale || context.coordinator.isPosterLayout != isPosterLayout
         context.coordinator.scale = scale
+        context.coordinator.isPosterLayout = isPosterLayout
 
-        layout.minTileWidth = CatalogVendorLayout.wideTileWidth(scale: scale)
+        layout.minTileWidth = isPosterLayout ? CatalogPosterLayout.posterTileWidth(scale: scale) : CatalogVendorLayout.wideTileWidth(scale: scale)
+        layout.tileHeightRatio = isPosterLayout ? 1 / CatalogPosterLayout.aspectRatio : 9.0 / 16.0
         layout.spacing = CatalogVendorLayout.tileHorizontalMargin(scale: scale) * 2
         context.coordinator.lastViewportHeight = nsView.contentView.bounds.height
         layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: nsView.contentView.bounds.height, scale: scale)
@@ -73,12 +80,12 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         let selectedIndexChanged = layout.selectedItemIndex != selectedIndex
         layout.selectedItemIndex = selectedIndex
 
-        let needsFullReload = scaleChanged || context.coordinator.needsIdentityUpdate(for: games)
+        let needsFullReload = layoutChanged || context.coordinator.needsIdentityUpdate(for: games)
         if needsFullReload {
             let renderStart = CFAbsoluteTimeGetCurrent()
             context.coordinator.updateGameIdentities(from: games)
             collectionView.reloadData()
-            if widthChanged || scaleChanged {
+            if widthChanged || layoutChanged {
                 layout.invalidateLayout()
             }
             collectionView.layoutSubtreeIfNeeded()
@@ -147,6 +154,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     var lastWidth: CGFloat = 0
     var lastViewportHeight: CGFloat = 0
     var scale: CGFloat = 1.0
+    var isPosterLayout = false
     nonisolated(unsafe) var frameObserver: AppKitViewFrameObserver?
     private var gameCount = 0
     private var firstIdentity: String = ""
@@ -436,6 +444,8 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
     static let detailRowKind = "CatalogShowAllGridDetailRow"
 
     var minTileWidth: CGFloat = CatalogVendorLayout.wideTileWidth(scale: 1.0)
+    /// Tile height per point of width: 9/16 for the landscape tiles, 3/2 for portrait posters.
+    var tileHeightRatio: CGFloat = 9.0 / 16.0
     var spacing: CGFloat = CatalogVendorLayout.tileHorizontalMargin(scale: 1.0) * 2
     var detailRowHeight: CGFloat = CatalogVendorLayout.detailPanelMinHeight(scale: 1.0)
     var selectedItemIndex: Int?
@@ -453,19 +463,11 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
         detailRowAttributes = nil
         guard let collectionView = collectionView else { return }
         let width = collectionView.frame.width
-        let columns = max(2, Int((width + spacing) / (minTileWidth + spacing)))
-        let totalSpacing = CGFloat(max(columns - 1, 0)) * spacing
-        // Hover grows a tile about its centre, and the scroll view clips anything that leaves the
-        // grid: the top row lost the slice above it and the outer columns lost their outer edge.
-        // The grid keeps that much room around itself, sized from the growth it has to absorb.
-        let growth = CatalogShowAllLayout.tileScaleFactor - 1
-        let unpaddedItemWidth = max(width - totalSpacing, minTileWidth * 2) / CGFloat(columns)
-        let horizontalInset = ceil(unpaddedItemWidth * growth / 2)
-        let availableWidth = max(width - horizontalInset * 2, minTileWidth * 2)
-        let itemWidth = floor(max(availableWidth - totalSpacing, minTileWidth * 2) / CGFloat(columns))
-        let itemHeight = floor(itemWidth * 9 / 16)
-        let verticalInset = ceil(itemHeight * growth / 2)
-        let itemSize = NSSize(width: itemWidth, height: itemHeight)
+        let metrics = CatalogShowAllLayout.itemMetrics(forWidth: width, minTileWidth: minTileWidth, spacing: spacing, tileHeightRatio: tileHeightRatio)
+        let columns = metrics.columns
+        let horizontalInset = metrics.horizontalInset
+        let verticalInset = metrics.verticalInset
+        let itemSize = NSSize(width: metrics.itemSize.width, height: metrics.itemSize.height)
         let itemCount = collectionView.numberOfItems(inSection: 0)
 
         var x: CGFloat = horizontalInset
@@ -578,4 +580,30 @@ enum CatalogShowAllLayout {
     /// The home rails' tray token, not a second near-black of its own: the two trays sat side by
     /// side across a search and did not match.
     static let tileTray = CatalogVendorLayout.tileTray
+
+    struct ItemMetrics: Equatable {
+        let columns: Int
+        let itemSize: CGSize
+        let horizontalInset: CGFloat
+        let verticalInset: CGFloat
+    }
+
+    /// Hover grows a tile about its centre, and the scroll view clips anything that leaves the
+    /// grid, so the insets are the room that growth needs on all four sides.
+    static func itemMetrics(forWidth width: CGFloat, minTileWidth: CGFloat, spacing: CGFloat, tileHeightRatio: CGFloat) -> ItemMetrics {
+        let columns = max(2, Int((width + spacing) / (minTileWidth + spacing)))
+        let totalSpacing = CGFloat(max(columns - 1, 0)) * spacing
+        let growth = tileScaleFactor - 1
+        let unpaddedItemWidth = max(width - totalSpacing, minTileWidth * 2) / CGFloat(columns)
+        let horizontalInset = ceil(unpaddedItemWidth * growth / 2)
+        let availableWidth = max(width - horizontalInset * 2, minTileWidth * 2)
+        let itemWidth = floor(max(availableWidth - totalSpacing, minTileWidth * 2) / CGFloat(columns))
+        let itemHeight = floor(itemWidth * tileHeightRatio)
+        return ItemMetrics(
+            columns: columns,
+            itemSize: CGSize(width: itemWidth, height: itemHeight),
+            horizontalInset: horizontalInset,
+            verticalInset: ceil(itemHeight * growth / 2)
+        )
+    }
 }
