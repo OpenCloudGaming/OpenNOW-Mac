@@ -238,6 +238,9 @@ final class CatalogViewModel {
     var selectedGame: OPNCatalogGameObject?
     var selectedSectionId = ""
     var selectedVariantIndex = -1
+    /// Which entitlement row of the selected variant the user picked: nil falls back to the
+    /// variant's default row (store when owned, otherwise subscription).
+    var selectedRowIsSubscription: Bool?
     var activeStreamConfiguration: StreamLaunchConfiguration?
     var activeStreamProgress: StreamProgress?
     /// One ready alert per launch: allocation and the transport each publish a ready progress.
@@ -253,10 +256,6 @@ final class CatalogViewModel {
     var launchFlowError = ""
     var activeLaunchSession: OPNActiveStreamSessionDescriptor?
     var activeHomeSession: OPNActiveSessionObject?
-    var activeHomeSessionTitle: String {
-        guard let session = activeHomeSession else { return "" }
-        return resolveActiveHomeSessionTitle(for: session)
-    }
     var streamProfile = OPNStreamPreferenceProfile()
     var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
     /// Whether a Cloudflare relay key is stored. The token itself is never published - only whether
@@ -621,6 +620,7 @@ final class CatalogViewModel {
         selectedGame = resolvedGame
         selectedSectionId = ""
         selectedVariantIndex = resolvedGame.map { Self.preferredVariantIndex(for: $0) } ?? -1
+        selectedRowIsSubscription = nil
         launchMessage = ""
         actionMessage = ""
         if isGameInfoVisible { presentedModal = nil }
@@ -631,6 +631,7 @@ final class CatalogViewModel {
         selectedGame = resolvedGame
         selectedSectionId = sectionId
         selectedVariantIndex = Self.preferredVariantIndex(for: resolvedGame)
+        selectedRowIsSubscription = nil
         launchMessage = ""
         actionMessage = ""
         if isGameInfoVisible { presentedModal = nil }

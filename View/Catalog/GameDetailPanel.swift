@@ -86,6 +86,10 @@ struct GameDetailPanel: View {
                             .padding(.top, 9)
                         variantStatusRow(game: game)
                             .padding(.top, 13)
+                        if viewModel.platformOptions(for: game).count > 1 {
+                            variantChips(game: game)
+                                .padding(.top, 9)
+                        }
                         detailActions(game: game)
                             .padding(.top, 11)
                             .zIndex(1)
@@ -284,10 +288,11 @@ struct GameDetailPanel: View {
     }
 
     private func variantChips(game: OPNCatalogGameObject) -> some View {
-        FlowLayout(spacing: 8) {
-            ForEach(viewModel.platformOptions(for: game)) { option in
-                Button { selectVariant(at: option.variantIndex, in: game) } label: {
-                    HStack(spacing: 7) {
+        let options = viewModel.platformOptions(for: game)
+        return FlowLayout(spacing: 8 * uiScale) {
+            ForEach(options) { option in
+                Button { viewModel.focusGameStoreOption(option) } label: {
+                    HStack(spacing: 7 * uiScale) {
                         if option.hasAccess || option.isSelected {
                             Image(systemName: option.hasAccess ? "checkmark.circle.fill" : "circle.fill")
                                 .catalogFont(size: 11, weight: .bold)
@@ -296,8 +301,8 @@ struct GameDetailPanel: View {
                             .catalogFont(size: 11, weight: .bold)
                     }
                     .foregroundStyle(option.isSelected ? OpenNOWDesign.onAccent.opacity(0.88) : OpenNOWDesign.Text.secondary)
-                    .padding(.horizontal, 11)
-                    .frame(height: 32)
+                    .padding(.horizontal, 11 * uiScale)
+                    .frame(height: 32 * uiScale)
                     .background(option.isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.09))
                     .overlay { Rectangle().stroke(option.isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
@@ -306,14 +311,7 @@ struct GameDetailPanel: View {
                 .accessibilityValue(option.isSelected ? "Selected" : "")
             }
         }
-        .frame(maxWidth: 520, alignment: .leading)
-    }
-
-    private func selectVariant(at index: Int, in game: OPNCatalogGameObject) {
-        viewModel.focusGameStoreVariant(at: index)
-        guard index >= 0, index < game.variants.count else { return }
-        let variant = game.variants[index]
-        if variant.inLibrary || variant.librarySelected { viewModel.selectOwnedVariant(variant) }
+        .frame(maxWidth: 520 * uiScale, alignment: .leading)
     }
 
 }

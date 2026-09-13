@@ -675,10 +675,10 @@ extension ControllerCatalogViewModel {
         guard let catalog, let game = catalog.selectedGame else { return }
         let options = catalog.platformOptions(for: game)
         guard options.count > 1 else { return }
-        let currentIndex = catalog.selectedVariantIndex >= 0 ? catalog.selectedVariantIndex : CatalogViewModel.preferredVariantIndex(for: game)
-        let currentOptionIndex = options.firstIndex { $0.variantIndex == currentIndex } ?? 0
+        let currentOption = catalog.selectedPlatformOption(in: game)
+        let currentOptionIndex = options.firstIndex { $0.id == currentOption?.id } ?? 0
         let nextOptionIndex = min(max(currentOptionIndex + delta, 0), options.count - 1)
-        catalog.focusGameStoreVariant(at: options[nextOptionIndex].variantIndex)
+        catalog.focusGameStoreOption(options[nextOptionIndex])
     }
 
     private func confirmStorePickerStage() {
@@ -686,7 +686,7 @@ extension ControllerCatalogViewModel {
         switch catalog.ownershipFlowStage {
         case .storeSelection, .none:
             guard let option = catalog.selectedPlatformOption(in: catalog.selectedGame) else { return }
-            catalog.selectGameStoreVariant(at: option.variantIndex)
+            catalog.selectGameStoreOption(option)
         case .manualMark:
             catalog.confirmSelectedVariantOwned()
         case .success:

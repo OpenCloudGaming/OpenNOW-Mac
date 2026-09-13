@@ -104,7 +104,7 @@ extension CatalogViewModel {
     }
 
     func changeSelectedGameStore() {
-        guard let selectedGame, selectedGame.variants.count > 1 else {
+        guard let selectedGame, platformOptions(for: selectedGame).count > 1 else {
             actionMessage = "No alternate store is available."
             return
         }
@@ -129,10 +129,20 @@ extension CatalogViewModel {
     func selectGameStoreVariant(at index: Int) {
         guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
         focusGameStoreVariant(at: index)
-        guard let option = platformOptions(for: selectedGame).first(where: { $0.variantIndex == index }) else { return }
+        let variant = selectedGame.variants[index]
+        let options = platformOptions(for: selectedGame)
+        let defaultRowIsSubscription = Self.defaultRowIsSubscription(variantOwned: Self.variantIsOwned(variant, in: selectedGame), variant: variant)
+        guard let option = options.first(where: { $0.variantIndex == index && $0.isSubscription == defaultRowIsSubscription })
+                ?? options.first(where: { $0.variantIndex == index }) else { return }
+        selectGameStoreOption(option)
+    }
+
+    func selectGameStoreOption(_ option: CatalogPlatformOption) {
+        guard let selectedGame, option.variantIndex >= 0, option.variantIndex < selectedGame.variants.count else { return }
+        focusGameStoreVariant(at: option.variantIndex)
+        selectedRowIsSubscription = option.isSubscription
         if option.isOwned {
-            let variant = selectedGame.variants[index]
-            selectOwnedVariant(variant)
+            selectOwnedVariant(selectedGame.variants[option.variantIndex])
             advanceOwnershipFlow(to: .success)
             ownershipFlowMessage = ""
         } else if option.hasAccess {
@@ -147,7 +157,14 @@ extension CatalogViewModel {
 
     func focusGameStoreVariant(at index: Int) {
         guard let selectedGame, index >= 0, index < selectedGame.variants.count else { return }
+        if index != selectedVariantIndex { selectedRowIsSubscription = nil }
         selectedVariantIndex = index
+    }
+
+    /// Focuses the exact entitlement row of a variant, keeping the picker highlight on it.
+    func focusGameStoreOption(_ option: CatalogPlatformOption) {
+        focusGameStoreVariant(at: option.variantIndex)
+        selectedRowIsSubscription = option.isSubscription
     }
 
     func cycleSelectedGameStore() {
@@ -365,99 +382,176 @@ extension CatalogViewModel {
     }
 
     func platformOptions(for game: OPNCatalogGameObject?) -> [CatalogPlatformOption] {
+        Self.platformOptions(
+            for: game,
+            selectedVariantIndex: selectedVariantIndex,
+            selectedRowIsSubscription: selectedRowIsSubscription,
+            context: CatalogOptionContext(
+                accountSubscriptions: accountSubscriptions,
+                accountStores: accountStores,
+                storeDefinitions: storeDefinitions,
+                subscriptionDefinitions: subscriptionDefinitions
+            )
+        )
+    }
+
+    /// One entitlement row per playable path, mirroring the official client's store/subscription
+    /// split: a variant that is both store-listed and subscription-carrying renders as a store row
+    /// plus a subscription row. Variants without a store identity keep the single-row shape.
+    static func platformOptions(for game: OPNCatalogGameObject?, selectedVariantIndex: Int, selectedRowIsSubscription: Bool?, context: CatalogOptionContext) -> [CatalogPlatformOption] {
         guard let game else { return [] }
         let selectedIndex = selectedVariantIndex >= 0 ? selectedVariantIndex : Self.preferredVariantIndex(for: game)
-        return game.variants.enumerated().map { index, variant in
+        return game.variants.enumerated().flatMap { index, variant -> [CatalogPlatformOption] in
             let subscriptionIds = Self.visibleSubscriptionIds(for: variant)
-            let subscriptionDefinition = subscriptionDefinition(for: subscriptionIds)
-            let accountStore = subscriptionDefinition?.primaryStore.isEmpty == false ? subscriptionDefinition?.primaryStore ?? "" : variant.appStore
-            let account = accountStatus(forStore: accountStore)
-            let storeDefinition = storeDefinition(forStore: accountStore)
-            let isOwned = Self.variantIsOwned(variant, in: game)
-            let hasSubscriptionEntitlement = subscriptionIds.contains { accountHasSubscription($0) }
+            let variantOwned = Self.variantIsOwned(variant, in: game)
             let isUnavailable = Self.variantIsUnavailable(variant)
-            let isSubscription = !subscriptionIds.isEmpty
-            let title = displayName(forVariant: variant)
-            let iconURL = iconURL(forVariant: variant)
-            let canLink = account == nil && storeDefinition?.isAccountLinkingSupported == true
-            let canSync = account?.hasAccountSyncingData == true
-            return CatalogPlatformOption(
-                id: variant.id.isEmpty ? "\(index)-\(variant.appStore)-\(title)" : variant.id,
-                variantIndex: index,
-                variant: variant,
-                title: title,
-                iconURL: iconURL,
-                store: variant.appStore,
-                subscriptionIds: subscriptionIds,
-                primaryStore: accountStore,
-                isSubscription: isSubscription,
-                isOwned: isOwned,
-                hasSubscriptionEntitlement: hasSubscriptionEntitlement,
-                hasAccess: isOwned || hasSubscriptionEntitlement,
-                isSelected: selectedIndex == index,
-                isUnavailable: isUnavailable,
-                canLink: canLink,
-                canSync: canSync,
-                accountDisplayName: account?.userDisplayName ?? "",
-                status: platformStatusLabel(isOwned: isOwned, hasSubscriptionEntitlement: hasSubscriptionEntitlement, isUnavailable: isUnavailable, isSubscription: isSubscription, account: account, canLink: canLink, canSync: canSync)
-            )
+            var rows: [CatalogPlatformOption] = []
+            if !variant.appStore.isEmpty {
+                rows.append(Self.catalogOption(variant: variant, variantIndex: index, game: game, rowSubscriptionIds: [], rowIsOwned: variantOwned, rowHasSubscriptionEntitlement: false, isUnavailable: isUnavailable, selectedIndex: selectedIndex, selectedRowIsSubscription: selectedRowIsSubscription, variantOwned: variantOwned, context: context))
+            }
+            if !subscriptionIds.isEmpty {
+                rows.append(Self.catalogOption(variant: variant, variantIndex: index, game: game, rowSubscriptionIds: subscriptionIds, rowIsOwned: false, rowHasSubscriptionEntitlement: subscriptionIds.contains { Self.accountHasSubscription($0, subscriptions: context.accountSubscriptions) }, isUnavailable: isUnavailable, selectedIndex: selectedIndex, selectedRowIsSubscription: selectedRowIsSubscription, variantOwned: variantOwned, context: context))
+            }
+            if rows.isEmpty {
+                rows.append(Self.catalogOption(variant: variant, variantIndex: index, game: game, rowSubscriptionIds: [], rowIsOwned: variantOwned, rowHasSubscriptionEntitlement: false, isUnavailable: isUnavailable, selectedIndex: selectedIndex, selectedRowIsSubscription: selectedRowIsSubscription, variantOwned: variantOwned, context: context))
+            }
+            return rows
         }
     }
 
-    func displayName(forStore store: String) -> String {
-        if let definition = storeDefinitions.first(where: { $0.store.caseInsensitiveCompare(store) == .orderedSame }), !definition.label.isEmpty {
+    /// The row a variant highlights when the user has not clicked a specific entitlement row:
+    /// the store path for an owned variant, otherwise the subscription path when one exists.
+    static func defaultRowIsSubscription(variantOwned: Bool, variant: OPNCatalogGameVariantObject) -> Bool {
+        if variantOwned && !variant.appStore.isEmpty { return false }
+        return !Self.visibleSubscriptionIds(for: variant).isEmpty
+    }
+
+    private static func catalogOption(variant: OPNCatalogGameVariantObject, variantIndex: Int, game: OPNCatalogGameObject, rowSubscriptionIds: [String], rowIsOwned: Bool, rowHasSubscriptionEntitlement: Bool, isUnavailable: Bool, selectedIndex: Int, selectedRowIsSubscription: Bool?, variantOwned: Bool, context: CatalogOptionContext) -> CatalogPlatformOption {
+        let isSubscriptionRow = !rowSubscriptionIds.isEmpty
+        let subscriptionDefinition = Self.subscriptionDefinition(for: rowSubscriptionIds, definitions: context.subscriptionDefinitions)
+        let accountStore = subscriptionDefinition?.primaryStore.isEmpty == false ? subscriptionDefinition?.primaryStore ?? "" : variant.appStore
+        let account = Self.accountStatus(forStore: accountStore, accounts: context.accountStores)
+        let storeDefinition = Self.storeDefinition(forStore: accountStore, definitions: context.storeDefinitions)
+        let hasSubscriptionEntitlement = rowHasSubscriptionEntitlement
+        let hasAccess = rowIsOwned || hasSubscriptionEntitlement
+        let title = Self.displayName(forVariant: variant, subscriptionIds: rowSubscriptionIds, definitions: context.subscriptionDefinitions, storeDefinitions: context.storeDefinitions)
+        let baseId = variant.id.isEmpty ? "\(variantIndex)-\(variant.appStore)-\(title)" : variant.id
+        let idSuffix = !rowSubscriptionIds.isEmpty ? "-sub" : (variant.appStore.isEmpty ? "" : "-store")
+        let canLink = account == nil && storeDefinition?.isAccountLinkingSupported == true
+        let canSync = account?.hasAccountSyncingData == true
+        let activeRowIsSubscription = selectedRowIsSubscription ?? Self.defaultRowIsSubscription(variantOwned: variantOwned, variant: variant)
+        return CatalogPlatformOption(
+            id: baseId + idSuffix,
+            variantIndex: variantIndex,
+            variant: variant,
+            title: title,
+            iconURL: Self.iconURL(forVariant: variant, subscriptionIds: rowSubscriptionIds, definitions: context.subscriptionDefinitions),
+            store: variant.appStore,
+            subscriptionIds: rowSubscriptionIds,
+            primaryStore: accountStore,
+            isSubscription: isSubscriptionRow,
+            isOwned: rowIsOwned,
+            hasSubscriptionEntitlement: hasSubscriptionEntitlement,
+            hasAccess: hasAccess,
+            isSelected: selectedIndex == variantIndex && isSubscriptionRow == activeRowIsSubscription,
+            isUnavailable: isUnavailable,
+            canLink: canLink,
+            canSync: canSync,
+            accountDisplayName: account?.userDisplayName ?? "",
+            status: Self.platformStatusLabel(isOwned: rowIsOwned, hasSubscriptionEntitlement: hasSubscriptionEntitlement, isUnavailable: isUnavailable, isSubscription: isSubscriptionRow, account: account, canLink: canLink, canSync: canSync)
+        )
+    }
+
+    static func displayName(forStore store: String, definitions: [CatalogStoreDefinition]) -> String {
+        if let definition = definitions.first(where: { $0.store.caseInsensitiveCompare(store) == .orderedSame }), !definition.label.isEmpty {
             return definition.label
         }
         return store.isEmpty ? "Store" : store.uppercased()
     }
 
-    func displayName(forSubscription subscription: String) -> String {
-        if let definition = subscriptionDefinitions.first(where: { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }), !definition.label.isEmpty {
+    func displayName(forStore store: String) -> String {
+        Self.displayName(forStore: store, definitions: storeDefinitions)
+    }
+
+    static func displayName(forSubscription subscription: String, definitions: [CatalogSubscriptionDefinition]) -> String {
+        if let definition = definitions.first(where: { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }), !definition.label.isEmpty {
             return definition.label
         }
         return subscription.isEmpty ? "Subscription" : subscription.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
+    func displayName(forSubscription subscription: String) -> String {
+        Self.displayName(forSubscription: subscription, definitions: subscriptionDefinitions)
+    }
+
+    static func iconURL(forSubscription subscription: String, definitions: [CatalogSubscriptionDefinition]) -> String {
+        definitions.first { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }?.logoURL ?? ""
+    }
+
     func iconURL(forSubscription subscription: String) -> String {
-        subscriptionDefinitions.first { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }?.logoURL ?? ""
+        Self.iconURL(forSubscription: subscription, definitions: subscriptionDefinitions)
+    }
+
+    static func displayName(forVariant variant: OPNCatalogGameVariantObject, subscriptionIds: [String], definitions: [CatalogSubscriptionDefinition], storeDefinitions: [CatalogStoreDefinition]) -> String {
+        let subscriptionNames = subscriptionIds.map { Self.displayName(forSubscription: $0, definitions: definitions) }
+        if !subscriptionNames.isEmpty { return subscriptionNames.joined(separator: " / ") }
+        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
+        return variant.appStore.isEmpty ? "GeForce NOW" : Self.displayName(forStore: variant.appStore, definitions: storeDefinitions)
     }
 
     func displayName(forVariant variant: OPNCatalogGameVariantObject) -> String {
-        let subscriptionNames = Self.visibleSubscriptionIds(for: variant).map { displayName(forSubscription: $0) }
-        if !subscriptionNames.isEmpty { return subscriptionNames.joined(separator: " / ") }
-        if !variant.appStoreLabel.isEmpty { return variant.appStoreLabel }
-        return variant.appStore.isEmpty ? "GeForce NOW" : displayName(forStore: variant.appStore)
+        Self.displayName(forVariant: variant, subscriptionIds: Self.visibleSubscriptionIds(for: variant), definitions: subscriptionDefinitions, storeDefinitions: storeDefinitions)
     }
 
-    func iconURL(forVariant variant: OPNCatalogGameVariantObject) -> String {
-        let subscription = Self.visibleSubscriptionIds(for: variant).first ?? ""
-        let subscriptionIconURL = iconURL(forSubscription: subscription)
+    static func iconURL(forVariant variant: OPNCatalogGameVariantObject, subscriptionIds: [String], definitions: [CatalogSubscriptionDefinition]) -> String {
+        let subscription = subscriptionIds.first ?? ""
+        let subscriptionIconURL = Self.iconURL(forSubscription: subscription, definitions: definitions)
         if !subscriptionIconURL.isEmpty { return subscriptionIconURL }
         return variant.appStoreSmallImageUrl
     }
 
+    func iconURL(forVariant variant: OPNCatalogGameVariantObject) -> String {
+        Self.iconURL(forVariant: variant, subscriptionIds: Self.visibleSubscriptionIds(for: variant), definitions: subscriptionDefinitions)
+    }
+
+    static func accountStatus(forStore store: String, accounts: [CatalogStoreAccount]) -> CatalogStoreAccount? {
+        accounts.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+    }
+
     func accountStatus(forStore store: String) -> CatalogStoreAccount? {
-        accountStores.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+        Self.accountStatus(forStore: store, accounts: accountStores)
+    }
+
+    static func accountHasSubscription(_ subscription: String, subscriptions: [String]) -> Bool {
+        subscriptions.contains { $0.caseInsensitiveCompare(subscription) == .orderedSame }
     }
 
     func accountHasSubscription(_ subscription: String) -> Bool {
-        accountSubscriptions.contains { $0.caseInsensitiveCompare(subscription) == .orderedSame }
+        Self.accountHasSubscription(subscription, subscriptions: accountSubscriptions)
+    }
+
+    static func storeDefinition(forStore store: String, definitions: [CatalogStoreDefinition]) -> CatalogStoreDefinition? {
+        definitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
     }
 
     func storeDefinition(forStore store: String) -> CatalogStoreDefinition? {
-        storeDefinitions.first { $0.store.caseInsensitiveCompare(store) == .orderedSame }
+        Self.storeDefinition(forStore: store, definitions: storeDefinitions)
     }
 
-    func subscriptionDefinition(for subscriptionIds: [String]) -> CatalogSubscriptionDefinition? {
+    static func subscriptionDefinition(for subscriptionIds: [String], definitions: [CatalogSubscriptionDefinition]) -> CatalogSubscriptionDefinition? {
         for subscription in subscriptionIds {
-            if let definition = subscriptionDefinitions.first(where: { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }) {
+            if let definition = definitions.first(where: { $0.subscription.caseInsensitiveCompare(subscription) == .orderedSame }) {
                 return definition
             }
         }
         return nil
     }
 
-    func platformStatusLabel(isOwned: Bool, hasSubscriptionEntitlement: Bool, isUnavailable: Bool, isSubscription: Bool, account: CatalogStoreAccount?, canLink: Bool, canSync: Bool) -> String {
+    func subscriptionDefinition(for subscriptionIds: [String]) -> CatalogSubscriptionDefinition? {
+        Self.subscriptionDefinition(for: subscriptionIds, definitions: subscriptionDefinitions)
+    }
+
+    static func platformStatusLabel(isOwned: Bool, hasSubscriptionEntitlement: Bool, isUnavailable: Bool, isSubscription: Bool, account: CatalogStoreAccount?, canLink: Bool, canSync: Bool) -> String {
         if isOwned { return "Owned" }
         if hasSubscriptionEntitlement { return "Subscribed" }
         if isUnavailable { return "Game not found" }

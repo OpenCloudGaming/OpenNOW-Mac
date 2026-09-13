@@ -342,7 +342,7 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// Everything the row used to carry inline, now one Y press away.
     func detailMoreActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
         var actions: [ControllerDetailAction] = [.favorite]
-        if game.variants.count > 1 { actions.append(.store) }
+        if let catalog, catalog.platformOptions(for: game).count > 1 { actions.append(.store) }
         if catalog?.selectedVariant(in: game) != nil { actions.append(.ownership) }
         actions.append(contentsOf: [.share, .shortcut, .visitStore])
         return actions

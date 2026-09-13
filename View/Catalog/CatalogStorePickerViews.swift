@@ -211,7 +211,7 @@ struct CatalogStorePickerOverlay: View {
                     isSelected: option.isSelected,
                     uiScale: uiScale
                 ) {
-                    viewModel.selectGameStoreVariant(at: option.variantIndex)
+                    viewModel.selectGameStoreOption(option)
                 }
             }
         }
