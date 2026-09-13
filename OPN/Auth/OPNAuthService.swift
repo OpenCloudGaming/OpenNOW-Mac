@@ -46,9 +46,6 @@ public final class OPNAuthService: @unchecked Sendable {
     private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
     let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
     let starfleetService: StarfleetService<StarfleetURLSessionTransport>
-    /// Drives only the device-code login. The device-authorization endpoint rejects the desktop
-    /// browser client, so this service presents the Steam Deck identity instead of the `.gfnPC`
-    /// one used everywhere else. The session it produces is handed to `starfleetService`.
     let deviceFlowStarfleetService: StarfleetService<StarfleetURLSessionTransport>
     private let statusObservationTask: Task<Void, Never>
 

@@ -10,10 +10,6 @@ public enum Starfleet: Sendable {
     public static let defaultUserAgent = GFNClientMetadata.nativeUserAgent
     public static let oauthScope = "openid consent email tk_client age"
 
-    // The device-authorization flow is only accepted for the Steam Deck console client. The
-    // desktop browser client id is rejected for `/device/authorize`, so the device flow presents
-    // itself as a Steam Deck: its client id, user agent, and the `nv-*` device identity headers
-    // below. This is what the desktop client has always done.
     public static let deviceFlowClientId = "q61ddeJrVt7O90Nl-P-N7I36yctih4Ml6FyXLrb6j-U"
     public static let deviceFlowOrigin = "https://play.geforcenow.com"
     public static let deviceFlowReferer = "https://play.geforcenow.com/"
@@ -101,9 +97,6 @@ public struct StarfleetOAuthConfiguration: Equatable, Sendable {
 
     public static let gfnPC = StarfleetOAuthConfiguration()
 
-    /// The identity the device-authorization flow presents to the vendor. Shares every endpoint
-    /// with `.gfnPC` but signs in as the Steam Deck console client, which is the only client the
-    /// device flow will serve.
     public static let steamDeck = StarfleetOAuthConfiguration(
         clientId: Starfleet.deviceFlowClientId,
         userAgent: Starfleet.deviceFlowUserAgent,
