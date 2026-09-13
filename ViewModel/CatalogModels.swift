@@ -111,6 +111,15 @@ struct CatalogPlatformOption: Identifiable {
     var accountStore: String { primaryStore.isEmpty ? store : primaryStore }
 }
 
+/// Account and definition state the option builder resolves store/subscription rows against.
+/// A snapshot of the view model's catalog-account state, so the builder stays a pure static.
+struct CatalogOptionContext {
+    var accountSubscriptions: [String] = []
+    var accountStores: [CatalogStoreAccount] = []
+    var storeDefinitions: [CatalogStoreDefinition] = []
+    var subscriptionDefinitions: [CatalogSubscriptionDefinition] = []
+}
+
 struct CatalogPlaytimeStatistics: Codable, Equatable {
     private static let storagePrefix = "OpenNOW.Catalog.PlaytimeStatistics"
 

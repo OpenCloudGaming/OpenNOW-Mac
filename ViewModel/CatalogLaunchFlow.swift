@@ -280,6 +280,11 @@ extension CatalogViewModel {
         }
     }
 
+    var activeHomeSessionTitle: String {
+        guard let session = activeHomeSession else { return "" }
+        return resolveActiveHomeSessionTitle(for: session)
+    }
+
     func resolveActiveHomeSessionTitle(for session: OPNActiveSessionObject) -> String {
         guard session.appId > 0 else { return "Current Stream" }
         let applicationID = String(session.appId)
