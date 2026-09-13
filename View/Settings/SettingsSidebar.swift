@@ -87,7 +87,7 @@ enum SettingsNewBadges {
         switch row {
         case .surroundSound: .audio
         case .sessionReadyAction, .steamBigPictureMode: .general
-        case .homeLayout: .theme
+        case .homeLayout, .tileDensity, .tileTitles, .reduceMotion: .theme
         }
     }
 

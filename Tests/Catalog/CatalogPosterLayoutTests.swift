@@ -32,6 +32,24 @@ import Testing
     #expect(CatalogPosterLayout.tileScaleFactor <= slotWidth / tileWidth)
 }
 
+@Test func aPosterTileKeepsItsShapeAcrossEveryTileDensity() {
+    for density: CGFloat in [0.82, 1.0, 1.22] {
+        let width = CatalogPosterLayout.posterTileWidth(scale: 1.0, density: density)
+        let height = CatalogPosterLayout.posterTileHeight(scale: 1.0, density: density)
+        #expect(abs(height - width * 1.5) < 0.5)
+    }
+}
+
+@Test func aDenserPosterRowStillReservesBothMarginsUnscaled() {
+    for density: CGFloat in [0.82, 1.0, 1.22] {
+        let rowHeight = CatalogPosterLayout.tileRowHeight(scale: 1, density: density)
+        let tileHeight = CatalogPosterLayout.posterTileHeight(scale: 1, density: density)
+        let topMargin = CatalogPosterLayout.tileTopMargin(scale: 1)
+        let bottomMargin = CatalogPosterLayout.tileBottomMargin(scale: 1)
+        #expect(rowHeight == tileHeight + topMargin + bottomMargin)
+    }
+}
+
 @Test func aRailNeverReportsFewerThanOneColumnAndNeverShrinksAsTheWindowGrows() {
     #expect(CatalogPosterLayout.columnCount(forWidth: 0, scale: 1.0) == 1)
     #expect(CatalogPosterLayout.columnCount(forWidth: 320, scale: 1.0) >= 1)

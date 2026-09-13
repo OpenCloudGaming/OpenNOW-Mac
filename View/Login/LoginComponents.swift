@@ -168,11 +168,16 @@ struct VendorIndeterminateProgressBar: View {
 }
 
 struct GFNHeroArtwork: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         GeometryReader { proxy in
-            if reduceMotion {
+            if isMotionReduced {
                 artwork(proxy: proxy, motionTime: 0, isAnimated: false)
             } else {
                 TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.ambientFrameInterval)) { timeline in

@@ -164,6 +164,13 @@ enum OpenNOWDesign {
         /// paired with `opnTransition` so nothing travels or scales.
         static let reduced = Animation.easeInOut(duration: 0.12)
 
+        /// The one place "is motion reduced right now" gets decided. The in-app switch only ever
+        /// adds to the system setting, so a reader who turned on macOS Reduce Motion never gets
+        /// animation back because the in-app preference happens to be off.
+        static func isMotionReduced(system isSystemReduceMotionEnabled: Bool, preference isReduceMotionPreferenceEnabled: Bool) -> Bool {
+            isSystemReduceMotionEnabled || isReduceMotionPreferenceEnabled
+        }
+
         /// Per-item delay for staggered appearance, and the index it stops growing at. Without the
         /// cap a 400-tile grid would ripple for ten seconds.
         static let stagger: TimeInterval = 0.028
@@ -242,19 +249,29 @@ extension View {
 private struct OpenNOWMotionModifier<V: Equatable>: ViewModifier {
     let animation: Animation
     let value: V
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     func body(content: Content) -> some View {
-        content.animation(reduceMotion ? OpenNOWDesign.Motion.reduced : animation, value: value)
+        content.animation(isMotionReduced ? OpenNOWDesign.Motion.reduced : animation, value: value)
     }
 }
 
 private struct OpenNOWTransitionModifier: ViewModifier {
     let transition: AnyTransition
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     func body(content: Content) -> some View {
-        content.transition(reduceMotion ? .opacity : transition)
+        content.transition(isMotionReduced ? .opacity : transition)
     }
 }
 
@@ -262,10 +279,15 @@ private struct OpenNOWHoverScaleModifier: ViewModifier {
     let isActive: Bool
     let factor: CGFloat
     let anchor: UnitPoint
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     func body(content: Content) -> some View {
-        content.scaleEffect(reduceMotion || !isActive ? 1 : factor, anchor: anchor)
+        content.scaleEffect(isMotionReduced || !isActive ? 1 : factor, anchor: anchor)
     }
 }
 
@@ -545,5 +567,18 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
         if let runLoopObserver {
             CFRunLoopObserverInvalidate(runLoopObserver)
         }
+    }
+}
+
+/// Tile-only size multiplier for the Tile Density preference. Kept separate from `opnUIScale`,
+/// which scales the whole interface, so the two settings stay independent levers.
+private struct OPNTileDensityKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1.0
+}
+
+extension EnvironmentValues {
+    var opnTileDensity: CGFloat {
+        get { self[OPNTileDensityKey.self] }
+        set { self[OPNTileDensityKey.self] = newValue }
     }
 }

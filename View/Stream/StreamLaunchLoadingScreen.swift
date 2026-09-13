@@ -41,7 +41,12 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     let cancelAction: (() -> Void)?
     private let accessory: Accessory
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     init(title: String,
          stepIndex: Int,
@@ -174,7 +179,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                     stageWord: plateWord,
                     width: adWidth,
                     height: compact ? 64 : 84,
-                    reduceMotion: reduceMotion
+                    reduceMotion: isMotionReduced
                 )
             }
         }

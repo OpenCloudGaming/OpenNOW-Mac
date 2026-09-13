@@ -14,13 +14,18 @@ struct CatalogContentView: View {
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
     @Environment(\.opnUIScale) private var uiScale
     @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     /// Seconds between hero rotations. Driven by a `.task` loop rather than a `Timer.publish`
     /// stored on this struct: the struct is rebuilt on every re-render, which restarts a stored
     /// publisher's interval before it ever fires.
     private static let heroRotationInterval = Duration.seconds(5)
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         let heroes = heroGames
@@ -200,7 +205,7 @@ struct CatalogContentView: View {
                 .task {
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.heroRotationInterval)
-                        guard !Task.isCancelled, isActive, !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { continue }
+                        guard !Task.isCancelled, isActive, !isMotionReduced, heroAutoScrollEnabled, heroes.count > 1 else { continue }
                         withAnimation(.easeInOut(duration: 0.2)) {
                             heroIndex = (heroIndex + 1) % heroes.count
                         }

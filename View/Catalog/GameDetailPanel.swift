@@ -14,12 +14,17 @@ struct GameDetailPanel: View {
     @State var isMoreInfoHovering = false
     @State var isHovering = false
     @State var showsActionsMenu = false
-    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.accessibilityReduceMotion) var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     /// Seconds between detail-image rotations. A `.task` loop, not a stored `Timer.publish`: this
     /// struct is rebuilt on every re-render, and a stored publisher's interval restarts with it.
     private static let imageRotationInterval = Duration.seconds(5)
     @Environment(\.opnUIScale) var uiScale
     @Environment(\.displayScale) private var displayScale
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         if let game = viewModel.selectedGame {
@@ -158,7 +163,7 @@ struct GameDetailPanel: View {
             .task(id: game.catalogIdentity) {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: Self.imageRotationInterval)
-                    guard !Task.isCancelled, !reduceMotion, !isHovering, game.detailImageURLs.count > 1 else { continue }
+                    guard !Task.isCancelled, !isMotionReduced, !isHovering, game.detailImageURLs.count > 1 else { continue }
                     moveImage(delta: 1, count: game.detailImageURLs.count)
                 }
             }

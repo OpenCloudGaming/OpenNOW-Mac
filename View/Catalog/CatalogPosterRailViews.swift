@@ -14,6 +14,7 @@ struct CatalogPosterRailView: View {
     @State private var isRailHovering = false
     @State private var hoveredTileIdentity: String?
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     private var games: [OPNCatalogGameObject] {
         var visibleGames = section.visibleGames(expanded: false)
@@ -25,7 +26,7 @@ struct CatalogPosterRailView: View {
         return visibleGames
     }
     private var canShowAll: Bool { section.canLoadFullList }
-    private var columnCount: Int { CatalogPosterLayout.columnCount(forWidth: availableWidth, scale: uiScale) }
+    private var columnCount: Int { CatalogPosterLayout.columnCount(forWidth: availableWidth, scale: uiScale, density: tileDensity) }
 
     var body: some View {
         if section.isPlaceholder {
@@ -93,7 +94,7 @@ struct CatalogPosterRailView: View {
                                 CatalogPosterSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
-                        .frame(height: CatalogPosterLayout.tileRowHeight(scale: uiScale))
+                        .frame(height: CatalogPosterLayout.tileRowHeight(scale: uiScale, density: tileDensity))
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                         .padding(.bottom, 4 * uiScale)
                     }

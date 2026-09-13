@@ -98,6 +98,9 @@ enum SettingsSearchIndex {
 
     private static let themeEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Interface Scale", .theme, "interface", keywords: ["ui", "size", "zoom", "text size", "5k"]),
+        SettingsSearchEntry("Tile Density", .theme, "tiles", keywords: ["size", "compact", "large", "comfortable", "tiles", "grid", "spacing", "density"]),
+        SettingsSearchEntry("Tile Titles", .theme, "tiles", keywords: ["name", "label", "caption", "hover", "always", "never", "art"]),
+        SettingsSearchEntry("Reduce Motion", .theme, "motion", keywords: ["animation", "still", "accessibility", "hover", "zoom", "parallax", "reduce"]),
         SettingsSearchEntry("Home Layout", .theme, "home-layout", keywords: ["poster", "box art", "classic", "portrait", "tiles", "carousel", "hero", "banner", "grid", "theme"]),
     ]
 

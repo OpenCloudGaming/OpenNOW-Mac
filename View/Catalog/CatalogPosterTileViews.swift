@@ -19,6 +19,12 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
     var onHoverChanged: ((Bool) -> Void)?
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
+    @AppStorage(OpenNOWThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OpenNOWThemePreferences.TileTitleVisibility.onHover.rawValue
+
+    private var tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility {
+        OpenNOWThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
+    }
 
     static func == (lhs: CatalogPosterTile, rhs: CatalogPosterTile) -> Bool {
         lhs.game.catalogIdentity == rhs.game.catalogIdentity &&
@@ -29,8 +35,8 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
         lhs.isResumableSession == rhs.isResumableSession
     }
 
-    private var posterWidth: CGFloat { CatalogPosterLayout.posterTileWidth(scale: uiScale) }
-    private var posterHeight: CGFloat { CatalogPosterLayout.posterTileHeight(scale: uiScale) }
+    private var posterWidth: CGFloat { CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity) }
+    private var posterHeight: CGFloat { CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity) }
 
     var body: some View {
         CatalogHoverTracker(onHover: { isHovering = $0; onHoverChanged?($0) }) {
@@ -115,7 +121,7 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
     private var tileContent: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                let isActive = isHovering || isSelected
+                let showsTitleTray = OpenNOWThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 512)
                     .frame(width: posterWidth, height: posterHeight)
                     .clipped()
@@ -128,8 +134,10 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
                     .clipped()
                     .allowsHitTesting(false)
                 }
-                if isActive {
+                if isHovering || isSelected {
                     Color.black.opacity(0.50)
+                }
+                if showsTitleTray {
                     LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
                 }
                 if let badge = game.cardBadgeLabel {
@@ -140,7 +148,7 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
                         .padding(8)
                         .frame(width: posterWidth, height: posterHeight, alignment: .topTrailing)
                 }
-                if isActive {
+                if showsTitleTray {
                     VStack {
                         Spacer(minLength: 0)
                         HStack(spacing: 8) {
@@ -172,7 +180,7 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
         .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))
         .padding(.top, CatalogPosterLayout.tileTopMargin(scale: uiScale))
         .padding(.bottom, CatalogPosterLayout.tileBottomMargin(scale: uiScale))
-        .frame(width: posterWidth + CatalogPosterLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogPosterLayout.tileRowHeight(scale: uiScale), alignment: .top)
+        .frame(width: posterWidth + CatalogPosterLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogPosterLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
         .contentShape(Rectangle())
     }
 }
@@ -182,6 +190,7 @@ struct CatalogPosterSeeMoreTile: View {
     let action: () -> Void
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     var body: some View {
         Button(action: action) {
@@ -193,7 +202,7 @@ struct CatalogPosterSeeMoreTile: View {
                     .catalogFont(size: 16, weight: .medium)
                     .foregroundStyle(.white.opacity(0.88))
             }
-            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale), height: CatalogPosterLayout.posterTileHeight(scale: uiScale))
+            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
             .background(OpenNOWDesign.Surface.tileTray)
             .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
@@ -201,7 +210,7 @@ struct CatalogPosterSeeMoreTile: View {
             .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogPosterLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogPosterLayout.tileBottomMargin(scale: uiScale))
-            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale) + CatalogPosterLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogPosterLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity) + CatalogPosterLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogPosterLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)
@@ -216,12 +225,13 @@ struct CatalogPosterActionTile: View {
     let action: () -> Void
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
-                    .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale), height: CatalogPosterLayout.posterTileHeight(scale: uiScale))
+                    .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.84)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 5) {
@@ -246,14 +256,14 @@ struct CatalogPosterActionTile: View {
                 }
                 .padding(14)
             }
-            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale), height: CatalogPosterLayout.posterTileHeight(scale: uiScale))
+            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
             .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogPosterLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogPosterLayout.tileBottomMargin(scale: uiScale))
-            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale) + CatalogPosterLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogPosterLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity) + CatalogPosterLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogPosterLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
@@ -269,7 +279,12 @@ struct CatalogPosterActionTile: View {
 /// Portrait twin of `GameTileResumableArrowSweep` in CatalogGameTileViews.swift, duplicated rather
 /// than shared: the original is file-scoped `private` there and that file is out of this stage's scope.
 private struct CatalogPosterResumableArrowSweep: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     private enum Phase: CaseIterable {
         case start, sweep, hold
@@ -278,7 +293,7 @@ private struct CatalogPosterResumableArrowSweep: View {
     var body: some View {
         GeometryReader { proxy in
             let arrowWidth = proxy.size.height * CatalogPosterResumableArrowShape.aspectRatio
-            if reduceMotion {
+            if isMotionReduced {
                 Color.clear
             } else {
                 PhaseAnimator(Phase.allCases) { phase in

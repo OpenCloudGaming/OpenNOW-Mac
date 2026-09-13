@@ -31,6 +31,22 @@ private let posterRatio: CGFloat = 1 / CatalogPosterLayout.aspectRatio
     }
 }
 
+@Test func aDenserTileDensityYieldsAtLeastAsManyShowAllColumns() {
+    // The grid never reads the density enum itself - the representable folds it into the
+    // `minTileWidth` it hands the layout, so a smaller compact tile is what this exercises.
+    let compactMinWidth = CatalogPosterLayout.posterTileWidth(scale: 1.0, density: 0.82)
+    let comfortableMinWidth = CatalogPosterLayout.posterTileWidth(scale: 1.0, density: 1.0)
+    let largeMinWidth = CatalogPosterLayout.posterTileWidth(scale: 1.0, density: 1.22)
+
+    for width in [900.0, 1440.0, 2560.0, 5120.0] as [CGFloat] {
+        let compact = CatalogShowAllLayout.itemMetrics(forWidth: width, minTileWidth: compactMinWidth, spacing: 16, tileHeightRatio: posterRatio)
+        let comfortable = CatalogShowAllLayout.itemMetrics(forWidth: width, minTileWidth: comfortableMinWidth, spacing: 16, tileHeightRatio: posterRatio)
+        let large = CatalogShowAllLayout.itemMetrics(forWidth: width, minTileWidth: largeMinWidth, spacing: 16, tileHeightRatio: posterRatio)
+        #expect(compact.columns >= comfortable.columns)
+        #expect(comfortable.columns >= large.columns)
+    }
+}
+
 @Test func theInsetsLeaveRoomForEveryPointAHoveredTileGrowsBy() {
     let metrics = CatalogShowAllLayout.itemMetrics(forWidth: 1600, minTileWidth: 208, spacing: 16, tileHeightRatio: posterRatio)
     let growth = CatalogShowAllLayout.tileScaleFactor - 1

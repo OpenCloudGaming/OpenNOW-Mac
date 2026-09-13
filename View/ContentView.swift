@@ -14,6 +14,11 @@ struct ContentView: View {
     /// notification observer that used to be subscribed from inside `body`.
     @StateObject private var root = AppRootViewModel()
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
+
+    private var tileDensity: CGFloat {
+        (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
+    }
 
     var body: some View {
         ZStack {
@@ -48,6 +53,7 @@ struct ContentView: View {
             .background(WindowTitleConfigurator(title: root.windowTitle))
             .background(OpenNOWInterfaceScaleDensityBooster(scale: uiScale))
             .environment(\.opnUIScale, uiScale)
+            .environment(\.opnTileDensity, tileDensity)
             .onDisappear { root.unbind() }
             // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`
             // before it calls `onAppear`, so the two would race.

@@ -43,14 +43,19 @@ import SwiftUI
 /// Falls back to a static translucent block when Reduce Motion is enabled.
 struct SkeletonBlock: View {
     var cornerRadius: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @State private var isHoldingShimmerClock = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(Color.white.opacity(0.06))
             .overlay {
-                if !reduceMotion {
+                if !isMotionReduced {
                     GeometryReader { geo in
                         let width = max(geo.size.width, 1)
                         let bandWidth = width * 0.55
@@ -71,7 +76,7 @@ struct SkeletonBlock: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .onAppear {
-                guard !reduceMotion else { return }
+                guard !isMotionReduced else { return }
                 isHoldingShimmerClock = true
                 CatalogShimmerClock.shared.retain()
             }
@@ -97,16 +102,19 @@ struct CatalogRailSkeletonView: View {
     var tileCount = 6
     var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     private var tileSize: CGSize {
         guard isPosterLayout else {
-            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
         }
-        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale), height: CatalogPosterLayout.posterTileHeight(scale: uiScale))
+        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
     }
 
     private var rowHeight: CGFloat {
-        isPosterLayout ? CatalogPosterLayout.tileRowHeight(scale: uiScale) : CatalogVendorLayout.tileRowHeight(scale: uiScale)
+        isPosterLayout
+            ? CatalogPosterLayout.tileRowHeight(scale: uiScale, density: tileDensity)
+            : CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity)
     }
 
     /// Top and bottom margins are equal in both layouts, so this is the one true source for both -
@@ -158,18 +166,19 @@ struct CatalogGridSkeletonView: View {
     var isScrollable = true
     var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     private var tileSize: CGSize {
         guard isPosterLayout else {
-            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
         }
-        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale), height: CatalogPosterLayout.posterTileHeight(scale: uiScale))
+        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
     }
 
     private var adaptiveMinimum: CGFloat {
         isPosterLayout
-            ? CatalogPosterLayout.slotWidth(scale: uiScale)
-            : CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
+            ? CatalogPosterLayout.slotWidth(scale: uiScale, density: tileDensity)
+            : CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
     }
 
     private var columns: [GridItem] {

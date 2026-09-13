@@ -14,9 +14,14 @@ struct CatalogShowAllGridView: NSViewRepresentable {
     let onMarkOwned: (OPNCatalogGameObject) -> Void
     let onQueueForPatching: (OPNCatalogGameObject) -> Void
     @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
+    @AppStorage(OpenNOWThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OpenNOWThemePreferences.TileTitleVisibility.onHover.rawValue
 
     var isPosterLayout: Bool {
         (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+    }
+
+    var tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility {
+        OpenNOWThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -64,23 +69,16 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         context.coordinator.lastWidth = width
         collectionView.frame.size.width = width
 
-        let scale = context.environment.opnUIScale
-        let layoutChanged = context.coordinator.scale != scale || context.coordinator.isPosterLayout != isPosterLayout
-        context.coordinator.scale = scale
-        context.coordinator.isPosterLayout = isPosterLayout
-
-        layout.minTileWidth = isPosterLayout ? CatalogPosterLayout.posterTileWidth(scale: scale) : CatalogVendorLayout.wideTileWidth(scale: scale)
-        layout.tileHeightRatio = isPosterLayout ? 1 / CatalogPosterLayout.aspectRatio : 9.0 / 16.0
-        layout.spacing = CatalogVendorLayout.tileHorizontalMargin(scale: scale) * 2
-        context.coordinator.lastViewportHeight = nsView.contentView.bounds.height
-        layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: nsView.contentView.bounds.height, scale: scale)
+        let sizing = applySizing(to: layout, coordinator: context.coordinator, context: context, width: width, viewportHeight: nsView.contentView.bounds.height)
+        let layoutChanged = sizing.isLayoutChanged
+        let tileTitleVisibilityChanged = sizing.isTileTitleVisibilityChanged
 
         let selectedIdentity = selectedGame?.catalogIdentity
         let selectedIndex = games.firstIndex { $0.catalogIdentity == selectedIdentity }
         let selectedIndexChanged = layout.selectedItemIndex != selectedIndex
         layout.selectedItemIndex = selectedIndex
 
-        let needsFullReload = layoutChanged || context.coordinator.needsIdentityUpdate(for: games)
+        let needsFullReload = layoutChanged || tileTitleVisibilityChanged || context.coordinator.needsIdentityUpdate(for: games)
         if needsFullReload {
             let renderStart = CFAbsoluteTimeGetCurrent()
             context.coordinator.updateGameIdentities(from: games)
@@ -124,6 +122,36 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         collectionView.frame.size.height = contentSize.height
     }
 
+    /// Pushes the sizing the theme asks for onto the layout, and reports what changed: geometry has
+    /// to be re-laid out, while a title-visibility change only has to rebuild the cells.
+    private func applySizing(
+        to layout: CatalogShowAllGridLayout,
+        coordinator: CatalogShowAllGridCoordinator,
+        context: Context,
+        width: CGFloat,
+        viewportHeight: CGFloat
+    ) -> (isLayoutChanged: Bool, isTileTitleVisibilityChanged: Bool) {
+        let scale = context.environment.opnUIScale
+        let density = context.environment.opnTileDensity
+        let isLayoutChanged = coordinator.scale != scale
+            || coordinator.density != density
+            || coordinator.isPosterLayout != isPosterLayout
+        let isTileTitleVisibilityChanged = coordinator.tileTitleVisibility != tileTitleVisibility
+        coordinator.scale = scale
+        coordinator.density = density
+        coordinator.isPosterLayout = isPosterLayout
+        coordinator.tileTitleVisibility = tileTitleVisibility
+        coordinator.lastViewportHeight = viewportHeight
+
+        layout.minTileWidth = isPosterLayout
+            ? CatalogPosterLayout.posterTileWidth(scale: scale, density: density)
+            : CatalogVendorLayout.wideTileWidth(scale: scale, density: density)
+        layout.tileHeightRatio = isPosterLayout ? 1 / CatalogPosterLayout.aspectRatio : 9.0 / 16.0
+        layout.spacing = CatalogVendorLayout.tileHorizontalMargin(scale: scale) * 2
+        layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: viewportHeight, scale: scale)
+        return (isLayoutChanged, isTileTitleVisibilityChanged)
+    }
+
     /// Rebuilds the tiles whose selected state changed, so the chevron, the title weight and the
     /// accent underline follow the panel. Shared by both update paths.
     private func reloadSelectionAffectedItems(collectionView: NSCollectionView, coordinator: Coordinator, selectedIdentity: String?) {
@@ -154,7 +182,9 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     var lastWidth: CGFloat = 0
     var lastViewportHeight: CGFloat = 0
     var scale: CGFloat = 1.0
+    var density: CGFloat = 1.0
     var isPosterLayout = false
+    var tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility = .onHover
     nonisolated(unsafe) var frameObserver: AppKitViewFrameObserver?
     private var gameCount = 0
     private var firstIdentity: String = ""
@@ -245,6 +275,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
             isSelected: selectedIdentity == game.catalogIdentity,
             isQueuedForPatching: parent.isQueuedForPatching(game),
             scale: scale,
+            tileTitleVisibility: tileTitleVisibility,
             onSelect: { [weak self] in self?.parent.onSelect(game) },
             onPlay: { [weak self] in self?.parent.onPlay(game) },
             onMarkOwned: { [weak self] in self?.parent.onMarkOwned(game) },
@@ -291,6 +322,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
         isSelected: Bool,
         isQueuedForPatching: Bool,
         scale: CGFloat,
+        tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility,
         onSelect: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onMarkOwned: @escaping () -> Void,
@@ -302,6 +334,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
                 imageURL: imageURL,
                 isSelected: isSelected,
                 isQueuedForPatching: isQueuedForPatching,
+                tileTitleVisibility: tileTitleVisibility,
                 onSelect: onSelect,
                 onPlay: onPlay,
                 onMarkOwned: onMarkOwned,
@@ -331,6 +364,7 @@ struct CatalogShowAllGridTile: View {
     let imageURL: URL?
     let isSelected: Bool
     let isQueuedForPatching: Bool
+    let tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility
     let onSelect: () -> Void
     let onPlay: () -> Void
     let onMarkOwned: () -> Void
@@ -400,17 +434,19 @@ struct CatalogShowAllGridTile: View {
 
     private var tileContent: some View {
         ZStack(alignment: .topLeading) {
-            let isActive = isHovering || isSelected
+            let showsTitleTray = OpenNOWThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
             CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                 .clipped()
-            if isActive {
+            if isHovering || isSelected {
                 Color.black.opacity(0.50)
+            }
+            if showsTitleTray {
                 LinearGradient(colors: [CatalogShowAllLayout.tileTray, CatalogShowAllLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
             }
             if let badge = game.cardBadgeLabel {
                 CatalogGameCardBadge(label: badge)
             }
-            if isActive {
+            if showsTitleTray {
                 VStack {
                     Spacer(minLength: 0)
                     HStack(spacing: 8) {

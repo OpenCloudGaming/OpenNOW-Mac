@@ -45,13 +45,15 @@ enum CatalogVendorLayout {
     /// margin only above, a hovered tile grew ~13pt past the bottom of its own frame and closed the
     /// gap to the row below to a few points, while the top still looked right.
     static func tileBottomMargin(scale: CGFloat) -> CGFloat { baseTileTopMargin * scale }
-    /// Height one tile claims in a rail, both margins included.
-    static func tileRowHeight(scale: CGFloat) -> CGFloat {
-        wideTileHeight(scale: scale) + tileTopMargin(scale: scale) + tileBottomMargin(scale: scale)
+    /// Height one tile claims in a rail, both margins included. Density scales the tile alone: the
+    /// margins are Interface Scale's territory, so a denser page packs tiles closer without also
+    /// shrinking the gutters around them.
+    static func tileRowHeight(scale: CGFloat, density: CGFloat = 1.0) -> CGFloat {
+        wideTileHeight(scale: scale, density: density) + tileTopMargin(scale: scale) + tileBottomMargin(scale: scale)
     }
     static func cardTrayHeight(scale: CGFloat) -> CGFloat { baseCardTrayHeight * scale }
-    static func wideTileWidth(scale: CGFloat) -> CGFloat { baseWideTileWidth * scale }
-    static func wideTileHeight(scale: CGFloat) -> CGFloat { baseWideTileHeight * scale }
+    static func wideTileWidth(scale: CGFloat, density: CGFloat = 1.0) -> CGFloat { baseWideTileWidth * scale * density }
+    static func wideTileHeight(scale: CGFloat, density: CGFloat = 1.0) -> CGFloat { baseWideTileHeight * scale * density }
     static func heroFallbackHeight(scale: CGFloat) -> CGFloat { baseHeroFallbackHeight * scale }
     static func heroMaxHeight(scale: CGFloat) -> CGFloat { baseHeroMaxHeight * scale }
     static func detailPanelMinHeight(scale: CGFloat) -> CGFloat { baseDetailPanelMinHeight * scale }
@@ -141,6 +143,7 @@ struct CatalogView: View {
 
     @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -152,6 +155,10 @@ struct CatalogView: View {
     }
 
     private var isCatalogPageActive: Bool { viewModel.selectedMainPage == .games }
+
+    private var tileDensity: CGFloat {
+        (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
+    }
 
     init(
         account: LoginAccount,
@@ -273,6 +280,7 @@ struct CatalogView: View {
                 }
                 .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)
+                .environment(\.opnTileDensity, tileDensity)
             }
 
             if viewModel.isStreamLaunchLoadingVisible {

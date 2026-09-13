@@ -20,6 +20,7 @@ struct CatalogRailView: View {
     /// Which tile the pointer is on, so the row can raise it above the tiles drawn after it.
     @State private var hoveredTileIdentity: String?
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     private var games: [OPNCatalogGameObject] {
         var visibleGames = section.visibleGames(expanded: false)
@@ -109,7 +110,7 @@ struct CatalogRailView: View {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
-                        .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale))
+                        .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity))
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                         .padding(.bottom, 4 * uiScale)
                     }
@@ -178,11 +179,12 @@ struct CatalogDestinationGridView: View {
     let section: CatalogSectionModel
     var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     private var columns: [GridItem] {
         let minimum = isPosterLayout
-            ? CatalogPosterLayout.slotWidth(scale: uiScale)
-            : CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
+            ? CatalogPosterLayout.slotWidth(scale: uiScale, density: tileDensity)
+            : CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
         return [GridItem(.adaptive(minimum: minimum), spacing: 4 * uiScale, alignment: .top)]
     }
 
@@ -300,6 +302,7 @@ struct CatalogSeeMoreTile: View {
     let action: () -> Void
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     var body: some View {
         Button(action: action) {
@@ -311,7 +314,7 @@ struct CatalogSeeMoreTile: View {
                     .catalogFont(size: 16, weight: .medium)
                     .foregroundStyle(.white.opacity(0.88))
             }
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
             .background(Color(red: 43 / 255, green: 43 / 255, blue: 43 / 255))
             .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
@@ -319,7 +322,7 @@ struct CatalogSeeMoreTile: View {
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)
@@ -334,12 +337,13 @@ struct CatalogPanelActionTile: View {
     let action: () -> Void
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
 
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomLeading) {
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                     .clipped()
                 LinearGradient(colors: [.clear, .black.opacity(0.84)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 5) {
@@ -364,14 +368,14 @@ struct CatalogPanelActionTile: View {
                 }
                 .padding(14)
             }
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
             .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
-            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }

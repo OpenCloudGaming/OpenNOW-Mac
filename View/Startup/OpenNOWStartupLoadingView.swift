@@ -19,9 +19,14 @@ enum OpenNOWStartupAnimation {
 struct OpenNOWStartupLoadingView: View {
     var duration: TimeInterval = OpenNOWStartupAnimation.duration
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @Environment(\.opnUIScale) private var uiScale
     @State private var clock = OpenNOWStartupClock()
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -35,7 +40,7 @@ struct OpenNOWStartupLoadingView: View {
                     progress: startupClamp(elapsed / duration),
                     elapsed: elapsed,
                     duration: duration,
-                    reduceMotion: reduceMotion
+                    reduceMotion: isMotionReduced
                 )
 
                 ZStack {
