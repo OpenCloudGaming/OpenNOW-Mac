@@ -52,3 +52,22 @@ import Testing
         #expect(brightness(of: OpenNOWDesign.Fill.neutral(0.5)) < darkFill)
     }
 }
+
+/// The palette is pushed from a root view's `body`, so it runs once per body pass on every root.
+/// It has to be cheap to call repeatedly and it has to resolve both halves together.
+@MainActor @Test func applyingTheSameThemeTwiceIsANoOpButAChangeIsNot() {
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    #expect(OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark) == false)
+    #expect(OpenNOWDesign.applyTheme(accent: .magenta, appearance: .dark, systemColorScheme: .dark))
+    #expect(OpenNOWDesign.applyTheme(accent: .magenta, appearance: .light, systemColorScheme: .dark))
+    #expect(brightness(of: OpenNOWDesign.Surface.app) > 0.5, "the light appearance did not reach the surfaces")
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+}
+
+/// Match System has to follow the OS, which is the only case where the system scheme is consulted.
+@MainActor @Test func matchSystemFollowsTheOperatingSystemScheme() {
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .light)
+    #expect(brightness(of: OpenNOWDesign.Surface.app) > 0.5)
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .dark)
+    #expect(brightness(of: OpenNOWDesign.Surface.app) < 0.5)
+}

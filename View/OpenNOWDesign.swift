@@ -220,6 +220,26 @@ enum OpenNOWDesign {
     /// against `systemColorScheme` here rather than upstream, so every caller passes the same two
     /// things - the stored preference and what the OS currently is - and only this function decides
     /// what they add up to.
+    /// Resolves both halves of the theme in one place, and does nothing when neither has moved.
+    /// Called from a root view's `body` rather than from `onChange`: a change to either preference
+    /// rebuilds subtrees during that same body evaluation, and `onChange` does not run until after
+    /// those children have already drawn - so pushing from there painted one change behind.
+    @discardableResult
+    static func applyTheme(
+        accent: OpenNOWThemePreferences.AccentColor,
+        appearance: OpenNOWThemePreferences.Appearance,
+        systemColorScheme: ColorScheme
+    ) -> Bool {
+        let key = "\(accent.rawValue)-\(appearance.rawValue)-\(systemColorScheme == .dark)"
+        guard key != appliedThemeKey else { return false }
+        appliedThemeKey = key
+        applyAccent(accent)
+        applyAppearance(appearance, systemColorScheme: systemColorScheme)
+        return true
+    }
+
+    nonisolated(unsafe) private static var appliedThemeKey = ""
+
     static func applyAppearance(_ preference: OpenNOWThemePreferences.Appearance, systemColorScheme: ColorScheme) {
         let isDark: Bool
         switch preference {

@@ -37,6 +37,9 @@ struct ContentView: View {
     private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)" }
 
     var body: some View {
+        // Written here, not from `onChange`: the subtrees keyed on `themeIdentity` rebuild during
+        // this same body pass, and an `onChange` would not have run yet when they draw.
+        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemColorScheme)
         ZStack {
             LoginView(viewModel: viewModel, accounts: accounts) { title in
                 root.setWindowTitle(title)
@@ -72,15 +75,6 @@ struct ContentView: View {
             .background(OpenNOWInterfaceScaleDensityBooster(scale: uiScale))
             .environment(\.opnUIScale, uiScale)
             .environment(\.opnTileDensity, tileDensity)
-            .onChange(of: accentColorRawValue, initial: true) { _, _ in
-                OpenNOWDesign.applyAccent(accentColorPreset)
-            }
-            .onChange(of: appearanceRawValue, initial: true) { _, _ in
-                OpenNOWDesign.applyAppearance(appearancePreference, systemColorScheme: systemColorScheme)
-            }
-            .onChange(of: systemColorScheme) { _, _ in
-                OpenNOWDesign.applyAppearance(appearancePreference, systemColorScheme: systemColorScheme)
-            }
             .onDisappear { root.unbind() }
             // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`
             // before it calls `onAppear`, so the two would race.

@@ -146,6 +146,7 @@ struct CatalogView: View {
     @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
     @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
+    @Environment(\.colorScheme) private var systemColorScheme
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -168,6 +169,10 @@ struct CatalogView: View {
 
     private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
         OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
+    }
+
+    private var appearancePreference: OpenNOWThemePreferences.Appearance {
+        OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
     }
 
     private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)" }
@@ -208,6 +213,9 @@ struct CatalogView: View {
     }
 
     var body: some View {
+        // Same reason as `ContentView`: the panes keyed on `themeIdentity` rebuild inside this body
+        // pass, so the palette has to be resolved before they draw rather than in an `onChange`.
+        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemColorScheme)
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
                 GeometryReader { proxy in
@@ -341,9 +349,6 @@ struct CatalogView: View {
         .onChange(of: viewModel.selectedMainPage) { @MainActor _, _ in
             guard isCatalogPageActive else { return }
             appliedCatalogThemeIdentity = themeIdentity
-        }
-        .onChange(of: accentColorRawValue, initial: true) { @MainActor _, _ in
-            OpenNOWDesign.applyAccent(accentColorPreset)
         }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
         .preferredColorScheme(preferredColorScheme)
