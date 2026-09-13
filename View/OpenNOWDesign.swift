@@ -19,6 +19,14 @@ enum OpenNOWDesign {
         static var chrome: Color { resolvedPalette.surfaceChrome }
     }
 
+    /// Surfaces that stay dark whatever the appearance: the startup scene, and chrome drawn over
+    /// video or artwork. Their ink is white in light mode too, because what is behind it never is.
+    enum Fixed {
+        static let surfaceDeep = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+
+        static func ink(_ opacity: Double) -> Color { Color.white.opacity(opacity) }
+    }
+
     enum Semantic {
         static let destructive = Color(red: 1, green: 0.54, blue: 0.50)
         /// Favorite state, and the one place a second hue is sanctioned: an accent-green heart

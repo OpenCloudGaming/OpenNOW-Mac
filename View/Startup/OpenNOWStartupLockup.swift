@@ -149,6 +149,6 @@ private struct OpenNOWStartupWordmarkLetter: View {
     private var glyph: some View {
         Text(String(letter))
             .font(OpenNOWDesign.Typography.display(size: size))
-            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
     }
 }

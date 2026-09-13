@@ -28,7 +28,7 @@ struct OpenNOWStartupRail: View, Equatable {
                 Text(stage.statusText)
                     .font(OpenNOWDesign.Typography.label(size: metrics.compact ? 10 : 12, scale: scale, weight: .black))
                     .tracking((metrics.compact ? 2.0 : 3.0) * scale)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
 
                 Spacer(minLength: 12 * scale)
 
@@ -62,7 +62,7 @@ private struct OpenNOWStartupSegmentBar: View {
                 let isHead = index == filledCount - 1
 
                 Rectangle()
-                    .fill(isFilled ? accent.opacity(isHead ? 1.0 : 0.72) : OpenNOWDesign.Stroke.regular)
+                    .fill(isFilled ? accent.opacity(isHead ? 1.0 : 0.72) : OpenNOWDesign.Fixed.ink(0.14))
                     .frame(maxWidth: .infinity)
                     .scaleEffect(y: isHead ? 1.0 : (isFilled ? 0.78 : 0.42), anchor: .bottom)
                     .shadow(color: isHead ? accent.opacity(0.95) : .clear, radius: 10 * scale)

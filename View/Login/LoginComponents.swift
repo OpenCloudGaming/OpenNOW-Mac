@@ -108,7 +108,7 @@ struct VendorSplashLoadingView: View {
                                 .frame(width: isCompact ? 188 : 260, height: 4)
                             Text(message)
                                 .font(.uiSans(size: 13, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
                         }
                     }
 
@@ -116,7 +116,7 @@ struct VendorSplashLoadingView: View {
                         Button(action: onCancel) {
                             Text("CANCEL")
                                 .font(.uiSans(size: 13, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
                                 .tracking(0.3)
                         }
                         .buttonStyle(VendorSplashCancelButtonStyle())
@@ -137,8 +137,8 @@ private struct VendorSplashCancelButtonStyle: ButtonStyle {
         configuration.label
             .padding(.horizontal, OpenNOWDesign.Spacing.medium)
             .frame(height: 34)
-            .background(configuration.isPressed ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .background(configuration.isPressed ? OpenNOWDesign.Fixed.ink(0.14) : OpenNOWDesign.Fixed.ink(0.10))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 
@@ -155,7 +155,7 @@ struct VendorIndeterminateProgressBar: View {
 
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(OpenNOWDesign.Stroke.strong)
+                        .fill(OpenNOWDesign.Fixed.ink(0.22))
                     Rectangle()
                         .fill(OpenNOWDesign.accent)
                         .frame(width: indicatorWidth)
