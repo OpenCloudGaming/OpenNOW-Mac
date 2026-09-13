@@ -195,6 +195,11 @@ final class NativeNVSTHostViewModel: ObservableObject {
     /// AppKit's transition animates for well under a second. Past this the transition failed, which
     /// it only reports through delegate callbacks that post no notification.
     static let fullScreenTransitionTimeout = Duration.seconds(2)
+    var sessionReadyFullScreenTask: Task<Void, Never>?
+    /// One beat after the first frame, so the aspect coordinator has settled the window geometry
+    /// before the style mask changes underneath it.
+    static let sessionReadyFullScreenRetryDelay = Duration.milliseconds(450)
+    static let sessionReadyFullScreenAttemptLimit = 6
     let onScreenKeyboard = StreamOnScreenKeyboardModel()
 
     func startIfNeeded() {
@@ -432,6 +437,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         // advertised or connected here - the invite is still an explicit action in the HUD.
         refreshRemoteCoOpState()
         loadingStepIndex = StreamLaunchStep.connected.rawValue
+        enterNativeFullScreenWhenSessionReady()
         startNativeStatsPolling(path: path)
         refreshAntiAFKMouseMovementTask()
         let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
