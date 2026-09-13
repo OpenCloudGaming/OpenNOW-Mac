@@ -70,30 +70,27 @@ extension LoginViewModel {
     func beginDeviceCodeOAuth() async {
         validationMessage = ""
         successMessage = ""
-        deviceCodeUserCode = ""
-        deviceCodeVerificationURI = ""
+        isRequestingDeviceCode = true
         let loginProvider = selectedProvider
         OpenNOWLog.info(.auth, "Beginning Starfleet device-code OAuth provider=\(loginProvider.idpId)")
 
         guard acceptedTerms else {
             OpenNOWLog.warning(.auth, "Device-code OAuth blocked because terms were not accepted")
             validationMessage = "Accept account terms and local session storage before continuing."
+            isRequestingDeviceCode = false
             return
         }
-
-        isLaunchingOAuth = true
-        validationMessage = "Enter the device code in your browser to connect \(loginProvider.title)."
 
         let generation = loginLaunchGeneration
         authService.startStarfleetDeviceCodeLogin(providerIdpId: loginProvider.idpId) { [weak self] challenge in
             guard let self, generation == self.loginLaunchGeneration else { return }
-            self.isLaunchingOAuth = false
+            self.isRequestingDeviceCode = false
             self.deviceCodeUserCode = challenge.userCode
             self.deviceCodeVerificationURI = challenge.verificationURIComplete.isEmpty ? challenge.verificationURI : challenge.verificationURIComplete
-            self.validationMessage = "Enter code \(challenge.userCode) at \(self.deviceCodeVerificationURI)."
         } completion: { [weak self] success, session, error in
             guard let self, generation == self.loginLaunchGeneration else { return }
             self.selectedProvider = loginProvider
+            self.isRequestingDeviceCode = false
             self.isLaunchingOAuth = false
             self.currentAuthorizationURL = ""
             self.clearPendingOAuthState()

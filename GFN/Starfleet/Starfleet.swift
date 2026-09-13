@@ -9,6 +9,11 @@ public enum Starfleet: Sendable {
     public static let defaultReferer = "https://nvfile/"
     public static let defaultUserAgent = GFNClientMetadata.nativeUserAgent
     public static let oauthScope = "openid consent email tk_client age"
+
+    public static let deviceFlowClientId = "q61ddeJrVt7O90Nl-P-N7I36yctih4Ml6FyXLrb6j-U"
+    public static let deviceFlowOrigin = "https://play.geforcenow.com"
+    public static let deviceFlowReferer = "https://play.geforcenow.com/"
+    public static let deviceFlowUserAgent = "Mozilla/5.0 (X11; Linux x86_64; Steam Deck) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 }
 
 public extension Starfleet {
@@ -91,6 +96,13 @@ public struct StarfleetOAuthConfiguration: Equatable, Sendable {
     }
 
     public static let gfnPC = StarfleetOAuthConfiguration()
+
+    public static let steamDeck = StarfleetOAuthConfiguration(
+        clientId: Starfleet.deviceFlowClientId,
+        userAgent: Starfleet.deviceFlowUserAgent,
+        origin: Starfleet.deviceFlowOrigin,
+        referer: Starfleet.deviceFlowReferer
+    )
 }
 
 public struct StarfleetOAuthWindowParameters: Equatable, Sendable {
@@ -251,7 +263,7 @@ public enum StarfleetOAuthRequestFactory {
         ])
     }
 
-    public static func deviceAuthorizeRequest(body: String, configuration: StarfleetOAuthConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
+    public static func deviceAuthorizeRequest(body: String, deviceId: String, configuration: StarfleetOAuthConfiguration = .gfnPC, timeoutInterval: TimeInterval = 15) -> URLRequest? {
         guard let url = URL(string: configuration.deviceAuthorizeURLString) else { return nil }
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "POST"
@@ -260,6 +272,16 @@ public enum StarfleetOAuthRequestFactory {
         request.setValue(configuration.origin, forHTTPHeaderField: "Origin")
         request.setValue(configuration.referer, forHTTPHeaderField: "Referer")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(deviceId, forHTTPHeaderField: "x-device-id")
+        request.setValue(configuration.clientId, forHTTPHeaderField: "nv-client-id")
+        request.setValue("WEBRTC", forHTTPHeaderField: "nv-client-streamer")
+        request.setValue("BROWSER", forHTTPHeaderField: "nv-client-type")
+        request.setValue("browser", forHTTPHeaderField: "nv-client-platform-name")
+        request.setValue("CHROME", forHTTPHeaderField: "nv-browser-type")
+        request.setValue("STEAMOS", forHTTPHeaderField: "nv-device-os")
+        request.setValue("CONSOLE", forHTTPHeaderField: "nv-device-type")
+        request.setValue("STEAMDECK", forHTTPHeaderField: "nv-device-model")
+        request.setValue("VALVE", forHTTPHeaderField: "nv-device-make")
         request.httpBody = body.data(using: .utf8)
         return request
     }

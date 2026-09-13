@@ -44,6 +44,7 @@ struct OpenNOWDropdownRow: View {
 struct OpenNOWDropdownPanel: View {
     let items: [OpenNOWDropdownItem]
     var width: CGFloat?
+    var visibleItemCount: Int?
 
     @Environment(\.opnUIScale) private var uiScale
 
@@ -51,18 +52,37 @@ struct OpenNOWDropdownPanel: View {
         208 * scale
     }
 
+    static func rowHeight(scale: CGFloat) -> CGFloat {
+        30 * scale
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(items) { item in
-                OpenNOWDropdownRow(title: item.title, isSelected: item.isSelected, action: item.action)
+        Group {
+            if let visibleItemCount, visibleItemCount > 0 {
+                ScrollView(.vertical) {
+                    rows
+                }
+                .contentMargins(.trailing, 12, for: .scrollContent)
+                .frame(height: CGFloat(min(items.count, visibleItemCount)) * Self.rowHeight(scale: uiScale))
+            } else {
+                rows
             }
         }
         .padding(.vertical, OpenNOWDesign.Spacing.menuPanelVertical(scale: uiScale))
-        .frame(width: width ?? Self.minimumWidth(scale: uiScale))
+        .frame(maxWidth: width == nil ? .infinity : nil)
+        .frame(width: width)
         .background(OpenNOWDesign.Surface.panelRaised)
         .overlay {
             Rectangle()
                 .stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1)
+        }
+    }
+
+    private var rows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(items) { item in
+                OpenNOWDropdownRow(title: item.title, isSelected: item.isSelected, action: item.action)
+            }
         }
     }
 }
@@ -70,6 +90,7 @@ struct OpenNOWDropdownPanel: View {
 struct OpenNOWDropdownMenu<Label: View>: View {
     let items: [OpenNOWDropdownItem]
     var isDisabled = false
+    var visibleItemCount: Int?
     @ViewBuilder let label: () -> Label
 
     @Environment(\.opnUIScale) private var uiScale
@@ -138,7 +159,7 @@ struct OpenNOWDropdownMenu<Label: View>: View {
     }
 
     private var measuredPanel: some View {
-        OpenNOWDropdownPanel(items: dismissingItems, width: panelWidth)
+        OpenNOWDropdownPanel(items: dismissingItems, width: panelWidth, visibleItemCount: visibleItemCount)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height
             } action: { height in

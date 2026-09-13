@@ -46,6 +46,7 @@ public final class OPNAuthService: @unchecked Sendable {
     private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
     let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
     let starfleetService: StarfleetService<StarfleetURLSessionTransport>
+    let deviceFlowStarfleetService: StarfleetService<StarfleetURLSessionTransport>
     private let statusObservationTask: Task<Void, Never>
 
     private init() {
@@ -64,8 +65,16 @@ public final class OPNAuthService: @unchecked Sendable {
             transport: StarfleetURLSessionTransport(),
             telemetry: OPNStarfleetSentryTelemetry.shared
         )
+        let deviceFlowStarfleetService = StarfleetService(
+            configuration: .steamDeck,
+            refreshPolicy: .gfnPC,
+            retryPolicy: .gfnPC,
+            transport: StarfleetURLSessionTransport(),
+            telemetry: OPNStarfleetSentryTelemetry.shared
+        )
         self.jarvisAuthService = jarvisService
         self.starfleetService = starfleetService
+        self.deviceFlowStarfleetService = deviceFlowStarfleetService
         self.statusObservationTask = Task { [jarvisService] in
             let stream = await jarvisService.monitorLoginStatus()
             for await status in stream {
@@ -167,7 +176,7 @@ public final class OPNAuthService: @unchecked Sendable {
             guard let self else { return }
             do {
                 _ = await self.jarvisAuthService.sameTabAuthStarted()
-                let response = try await self.starfleetService.requestDeviceAuthorization(deviceId: deviceId, displayName: displayName, providerIdpId: selectedProviderIdpId)
+                let response = try await self.deviceFlowStarfleetService.requestDeviceAuthorization(deviceId: deviceId, displayName: displayName, providerIdpId: selectedProviderIdpId)
                 let challenge = OPNDeviceCodeLoginChallenge(response: response)
                 await MainActor.run {
                     challengeHandler(challenge)
@@ -175,7 +184,7 @@ public final class OPNAuthService: @unchecked Sendable {
                         NSWorkspace.shared.open(verificationURL)
                     }
                 }
-                let session = Self.opnSession(from: try await self.starfleetService.pollDeviceAuthorization(deviceCode: response.deviceCode, interval: challenge.interval, timeout: max(1, response.expiresAt.timeIntervalSinceNow)))
+                let session = Self.opnSession(from: try await self.deviceFlowStarfleetService.pollDeviceAuthorization(deviceCode: response.deviceCode, interval: challenge.interval, timeout: max(1, response.expiresAt.timeIntervalSinceNow)))
                 await self.jarvisAuthService.setSession(session)
                 self.saveSession(session)
                 _ = await self.jarvisAuthService.finishLogin(success: true)

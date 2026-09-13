@@ -162,7 +162,7 @@ public actor StarfleetService<Transport: StarfleetHTTPTransport> {
 
     public func requestDeviceAuthorization(deviceId: String, displayName: String = "", providerIdpId: String = "") async throws -> StarfleetDeviceAuthorizationResponse {
         let body = StarfleetOAuthRequestFactory.deviceAuthorizeBody(deviceId: deviceId, displayName: displayName, providerIdpId: providerIdpId, configuration: configuration)
-        guard let request = StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body, configuration: configuration) else { throw StarfleetAuthError.invalidDeviceAuthorizeURL }
+        guard let request = StarfleetOAuthRequestFactory.deviceAuthorizeRequest(body: body, deviceId: deviceId, configuration: configuration) else { throw StarfleetAuthError.invalidDeviceAuthorizeURL }
         return parseDeviceAuthorizationResponse(try await performJSONRequest(request))
     }
 
