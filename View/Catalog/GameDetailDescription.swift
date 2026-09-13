@@ -23,7 +23,7 @@ extension GameDetailPanel {
     func shortDescription(game: OPNCatalogGameObject) -> some View {
         Text(GameDetailPresentation.shortDescription(game: game))
             .catalogFont(size: 15, weight: .medium)
-            .foregroundStyle(.white.opacity(0.90))
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .lineSpacing(3)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: 660, alignment: .leading)
@@ -39,7 +39,7 @@ extension GameDetailPanel {
                 .foregroundStyle(isMoreInfoHovering ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
                 .padding(.horizontal, 13 * uiScale)
                 .frame(height: 34 * uiScale)
-                .background(isMoreInfoHovering ? OpenNOWDesign.accent : Color.white.opacity(0.10))
+                .background(isMoreInfoHovering ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.10))
                 .overlay { Rectangle().strokeBorder(isMoreInfoHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong, lineWidth: 1) }
                 .contentShape(Rectangle())
         }

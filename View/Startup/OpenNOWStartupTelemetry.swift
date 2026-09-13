@@ -34,7 +34,7 @@ struct OpenNOWStartupTelemetry: View, Equatable {
             Text("LOAD SEQUENCE")
                 .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
                 .tracking(2.4 * scale)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.38))
 
             ZStack(alignment: .topLeading) {
                 OpenNOWStartupBusTrack(
@@ -86,11 +86,11 @@ private struct OpenNOWStartupBusTrack: View {
     var body: some View {
         ZStack(alignment: .leading) {
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OpenNOWDesign.Fixed.ink(0.10))
                 .frame(width: trackWidth, height: 1)
 
             Rectangle()
-                .fill(OpenNOWDesign.accent.opacity(0.60))
+                .fill(OpenNOWDesign.Fixed.accent.opacity(0.60))
                 .frame(width: trackWidth * CGFloat(fill), height: 1)
                 .shadow(color: OpenNOWDesign.accent.opacity(0.55), radius: 4 * scale)
         }
@@ -107,15 +107,15 @@ private struct OpenNOWStartupBusStation: View {
     let scale: CGFloat
 
     var body: some View {
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
 
         VStack(spacing: 8 * scale) {
             Rectangle()
-                .fill(settled ? accent : OpenNOWDesign.Surface.deep)
+                .fill(settled ? accent : OpenNOWDesign.Fixed.surfaceDeep)
                 .frame(width: marker, height: marker)
                 .overlay {
                     Rectangle()
-                        .stroke(settled ? accent : OpenNOWDesign.Stroke.strong, lineWidth: 1)
+                        .stroke(settled ? accent : OpenNOWDesign.Fixed.ink(0.22), lineWidth: 1)
                 }
                 .shadow(color: settled ? accent.opacity(0.85) : .clear, radius: 6 * scale)
                 // Opaque pad so the bus line passes between stations, not through them.
@@ -124,14 +124,14 @@ private struct OpenNOWStartupBusStation: View {
 
             Text(label)
                 .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
-                .foregroundStyle(settled ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
+                .foregroundStyle(settled ? OpenNOWDesign.Fixed.ink(0.72) : OpenNOWDesign.Fixed.ink(0.38))
                 .lineLimit(1)
                 .fixedSize()
 
             Text(String(format: "%.2fs", stamp))
                 .font(OpenNOWDesign.Typography.mono(size: 8, scale: scale, weight: .medium))
                 .monospacedDigit()
-                .foregroundStyle(settled ? accent.opacity(0.80) : OpenNOWDesign.Text.muted)
+                .foregroundStyle(settled ? accent.opacity(0.80) : OpenNOWDesign.Fixed.ink(0.38))
         }
         .opacity(0.38 + reveal * 0.62)
         .offset(y: CGFloat(1 - reveal) * 4 * scale)

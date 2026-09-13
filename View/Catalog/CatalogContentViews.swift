@@ -14,12 +14,18 @@ struct CatalogContentView: View {
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
     @Environment(\.opnUIScale) private var uiScale
+    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     /// Seconds between hero rotations. Driven by a `.task` loop rather than a `Timer.publish`
     /// stored on this struct: the struct is rebuilt on every re-render, which restarts a stored
     /// publisher's interval before it ever fires.
     private static let heroRotationInterval = Duration.seconds(5)
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         let heroes = heroGames
@@ -118,10 +124,10 @@ struct CatalogContentView: View {
                                     .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
                             }
                             if isGridDestination, sections.isEmpty, isLoadingInitialSections {
-                                CatalogGridSkeletonView(isScrollable: false)
+                                CatalogGridSkeletonView(isScrollable: false, isPosterLayout: isPosterHome)
                                     .padding(.top, 24 * uiScale)
                             } else if isGridDestination, let section = sections.first {
-                                CatalogDestinationGridView(viewModel: viewModel, section: section)
+                                CatalogDestinationGridView(viewModel: viewModel, section: section, isPosterLayout: isPosterHome)
                                 if selectedGameBelongs(to: section), let detailAnchor = selectedDetailScrollAnchor {
                                     GameDetailPanel(
                                         viewModel: viewModel,
@@ -143,7 +149,7 @@ struct CatalogContentView: View {
                                             .frame(height: 0)
                                             .id(railAnchor)
                                     }
-                                    CatalogRailView(viewModel: viewModel, section: section, availableWidth: viewport.size.width, onShowAll: { viewModel.openShowAll(section) })
+                                    sectionRail(section, availableWidth: viewport.size.width)
                                     if showsDetail, let detailAnchor = selectedDetailScrollAnchor {
                                         GameDetailPanel(
                                             viewModel: viewModel,
@@ -163,7 +169,7 @@ struct CatalogContentView: View {
                                 // instead of displacing anything already on screen.
                                 if sections.isEmpty, isLoadingInitialSections {
                                     ForEach(0..<3, id: \.self) { _ in
-                                        CatalogRailSkeletonView()
+                                        CatalogRailSkeletonView(isPosterLayout: isPosterHome)
                                     }
                                 }
                             }
@@ -199,7 +205,7 @@ struct CatalogContentView: View {
                 .task {
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.heroRotationInterval)
-                        guard !Task.isCancelled, isActive, !reduceMotion, heroAutoScrollEnabled, heroes.count > 1 else { continue }
+                        guard !Task.isCancelled, isActive, !isMotionReduced, heroAutoScrollEnabled, heroes.count > 1 else { continue }
                         withAnimation(.easeInOut(duration: 0.2)) {
                             heroIndex = (heroIndex + 1) % heroes.count
                         }
@@ -227,6 +233,10 @@ struct CatalogContentView: View {
         viewModel.isLoading || viewModel.isLoadingPanels
     }
 
+    private var isPosterHome: Bool {
+        (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+    }
+
     private var selectedRailScrollAnchor: String? {
         guard let selectedGame = viewModel.selectedGame else { return nil }
         return "rail-\(viewModel.selectedSectionId)-\(selectedGame.catalogIdentity)"
@@ -246,6 +256,15 @@ struct CatalogContentView: View {
 
     private func shouldUseGrid(for destination: CatalogDestination) -> Bool {
         !viewModel.isBrowseMode && (destination == .library || destination == .favorites)
+    }
+
+    @ViewBuilder
+    private func sectionRail(_ section: CatalogSectionModel, availableWidth: CGFloat) -> some View {
+        if isPosterHome {
+            CatalogPosterRailView(viewModel: viewModel, section: section, availableWidth: availableWidth, onShowAll: { viewModel.openShowAll(section) })
+        } else {
+            CatalogRailView(viewModel: viewModel, section: section, availableWidth: availableWidth, onShowAll: { viewModel.openShowAll(section) })
+        }
     }
 
     private func selectedGameBelongs(to section: CatalogSectionModel) -> Bool {
@@ -368,7 +387,7 @@ struct CatalogHeroView: View {
                         ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
                             Button { onSelectSlide(index) } label: {
                                 Circle()
-                                    .fill(index == activeIndex ? OpenNOWDesign.accent : Color.white.opacity(0.58))
+                                    .fill(index == activeIndex ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.58))
                                     .frame(width: index == activeIndex ? 12 * uiScale : 9 * uiScale, height: index == activeIndex ? 12 * uiScale : 9 * uiScale)
                             }
                             .buttonStyle(.plain)
@@ -437,12 +456,12 @@ struct CatalogBrowseControlsView: View {
                 if !viewModel.resultSummary.isEmpty {
                     Text(viewModel.resultSummary.uppercased())
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.88))
+                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.88))
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
@@ -453,7 +472,7 @@ struct CatalogBrowseControlsView: View {
                     }
                         .buttonStyle(.plain)
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.84))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
                 OpenNOWDropdownMenu(
                     items: viewModel.sortOptions.map { option in
@@ -470,10 +489,10 @@ struct CatalogBrowseControlsView: View {
                         Image(systemName: "chevron.down")
                     }
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .frame(height: 34)
-                    .background(Color.white.opacity(0.08))
+                    .background(OpenNOWDesign.Fill.neutral(0.08))
                 }
             }
 
@@ -495,11 +514,11 @@ struct CatalogBrowseControlsView: View {
                                     Image(systemName: "slider.horizontal.3")
                                 }
                                 .catalogFont(size: 11, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.82))
+                                .foregroundStyle(OpenNOWDesign.Text.secondary)
                                 .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                                 .frame(height: 32)
-                                .background(Color.white.opacity(0.075))
-                                .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                                .background(OpenNOWDesign.Fill.neutral(0.075))
+                                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                             }
                         }
                         ForEach(selectedFilterOptions, id: \.id) { option in
@@ -536,15 +555,15 @@ struct CatalogEmptyDestinationView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .catalogFont(size: 22, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .catalogFont(size: 24, weight: .bold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(message)
                         .catalogFont(size: 14, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
             }
             HStack(spacing: 10) {
@@ -563,8 +582,8 @@ struct CatalogEmptyDestinationView: View {
         }
         .padding(22)
         .frame(maxWidth: 620, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        .background(OpenNOWDesign.Fill.neutral(0.055))
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private var icon: String {

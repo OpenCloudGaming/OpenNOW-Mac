@@ -62,7 +62,7 @@ struct SteamControllerTestView: View {
                         HStack(spacing: 4 * uiScale) {
                             Image(systemName: model.isCharging ? "bolt.fill" : batteryIconName(for: battery))
                                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                                .foregroundStyle(model.isCharging ? OpenNOWDesign.accent : batteryColor(for: battery))
+                                .foregroundStyle(model.isCharging ? OpenNOWDesign.accentInk : batteryColor(for: battery))
                             Text("\(Int(battery))%")
                                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                                 .foregroundStyle(OpenNOWDesign.Text.tertiary)
@@ -244,13 +244,13 @@ struct SteamControllerTestView: View {
         HStack(spacing: 6 * uiScale) {
             Text(label)
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(active ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(active ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
                 .frame(width: 30 * uiScale, alignment: .leading)
             // Fixed column: "ON" and "OFF" are different widths, and the UI sans isn't monospaced,
             // so an unconstrained label makes the whole grid twitch as buttons are pressed.
             Text(active ? "ON" : "OFF")
                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(active ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
+                .foregroundStyle(active ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.muted)
                 .frame(width: 26 * uiScale, alignment: .leading)
         }
     }

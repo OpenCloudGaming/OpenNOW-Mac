@@ -181,7 +181,7 @@ struct ControllerGameDetailOverlay: View {
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                         .padding(.horizontal, 8 * uiScale)
                         .frame(height: 24 * uiScale)
-                        .background(Color.white.opacity(0.12))
+                        .background(OpenNOWDesign.Fill.neutral(0.12))
                         .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
             }
@@ -213,7 +213,7 @@ struct ControllerGameDetailOverlay: View {
             ControllerGlyphPill(glyph: glyphs.back)
             Text("BACK")
                 .catalogFont(size: 11, weight: .bold)
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
             Button(action: close) {
                 Image(systemName: "xmark")
                     .catalogFont(size: 13, weight: .bold)
@@ -253,13 +253,13 @@ struct ControllerGameDetailOverlay: View {
                     .catalogFont(size: 13, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(isFilled ? .black.opacity(0.88) : .white.opacity(0.88))
+            .foregroundStyle(isFilled ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
             .padding(.horizontal, 22 * uiScale)
             // Matched box, not matched emphasis: Play earns its prominence from the accent fill, so
             // sizing it larger as well made the pair read as two unrelated controls.
             .frame(minWidth: 150 * uiScale)
             .frame(height: 44 * uiScale)
-            .background(isFilled ? OpenNOWDesign.accent : Color.white.opacity(0.10))
+            .background(isFilled ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.10))
             .overlay { Rectangle().strokeBorder(isFilled ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             .openNowFocusRing(isFocused, onAccentFill: true)
         }
@@ -296,13 +296,13 @@ struct ControllerGameDetailOverlay: View {
                                     .frame(width: 26 * uiScale)
                                 Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel))
                                     .catalogFont(size: 15, weight: .bold)
-                                    .foregroundStyle(isFocused ? .black.opacity(0.88) : .white.opacity(0.88))
+                                    .foregroundStyle(isFocused ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
                                     .lineLimit(1)
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 14 * uiScale)
                             .frame(height: 48 * uiScale)
-                            .background(isFocused ? OpenNOWDesign.accent : Color.white.opacity(0.055))
+                            .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
                             .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
                             .openNowFocusRing(isFocused, onAccentFill: true)
                         }
@@ -404,7 +404,7 @@ struct ControllerGameDetailOverlay: View {
                 .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 26 * uiScale)
-                .background(Color.white.opacity(0.08))
+                .background(OpenNOWDesign.Fill.neutral(0.08))
                 .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 .padding(.bottom, 24 * uiScale)
         }

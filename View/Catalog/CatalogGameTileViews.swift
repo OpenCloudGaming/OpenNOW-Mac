@@ -53,6 +53,12 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     var onHoverChanged: ((Bool) -> Void)?
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
+    @AppStorage(OpenNOWThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OpenNOWThemePreferences.TileTitleVisibility.onHover.rawValue
+
+    private var tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility {
+        OpenNOWThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
+    }
 
     static func == (lhs: CatalogGameTile, rhs: CatalogGameTile) -> Bool {
         lhs.game.catalogIdentity == rhs.game.catalogIdentity &&
@@ -77,7 +83,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 ZStack(alignment: .topLeading) {
                     playButton
                 }
-                .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                 .padding(.leading, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                 .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
                 .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
@@ -105,11 +111,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.Fixed.accent)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.Fixed.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -148,21 +154,23 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     private var tileContent: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                let isActive = isHovering || isSelected
+                let showsTitleTray = OpenNOWThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                     .clipped()
                 if isResumableSession {
                     ZStack {
                         Color.black.opacity(0.40)
                         GameTileResumableArrowSweep()
                     }
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                     .clipped()
                     .allowsHitTesting(false)
                 }
-                if isActive {
+                if isHovering || isSelected {
                     Color.black.opacity(0.50)
+                }
+                if showsTitleTray {
                     LinearGradient(colors: [CatalogVendorLayout.tileTray, CatalogVendorLayout.tileTray.opacity(0)], startPoint: .bottom, endPoint: UnitPoint(x: 0.5, y: 0.63))
                 }
                 if let badge = game.cardBadgeLabel {
@@ -171,23 +179,23 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 if let badge = game.freeAccountAccessBadgeLabel(isFreeTierAccount: showsFreeAccountAccessBadges) {
                     CatalogGameAccessBadge(label: badge)
                         .padding(8)
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale), alignment: .topTrailing)
+                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity), alignment: .topTrailing)
                 }
-                if isActive {
+                if showsTitleTray {
                     VStack {
                         Spacer(minLength: 0)
                         HStack(spacing: 8) {
                             Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                                 .catalogFont(size: 12, weight: isSelected ? .medium : .regular)
                                 .lineLimit(1)
-                                .foregroundStyle(.white.opacity(0.90))
+                                .foregroundStyle(OpenNOWDesign.Text.primary)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                                 .catalogFont(size: 10, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.76))
+                                .foregroundStyle(OpenNOWDesign.Text.secondary)
                         }
                         .padding(.horizontal, 16 * uiScale)
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
+                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
                         .background(CatalogVendorLayout.tileTray.opacity(1))
                         // The tray carries the chevron, so it reads as the control that opens and
                         // closes the details, but the taps were landing on the artwork button
@@ -196,24 +204,24 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                         .contentShape(Rectangle())
                         .onTapGesture { onSelect() }
                     }
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                 }
             }
         }
-        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), alignment: .top)
+        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), alignment: .top)
         .overlay(alignment: .top) {
             if isSelected {
                 Rectangle()
-                    .fill(OpenNOWDesign.accent)
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: 4)
-                    .offset(y: CatalogVendorLayout.wideTileHeight(scale: uiScale) - 4)
+                    .fill(OpenNOWDesign.Fixed.accent)
+                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: 4)
+                    .offset(y: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity) - 4)
             }
         }
         .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
         .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
         .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
-        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
+        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2, height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity), alignment: .top)
         .contentShape(Rectangle())
     }
 }
@@ -224,15 +232,15 @@ struct CatalogGameCardBadge: View {
     var body: some View {
         HStack(spacing: 0) {
             MallRibbonShape()
-                .fill(OpenNOWDesign.accent)
+                .fill(OpenNOWDesign.Fixed.accent)
                 .frame(width: 7, height: 24)
             Text(label)
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(.white.opacity(0.94))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(height: 24)
-                .background(Color(red: 56 / 255, green: 56 / 255, blue: 56 / 255).opacity(0.94))
+                .background(OpenNOWDesign.Surface.chrome.opacity(0.94))
         }
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -254,7 +262,7 @@ struct CatalogGameAccessBadge: View {
         .padding(.horizontal, 10)
         .frame(height: 28)
         .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.42), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Fill.neutral(0.42), lineWidth: 1) }
         .shadow(color: .black.opacity(0.44), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -335,7 +343,12 @@ struct MallRibbonShape: Shape {
 /// 40% of a 2s cycle, then parked past the right edge until it loops. Shape, timing and alphas are
 /// its own `gfn-game-tile_moveArrow` keyframes.
 private struct GameTileResumableArrowSweep: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     private enum Phase: CaseIterable {
         case start, sweep, hold
@@ -344,7 +357,7 @@ private struct GameTileResumableArrowSweep: View {
     var body: some View {
         GeometryReader { proxy in
             let arrowWidth = proxy.size.height * GameTileResumableArrowShape.aspectRatio
-            if reduceMotion {
+            if isMotionReduced {
                 // A looping sweep is the thing reduce-motion asks us to drop. The dimmed art still
                 // marks the tile, and the banner names the session in text.
                 Color.clear

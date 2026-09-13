@@ -24,10 +24,10 @@ struct AboutSettingsPage: View {
                         HStack(alignment: .center, spacing: 10 * uiScale) {
                             Text(SettingsAppMetadata.displayName)
                                 .font(.settingsFont(size: 25 * uiScale, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(OpenNOWDesign.Text.primary)
                             Text("UNOFFICIAL CLIENT SHELL")
                                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                                .foregroundStyle(.black)
+                                .foregroundStyle(OpenNOWDesign.onAccent)
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)
@@ -35,7 +35,7 @@ struct AboutSettingsPage: View {
                         }
                         Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
                             .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.66))
+                            .foregroundStyle(OpenNOWDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8 * uiScale) {
                             AboutStatusPill(title: "Stream", value: viewModel.streamProfile.transportMode.label, uiScale: uiScale)
@@ -77,7 +77,7 @@ struct AboutSettingsPage: View {
                     }
                     Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.54))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
             }
 
@@ -92,7 +92,7 @@ struct AboutSettingsPage: View {
                     }
                     Text("Removes cached catalog artwork from disk and memory. Images will download again as needed.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.54))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
             }
 
@@ -109,11 +109,11 @@ struct AboutSettingsPage: View {
                         .disabled(viewModel.diagnosticsState.isWorking)
                         Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.54))
+                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     }
                     Text(viewModel.diagnosticsState.message)
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(viewModel.diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : .white.opacity(0.62))
+                        .foregroundStyle(viewModel.diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.Text.secondary)
                 }
             }
         }
@@ -173,7 +173,7 @@ struct DiagnosticsUploadConfirmationDialog: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.62)
+            OpenNOWDesign.Surface.scrim
                 .onTapGesture(perform: cancel)
 
             VStack(alignment: .leading, spacing: 18 * uiScale) {
@@ -183,7 +183,7 @@ struct DiagnosticsUploadConfirmationDialog: View {
                             .fill(OpenNOWDesign.accent.opacity(0.16))
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                     }
                     .frame(width: 44 * uiScale, height: 44 * uiScale)
                     .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.42), lineWidth: 1) }
@@ -191,10 +191,10 @@ struct DiagnosticsUploadConfirmationDialog: View {
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Upload diagnostics logs?")
                             .font(.settingsFont(size: 19 * uiScale, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(OpenNOWDesign.Text.primary)
                         Text("OpenNOW will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
                             .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.72))
+                            .foregroundStyle(OpenNOWDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -205,12 +205,12 @@ struct DiagnosticsUploadConfirmationDialog: View {
                         .frame(width: 4 * uiScale, height: 42 * uiScale)
                     Text("IP addresses and location fields are redacted before upload. Only generate this when preparing support diagnostics.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12 * uiScale)
-                .background(Color.white.opacity(0.045))
-                .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+                .background(OpenNOWDesign.Fill.neutral(0.045))
+                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
 
                 HStack(spacing: 10 * uiScale) {
                     Spacer(minLength: 0)
@@ -220,8 +220,8 @@ struct DiagnosticsUploadConfirmationDialog: View {
             }
             .padding(22 * uiScale)
             .frame(width: 430 * uiScale, alignment: .leading)
-            .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
+            .background(OpenNOWDesign.Surface.overlay)
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             .shadow(color: .black.opacity(0.62), radius: 34 * uiScale, x: 0, y: 18 * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -244,7 +244,7 @@ struct SettingsDialogButton: View {
         Button(action: action) {
             Text(title)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(tone == .primary ? .black : .white.opacity(0.82))
+                .foregroundStyle(tone == .primary ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.secondary)
                 .tracking(0.8)
                 .padding(.horizontal, 14 * uiScale)
                 .frame(minWidth: 104 * uiScale)
@@ -259,14 +259,14 @@ struct SettingsDialogButton: View {
     private var backgroundColor: Color {
         switch tone {
         case .primary: return OpenNOWDesign.accent.opacity(isHovering ? 0.88 : 1)
-        case .secondary: return Color.white.opacity(isHovering ? 0.10 : 0.06)
+        case .secondary: return isHovering ? OpenNOWDesign.Stroke.subtle : OpenNOWDesign.Fill.neutral(0.06)
         }
     }
 
     private var strokeColor: Color {
         switch tone {
         case .primary: return OpenNOWDesign.accent
-        case .secondary: return Color.white.opacity(0.14)
+        case .secondary: return OpenNOWDesign.Stroke.regular
         }
     }
 }
@@ -314,17 +314,17 @@ struct AboutStatusPill: View {
         HStack(spacing: 6 * uiScale) {
             Text(title.uppercased())
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.44))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
                 .tracking(0.8)
             Text(value.isEmpty ? "Unknown" : value)
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.86))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(height: 28 * uiScale)
-        .background(Color.white.opacity(0.065))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+        .background(OpenNOWDesign.Stroke.subtle)
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -341,24 +341,24 @@ struct AboutDetailRow: View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             Text(label.uppercased())
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.44))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
                 .tracking(0.5)
                 .frame(width: 150 * uiScale, alignment: .leading)
             Text(value.isEmpty ? "Unavailable" : value)
                 .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.84))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(2)
                 .textSelection(.enabled)
             Spacer(minLength: 0)
             Button { copy(copyValue) } label: {
                 Text(copiedKey == label ? "COPIED" : "COPY")
                     .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                    .foregroundStyle(copyDisabled ? .white.opacity(0.28) : .white.opacity(0.74))
+                    .foregroundStyle(copyDisabled ? OpenNOWDesign.Text.muted : OpenNOWDesign.Text.secondary)
                     .tracking(0.7)
                     .padding(.horizontal, 10 * uiScale)
                     .frame(height: 26 * uiScale)
-                    .background(Color.white.opacity(copyDisabled ? 0.03 : 0.06))
-                    .overlay { Rectangle().stroke(Color.white.opacity(copyDisabled ? 0.05 : 0.12), lineWidth: 1) }
+                    .background(OpenNOWDesign.Fill.neutral(copyDisabled ? 0.03 : 0.06))
+                    .overlay { Rectangle().stroke(copyDisabled ? OpenNOWDesign.Fill.neutral(0.05) : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .disabled(copyDisabled)

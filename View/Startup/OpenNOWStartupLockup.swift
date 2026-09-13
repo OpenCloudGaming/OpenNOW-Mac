@@ -55,7 +55,7 @@ private struct OpenNOWStartupLogoCore: View {
         let chroma = stage.chroma
         let bloom = stage.bloom
         let offset = CGFloat(chroma) * (metrics.compact ? 9 : 14) * metrics.uiScale
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
 
         ZStack {
             // RGB split ghosts collapse into register as the beam clears the logo. Dropped rather
@@ -121,7 +121,7 @@ private struct OpenNOWStartupWordmark: View {
             Text("CLOUD GAMING CLIENT")
                 .font(OpenNOWDesign.Typography.mono(size: metrics.compact ? 9 : 11, scale: scale, weight: .bold))
                 .tracking((3.4 + 3.4 * (1 - settle)) * scale)
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.92 * settle))
+                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.92 * settle))
                 .opacity(settle)
         }
     }
@@ -149,6 +149,6 @@ private struct OpenNOWStartupWordmarkLetter: View {
     private var glyph: some View {
         Text(String(letter))
             .font(OpenNOWDesign.Typography.display(size: size))
-            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
     }
 }

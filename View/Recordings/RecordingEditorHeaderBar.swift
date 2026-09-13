@@ -35,7 +35,7 @@ struct RecordingEditorHeaderBar: View {
             }
         }
             .background(OpenNOWDesign.Surface.deep)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1) }
+            .overlay(alignment: .bottom) { Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(height: 1) }
             .overlay(alignment: .top) {
                 Rectangle()
                     .fill(isControllerFocused ? OpenNOWDesign.accent : Color.clear)
@@ -58,7 +58,7 @@ struct RecordingEditorHeaderBar: View {
                 .accessibilityValue("\(Int(viewModel.exportProgress * 100)) percent")
             Text("Exporting \(Int(viewModel.exportProgress * 100))%")
                 .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .monospacedDigit()
                 .fixedSize()
         }
@@ -73,7 +73,7 @@ struct RecordingEditorHeaderBar: View {
                 Text("QUICK EDIT")
                     .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.4)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                 OpenNOWBetaTag(uiScale: uiScale, prominent: true)
             }
             .fixedSize()
@@ -81,12 +81,12 @@ struct RecordingEditorHeaderBar: View {
             TextField("New clip title", text: coalescedUndoable(\.outputTitle, token: "outputTitle"))
                 .textFieldStyle(.plain)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.95))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .padding(.horizontal, 10 * uiScale)
                 // Matches the buttons beside it; 34 against their 36 read as a misaligned field.
                 .frame(height: RecordingActionButtonStyle.height * uiScale)
-                .background(Color.white.opacity(0.065))
-                .overlay { Rectangle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1) }
+                .background(OpenNOWDesign.Surface.field)
+                .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 .help("Name of the video the export will create")
                 .focused($isTitleFocused)
                 .onChange(of: isTitleFocused) { _, focused in viewModel.isTitleFieldFocused = focused }
@@ -144,15 +144,15 @@ struct RecordingEditorHeaderBar: View {
             } else if let hint = viewModel.hint {
                 Image(systemName: "info.circle.fill")
                     .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
                 Text(hint)
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.76))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .lineLimit(1)
             } else {
                 Text(exportSummary)
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.52))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .lineLimit(1)
             }
             if let markSummary = viewModel.markedRangeDescription {

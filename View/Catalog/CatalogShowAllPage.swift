@@ -4,6 +4,16 @@ struct CatalogShowAllPage: View {
     @Bindable var viewModel: CatalogViewModel
     let onBack: () -> Void
     @State private var isSortMenuPresented = false
+    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
+
+    private var isPosterLayout: Bool {
+        (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+    }
+
+    private func gridImageURL(for game: OPNCatalogGameObject) -> URL? {
+        guard isPosterLayout else { return viewModel.optimizedImageURL(game.bestWideImageURL, width: 620) }
+        return viewModel.optimizedImageURL(game.bestPosterImageURL, width: 512)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -14,7 +24,7 @@ struct CatalogShowAllPage: View {
                     CatalogShowAllFilterPanel(viewModel: viewModel)
                         .frame(width: 280)
                         .background(OpenNOWDesign.Surface.overlay)
-                        .overlay(alignment: .leading) { Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1) }
+                        .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(width: 1) }
                 }
                 if isSortMenuPresented {
                     CatalogSortDropdownOverlay(viewModel: viewModel, isPresented: $isSortMenuPresented, screenWidth: proxy.size.width)
@@ -33,7 +43,7 @@ struct CatalogShowAllPage: View {
             errorBanner
             header
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
             ZStack(alignment: .top) {
                 Rectangle()
@@ -49,7 +59,7 @@ struct CatalogShowAllPage: View {
             }
             .animation(.easeOut(duration: 0.2), value: viewModel.showsCatalogLoadingIndicator)
             if viewModel.isLoading && viewModel.catalogGames.isEmpty {
-                CatalogGridSkeletonView()
+                CatalogGridSkeletonView(isPosterLayout: isPosterLayout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
             } else {
@@ -58,7 +68,7 @@ struct CatalogShowAllPage: View {
                     games: viewModel.catalogGames,
                     selectedGame: viewModel.selectedGame,
                     isQueuedForPatching: { viewModel.isQueuedForPatching($0) },
-                    imageURL: { viewModel.optimizedImageURL($0.bestWideImageURL, width: 620) },
+                    imageURL: { gridImageURL(for: $0) },
                     onSelect: { viewModel.toggleGameSelection($0, inSection: viewModel.selectedShowAllSection?.id ?? "") },
                     onPlay: { viewModel.launch(game: $0) },
                     onMarkOwned: { game in
@@ -100,7 +110,7 @@ struct CatalogShowAllPage: View {
                         Text("BACK")
                     }
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.84))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
                 .buttonStyle(.plain)
                 Spacer()
@@ -111,7 +121,7 @@ struct CatalogShowAllPage: View {
             HStack(spacing: 12) {
                 Text(resultCount)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 Spacer(minLength: 0)
             }
         }
@@ -132,10 +142,10 @@ struct CatalogShowAllPage: View {
                 Image(systemName: "chevron.down")
             }
             .catalogFont(size: 12, weight: .bold)
-            .foregroundStyle(.white.opacity(0.88))
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, 12)
             .frame(height: 34)
-            .background(Color.white.opacity(0.08))
+            .background(OpenNOWDesign.Fill.neutral(0.08))
         }
         .buttonStyle(.plain)
         .disabled(viewModel.sortOptions.isEmpty)
@@ -180,17 +190,17 @@ private struct CatalogSortDropdownPanel: View {
                     HStack(spacing: 12) {
                         Text(label)
                             .catalogFont(size: 14, weight: selected ? .bold : .medium)
-                            .foregroundStyle(.white.opacity(selected ? 0.96 : 0.84))
+                            .foregroundStyle(selected ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                         Spacer(minLength: 0)
                         if selected {
                             Image(systemName: "checkmark")
                                 .catalogFont(size: 12, weight: .bold)
-                                .foregroundStyle(OpenNOWDesign.accent)
+                                .foregroundStyle(OpenNOWDesign.accentInk)
                         }
                     }
                     .padding(.horizontal, 14)
                     .frame(width: 220, height: 38, alignment: .leading)
-                    .background(selected ? Color.white.opacity(0.08) : Color.clear)
+                    .background(selected ? OpenNOWDesign.Fill.neutral(0.08) : Color.clear)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -204,7 +214,7 @@ private struct CatalogSortDropdownPanel: View {
         }
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(width: 1)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
@@ -219,7 +229,7 @@ private struct CatalogShowAllFilterPanel: View {
             HStack {
                 Text("FILTER")
                     .catalogFont(size: 14, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                 Spacer()
                 Button("CLEAR ALL") {
                     viewModel.clearSearch()
@@ -228,7 +238,7 @@ private struct CatalogShowAllFilterPanel: View {
                 }
                     .buttonStyle(.plain)
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.72))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .disabled(!viewModel.isBrowseMode)
             }
             .padding(.horizontal, 18)
@@ -241,7 +251,7 @@ private struct CatalogShowAllFilterPanel: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text((group.label.isEmpty ? group.id : group.label).uppercased())
                                 .catalogFont(size: 12, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.56))
+                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                             ForEach(group.options, id: \.id) { option in
                                 filterRow(option: option)
                             }
@@ -261,10 +271,10 @@ private struct CatalogShowAllFilterPanel: View {
             HStack(spacing: 12) {
                 Image(systemName: selected ? "checkmark.square.fill" : "square")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(selected ? OpenNOWDesign.accent : .white.opacity(0.72))
+                    .foregroundStyle(selected ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                 Text(option.label.isEmpty ? option.id : option.label)
                     .catalogFont(size: 13, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }

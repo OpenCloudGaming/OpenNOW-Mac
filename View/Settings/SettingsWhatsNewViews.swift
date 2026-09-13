@@ -76,11 +76,11 @@ struct WhatsNewCard: View {
                 HStack(spacing: 10 * uiScale) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.44))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
                         .frame(width: 12 * uiScale)
                     Text(entry.version.isEmpty ? entry.summary.tagName : entry.version)
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.88))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     if entry.version == SettingsAppMetadata.version {
                         WhatsNewBadge(title: "INSTALLED", tone: .neutral, uiScale: uiScale)
                     }
@@ -91,11 +91,11 @@ struct WhatsNewCard: View {
                     if let publishedAt = entry.publishedAt {
                         Text(OpenNOWUpdateFormat.releaseDate(publishedAt))
                             .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.44))
+                            .foregroundStyle(OpenNOWDesign.Text.muted)
                     }
                     Text("\(entry.notes.entryCount)")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.34))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
                         .frame(minWidth: 18 * uiScale, alignment: .trailing)
                 }
                 .contentShape(Rectangle())
@@ -118,12 +118,12 @@ struct WhatsNewCard: View {
                 HStack(spacing: 8 * uiScale) {
                     Text(release.version)
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     WhatsNewBadge(title: "AVAILABLE", tone: .accent, uiScale: uiScale)
                 }
                 Text(availableSubtitle(release))
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.54))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
             Spacer(minLength: 10 * uiScale)
             SettingsActionButton(title: "VIEW UPDATE", uiScale: uiScale) {
@@ -144,7 +144,7 @@ struct WhatsNewCard: View {
     private func statusText(_ text: String) -> some View {
         Text(text)
             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-            .foregroundStyle(.white.opacity(0.54))
+            .foregroundStyle(OpenNOWDesign.Text.tertiary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -180,13 +180,13 @@ private struct WhatsNewBadge: View {
     var body: some View {
         Text(title)
             .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-            .foregroundStyle(tone == .accent ? .black : .white.opacity(0.62))
+            .foregroundStyle(tone == .accent ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.secondary)
             .tracking(0.8)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 18 * uiScale)
-            .background(tone == .accent ? OpenNOWDesign.accent : Color.white.opacity(0.08))
+            .background(tone == .accent ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
             .overlay {
-                Rectangle().stroke(tone == .accent ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: 1)
+                Rectangle().stroke(tone == .accent ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1)
             }
     }
 }

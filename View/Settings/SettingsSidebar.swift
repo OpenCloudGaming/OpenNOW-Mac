@@ -29,7 +29,7 @@ struct SettingsSidebar: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .background(SettingsVendorLayout.sidebar)
         .overlay(alignment: .trailing) {
-            Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1)
+            Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(width: 1)
         }
     }
 
@@ -87,6 +87,7 @@ enum SettingsNewBadges {
         switch row {
         case .surroundSound: .audio
         case .sessionReadyAction, .steamBigPictureMode: .general
+        case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance: .theme
         }
     }
 
@@ -114,12 +115,12 @@ struct SettingsSidebarItem: View {
                 Image(systemName: group.icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(isHovering ? 0.72 : 0.5))
+                    .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
                     .frame(width: 16 * uiScale, height: 16 * uiScale)
                 if showsLabel {
                     Text(group.title)
                         .font(.settingsFont(size: 13 * uiScale, weight: isSelected ? .bold : .medium))
-                        .foregroundStyle(isSelected ? .white : .white.opacity(isHovering ? 0.85 : 0.6))
+                        .foregroundStyle(isSelected ? OpenNOWDesign.Text.primary : (isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary))
                         .lineLimit(1)
                     Spacer(minLength: 4 * uiScale)
                     if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale * 0.85, compact: true) }
@@ -150,6 +151,6 @@ struct SettingsSidebarItem: View {
 
     private var background: Color {
         if isSelected { return OpenNOWDesign.accent.opacity(0.12) }
-        return isHovering ? Color.white.opacity(0.05) : .clear
+        return isHovering ? OpenNOWDesign.Fill.neutral(0.05) : .clear
     }
 }

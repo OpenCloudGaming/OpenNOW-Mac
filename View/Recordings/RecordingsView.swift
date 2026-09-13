@@ -3,12 +3,12 @@ import AVKit
 import SwiftUI
 
 enum RecordingsLayout {
-    static let sidebar = Color(red: 18 / 255, green: 20 / 255, blue: 19 / 255)
-    static let surface = Color(red: 12 / 255, green: 13 / 255, blue: 13 / 255)
-    static let card = Color.white.opacity(0.055)
-    static let raised = Color.white.opacity(0.085)
-    static let stroke = Color.white.opacity(0.11)
-    static let strongStroke = Color.white.opacity(0.18)
+    static var sidebar: Color { OpenNOWDesign.Surface.deep }
+    static var surface: Color { OpenNOWDesign.Surface.deep }
+    static var card: Color { OpenNOWDesign.Fill.neutral(0.055) }
+    static var raised: Color { OpenNOWDesign.Fill.neutral(0.085) }
+    static var stroke: Color { OpenNOWDesign.Stroke.subtle }
+    static var strongStroke: Color { OpenNOWDesign.Stroke.strong }
     static let danger = Color(red: 1, green: 78 / 255, blue: 78 / 255)
 }
 
@@ -137,22 +137,22 @@ struct RecordingsView: View {
                     Text("RECORDINGS")
                         .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(1.6)
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                     Text("Saved Videos")
                         .font(.recordingsFont(size: 25 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.96))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(librarySubtitle)
                         .font(.recordingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.56))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .lineLimit(1)
                 }
                 Spacer()
                 Button { model.reload(showMessage: true) } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .frame(width: 40 * uiScale, height: 40 * uiScale)
-                        .background(Color.white.opacity(0.075))
+                        .background(OpenNOWDesign.Stroke.subtle)
                         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
@@ -186,7 +186,7 @@ struct RecordingsView: View {
                             .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                     }
                     .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.84))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
                     .background(RecordingsLayout.card)
@@ -197,7 +197,7 @@ struct RecordingsView: View {
 
                 Text("\(visibleRecordings.count) shown")
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.48))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
             .zIndex(1)
 
@@ -311,10 +311,10 @@ private struct RecordingMetric: View {
             Text(title)
                 .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                 .tracking(1.0)
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
             Text(value)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -333,22 +333,22 @@ private struct RecordingSearchField: View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
+                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
             TextField("Search title, file, or app ID", text: $text)
                 .textFieldStyle(.plain)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.94))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
             if !text.isEmpty {
                 Button { text = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.white.opacity(0.42))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12 * uiScale)
         .frame(height: 40 * uiScale)
-        .background(Color.white.opacity(0.065))
+        .background(OpenNOWDesign.Stroke.subtle)
         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
     }
 }
@@ -368,10 +368,10 @@ private struct RecordingFilterChip: View {
                 Text(filter.title)
             }
             .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
-            .foregroundStyle(isActive ? .black.opacity(0.86) : .white.opacity(isHovering ? 0.92 : 0.64))
+            .foregroundStyle(isActive ? .black.opacity(0.86) : isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.09 : 0.055))
+            .background(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(isHovering ? 0.09 : 0.055))
             .overlay { Rectangle().stroke(isActive ? OpenNOWDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
         }
         .buttonStyle(.plain)
@@ -402,11 +402,11 @@ private struct RecordingRow: View {
                     VStack(alignment: .leading, spacing: 6 * uiScale) {
                         Text(recording.title)
                             .font(.recordingsFont(size: 14 * uiScale, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.96))
+                            .foregroundStyle(OpenNOWDesign.Text.primary)
                             .lineLimit(2)
                         Text(RecordingFormat.relativeDateText(recording.createdAt))
                             .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.54))
+                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
@@ -425,7 +425,7 @@ private struct RecordingRow: View {
             .padding(13 * uiScale)
             .background(background)
             .overlay(alignment: .leading) { Rectangle().fill(isSelected ? OpenNOWDesign.accent : .clear).frame(width: 3) }
-            .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent.opacity(0.48) : Color.white.opacity(isHovering ? 0.18 : 0.08), lineWidth: 1) }
+            .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent.opacity(0.48) : OpenNOWDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -437,7 +437,7 @@ private struct RecordingRow: View {
 
     private var background: some ShapeStyle {
         if isSelected { return AnyShapeStyle(OpenNOWDesign.accent.opacity(0.105)) }
-        return AnyShapeStyle(Color.white.opacity(isHovering ? 0.075 : 0.04))
+        return AnyShapeStyle(OpenNOWDesign.Fill.neutral(isHovering ? 0.075 : 0.04))
     }
 }
 
@@ -461,7 +461,7 @@ private struct RecordingThumbnail: View {
                     }
             } else {
                 LinearGradient(
-                    colors: [Color.white.opacity(0.13), Color.white.opacity(0.03), OpenNOWDesign.accent.opacity(isSelected ? 0.24 : 0.08)],
+                    colors: [OpenNOWDesign.Fill.neutral(0.13), OpenNOWDesign.Fill.neutral(0.03), OpenNOWDesign.accent.opacity(isSelected ? 0.24 : 0.08)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -470,7 +470,7 @@ private struct RecordingThumbnail: View {
             }
             Image(systemName: isHovering || isSelected ? "play.fill" : "play.rectangle.fill")
                 .font(.recordingsFont(size: 19 * uiScale, weight: .bold))
-                .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(thumbnail == nil ? 0.76 : 0.92))
+                .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : thumbnail == nil ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.primary)
                 .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7 * uiScale, x: 0, y: 2 * uiScale)
         }
         .frame(width: 76 * uiScale, height: 46 * uiScale)
@@ -482,7 +482,7 @@ private struct RecordingThumbnail: View {
                 .frame(height: 15 * uiScale)
                 .background(OpenNOWDesign.accent)
         }
-        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .task(id: recording.id) {
             thumbnail = await RecordingThumbnailLoader.thumbnail(for: recording)
         }
@@ -559,11 +559,11 @@ private struct RecordingPill: View {
     var body: some View {
         Text(text)
             .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
-            .foregroundStyle(isActive ? .black.opacity(0.86) : .white.opacity(0.62))
+            .foregroundStyle(isActive ? .black.opacity(0.86) : OpenNOWDesign.Text.secondary)
             .lineLimit(1)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 20 * uiScale)
-            .background(isActive ? OpenNOWDesign.accent : Color.white.opacity(0.065))
-            .overlay { Rectangle().stroke(isActive ? OpenNOWDesign.accent : Color.white.opacity(0.10), lineWidth: 1) }
+            .background(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
+            .overlay { Rectangle().stroke(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

@@ -25,7 +25,7 @@ struct OpenNOWStartupFrameMarks: View, Equatable {
         ZStack {
             ForEach(0..<4, id: \.self) { corner in
                 OpenNOWStartupCornerBracket(arm: arm)
-                    .stroke(OpenNOWDesign.accent.opacity(0.52 * reveal), lineWidth: 1)
+                    .stroke(OpenNOWDesign.Fixed.accent.opacity(0.52 * reveal), lineWidth: 1)
                     .frame(width: arm, height: arm)
                     .rotationEffect(.degrees(Double(corner) * 90))
                     .padding(metrics.inset)
@@ -41,11 +41,11 @@ struct OpenNOWStartupFrameMarks: View, Equatable {
                 Text("OPENNOW")
                     .font(OpenNOWDesign.Typography.label(size: 11, scale: scale, weight: .black))
                     .tracking(3.4 * scale)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
                 Text("BOOT SEQUENCE")
                     .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
                     .tracking(1.6 * scale)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.72))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.72))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(metrics.inset + arm + 14 * scale)
@@ -54,7 +54,7 @@ struct OpenNOWStartupFrameMarks: View, Equatable {
             Text(Self.version)
                 .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
                 .tracking(1.4 * scale)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.38))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .padding(metrics.inset + arm + 14 * scale)
                 .opacity(reveal)

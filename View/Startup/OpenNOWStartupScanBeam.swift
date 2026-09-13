@@ -27,7 +27,7 @@ struct OpenNOWStartupScanBeam: View {
     }
 
     private func beam(width: CGFloat, haloHeight: CGFloat, thickness: CGFloat, intensity: Double) -> some View {
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
 
         return VStack(spacing: 0) {
             LinearGradient(

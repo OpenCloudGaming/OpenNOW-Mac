@@ -3,11 +3,11 @@ import CryptoKit
 import SwiftUI
 
 enum SettingsVendorLayout {
-    static let surface = OpenNOWDesign.Surface.deep
-    static let sidebar = Color(red: 31 / 255, green: 32 / 255, blue: 31 / 255)
-    static let card = Color(red: 26 / 255, green: 27 / 255, blue: 26 / 255)
-    static let cardRaised = Color(red: 34 / 255, green: 35 / 255, blue: 34 / 255)
-    static let row = Color.white.opacity(0.045)
+    static var surface: Color { OpenNOWDesign.Surface.deep }
+    static var sidebar: Color { OpenNOWDesign.Surface.field }
+    static var card: Color { OpenNOWDesign.Surface.panel }
+    static var cardRaised: Color { OpenNOWDesign.Surface.panelRaised }
+    static var row: Color { OpenNOWDesign.Fill.neutral(0.045) }
 }
 
 extension Font {
@@ -301,7 +301,7 @@ struct SettingsTabBar: View {
         .background(SettingsVendorLayout.sidebar)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
         }
     }
@@ -397,11 +397,11 @@ struct SettingsTabItem: View {
                 Image(systemName: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : .white.opacity(isHovering ? 0.72 : 0.5))
+                    .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
                     .frame(width: 15 * uiScale, height: 15 * uiScale)
                 Text(title)
                     .font(.settingsFont(size: 12.5 * uiScale, weight: isSelected ? .bold : .medium))
-                    .foregroundStyle(isSelected ? .white : .white.opacity(isHovering ? 0.85 : 0.58))
+                    .foregroundStyle(isSelected ? OpenNOWDesign.Text.primary : (isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary))
                     .lineLimit(1)
                     .fixedSize()
                 if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale * 0.85, compact: true) }
@@ -424,7 +424,7 @@ struct SettingsTabItem: View {
                 .overlay(shape.strokeBorder(OpenNOWDesign.accent.opacity(0.34), lineWidth: 1))
                 .matchedGeometryEffect(id: "settings-tab-pill", in: pill)
         } else if isHovering {
-            shape.fill(Color.white.opacity(0.06))
+            shape.fill(OpenNOWDesign.Stroke.subtle)
         }
     }
 }
@@ -565,6 +565,7 @@ struct SettingsContent: View {
         case .recording: RecordingSettingsGroup.sections
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []
+        case .theme: ThemeSettingsPage.sections
         case .general: GeneralSettingsGroup.sections
         case .labs: LabsSettingsPage.sections
         }
@@ -586,6 +587,8 @@ struct SettingsContent: View {
             NetworkSettingsGroup(viewModel: viewModel)
         case .remoteCoOp:
             RemoteCoOpSettingsPage(viewModel: viewModel, uiScale: uiScale)
+        case .theme:
+            ThemeSettingsPage(uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
         case .labs:
@@ -613,14 +616,14 @@ struct SettingsHeader: View {
                 VStack(alignment: .leading, spacing: 8 * uiScale) {
                     Text(title.uppercased())
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .tracking(1.5)
                     Text(title)
                         .font(.settingsFont(size: 34 * uiScale, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(subtitle)
                         .font(.settingsFont(size: 14 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
                 Spacer(minLength: 24 * uiScale)
             }

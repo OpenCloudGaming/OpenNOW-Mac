@@ -73,7 +73,7 @@ struct RecordingTimelineView: View {
             // it. That put the clips 15pt lower than intended - past the bottom edge, where they
             // were clipped - and the trim handles 25pt above them.
             ZStack(alignment: .topLeading) {
-                Rectangle().fill(Color.black.opacity(0.34))
+                Rectangle().fill(OpenNOWDesign.Fill.neutral(0.34))
                 timelineRuler(layout: layout)
                 ForEach(segmentFrames(layout: layout), id: \.segment.id) { item in
                     timelineClip(item, layout: layout)
@@ -113,7 +113,7 @@ struct RecordingTimelineView: View {
             ))
         }
         .frame(height: trackHeight)
-        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Editor timeline")
         .accessibilityValue(accessibilityValueText)
@@ -140,7 +140,7 @@ struct RecordingTimelineView: View {
         let drawnRange = drawnSourceRange(of: item, drawn: drawn)
         return ZStack(alignment: .leading) {
             Rectangle()
-                .fill(Color.black.opacity(0.30))
+                .fill(OpenNOWDesign.Fill.neutral(0.30))
             if drawn.width > 24 {
                 RecordingFilmstripView(
                     recording: item.segment.recording,
@@ -163,16 +163,16 @@ struct RecordingTimelineView: View {
             Rectangle()
                 .fill(isSelected ? OpenNOWDesign.accent.opacity(0.07) : Color.clear)
             Rectangle()
-                .stroke(isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.18), lineWidth: isSelected ? 1.4 : 1)
+                .stroke(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong, lineWidth: isSelected ? 1.4 : 1)
             HStack(spacing: 8 * uiScale) {
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(item.segment.recording.title)
                         .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .lineLimit(1)
                     Text("\(recordingEditorDurationText(item.segment.startSeconds)) - \(recordingEditorDurationText(item.segment.endSeconds))")
                         .font(.recordingsFont(size: 9 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.52))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -236,7 +236,7 @@ struct RecordingTimelineView: View {
 
     private func playhead(layout: RecordingTimelineGeometry) -> some View {
         Rectangle()
-            .fill(Color.white.opacity(0.94))
+            .fill(OpenNOWDesign.Fill.neutral(0.94))
             .frame(width: 2, height: trackHeight + 8 * uiScale)
             .shadow(color: OpenNOWDesign.accent.opacity(0.95), radius: 7)
             .offset(x: layout.x(forSeconds: playheadSeconds + trimHeadroom.leading), y: -4 * uiScale)
@@ -300,7 +300,7 @@ struct RecordingTimelineView: View {
                     path.addLine(to: CGPoint(x: x, y: rulerHeight))
                 }
             }
-            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+            .stroke(OpenNOWDesign.Stroke.strong, lineWidth: 1)
             ForEach(ticks, id: \.self) { seconds in
                 let x = layout.x(forSeconds: seconds)
                 // The last label would otherwise hang off the right edge of the track.
@@ -310,7 +310,7 @@ struct RecordingTimelineView: View {
                     // the reason to be there.
                     Text(step < 1 ? recordingEditorPreciseTimeText(seconds) : recordingEditorDurationText(seconds))
                         .font(.recordingsFont(size: 8 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.42))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
                         .fixedSize()
                         .offset(x: x + 3 * uiScale, y: 0)
                 }

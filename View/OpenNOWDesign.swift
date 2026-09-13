@@ -4,18 +4,34 @@ import QuartzCore
 import SwiftUI
 
 enum OpenNOWDesign {
+    /// Every reader goes through the cached statics below rather than through these directly: a
+    /// `static let` here would freeze at the dark values and never see `applyAppearance`.
     enum Surface {
-        static let app = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
-        static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
-        static let panel = Color(red: 28 / 255, green: 28 / 255, blue: 28 / 255)
-        static let panelRaised = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
-        static let tileTray = Color(red: 41 / 255, green: 41 / 255, blue: 41 / 255)
-        static let field = Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255)
-        static let scrim = Color.black.opacity(0.58)
-        static let deep = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
-        static let overlay = Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255)
-        static let chrome = Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255)
+        static var app: Color { resolvedPalette.surfaceApp }
+        static var appBar: Color { resolvedPalette.surfaceAppBar }
+        static var panel: Color { resolvedPalette.surfacePanel }
+        static var panelRaised: Color { resolvedPalette.surfacePanelRaised }
+        static var tileTray: Color { resolvedPalette.surfaceTileTray }
+        static var field: Color { resolvedPalette.surfaceField }
+        static var scrim: Color { resolvedPalette.surfaceScrim }
+        static var deep: Color { resolvedPalette.surfaceDeep }
+        static var overlay: Color { resolvedPalette.surfaceOverlay }
+        static var chrome: Color { resolvedPalette.surfaceChrome }
     }
+
+    /// Surfaces that stay dark whatever the appearance: the startup scene, and chrome drawn over
+    /// video or artwork. Their ink is white in light mode too, because what is behind it never is.
+    enum Fixed {
+        static let surfaceDeep = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
+
+        static func ink(_ opacity: Double) -> Color { Color.white.opacity(opacity) }
+
+        /// The accent as it reads on those surfaces: always the bright value, because the deep one
+        /// is for light pages and these never are.
+        static var accent: Color { brightAccent }
+    }
+
+    nonisolated(unsafe) static var brightAccent = color(OpenNOWThemePreferences.AccentColor.cloudGreen.components)
 
     enum Semantic {
         static let destructive = Color(red: 1, green: 0.54, blue: 0.50)
@@ -29,10 +45,10 @@ enum OpenNOWDesign {
     }
 
     enum Text {
-        static let primary = Color.white.opacity(0.96)
-        static let secondary = Color.white.opacity(0.72)
-        static let tertiary = Color.white.opacity(0.52)
-        static let muted = Color.white.opacity(0.38)
+        static var primary: Color { resolvedPalette.textPrimary }
+        static var secondary: Color { resolvedPalette.textSecondary }
+        static var tertiary: Color { resolvedPalette.textTertiary }
+        static var muted: Color { resolvedPalette.textMuted }
     }
 
     /// Budget for `opnTakingFocus`.
@@ -40,9 +56,22 @@ enum OpenNOWDesign {
     static let focusRetryMilliseconds = 30
 
     enum Stroke {
-        static let subtle = Color.white.opacity(0.10)
-        static let regular = Color.white.opacity(0.14)
-        static let strong = Color.white.opacity(0.22)
+        static var subtle: Color { resolvedPalette.strokeSubtle }
+        static var regular: Color { resolvedPalette.strokeRegular }
+        static var strong: Color { resolvedPalette.strokeStrong }
+    }
+
+    /// Translucent neutral fills - row backgrounds, hover washes, chip and pill fills. The palette
+    /// has no named colour for these because each site picks its own weight; what flips with the
+    /// appearance is which way the wash goes, white over a dark page and black over a light one.
+    enum Fill {
+        /// Dark ink on a light page reads far heavier than light ink on a dark one at the same
+        /// alpha, so a light palette carries the same wash at roughly half weight.
+        static let lightWashScale = 0.5
+
+        static func neutral(_ opacity: Double) -> Color {
+            resolvedPalette.fillBase.opacity(opacity * resolvedPalette.fillScale)
+        }
     }
 
     enum Spacing {
@@ -164,6 +193,13 @@ enum OpenNOWDesign {
         /// paired with `opnTransition` so nothing travels or scales.
         static let reduced = Animation.easeInOut(duration: 0.12)
 
+        /// The one place "is motion reduced right now" gets decided. The in-app switch only ever
+        /// adds to the system setting, so a reader who turned on macOS Reduce Motion never gets
+        /// animation back because the in-app preference happens to be off.
+        static func isMotionReduced(system isSystemReduceMotionEnabled: Bool, preference isReduceMotionPreferenceEnabled: Bool) -> Bool {
+            isSystemReduceMotionEnabled || isReduceMotionPreferenceEnabled
+        }
+
         /// Per-item delay for staggered appearance, and the index it stops growing at. Without the
         /// cap a 400-tile grid would ripple for ten seconds.
         static let stagger: TimeInterval = 0.028
@@ -174,7 +210,178 @@ enum OpenNOWDesign {
         }
     }
 
-    static let accent = Color(red: 0.46, green: 0.90, blue: 0.10)
+    /// Cached so the 384 call sites never touch UserDefaults per read. Plain globals, not
+    /// main-actor isolated: some readers are `ButtonStyle` bodies, which aren't either.
+    nonisolated(unsafe) static var appliedAccent = OpenNOWThemePreferences.AccentColor.cloudGreen
+    nonisolated(unsafe) static var isDarkPalette = true
+
+    /// Cached for the same reason as `resolvedAccent`: every `Surface`/`Text`/`Stroke` token reads
+    /// this on every render of every row and tile, so it must never touch UserDefaults itself.
+    /// Starts resolved to dark so a reader that renders before the root's first `onChange` fires -
+    /// there isn't one, since `initial: true` runs it before the first frame - still sees today's
+    /// shipping colours rather than an unresolved gap.
+    nonisolated(unsafe) private static var resolvedPalette = palette(isDark: true)
+
+    /// Single write path for the appearance palette, mirroring `applyAccent`. `.system` is resolved
+    /// against `systemColorScheme` here rather than upstream, so every caller passes the same two
+    /// things - the stored preference and what the OS currently is - and only this function decides
+    /// what they add up to.
+    /// Resolves both halves of the theme in one place, and does nothing when neither has moved.
+    /// Called from a root view's `body` rather than from `onChange`: a change to either preference
+    /// rebuilds subtrees during that same body evaluation, and `onChange` does not run until after
+    /// those children have already drawn - so pushing from there painted one change behind.
+    @discardableResult
+    static func applyTheme(
+        accent: OpenNOWThemePreferences.AccentColor,
+        appearance: OpenNOWThemePreferences.Appearance,
+        systemColorScheme: ColorScheme
+    ) -> Bool {
+        let key = "\(accent.rawValue)-\(appearance.rawValue)-\(systemColorScheme == .dark)"
+        guard key != appliedThemeKey else { return false }
+        appliedThemeKey = key
+        applyAccent(accent)
+        applyAppearance(appearance, systemColorScheme: systemColorScheme)
+        return true
+    }
+
+    nonisolated(unsafe) private static var appliedThemeKey = ""
+
+    static func isDarkAppearance(_ preference: OpenNOWThemePreferences.Appearance, systemColorScheme: ColorScheme) -> Bool {
+        switch preference {
+        case .system: systemColorScheme == .dark
+        case .dark: true
+        case .light: false
+        }
+    }
+
+    static func applyAppearance(_ preference: OpenNOWThemePreferences.Appearance, systemColorScheme: ColorScheme) {
+        let isDark = isDarkAppearance(preference, systemColorScheme: systemColorScheme)
+        isDarkPalette = isDark
+        resolvedPalette = palette(isDark: isDark)
+        resolveAccentColors()
+    }
+
+    private static func palette(isDark: Bool) -> ResolvedPalette {
+        ResolvedPalette(tokens: isDark ? OpenNOWThemePreferences.darkPaletteTokens : OpenNOWThemePreferences.lightPaletteTokens)
+    }
+
+    /// The `Color` form of one `PaletteTokens` set. The one place a palette's plain sRGB tuples turn
+    /// into `Color`.
+    private struct ResolvedPalette {
+        let fillBase: Color
+        let fillScale: Double
+        let surfaceApp: Color
+        let surfaceAppBar: Color
+        let surfacePanel: Color
+        let surfacePanelRaised: Color
+        let surfaceTileTray: Color
+        let surfaceField: Color
+        let surfaceScrim: Color
+        let surfaceDeep: Color
+        let surfaceOverlay: Color
+        let surfaceChrome: Color
+        let textPrimary: Color
+        let textSecondary: Color
+        let textTertiary: Color
+        let textMuted: Color
+        let strokeSubtle: Color
+        let strokeRegular: Color
+        let strokeStrong: Color
+
+        init(tokens: OpenNOWThemePreferences.PaletteTokens) {
+            // The text token already carries the direction a palette washes in: white on dark,
+            // black on light. A fill is that same ink at a much lower weight.
+            fillBase = Self.opaque((tokens.textPrimary.red, tokens.textPrimary.green, tokens.textPrimary.blue))
+            fillScale = tokens.textPrimary.red > 0.5 ? 1 : Fill.lightWashScale
+            surfaceApp = Self.opaque(tokens.surfaceApp)
+            surfaceAppBar = Self.opaque(tokens.surfaceAppBar)
+            surfacePanel = Self.opaque(tokens.surfacePanel)
+            surfacePanelRaised = Self.opaque(tokens.surfacePanelRaised)
+            surfaceTileTray = Self.opaque(tokens.surfaceTileTray)
+            surfaceField = Self.opaque(tokens.surfaceField)
+            surfaceScrim = Self.translucent(tokens.surfaceScrim)
+            surfaceDeep = Self.opaque(tokens.surfaceDeep)
+            surfaceOverlay = Self.opaque(tokens.surfaceOverlay)
+            surfaceChrome = Self.opaque(tokens.surfaceChrome)
+            textPrimary = Self.translucent(tokens.textPrimary)
+            textSecondary = Self.translucent(tokens.textSecondary)
+            textTertiary = Self.translucent(tokens.textTertiary)
+            textMuted = Self.translucent(tokens.textMuted)
+            strokeSubtle = Self.translucent(tokens.strokeSubtle)
+            strokeRegular = Self.translucent(tokens.strokeRegular)
+            strokeStrong = Self.translucent(tokens.strokeStrong)
+        }
+
+        private static func opaque(_ components: (red: Double, green: Double, blue: Double)) -> Color {
+            Color(red: components.red, green: components.green, blue: components.blue)
+        }
+
+        private static func translucent(_ components: (red: Double, green: Double, blue: Double, opacity: Double)) -> Color {
+            Color(red: components.red, green: components.green, blue: components.blue, opacity: components.opacity)
+        }
+    }
+
+    private static func accentColor(for preset: OpenNOWThemePreferences.AccentColor) -> Color {
+        let components = preset.components
+        return Color(red: components.red, green: components.green, blue: components.blue)
+    }
+
+    private static func softAccentColor(for preset: OpenNOWThemePreferences.AccentColor) -> Color {
+        let components = preset.components
+        let lightened = lightenedAccentComponents(red: components.red, green: components.green, blue: components.blue)
+        return Color(red: lightened.red, green: lightened.green, blue: lightened.blue)
+    }
+
+    /// Fixed amount `accentSoft` lightens by: brightness climbs and saturation falls by the same
+    /// amount in HSB space, both clamped to their natural range, so the hue never shifts. Chosen to
+    /// reproduce today's shipping accentSoft (0.67, 1.0, 0.36) from Cloud Green (0.46, 0.90, 0.10).
+    static let accentLightenAmount = 0.25
+
+    /// Pure so the lightening can be tested without touching `Color`. `amount` moves brightness up
+    /// and saturation down together, which is what "lighter" means in HSB without shifting hue.
+    static func lightenedAccentComponents(
+        red: Double,
+        green: Double,
+        blue: Double,
+        amount: Double = accentLightenAmount
+    ) -> (red: Double, green: Double, blue: Double) {
+        let maximum = max(red, green, blue)
+        let minimum = min(red, green, blue)
+        let delta = maximum - minimum
+        let brightness = maximum
+        let saturation = maximum == 0 ? 0 : delta / maximum
+        let lightenedBrightness = min(1, brightness + amount)
+
+        guard delta > 0 else {
+            return (lightenedBrightness, lightenedBrightness, lightenedBrightness)
+        }
+
+        let hue: Double
+        switch maximum {
+        case red: hue = 60 * (((green - blue) / delta).truncatingRemainder(dividingBy: 6))
+        case green: hue = 60 * ((blue - red) / delta + 2)
+        default: hue = 60 * ((red - green) / delta + 4)
+        }
+        let normalizedHue = hue < 0 ? hue + 360 : hue
+
+        let lightenedSaturation = max(0, saturation - amount)
+        let chroma = lightenedBrightness * lightenedSaturation
+        let huePrime = normalizedHue / 60
+        let secondary = chroma * (1 - abs(huePrime.truncatingRemainder(dividingBy: 2) - 1))
+        let matchValue = lightenedBrightness - chroma
+
+        let sector: (red: Double, green: Double, blue: Double)
+        switch huePrime {
+        case 0..<1: sector = (chroma, secondary, 0)
+        case 1..<2: sector = (secondary, chroma, 0)
+        case 2..<3: sector = (0, chroma, secondary)
+        case 3..<4: sector = (0, secondary, chroma)
+        case 4..<5: sector = (secondary, 0, chroma)
+        default: sector = (chroma, 0, secondary)
+        }
+
+        return (sector.red + matchValue, sector.green + matchValue, sector.blue + matchValue)
+    }
 
     static func clamped(_ value: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
         min(max(value, minimum), maximum)
@@ -242,19 +449,29 @@ extension View {
 private struct OpenNOWMotionModifier<V: Equatable>: ViewModifier {
     let animation: Animation
     let value: V
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     func body(content: Content) -> some View {
-        content.animation(reduceMotion ? OpenNOWDesign.Motion.reduced : animation, value: value)
+        content.animation(isMotionReduced ? OpenNOWDesign.Motion.reduced : animation, value: value)
     }
 }
 
 private struct OpenNOWTransitionModifier: ViewModifier {
     let transition: AnyTransition
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     func body(content: Content) -> some View {
-        content.transition(reduceMotion ? .opacity : transition)
+        content.transition(isMotionReduced ? .opacity : transition)
     }
 }
 
@@ -262,10 +479,15 @@ private struct OpenNOWHoverScaleModifier: ViewModifier {
     let isActive: Bool
     let factor: CGFloat
     let anchor: UnitPoint
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     func body(content: Content) -> some View {
-        content.scaleEffect(reduceMotion || !isActive ? 1 : factor, anchor: anchor)
+        content.scaleEffect(isMotionReduced || !isActive ? 1 : factor, anchor: anchor)
     }
 }
 
@@ -545,5 +767,18 @@ final class OpenNOWInterfaceScaleDensityView: NSView {
         if let runLoopObserver {
             CFRunLoopObserverInvalidate(runLoopObserver)
         }
+    }
+}
+
+/// Tile-only size multiplier for the Tile Density preference. Kept separate from `opnUIScale`,
+/// which scales the whole interface, so the two settings stay independent levers.
+private struct OPNTileDensityKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1.0
+}
+
+extension EnvironmentValues {
+    var opnTileDensity: CGFloat {
+        get { self[OPNTileDensityKey.self] }
+        set { self[OPNTileDensityKey.self] = newValue }
     }
 }

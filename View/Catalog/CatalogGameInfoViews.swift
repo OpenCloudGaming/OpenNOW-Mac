@@ -34,11 +34,16 @@ struct CatalogGameInfoOverlay: View {
     var topInset: CGFloat = 0
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @State private var lightboxIndex: Int?
     @State private var stripAnchor = 0
     @State private var hasEntered = false
     @State private var isCloseHovering = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         if let game = viewModel.selectedGame {
@@ -83,7 +88,7 @@ struct CatalogGameInfoOverlay: View {
                 handleKey(key, imageCount: game.detailImageURLs.count)
             })
             .onAppear {
-                guard !reduceMotion else { hasEntered = true; return }
+                guard !isMotionReduced else { hasEntered = true; return }
                 withAnimation(.easeOut(duration: 0.26)) { hasEntered = true }
             }
             .onChange(of: game.catalogIdentity) { _, _ in lightboxIndex = nil }
@@ -138,7 +143,7 @@ struct CatalogGameInfoOverlay: View {
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                         .frame(height: 24 * uiScale)
-                        .background(Color.white.opacity(0.12))
+                        .background(OpenNOWDesign.Fill.neutral(0.12))
                         .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
             }
@@ -295,7 +300,7 @@ struct CatalogGameInfoOverlay: View {
 
     private func thumbnail(url: String, index: Int, width: CGFloat) -> some View {
         Button {
-            if reduceMotion {
+            if isMotionReduced {
                 lightboxIndex = index
             } else {
                 withAnimation(.easeOut(duration: 0.18)) { lightboxIndex = index }
@@ -323,7 +328,7 @@ struct CatalogGameInfoOverlay: View {
     private func scrollStrip(to index: Int, count: Int, proxy: ScrollViewProxy) {
         let target = min(max(index, 0), max(0, count - 1))
         stripAnchor = target
-        if reduceMotion {
+        if isMotionReduced {
             proxy.scrollTo(target, anchor: .leading)
         } else {
             withAnimation(.easeOut(duration: 0.24)) { proxy.scrollTo(target, anchor: .leading) }
@@ -525,7 +530,7 @@ private struct CatalogGameInfoLightbox: View {
                     .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(Color.white.opacity(0.10))
+                    .background(OpenNOWDesign.Fill.neutral(0.10))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
@@ -541,7 +546,7 @@ private struct CatalogGameInfoLightbox: View {
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
                     .frame(height: 26 * uiScale)
-                    .background(Color.white.opacity(0.08))
+                    .background(OpenNOWDesign.Fill.neutral(0.08))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                     .padding(.bottom, OpenNOWDesign.Spacing.large(scale: uiScale))
             }
@@ -554,7 +559,7 @@ private struct CatalogGameInfoLightbox: View {
                 .catalogFont(size: 16, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 44 * uiScale, height: 64 * uiScale)
-                .background(Color.white.opacity(0.10))
+                .background(OpenNOWDesign.Fill.neutral(0.10))
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)

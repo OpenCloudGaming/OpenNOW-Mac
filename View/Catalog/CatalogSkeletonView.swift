@@ -43,14 +43,19 @@ import SwiftUI
 /// Falls back to a static translucent block when Reduce Motion is enabled.
 struct SkeletonBlock: View {
     var cornerRadius: CGFloat = 0
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @State private var isHoldingShimmerClock = false
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.white.opacity(0.06))
+            .fill(OpenNOWDesign.Fill.neutral(0.06))
             .overlay {
-                if !reduceMotion {
+                if !isMotionReduced {
                     GeometryReader { geo in
                         let width = max(geo.size.width, 1)
                         let bandWidth = width * 0.55
@@ -58,7 +63,7 @@ struct SkeletonBlock: View {
                         LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0),
-                                .init(color: Color.white.opacity(0.14), location: 0.5),
+                                .init(color: OpenNOWDesign.Fill.neutral(0.14), location: 0.5),
                                 .init(color: .clear, location: 1),
                             ],
                             startPoint: .leading,
@@ -71,7 +76,7 @@ struct SkeletonBlock: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .onAppear {
-                guard !reduceMotion else { return }
+                guard !isMotionReduced else { return }
                 isHoldingShimmerClock = true
                 CatalogShimmerClock.shared.retain()
             }
@@ -95,7 +100,26 @@ struct SkeletonBlock: View {
 struct CatalogRailSkeletonView: View {
     var title: String?
     var tileCount = 6
+    var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
+
+    private var tileSize: CGSize {
+        guard isPosterLayout else {
+            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
+        }
+        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
+    }
+
+    private var rowHeight: CGFloat {
+        isPosterLayout
+            ? CatalogPosterLayout.tileRowHeight(scale: uiScale, density: tileDensity)
+            : CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity)
+    }
+
+    /// Top and bottom margins are equal in both layouts, so this is the one true source for both -
+    /// no separate branch needed, and no way for it to drift out of sync with `rowHeight`.
+    private var tileVerticalMargin: CGFloat { (rowHeight - tileSize.height) / 2 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -103,7 +127,7 @@ struct CatalogRailSkeletonView: View {
                 if let title {
                     Text(title)
                         .catalogFont(size: 20, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.96))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .accessibilityAddTraits(.isHeader)
                 } else {
                     SkeletonBlock(cornerRadius: 4)
@@ -117,14 +141,13 @@ struct CatalogRailSkeletonView: View {
             HStack(spacing: 0) {
                 ForEach(0..<tileCount, id: \.self) { _ in
                     SkeletonBlock(cornerRadius: 2)
-                        .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                        .frame(width: tileSize.width, height: tileSize.height)
                         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
-                        .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-                    .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
-                        .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+                        .padding(.top, tileVerticalMargin)
+                        .padding(.bottom, tileVerticalMargin)
                 }
             }
-            .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale), alignment: .top)
+            .frame(height: rowHeight, alignment: .top)
             .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
             .padding(.bottom, 4 * uiScale)
         }
@@ -141,10 +164,32 @@ struct CatalogRailSkeletonView: View {
 struct CatalogGridSkeletonView: View {
     var tileCount = 12
     var isScrollable = true
+    var isPosterLayout = false
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
+
+    private var tileSize: CGSize {
+        guard isPosterLayout else {
+            return CGSize(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
+        }
+        return CGSize(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
+    }
+
+    private var adaptiveMinimum: CGFloat {
+        isPosterLayout
+            ? CatalogPosterLayout.slotWidth(scale: uiScale, density: tileDensity)
+            : CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
+    }
 
     private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: CatalogVendorLayout.wideTileWidth(scale: uiScale) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2), spacing: 4 * uiScale, alignment: .top)]
+        [GridItem(.adaptive(minimum: adaptiveMinimum), spacing: 4 * uiScale, alignment: .top)]
+    }
+
+    /// Derived from the row height the loaded tiles claim, so a placeholder row can never reserve a
+    /// different height than the grid that replaces it.
+    private var tileVerticalMargin: CGFloat {
+        guard isPosterLayout else { return CatalogVendorLayout.tileTopMargin(scale: uiScale) }
+        return CatalogPosterLayout.tileTopMargin(scale: uiScale)
     }
 
     var body: some View {
@@ -163,10 +208,10 @@ struct CatalogGridSkeletonView: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
             ForEach(0..<tileCount, id: \.self) { _ in
                 SkeletonBlock(cornerRadius: 2)
-                    .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale), height: CatalogVendorLayout.wideTileHeight(scale: uiScale))
+                    .frame(width: tileSize.width, height: tileSize.height)
                     .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
-                    .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
-                    .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
+                    .padding(.top, tileVerticalMargin)
+                    .padding(.bottom, tileVerticalMargin)
             }
         }
         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))

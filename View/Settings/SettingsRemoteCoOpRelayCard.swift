@@ -18,7 +18,7 @@ extension RemoteCoOpSettingsPage {
             Group {
                 Text("Carries a guest's video when their network blocks a direct connection, as school, library and cafe networks do. Runs on Cloudflare, free for 1,000 GB a month, and only the guests who need it use any of that - everyone else still connects directly.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 SettingsDivider(uiScale: uiScale)
@@ -34,7 +34,7 @@ extension RemoteCoOpSettingsPage {
                 )
                 Text(OPNRemoteCoOpRelayProvider.pickerFootnote)
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.44))
+                    .foregroundStyle(OpenNOWDesign.Text.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if relayCredentials.provider == .staticCredentials { staticRelayRows }
@@ -78,7 +78,7 @@ extension RemoteCoOpSettingsPage {
             SettingsDivider(uiScale: uiScale)
             Text("ExpressTURN gives 1,000 GB a month with no card - the same allowance as Cloudflare, for far less setup. Metered gives 20 GB, Turnix 10 GB, Xirsys 0.5 GB. Twilio has no free tier. A password here does not expire, so treat it as a real secret: anyone holding it can spend your allowance.\n\nExpressTURN's free tier serves plain TURN on 80 and 443 but reserves turns: for paid plans, so expect Test Relay to report TCP rather than TLS. That still gets through a network blocking UDP; only a firewall inspecting the protocol itself would refuse it.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -108,7 +108,7 @@ extension RemoteCoOpSettingsPage {
             SettingsDivider(uiScale: uiScale)
             Text("The best option if you run your own server: credentials are derived here and expire after six hours, so nothing long-lived ever reaches a guest and there is no API to call. Run coturn with --use-auth-secret and --static-auth-secret set to the same value.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -123,7 +123,7 @@ extension RemoteCoOpSettingsPage {
                 }
                     Text("Walks through the Cloudflare side in three steps. The fields below are the same settings, if you would rather fill them in yourself.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.54))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -149,18 +149,18 @@ extension RemoteCoOpSettingsPage {
                     }
                     Text(relaySetupHint)
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.54))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 SettingsDivider(uiScale: uiScale)
                 Text("Or paste a key you made yourself")
                     .font(.settingsFont(size: 13 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("If setup is refused, the account is usually not subscribed to Realtime yet. Failing that, Realtime > TURN in the dashboard makes a key in a click and it works exactly the same. Copy both halves it shows you \u{2014} the token is shown once.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 SettingsDivider(uiScale: uiScale)
@@ -198,7 +198,7 @@ extension RemoteCoOpSettingsPage {
                     Text("Only guests whose network refuses a direct connection use the relay, and only their stream travels through it. Cloudflare includes 1,000 GB a month \u{2014} roughly 200 hours at 720p60, or 140 at 1080p60 \u{2014} then bills $0.05/GB automatically, with no warning at the threshold.")
                 }
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.58))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -243,14 +243,14 @@ extension RemoteCoOpSettingsPage {
         Text(passed ? "SUCCESS" : "FAILED")
             .font(.settingsFont(size: 11 * uiScale, weight: .bold))
             .tracking(0.8)
-            .foregroundStyle(.black)
+            .foregroundStyle(OpenNOWDesign.onAccent)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 22 * uiScale)
             .background(passed ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive)
     }
 
     var relayTestHintColor: Color {
-        guard let outcome = relayTestOutcome else { return .white.opacity(0.54) }
+        guard let outcome = relayTestOutcome else { return OpenNOWDesign.Text.tertiary }
         return outcome ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive
     }
 

@@ -14,12 +14,17 @@ struct GameDetailPanel: View {
     @State var isMoreInfoHovering = false
     @State var isHovering = false
     @State var showsActionsMenu = false
-    @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.accessibilityReduceMotion) var isSystemReduceMotionEnabled
+    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     /// Seconds between detail-image rotations. A `.task` loop, not a stored `Timer.publish`: this
     /// struct is rebuilt on every re-render, and a stored publisher's interval restarts with it.
     private static let imageRotationInterval = Duration.seconds(5)
     @Environment(\.opnUIScale) var uiScale
     @Environment(\.displayScale) private var displayScale
+
+    private var isMotionReduced: Bool {
+        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+    }
 
     var body: some View {
         if let game = viewModel.selectedGame {
@@ -71,7 +76,7 @@ struct GameDetailPanel: View {
                                 .catalogFont(size: 30, weight: .bold)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.82)
-                                .foregroundStyle(.white.opacity(0.96))
+                                .foregroundStyle(OpenNOWDesign.Text.primary)
                             Spacer(minLength: 0)
                         }
 
@@ -100,7 +105,7 @@ struct GameDetailPanel: View {
                     Button { viewModel.selectGame(nil) } label: {
                         Image(systemName: "xmark")
                             .catalogFont(size: 22, weight: .regular)
-                            .foregroundStyle(.white.opacity(0.90))
+                            .foregroundStyle(OpenNOWDesign.Text.primary)
                             .frame(width: 40 * uiScale, height: 40 * uiScale)
                     }
                     .buttonStyle(.plain)
@@ -130,7 +135,7 @@ struct GameDetailPanel: View {
                                     withAnimation(.easeInOut(duration: 0.18)) { activeImageIndex = index }
                                 } label: {
                                     Circle()
-                                        .fill(index == imageIndex ? OpenNOWDesign.accent : Color.white.opacity(0.62))
+                                        .fill(index == imageIndex ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.62))
                                         .frame(width: (index == imageIndex ? 12 : 9) * uiScale, height: (index == imageIndex ? 12 : 9) * uiScale)
                                 }
                                 .buttonStyle(.plain)
@@ -158,7 +163,7 @@ struct GameDetailPanel: View {
             .task(id: game.catalogIdentity) {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: Self.imageRotationInterval)
-                    guard !Task.isCancelled, !reduceMotion, !isHovering, game.detailImageURLs.count > 1 else { continue }
+                    guard !Task.isCancelled, !isMotionReduced, !isHovering, game.detailImageURLs.count > 1 else { continue }
                     moveImage(delta: 1, count: game.detailImageURLs.count)
                 }
             }
@@ -181,11 +186,11 @@ struct GameDetailPanel: View {
                 Text(chip)
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.4)
-                    .foregroundStyle(chip == "IN LIBRARY" ? .black.opacity(0.88) : .white.opacity(0.82))
+                    .foregroundStyle(chip == "IN LIBRARY" ? OpenNOWDesign.onAccent.opacity(0.88) : OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, 10)
                     .frame(height: 27)
-                    .background(chip == "IN LIBRARY" ? OpenNOWDesign.accent : Color.white.opacity(0.09))
-                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? OpenNOWDesign.accent : Color.white.opacity(0.12), lineWidth: 1) }
+                    .background(chip == "IN LIBRARY" ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.09))
+                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
             }
         }
     }
@@ -205,12 +210,12 @@ struct GameDetailPanel: View {
                 .lineLimit(1)
         }
         .catalogFont(size: 12, weight: .bold)
-        .foregroundStyle(.white.opacity(0.86))
+        .foregroundStyle(OpenNOWDesign.Text.primary)
     }
 
     private var metadataSeparator: some View {
         Circle()
-            .fill(Color.white.opacity(0.72))
+            .fill(OpenNOWDesign.Text.secondary)
             .frame(width: 3, height: 3)
     }
 
@@ -225,10 +230,10 @@ struct GameDetailPanel: View {
                     Text(chip)
                         .catalogFont(size: 12, weight: .bold)
                 }
-                .foregroundStyle(.white.opacity(0.86))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .padding(.horizontal, 9)
                 .frame(height: 23)
-                .background(chip == "For Premium Members" ? Color.white.opacity(0.22) : Color.black.opacity(0.18))
+                .background(chip == "For Premium Members" ? OpenNOWDesign.Fill.neutral(0.22) : Color.black.opacity(0.18))
             }
         }
         .frame(maxWidth: 520, alignment: .leading)
@@ -240,7 +245,7 @@ struct GameDetailPanel: View {
                 Text(item.uppercased())
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.8)
-                    .foregroundStyle(.white.opacity(0.68))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
             }
         }
     }
@@ -290,11 +295,11 @@ struct GameDetailPanel: View {
                         Text(option.title)
                             .catalogFont(size: 11, weight: .bold)
                     }
-                    .foregroundStyle(option.isSelected ? .black.opacity(0.88) : .white.opacity(0.82))
+                    .foregroundStyle(option.isSelected ? OpenNOWDesign.onAccent.opacity(0.88) : OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, 11)
                     .frame(height: 32)
-                    .background(option.isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.09))
-                    .overlay { Rectangle().stroke(option.isSelected ? OpenNOWDesign.accent : Color.white.opacity(0.14), lineWidth: 1) }
+                    .background(option.isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.09))
+                    .overlay { Rectangle().stroke(option.isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)
@@ -322,16 +327,16 @@ struct CatalogFeatureAvailabilityRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: isLocked ? "lock.fill" : "checkmark.circle.fill")
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 18)
             Text(title)
                 .catalogFont(size: 14, weight: .bold)
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 84, alignment: .leading)
                 .lineLimit(1)
             Text(message)
                 .catalogFont(size: 14, weight: .medium)
-                .foregroundStyle(.white.opacity(0.74))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
