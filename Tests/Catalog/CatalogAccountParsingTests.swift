@@ -50,6 +50,19 @@ import Foundation
     #expect(CatalogAccountParsing.parseStoreAccounts(OPNUserAccountInfo()).isEmpty)
 }
 
+@Test func gogIsNotAHiddenConnectionStore() {
+    #expect(!CatalogAccountParsing.isHiddenConnectionStore(store: "GOG", displayName: "GOG"))
+    #expect(!CatalogAccountParsing.isHiddenConnectionStore(store: "gog.com", displayName: "GOG.com"))
+    #expect(!CatalogAccountParsing.isHiddenConnectionStore(store: "gog", displayName: ""))
+}
+
+@Test func nonLinkingStoresRemainHidden() {
+    #expect(CatalogAccountParsing.isHiddenConnectionStore(store: "ea_app", displayName: "EA"))
+    #expect(CatalogAccountParsing.isHiddenConnectionStore(store: "Origin", displayName: "Origin"))
+    #expect(CatalogAccountParsing.isHiddenConnectionStore(store: "none", displayName: ""))
+    #expect(CatalogAccountParsing.isHiddenConnectionStore(store: "nvidia", displayName: "NVIDIA"))
+}
+
 @Test func storeDefinitionFlattensAccountLinkingMetadata() {
     var metadata = OPNStoreAccountLinkingMetadata()
     metadata.isSupported = true

@@ -44,27 +44,8 @@ struct ConnectionsSettingsPage: View {
     }
 
     private func isHiddenConnectionStore(_ store: String) -> Bool {
-        let rawKey = normalizedStoreKey(store)
-        let displayKey = normalizedStoreKey(viewModel.displayName(forStore: store))
-        return Self.hiddenConnectionStoreKeys.contains(rawKey) || Self.hiddenConnectionStoreKeys.contains(displayKey)
+        CatalogAccountParsing.isHiddenConnectionStore(store: store, displayName: viewModel.displayName(forStore: store))
     }
-
-    private func normalizedStoreKey(_ value: String) -> String {
-        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
-    }
-
-    private static let hiddenConnectionStoreKeys: Set<String> = [
-        "ea",
-        "eaapp",
-        "electronicarts",
-        "gog",
-        "gogcom",
-        "none",
-        "nvidia",
-        "origin",
-        "stove",
-        "unknown"
-    ]
 }
 
 struct StoreConnectionsOverview: View {

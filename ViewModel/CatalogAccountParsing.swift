@@ -52,4 +52,28 @@ enum CatalogAccountParsing {
             primaryStore: definition.primaryStore
         )
     }
+
+    /// Stores that are delivered by the catalog but do not offer account linking or library
+    /// syncing, so surfacing them in Settings > Store Connections would offer buttons that do
+    /// nothing. GOG is intentionally absent: it supports account linking and library syncing.
+    static let hiddenConnectionStoreKeys: Set<String> = [
+        "ea",
+        "eaapp",
+        "electronicarts",
+        "none",
+        "nvidia",
+        "origin",
+        "stove",
+        "unknown"
+    ]
+
+    static func isHiddenConnectionStore(store: String, displayName: String) -> Bool {
+        let rawKey = normalizedStoreKey(store)
+        let displayKey = normalizedStoreKey(displayName)
+        return hiddenConnectionStoreKeys.contains(rawKey) || hiddenConnectionStoreKeys.contains(displayKey)
+    }
+
+    private static func normalizedStoreKey(_ value: String) -> String {
+        String(value.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
 }
