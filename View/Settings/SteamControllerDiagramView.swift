@@ -85,7 +85,7 @@ struct SteamControllerDiagramView: View {
                 .renderingMode(.template)
                 .resizable()
                 .frame(width: diagramWidth, height: diagramHeight)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OpenNOWDesign.Fill.neutral(0.38))
             Image("SteamControllerShell")
                 .renderingMode(.template)
                 .resizable()

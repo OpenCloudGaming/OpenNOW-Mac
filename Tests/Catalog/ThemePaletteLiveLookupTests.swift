@@ -102,3 +102,18 @@ import Testing
         #expect(brightness(of: OpenNOWDesign.accentInk) < brightness(of: OpenNOWDesign.accent))
     }
 }
+
+/// A wash is not symmetric: white at 38% over a near-black page is a soft grey, while black at 38%
+/// over a near-white page is a heavy smear. The light palette carries the same request at half
+/// weight so an illustration or a hover state keeps the same visual weight in both appearances.
+@MainActor private func alpha(of color: Color) -> Double {
+    Double((NSColor(color).usingColorSpace(.sRGB) ?? .black).alphaComponent)
+}
+
+@MainActor @Test func aWashCarriesLessInkOnALightPageThanOnADarkOne() {
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    #expect(abs(alpha(of: OpenNOWDesign.Fill.neutral(0.38)) - 0.38) < 0.01)
+    withAppearance(.light) {
+        #expect(abs(alpha(of: OpenNOWDesign.Fill.neutral(0.38)) - 0.38 * OpenNOWDesign.Fill.lightWashScale) < 0.01)
+    }
+}

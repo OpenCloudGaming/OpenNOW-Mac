@@ -51,8 +51,12 @@ enum OpenNOWDesign {
     /// has no named colour for these because each site picks its own weight; what flips with the
     /// appearance is which way the wash goes, white over a dark page and black over a light one.
     enum Fill {
+        /// Dark ink on a light page reads far heavier than light ink on a dark one at the same
+        /// alpha, so a light palette carries the same wash at roughly half weight.
+        static let lightWashScale = 0.5
+
         static func neutral(_ opacity: Double) -> Color {
-            resolvedPalette.fillBase.opacity(opacity)
+            resolvedPalette.fillBase.opacity(opacity * resolvedPalette.fillScale)
         }
     }
 
@@ -287,6 +291,7 @@ enum OpenNOWDesign {
     /// into `Color`, mirroring `accentColor(for:)` just above.
     private struct ResolvedPalette {
         let fillBase: Color
+        let fillScale: Double
         let surfaceApp: Color
         let surfaceAppBar: Color
         let surfacePanel: Color
@@ -309,6 +314,7 @@ enum OpenNOWDesign {
             // The text token already carries the direction a palette washes in: white on dark,
             // black on light. A fill is that same ink at a much lower weight.
             fillBase = Self.opaque((tokens.textPrimary.red, tokens.textPrimary.green, tokens.textPrimary.blue))
+            fillScale = tokens.textPrimary.red > 0.5 ? 1 : Fill.lightWashScale
             surfaceApp = Self.opaque(tokens.surfaceApp)
             surfaceAppBar = Self.opaque(tokens.surfaceAppBar)
             surfacePanel = Self.opaque(tokens.surfacePanel)
