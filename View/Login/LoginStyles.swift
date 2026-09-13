@@ -29,7 +29,7 @@ struct PrimaryLoginButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.uiSans(size: 14, weight: .bold))
-            .foregroundStyle(.black)
+            .foregroundStyle(OpenNOWDesign.onAccent)
             .tracking(0.4)
             .padding(.vertical, 14)
             .padding(.horizontal, 16)
@@ -50,16 +50,23 @@ struct VendorGetInButtonStyle: ButtonStyle {
     var size: Size = .regular
     var uiScale: CGFloat = 1
     var minimumWidth: CGFloat?
+    /// The sign-in wall stays dark in every appearance, so a button on it keeps the bright accent
+    /// and the black label that reads on it.
+    var isOnFixedDarkSurface = false
+
+    private var fill: Color { isOnFixedDarkSurface ? OpenNOWDesign.Fixed.accent : OpenNOWDesign.accent }
+
+    private var label: Color { isOnFixedDarkSurface ? .black : OpenNOWDesign.onAccent }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.uiSans(size: size.fontSize * uiScale, weight: .bold))
-            .foregroundStyle(.black)
+            .foregroundStyle(label)
             .tracking(0.3)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
             .frame(minWidth: minimumWidth.map { $0 * uiScale })
             .frame(height: size.height * uiScale)
-            .background(configuration.isPressed ? OpenNOWDesign.accent.opacity(0.78) : OpenNOWDesign.accent)
+            .background(configuration.isPressed ? fill.opacity(0.78) : fill)
             .opacity(configuration.isPressed ? 0.92 : 1)
     }
 }

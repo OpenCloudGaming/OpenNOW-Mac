@@ -104,7 +104,7 @@ struct SettingsOptionRow: View {
                             }
                             Text(options[index])
                                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                                .foregroundStyle(index == selectedIndex ? .black : (optionEnabled ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted))
+                                .foregroundStyle(index == selectedIndex ? OpenNOWDesign.onAccent : (optionEnabled ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted))
                         }
                         .padding(.horizontal, 12 * uiScale)
                         .frame(height: 32 * uiScale)

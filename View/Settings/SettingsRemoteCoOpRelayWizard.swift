@@ -79,7 +79,7 @@ struct RemoteCoOpRelayWizard: View {
                 HStack(spacing: 6 * uiScale) {
                     Text("\(entry.rawValue + 1)")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(entry.rawValue <= stepIndex ? .black : OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(entry.rawValue <= stepIndex ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.tertiary)
                         .frame(width: 18 * uiScale, height: 18 * uiScale)
                         .background(entry.rawValue <= stepIndex ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
                     Text(entry.title)

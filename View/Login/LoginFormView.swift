@@ -124,7 +124,7 @@ struct LoginFormView: View {
                 Text("GET IN")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(VendorGetInButtonStyle(size: .large))
+            .buttonStyle(VendorGetInButtonStyle(size: .large, isOnFixedDarkSurface: true))
             .frame(maxWidth: 260)
             .accessibilityHint("Opens the GeForce NOW sign-in window")
         }

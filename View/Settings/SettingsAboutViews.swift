@@ -244,7 +244,7 @@ struct SettingsDialogButton: View {
         Button(action: action) {
             Text(title)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(tone == .primary ? .black : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(tone == .primary ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.secondary)
                 .tracking(0.8)
                 .padding(.horizontal, 14 * uiScale)
                 .frame(minWidth: 104 * uiScale)

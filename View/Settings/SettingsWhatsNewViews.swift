@@ -180,7 +180,7 @@ private struct WhatsNewBadge: View {
     var body: some View {
         Text(title)
             .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-            .foregroundStyle(tone == .accent ? .black : OpenNOWDesign.Text.secondary)
+            .foregroundStyle(tone == .accent ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.secondary)
             .tracking(0.8)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 18 * uiScale)

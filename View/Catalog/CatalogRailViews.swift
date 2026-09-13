@@ -448,7 +448,7 @@ private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .catalogFont(size: 11, weight: .bold)
-            .foregroundStyle(primary ? .black : OpenNOWDesign.Text.primary)
+            .foregroundStyle(primary ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.primary)
             .tracking(0.8)
             .padding(.horizontal, 14)
             .frame(height: 28)

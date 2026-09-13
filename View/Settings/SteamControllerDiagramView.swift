@@ -247,7 +247,7 @@ struct SteamControllerDiagramView: View {
                 .overlay(Circle().stroke(pressed ? OpenNOWDesign.accent.opacity(0.8) : OpenNOWDesign.Stroke.strong, lineWidth: 1))
             Text(label)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? .black : OpenNOWDesign.Text.muted)
+                .foregroundStyle(pressed ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.muted)
         }
         .frame(width: art(27), height: art(27))
     }
@@ -265,7 +265,7 @@ struct SteamControllerDiagramView: View {
                 )
             Text(label)
                 .font(.settingsFont(size: 8 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? .black : OpenNOWDesign.Text.muted)
+                .foregroundStyle(pressed ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.muted)
                 .rotationEffect(.degrees(-rotation))
         }
         .frame(width: armWidth, height: armLength)

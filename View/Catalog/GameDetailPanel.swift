@@ -186,7 +186,7 @@ struct GameDetailPanel: View {
                 Text(chip)
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.4)
-                    .foregroundStyle(chip == "IN LIBRARY" ? .black.opacity(0.88) : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(chip == "IN LIBRARY" ? OpenNOWDesign.onAccent.opacity(0.88) : OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, 10)
                     .frame(height: 27)
                     .background(chip == "IN LIBRARY" ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.09))
@@ -295,7 +295,7 @@ struct GameDetailPanel: View {
                         Text(option.title)
                             .catalogFont(size: 11, weight: .bold)
                     }
-                    .foregroundStyle(option.isSelected ? .black.opacity(0.88) : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(option.isSelected ? OpenNOWDesign.onAccent.opacity(0.88) : OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, 11)
                     .frame(height: 32)
                     .background(option.isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.09))

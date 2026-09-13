@@ -258,7 +258,7 @@ struct CatalogAccountDropdownRow: View {
 
     private var iconColor: Color {
         if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? .black : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
+        return isActive ? OpenNOWDesign.onAccent : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 }
 

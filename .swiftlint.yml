@@ -212,6 +212,20 @@ custom_rules:
     message: "DESIGN.md Do: stack panels with a 1px Stroke Subtle Rectangle (SettingsDivider / SteamControllerModalRule), not the system Divider."
     severity: error
 
+  design_no_black_on_accent:
+    name: "Black on an accent fill"
+    included: ".*/View/.*\\.swift"
+    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Login/LoginStyles|Login/LoginComponents|Stream/.*|Catalog/CatalogMediaViews|Catalog/CatalogHeroImageViews)\\.swift"
+    regex: '\?\s*\.black\s*:|foregroundStyle\(\.black\)'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "DESIGN.md Colors: a label on an accent fill uses OpenNOWDesign.onAccent, which follows whichever accent is under it. Plain .black only reads on the bright accent, so it breaks on a light page."
+
   design_no_hardcoded_surface_color:
     name: "Hardcoded colour channels"
     included: ".*/View/.*\\.swift"

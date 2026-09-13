@@ -126,7 +126,7 @@ struct SteamControllerChip: View {
     }
 
     private var foreground: Color {
-        if isSelected { return .black }
+        if isSelected { return OpenNOWDesign.onAccent }
         return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
     }
 

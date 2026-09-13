@@ -274,7 +274,7 @@ struct VendorLaunchStepHeader: View {
         HStack(alignment: .top, spacing: 14) {
             Text(index)
                 .catalogFont(size: 12, weight: .bold)
-                .foregroundStyle(.black)
+                .foregroundStyle(OpenNOWDesign.onAccent)
                 .frame(width: 26, height: 26)
                 .background(OpenNOWDesign.accent)
             VStack(alignment: .leading, spacing: 4) {
@@ -339,7 +339,7 @@ struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .catalogFont(size: 12, weight: .bold)
-            .foregroundStyle(.black)
+            .foregroundStyle(OpenNOWDesign.onAccent)
             .tracking(0.8)
             .padding(.horizontal, 18)
             .frame(height: 38)

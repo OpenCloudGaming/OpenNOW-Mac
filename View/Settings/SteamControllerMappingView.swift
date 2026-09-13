@@ -284,7 +284,7 @@ struct SteamControllerMappingView: View {
                 HStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
                     Text(control.label)
                         .font(.settingsFont(size: 13 * uiScale, weight: .bold))
-                        .foregroundStyle(held ? .black : OpenNOWDesign.Text.primary)
+                        .foregroundStyle(held ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.primary)
                         .fixedSize()
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                         .frame(minWidth: 48 * uiScale)

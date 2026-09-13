@@ -215,7 +215,7 @@ struct SettingsRevealButton: View {
         Button(action: action) {
             Text(revealed ? "HIDE DETAILS" : "REVEAL DETAILS")
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(revealed ? .black : (isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary))
+                .foregroundStyle(revealed ? OpenNOWDesign.onAccent : (isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary))
                 .tracking(0.8)
                 .padding(.horizontal, 13 * uiScale)
                 .frame(height: 32 * uiScale)
