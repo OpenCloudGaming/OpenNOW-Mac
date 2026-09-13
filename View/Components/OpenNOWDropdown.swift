@@ -69,6 +69,7 @@ struct OpenNOWDropdownPanel: View {
             }
         }
         .padding(.vertical, OpenNOWDesign.Spacing.menuPanelVertical(scale: uiScale))
+        .frame(minWidth: width == nil ? Self.minimumWidth(scale: uiScale) : nil)
         .frame(maxWidth: width == nil ? .infinity : nil)
         .frame(width: width)
         .background(OpenNOWDesign.Surface.panelRaised)
