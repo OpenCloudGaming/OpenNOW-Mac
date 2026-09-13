@@ -98,6 +98,7 @@ struct VendorLaunchProgressCard: View {
 
 struct VendorStreamLaunchLoadingOverlay: View {
     let viewModel: CatalogViewModel
+    let windowTopInset: CGFloat
 
     var body: some View {
         let progress = viewModel.activeStreamProgress
@@ -109,7 +110,8 @@ struct VendorStreamLaunchLoadingOverlay: View {
             queuePosition: progress?.queuePosition,
             accessoryPresented: viewModel.activeStreamAdPlayback != nil,
             stageOverride: viewModel.activeStreamAdPlayback != nil ? "Sponsored break" : nil,
-            cancelAction: viewModel.cancelActiveStreamLaunch
+            cancelAction: viewModel.cancelActiveStreamLaunch,
+            windowTopInset: windowTopInset
         ) {
             if let ad = viewModel.activeStreamAdPlayback {
                 VendorEmbeddedSessionAdPlayer(

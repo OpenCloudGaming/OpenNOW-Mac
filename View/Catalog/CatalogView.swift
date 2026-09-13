@@ -318,7 +318,7 @@ struct CatalogView: View {
             }
 
             if viewModel.isStreamLaunchLoadingVisible {
-                VendorStreamLaunchLoadingOverlay(viewModel: viewModel)
+                VendorStreamLaunchLoadingOverlay(viewModel: viewModel, windowTopInset: measuredCatalogTopInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
                     .zIndex(10)

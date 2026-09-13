@@ -40,6 +40,9 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     let accessoryPresented: Bool
     let stageOverride: String?
     let cancelAction: (() -> Void)?
+    /// Measured window title-bar height (`WindowTopInsetReader`). The screen bleeds under the bar,
+    /// so the title's top padding grows by this much or the bar swallows the padding entirely.
+    let windowTopInset: CGFloat
     private let accessory: Accessory
 
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
@@ -56,6 +59,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
          accessoryPresented: Bool = false,
          stageOverride: String? = nil,
          cancelAction: (() -> Void)? = nil,
+         windowTopInset: CGFloat = 0,
          @ViewBuilder accessory: () -> Accessory) {
         self.title = title.isEmpty ? "GeForce NOW" : title
         self.stepIndex = stepIndex
@@ -64,6 +68,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         self.accessoryPresented = accessoryPresented
         self.stageOverride = stageOverride
         self.cancelAction = cancelAction
+        self.windowTopInset = windowTopInset
         self.accessory = accessory()
     }
 
@@ -80,7 +85,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                 VStack(spacing: 0) {
                     titleRow(compact: compact)
-                        .padding(.top, compact ? OpenNOWDesign.Spacing.large : OpenNOWDesign.Spacing.xLarge)
+                        .padding(.top, (compact ? OpenNOWDesign.Spacing.large : OpenNOWDesign.Spacing.xLarge) + windowTopInset)
                         .padding(.leading, hPad)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -174,7 +179,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         // left once the title, footer, and cancel row are reserved, so the centered column never
         // overflows and clips the title's top padding. No floor: a tiny window gets a tiny hero
         // rather than a clipped title.
-        let reservedHeight: CGFloat = compact ? 200 : 280
+        let reservedHeight: CGFloat = (compact ? 200 : 280) + windowTopInset
         let verticalBudget = max(58, proxy.size.height - reservedHeight)
         let plateWidth = min(compact ? 380 : 640, horizontalLimit)
         let adWidth = min(plateWidth, ((verticalBudget - 58) * 16 / 9).rounded())
