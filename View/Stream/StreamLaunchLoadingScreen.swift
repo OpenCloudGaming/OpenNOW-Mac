@@ -190,20 +190,22 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
     private func footerBand(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
-            HStack(alignment: .center, spacing: OpenNOWDesign.Spacing.medium) {
-                eyebrowText
-                    .font(.catalogText(size: 11, weight: .bold))
-                    .tracking(1.4)
-                    .lineLimit(1)
-                Spacer(minLength: OpenNOWDesign.Spacing.medium)
+            eyebrowText
+                .font(.catalogText(size: 11, weight: .bold))
+                .tracking(1.4)
+                .lineLimit(1)
+
+            Group {
                 if let cancelAction {
                     Button("Cancel", action: cancelAction)
                         .buttonStyle(OpenNOWModalSecondaryButtonStyle())
                         .accessibilityLabel("Cancel stream launch")
+                } else {
+                    Color.clear
                 }
             }
             // Reserved whether or not Cancel is offered, so its appearance never shoves the rail.
-            .frame(minHeight: 36)
+            .frame(maxWidth: .infinity, minHeight: 36)
 
             HStack(spacing: OpenNOWDesign.Spacing.xxSmall) {
                 ForEach(StreamLaunchStep.allCases, id: \.rawValue) { step in
