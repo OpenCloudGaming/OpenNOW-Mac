@@ -83,7 +83,7 @@ extension RemoteCoOpSetupWizard {
             if !viewModel.remoteCoOpAblyKeyMessage.isEmpty {
                 Text(viewModel.remoteCoOpAblyKeyMessage)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive)
+                    .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.destructive)
             }
             if viewModel.remoteCoOpAblyKey.isUsable {
                 SettingsTextFieldRow(

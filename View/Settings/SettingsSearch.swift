@@ -188,7 +188,7 @@ struct SettingsSearchField: View {
             Image(systemName: "magnifyingglass")
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(isFocused ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
-            TextField("Search settings", text: $query)
+            TextField("Search settings", text: $query, prompt: Text("Search settings").foregroundColor(OpenNOWDesign.Text.muted))
                 .textFieldStyle(.plain)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(OpenNOWDesign.Text.primary)

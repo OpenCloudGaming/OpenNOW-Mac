@@ -34,7 +34,7 @@ struct OpenNOWStartupRail: View, Equatable {
 
                 Text("\(percent)%")
                     .font(OpenNOWDesign.Typography.mono(size: metrics.compact ? 10 : 12, scale: scale, weight: .black))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .contentTransition(.identity)
             }
 

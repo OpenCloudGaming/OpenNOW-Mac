@@ -218,7 +218,7 @@ struct CatalogShowAllEmptySearchView: View {
         VStack(spacing: 10) {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .catalogFont(size: 34, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.84))
+                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.84))
             Text("No matching games")
                 .catalogFont(size: 18, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)

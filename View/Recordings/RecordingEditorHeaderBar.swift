@@ -73,7 +73,7 @@ struct RecordingEditorHeaderBar: View {
                 Text("QUICK EDIT")
                     .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.4)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                 OpenNOWBetaTag(uiScale: uiScale, prominent: true)
             }
             .fixedSize()
@@ -144,7 +144,7 @@ struct RecordingEditorHeaderBar: View {
             } else if let hint = viewModel.hint {
                 Image(systemName: "info.circle.fill")
                     .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
                 Text(hint)
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(OpenNOWDesign.Text.secondary)

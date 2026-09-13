@@ -57,7 +57,7 @@ struct CatalogMainMenuPanel: View {
                 Text("GEFORCE NOW")
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(1.4)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                 Text("OpenNOW Menu")
                     .catalogFont(size: 20, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.Text.primary)

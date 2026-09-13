@@ -55,11 +55,11 @@ struct ControllerSearchOverlay: View {
         HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .catalogFont(size: 18, weight: .bold)
-                .foregroundStyle(rowIndex == 0 ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(rowIndex == 0 ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
             TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .catalogFont(size: 20, weight: .medium)
-                .foregroundStyle(.white)
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {

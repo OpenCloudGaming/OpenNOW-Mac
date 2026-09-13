@@ -228,7 +228,7 @@ struct CatalogStorePickerOverlay: View {
                 Button("Get this game.") { viewModel.openStoreForSelectedVariant() }
                     .buttonStyle(.plain)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
             }
             HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
                 Button("CONTINUE") { viewModel.confirmSelectedVariantOwned() }
@@ -259,7 +259,7 @@ struct CatalogStorePickerOverlay: View {
                     HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                         Image(systemName: "checkmark.circle.fill")
                             .catalogFont(size: 12, weight: .bold)
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                         Text(CatalogStorePresentation.successSyncText(account: account))
                             .catalogFont(size: 12, weight: .medium)
                             .foregroundStyle(OpenNOWDesign.Text.secondary)
@@ -294,7 +294,7 @@ struct CatalogStorePickerOverlay: View {
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "checkmark")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
             }
         }
     }
@@ -444,7 +444,7 @@ extension CatalogStorePickerRow {
     private var selectedCheckmark: some View {
         Image(systemName: "checkmark")
             .catalogFont(size: 12, weight: .bold)
-            .foregroundStyle(OpenNOWDesign.accent)
+            .foregroundStyle(OpenNOWDesign.accentInk)
             .frame(width: 18 * uiScale, height: 18 * uiScale)
             .opacity(isSelected ? 1 : 0)
     }

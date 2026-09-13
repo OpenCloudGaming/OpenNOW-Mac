@@ -118,7 +118,7 @@ struct InputSettingsPage: View {
             HStack(alignment: .center, spacing: 12 * uiScale) {
                 Image(systemName: isAnyControllerConnected ? "gamecontroller.fill" : "keyboard")
                     .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
                     .background(OpenNOWDesign.accent.opacity(0.12))
                     .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }

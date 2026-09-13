@@ -78,7 +78,7 @@ struct SteamControllerSettingsPage: View {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: hidMonitor.inputMonitoringPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.uiSans(size: 14 * uiScale))
-                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? OpenNOWDesign.accent : .orange)
+                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.warning)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(hidMonitor.inputMonitoringPermissionGranted ? "Input Monitoring Permission Granted" : "Input Monitoring Permission Required")
@@ -119,7 +119,7 @@ struct SteamControllerSettingsPage: View {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.uiSans(size: 14 * uiScale))
-                            .foregroundStyle(accessibilityPermissionGranted ? OpenNOWDesign.accent : .orange)
+                            .foregroundStyle(accessibilityPermissionGranted ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.warning)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(accessibilityPermissionGranted ? "Accessibility Permission Granted" : "Accessibility Permission Required")

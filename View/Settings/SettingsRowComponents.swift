@@ -357,7 +357,7 @@ struct SettingsSliderRow: View {
             SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(valueText)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accentInk)
         }
     }
 
@@ -445,7 +445,7 @@ struct SettingsStatusPill: View {
                 .tracking(0.8)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -465,7 +465,7 @@ struct SettingsMessageView: View {
     var body: some View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: systemImage)
-                .foregroundStyle(OpenNOWDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accentInk)
             Text(message)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(OpenNOWDesign.Text.secondary)

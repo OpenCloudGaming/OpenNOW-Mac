@@ -45,7 +45,7 @@ struct OpenNOWStartupFrameMarks: View, Equatable {
                 Text("BOOT SEQUENCE")
                     .font(OpenNOWDesign.Typography.mono(size: 9, scale: scale))
                     .tracking(1.6 * scale)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.72))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.72))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .padding(metrics.inset + arm + 14 * scale)

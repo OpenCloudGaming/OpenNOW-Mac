@@ -154,7 +154,7 @@ struct RemoteCoOpRelayWizard: View {
             if !viewModel.remoteCoOpTURNSetupMessage.isEmpty {
                 Text(viewModel.remoteCoOpTURNSetupMessage)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(credentials.canRelay ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(credentials.canRelay ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -165,7 +165,7 @@ struct RemoteCoOpRelayWizard: View {
             }
             .buttonStyle(.plain)
             .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-            .foregroundStyle(OpenNOWDesign.accent)
+            .foregroundStyle(OpenNOWDesign.accentInk)
 
             if showingManualKey {
                 VStack(alignment: .leading, spacing: 10 * uiScale) {
@@ -185,7 +185,7 @@ struct RemoteCoOpRelayWizard: View {
             if credentials.canRelay {
                 Text("Relay ready")
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
             }
             Spacer(minLength: 0)
             if stepIndex > 0 {

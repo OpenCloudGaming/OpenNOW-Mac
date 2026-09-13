@@ -19,7 +19,7 @@ struct CatalogLegacyTransportNotice: View {
                     .fill(OpenNOWDesign.accent.opacity(0.13))
                 Image(systemName: "sparkles")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
             }
             .frame(width: 36 * uiScale, height: 36 * uiScale)
             .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }

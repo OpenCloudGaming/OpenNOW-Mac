@@ -115,7 +115,7 @@ struct SettingsSidebarItem: View {
                 Image(systemName: group.icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
+                    .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
                     .frame(width: 16 * uiScale, height: 16 * uiScale)
                 if showsLabel {
                     Text(group.title)

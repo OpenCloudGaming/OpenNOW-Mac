@@ -70,7 +70,7 @@ struct InterfaceGlyphPill: View {
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .lineLimit(1)
         }
-        .foregroundStyle(OpenNOWDesign.accent)
+        .foregroundStyle(OpenNOWDesign.accentInk)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 28 * uiScale)
         .background(OpenNOWDesign.accent.opacity(0.12))

@@ -25,7 +25,7 @@ struct SettingsRowTitle: View {
         HStack(alignment: .center, spacing: 8 * uiScale) {
             Text(title)
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(OpenNOWDesign.Text.primary)
             if isNew { OpenNOWNewTag(uiScale: uiScale) }
         }
     }
@@ -41,7 +41,7 @@ struct SettingsCardTag: View {
         Text(text)
             .font(.settingsFont(size: 8 * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
-            .foregroundStyle(OpenNOWDesign.accent.opacity(0.78))
+            .foregroundStyle(OpenNOWDesign.accentInk)
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
             .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
@@ -96,11 +96,11 @@ struct OpenNOWBetaTag: View {
 
     private var foreground: Color {
         if prominent { return .black }
-        return compact ? OpenNOWDesign.accent.opacity(0.72) : OpenNOWDesign.accent
+        return OpenNOWDesign.accentInk
     }
 
     private var background: Color {
         if prominent { return OpenNOWDesign.accent }
-        return OpenNOWDesign.accent.opacity(compact ? 0.12 : 0.16)
+        return OpenNOWDesign.accent.opacity(compact ? 0.16 : 0.20)
     }
 }

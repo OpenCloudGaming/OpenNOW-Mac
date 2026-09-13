@@ -195,7 +195,7 @@ private struct CatalogSortDropdownPanel: View {
                         if selected {
                             Image(systemName: "checkmark")
                                 .catalogFont(size: 12, weight: .bold)
-                                .foregroundStyle(OpenNOWDesign.accent)
+                                .foregroundStyle(OpenNOWDesign.accentInk)
                         }
                     }
                     .padding(.horizontal, 14)
@@ -271,7 +271,7 @@ private struct CatalogShowAllFilterPanel: View {
             HStack(spacing: 12) {
                 Image(systemName: selected ? "checkmark.square.fill" : "square")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(selected ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(selected ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                 Text(option.label.isEmpty ? option.id : option.label)
                     .catalogFont(size: 13, weight: .medium)
                     .foregroundStyle(OpenNOWDesign.Text.primary)

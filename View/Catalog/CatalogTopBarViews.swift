@@ -139,7 +139,7 @@ struct CatalogTopBar: View {
                                 VStack(alignment: .leading, spacing: 1 * uiScale) {
                                     Text(viewModel.account.displayName)
                                         .catalogFont(size: 15, weight: .medium)
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(OpenNOWDesign.Text.primary)
                                         .lineLimit(1)
                                     Text(viewModel.subscriptionStatus.membershipTier)
                                         .catalogFont(size: 12, weight: .medium)
@@ -231,7 +231,7 @@ struct CatalogTopBar: View {
             TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .catalogFont(size: 16, weight: .medium)
-                .foregroundStyle(.white)
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
                 .onChange(of: viewModel.searchQuery) { _, newValue in
@@ -327,7 +327,7 @@ struct CatalogTopBarIconLabel: View {
     var body: some View {
         Image(systemName: systemName)
             .catalogFont(size: 17, weight: .medium)
-            .foregroundStyle(isHovering ? OpenNOWDesign.accent : OpenNOWDesign.Text.primary)
+            .foregroundStyle(isHovering ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
             .modifier(CatalogTopBarPlate(isActive: isHovering))
             .onHover { isHovering = $0 }
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)

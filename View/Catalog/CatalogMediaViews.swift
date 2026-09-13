@@ -72,7 +72,7 @@ struct CatalogImageFallback: View {
             } else {
                 Image(systemName: "play.rectangle.fill")
                     .catalogFont(size: 34, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.78))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.78))
                     .offset(x: iconOffsetX)
             }
         }
@@ -99,7 +99,7 @@ struct CatalogMessageView: View {
                     .fill(OpenNOWDesign.accent.opacity(0.13))
                 Image(systemName: systemImage)
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
             }
             .frame(width: 36, height: 36)
             .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
@@ -134,7 +134,7 @@ struct CatalogMessageView: View {
                 Button(action: onGenerateDiagnostics) {
                     Text(Self.diagnosticsTitle(for: diagnosticsState))
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accent)
+                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accentInk)
                         .tracking(0.7)
                         .padding(.horizontal, 10)
                         .frame(height: 28)

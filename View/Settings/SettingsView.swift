@@ -397,7 +397,7 @@ struct SettingsTabItem: View {
                 Image(systemName: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? OpenNOWDesign.accent : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
+                    .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
                     .frame(width: 15 * uiScale, height: 15 * uiScale)
                 Text(title)
                     .font(.settingsFont(size: 12.5 * uiScale, weight: isSelected ? .bold : .medium))
@@ -616,7 +616,7 @@ struct SettingsHeader: View {
                 VStack(alignment: .leading, spacing: 8 * uiScale) {
                     Text(title.uppercased())
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .tracking(1.5)
                     Text(title)
                         .font(.settingsFont(size: 34 * uiScale, weight: .bold))

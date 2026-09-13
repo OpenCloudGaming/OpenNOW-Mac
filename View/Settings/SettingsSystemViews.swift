@@ -191,7 +191,7 @@ struct SystemCapabilityRow: View {
             Spacer(minLength: 0)
             Text(value.uppercased())
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
                 .tracking(0.8)
                 .padding(.horizontal, 10 * uiScale)
                 .frame(height: 28 * uiScale)

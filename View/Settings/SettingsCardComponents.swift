@@ -108,7 +108,7 @@ struct SettingsCollapsibleCard<Content: View>: View {
                     Spacer(minLength: 0)
                     Text(statusSummary)
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(isConfigured ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
+                        .foregroundStyle(isConfigured ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.muted)
                         .fixedSize()
                     Text(isExpanded ? "\u{25BE}" : "\u{25B8}")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))

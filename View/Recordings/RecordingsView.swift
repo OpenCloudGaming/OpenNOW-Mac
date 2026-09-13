@@ -137,7 +137,7 @@ struct RecordingsView: View {
                     Text("RECORDINGS")
                         .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(1.6)
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                     Text("Saved Videos")
                         .font(.recordingsFont(size: 25 * uiScale, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
@@ -333,7 +333,7 @@ private struct RecordingSearchField: View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
+                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
             TextField("Search title, file, or app ID", text: $text)
                 .textFieldStyle(.plain)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
@@ -470,7 +470,7 @@ private struct RecordingThumbnail: View {
             }
             Image(systemName: isHovering || isSelected ? "play.fill" : "play.rectangle.fill")
                 .font(.recordingsFont(size: 19 * uiScale, weight: .bold))
-                .foregroundStyle(isSelected ? OpenNOWDesign.accent : thumbnail == nil ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.primary)
+                .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : thumbnail == nil ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.primary)
                 .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7 * uiScale, x: 0, y: 2 * uiScale)
         }
         .frame(width: 76 * uiScale, height: 46 * uiScale)

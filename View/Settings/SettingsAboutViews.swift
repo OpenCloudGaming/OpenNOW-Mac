@@ -183,7 +183,7 @@ struct DiagnosticsUploadConfirmationDialog: View {
                             .fill(OpenNOWDesign.accent.opacity(0.16))
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                     }
                     .frame(width: 44 * uiScale, height: 44 * uiScale)
                     .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.42), lineWidth: 1) }

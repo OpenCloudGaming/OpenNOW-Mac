@@ -145,7 +145,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
 
                 Text("AD · \(playback.countdownText)")
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .padding(.vertical, 7)
                     .background(Color.black.opacity(0.72))
@@ -230,7 +230,7 @@ struct VendorLaunchPanel<Content: View>: View {
                 Button { } label: {
                     Text("LAUNCH STATUS")
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .tracking(1.4)
                 }
                 .buttonStyle(.plain)
@@ -243,7 +243,7 @@ struct VendorLaunchPanel<Content: View>: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title.uppercased())
                     .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.2)
                 Text(subtitle.isEmpty ? "GeForce NOW" : subtitle)
                     .catalogFont(size: 28, weight: .bold)

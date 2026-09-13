@@ -99,7 +99,7 @@ struct LoginFormView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("OPENNOW")
                     .font(.uiSans(size: 11, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.4)
                     .padding(.bottom, OpenNOWDesign.Spacing.xxSmall)
 
@@ -218,7 +218,7 @@ private struct ProviderCard: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.uiSans(size: 12, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                 }
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
@@ -265,7 +265,7 @@ private struct SavedAccountCard: View {
                 Text(needsSignIn ? "SIGN IN AGAIN" : "CONTINUE")
                     .font(.uiSans(size: 11, weight: .bold))
                     .tracking(0.8)
-                    .foregroundStyle(needsSignIn ? OpenNOWDesign.Text.secondary : OpenNOWDesign.accent)
+                    .foregroundStyle(needsSignIn ? OpenNOWDesign.Text.secondary : OpenNOWDesign.accentInk)
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
@@ -371,7 +371,7 @@ private struct SignInModal: View {
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall) {
                     Text(banner.label)
                         .font(.uiSans(size: 11, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .tracking(0.8)
                     Text(banner.message)
                         .font(.uiSans(size: 13, weight: .regular))
@@ -382,7 +382,7 @@ private struct SignInModal: View {
                         Button("Keep using the current account", action: onClose)
                             .buttonStyle(.plain)
                             .font(.uiSans(size: 12, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                     }
                 }
                 .padding(OpenNOWDesign.Spacing.small)
@@ -450,7 +450,7 @@ private struct SignInModal: View {
             } label: {
                 Text("SIGN IN WITH A CODE")
                     .font(.uiSans(size: 12, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(0.8)
             }
             .buttonStyle(.plain)
@@ -478,7 +478,7 @@ private struct SignInModal: View {
             if !viewModel.validationMessage.isEmpty || !viewModel.successMessage.isEmpty {
                 Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
                     .font(.uiSans(size: 13, weight: .regular))
-                    .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accent : .orange)
+                    .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.warning)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -521,7 +521,7 @@ private struct TermsOfUseDialog: View {
                 HStack(spacing: OpenNOWDesign.Spacing.small) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.uiSans(size: 20, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                     Text("GeForce NOW Terms of Use")
                         .font(.uiSans(size: 20, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.primary)
@@ -537,10 +537,10 @@ private struct TermsOfUseDialog: View {
                     HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
                         Image(systemName: "link")
                             .font(.uiSans(size: 11, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                         Link("Read the full GeForce NOW Terms of Use", destination: touURL)
                             .font(.uiSans(size: 13, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                     }
                 }
             }

@@ -186,10 +186,10 @@ struct SteamControllerDiagramView: View {
             HStack(spacing: 4) {
                 Text(label)
                     .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(pressed ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
                 Text("\(Int(value * 100))%")
                     .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                    .foregroundStyle(pressed ? OpenNOWDesign.accent.opacity(0.8) : OpenNOWDesign.Text.muted)
+                    .foregroundStyle(pressed ? OpenNOWDesign.accentInk.opacity(0.8) : OpenNOWDesign.Text.muted)
                     .monospacedDigit()
             }
         }
@@ -205,7 +205,7 @@ struct SteamControllerDiagramView: View {
                 )
             Text(label)
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(pressed ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
         }
     }
 
@@ -279,7 +279,7 @@ struct SteamControllerDiagramView: View {
                 .stroke(pressed ? OpenNOWDesign.accent.opacity(0.7) : OpenNOWDesign.Stroke.regular, lineWidth: 1)
             Image(systemName: icon)
                 .font(.settingsFont(size: 8 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
+                .foregroundStyle(pressed ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.muted)
         }
         .frame(width: art(30), height: art(14))
     }
@@ -320,7 +320,7 @@ struct SteamControllerDiagramView: View {
                 .stroke(pressed ? OpenNOWDesign.accent.opacity(0.8) : OpenNOWDesign.Stroke.regular, lineWidth: 1)
             Image(systemName: "ellipsis")
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
+                .foregroundStyle(pressed ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.muted)
         }
         .frame(width: art(38), height: art(15))
     }
@@ -372,7 +372,7 @@ struct SteamControllerDiagramView: View {
                 )
             Text(control.label)
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(pressed ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
         }
         .frame(width: art(30), height: art(15))
     }

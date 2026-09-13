@@ -188,7 +188,7 @@ struct AccountHealthBadge: View {
                     .frame(width: 7 * uiScale, height: 7 * uiScale)
                 Text(title)
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(positive ? OpenNOWDesign.accent : OpenNOWDesign.Text.primary)
+                    .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
                     .tracking(1.1)
             }
             Text(subtitle)
@@ -282,7 +282,7 @@ struct AccountStatusTile: View {
                 .foregroundStyle(OpenNOWDesign.Text.muted)
             Text(value.isEmpty ? "Unknown" : value)
                 .font(.settingsFont(size: 16 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
@@ -334,7 +334,7 @@ struct SettingsStatisticTile: View {
                 .foregroundStyle(OpenNOWDesign.Text.muted)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: (emphasized ? 24 : 19) * uiScale, weight: .bold))
-                .foregroundStyle(emphasized ? OpenNOWDesign.accent : OpenNOWDesign.Text.primary)
+                .foregroundStyle(emphasized ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }

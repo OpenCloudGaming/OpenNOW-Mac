@@ -55,7 +55,7 @@ struct SteamControllerModalHeader: View {
                 Text(eyebrow)
                     .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.1)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                 Text(title)
                     .font(.settingsFont(size: 20 * uiScale, weight: .bold))
                     .foregroundStyle(OpenNOWDesign.Text.primary)

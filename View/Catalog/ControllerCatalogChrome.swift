@@ -18,7 +18,7 @@ struct ControllerOverlayHeader: View {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
                     .catalogFont(size: 27, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(1)
                 Text(subtitle)
                     .catalogFont(size: 14, weight: .medium)
@@ -54,7 +54,7 @@ struct ControllerOverlaySectionTitle: View {
         Text(title.uppercased())
             .catalogFont(size: 12, weight: .bold)
             .tracking(1.1)
-            .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
+            .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.86))
     }
 }
 
@@ -189,7 +189,7 @@ struct ControllerGlyphPill: View {
                     .lineLimit(1)
             }
         }
-        .foregroundStyle(OpenNOWDesign.accent)
+        .foregroundStyle(OpenNOWDesign.accentInk)
         .padding(.horizontal, (compact ? 6 : 7) * uiScale)
         .frame(minWidth: (compact ? 25 : 0) * uiScale)
         .frame(height: 22 * uiScale)
@@ -218,7 +218,7 @@ struct ControllerKeyboardMovePill: View {
             Image(systemName: glyphs.right.symbolName)
         }
         .catalogFont(size: 11, weight: .bold)
-        .foregroundStyle(OpenNOWDesign.accent)
+        .foregroundStyle(OpenNOWDesign.accentInk)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 22 * uiScale)
         .background(OpenNOWDesign.accent.opacity(0.12))

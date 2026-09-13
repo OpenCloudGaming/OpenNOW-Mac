@@ -69,7 +69,7 @@ extension RemoteCoOpSettingsPage {
                         Text(route.status)
                             .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                             .tracking(0.6)
-                            .foregroundStyle(route.isReady ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(route.isReady ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
                             .fixedSize()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,7 +102,7 @@ extension RemoteCoOpSettingsPage {
             Text(term.uppercased())
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(OpenNOWDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accentInk)
             Text(meaning)
                 .fixedSize(horizontal: false, vertical: true)
         }

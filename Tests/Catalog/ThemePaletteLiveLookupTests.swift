@@ -71,3 +71,34 @@ import Testing
     OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .dark)
     #expect(brightness(of: OpenNOWDesign.Surface.app) < 0.5)
 }
+
+/// The shipping accents are bright enough to vanish on a light page, so accent-coloured LABELS go
+/// through `accentInk`, which darkens until it clears the text contrast floor.
+@MainActor @Test func everyAccentStaysReadableAsTextOnALightPage() {
+    let surface = OpenNOWThemePreferences.lightPaletteTokens.surfaceApp
+    let surfaceLuminance = OpenNOWThemePreferences.relativeLuminance(red: surface.red, green: surface.green, blue: surface.blue)
+    for preset in OpenNOWThemePreferences.AccentColor.allCases {
+        let components = preset.components
+        let ink = OpenNOWThemePreferences.legibleAccentComponents(
+            red: components.red,
+            green: components.green,
+            blue: components.blue,
+            onSurfaceLuminance: surfaceLuminance
+        )
+        let ratio = OpenNOWThemePreferences.contrastRatio(
+            red: ink.red, green: ink.green, blue: ink.blue,
+            againstRed: surface.red, againstGreen: surface.green, againstBlue: surface.blue
+        )
+        #expect(ratio >= OpenNOWThemePreferences.minimumTextContrastRatio, "\(preset.label) is unreadable as text on a light page")
+    }
+}
+
+/// Dark mode must keep the accent exactly as it ships: the ink treatment is a light-page fix, not a
+/// change to the look everyone already has.
+@MainActor @Test func theAccentInkIsTheUntouchedAccentOnADarkPage() {
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    #expect(brightness(of: OpenNOWDesign.accentInk) == brightness(of: OpenNOWDesign.accent))
+    withAppearance(.light) {
+        #expect(brightness(of: OpenNOWDesign.accentInk) < brightness(of: OpenNOWDesign.accent))
+    }
+}

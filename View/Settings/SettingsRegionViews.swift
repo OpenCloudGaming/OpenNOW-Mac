@@ -61,7 +61,7 @@ struct RegionLatencyBadge: View {
                 .frame(width: 6 * uiScale, height: 6 * uiScale)
             Text(latencyText)
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 8 * uiScale)

@@ -243,7 +243,7 @@ struct StreamingProfileMetricTile: View {
                 .foregroundStyle(OpenNOWDesign.Text.muted)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: (emphasized ? 16 : 14) * uiScale, weight: .bold))
-                .foregroundStyle(emphasized ? OpenNOWDesign.accent : OpenNOWDesign.Text.primary)
+                .foregroundStyle(emphasized ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }

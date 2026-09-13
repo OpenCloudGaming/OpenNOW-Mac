@@ -204,10 +204,34 @@ enum OpenNOWDesign {
     /// The lightened accent, for text and glyphs that sit on a dark surface beside an accent fill.
     static var accentSoft: Color { resolvedAccentSoft }
 
+    /// The accent as TEXT. A fill can be any weight - a label has to be read, and the shipping
+    /// accents are bright enough to disappear on a light page, so this darkens them to clear 4.5:1.
+    static var accentInk: Color { resolvedAccentInk }
+
+    nonisolated(unsafe) private static var resolvedAccentInk = accentInkColor(for: .cloudGreen, isDark: true)
+
+    private static func accentInkColor(for preset: OpenNOWThemePreferences.AccentColor, isDark: Bool) -> Color {
+        let components = preset.components
+        guard !isDark else { return Color(red: components.red, green: components.green, blue: components.blue) }
+        let surface = OpenNOWThemePreferences.lightPaletteTokens.surfaceApp
+        let legible = OpenNOWThemePreferences.legibleAccentComponents(
+            red: components.red,
+            green: components.green,
+            blue: components.blue,
+            onSurfaceLuminance: OpenNOWThemePreferences.relativeLuminance(red: surface.red, green: surface.green, blue: surface.blue)
+        )
+        return Color(red: legible.red, green: legible.green, blue: legible.blue)
+    }
+
     static func applyAccent(_ preset: OpenNOWThemePreferences.AccentColor) {
+        appliedAccent = preset
         resolvedAccent = accentColor(for: preset)
         resolvedAccentSoft = softAccentColor(for: preset)
+        resolvedAccentInk = accentInkColor(for: preset, isDark: isDarkPalette)
     }
+
+    nonisolated(unsafe) private static var appliedAccent = OpenNOWThemePreferences.AccentColor.cloudGreen
+    nonisolated(unsafe) private static var isDarkPalette = true
 
     /// Cached for the same reason as `resolvedAccent`: every `Surface`/`Text`/`Stroke` token reads
     /// this on every render of every row and tile, so it must never touch UserDefaults itself.
@@ -240,14 +264,19 @@ enum OpenNOWDesign {
 
     nonisolated(unsafe) private static var appliedThemeKey = ""
 
-    static func applyAppearance(_ preference: OpenNOWThemePreferences.Appearance, systemColorScheme: ColorScheme) {
-        let isDark: Bool
+    static func isDarkAppearance(_ preference: OpenNOWThemePreferences.Appearance, systemColorScheme: ColorScheme) -> Bool {
         switch preference {
-        case .system: isDark = systemColorScheme == .dark
-        case .dark: isDark = true
-        case .light: isDark = false
+        case .system: systemColorScheme == .dark
+        case .dark: true
+        case .light: false
         }
+    }
+
+    static func applyAppearance(_ preference: OpenNOWThemePreferences.Appearance, systemColorScheme: ColorScheme) {
+        let isDark = isDarkAppearance(preference, systemColorScheme: systemColorScheme)
+        isDarkPalette = isDark
         resolvedPalette = palette(isDark: isDark)
+        resolvedAccentInk = accentInkColor(for: appliedAccent, isDark: isDark)
     }
 
     private static func palette(isDark: Bool) -> ResolvedPalette {

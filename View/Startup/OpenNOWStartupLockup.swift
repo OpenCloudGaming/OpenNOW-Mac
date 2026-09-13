@@ -121,7 +121,7 @@ private struct OpenNOWStartupWordmark: View {
             Text("CLOUD GAMING CLIENT")
                 .font(OpenNOWDesign.Typography.mono(size: metrics.compact ? 9 : 11, scale: scale, weight: .bold))
                 .tracking((3.4 + 3.4 * (1 - settle)) * scale)
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.92 * settle))
+                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.92 * settle))
                 .opacity(settle)
         }
     }

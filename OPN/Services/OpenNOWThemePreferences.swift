@@ -226,6 +226,29 @@ enum OpenNOWThemePreferences {
 
     /// Whether a tile draws its title tray right now. The one place this decision is made: every
     /// catalog tile feeds its own hover/selection state through this instead of repeating the rule.
+    /// Darkens an accent until it clears `minimumTextContrastRatio` against the page it is drawn on,
+    /// so accent-coloured labels stay legible when the page is light.
+    static func legibleAccentComponents(
+        red: Double,
+        green: Double,
+        blue: Double,
+        onSurfaceLuminance surfaceLuminance: Double
+    ) -> (red: Double, green: Double, blue: Double) {
+        var scale = 1.0
+        while scale > 0.2 {
+            let luminance = relativeLuminance(red: red * scale, green: green * scale, blue: blue * scale)
+            let lighter = max(luminance, surfaceLuminance)
+            let darker = min(luminance, surfaceLuminance)
+            guard (lighter + 0.05) / (darker + 0.05) < minimumTextContrastRatio else {
+                return (red * scale, green * scale, blue * scale)
+            }
+            scale -= 0.02
+        }
+        return (red * scale, green * scale, blue * scale)
+    }
+
+    static let minimumTextContrastRatio = 4.5
+
     static func showsTileTitle(visibility: TileTitleVisibility, isHovering: Bool, isSelected: Bool) -> Bool {
         switch visibility {
         case .onHover: isHovering || isSelected

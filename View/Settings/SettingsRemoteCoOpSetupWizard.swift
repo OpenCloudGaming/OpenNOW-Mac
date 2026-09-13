@@ -113,7 +113,7 @@ struct RemoteCoOpSetupWizard: View {
                 if tailscaleDetected {
                     Text("Tailscale detected on this Mac")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                 }
                 Spacer(minLength: 0)
                 SettingsDialogButton(title: "CLOSE", tone: .secondary, uiScale: uiScale, action: dismiss)
@@ -228,13 +228,13 @@ struct RemoteCoOpSetupWizard: View {
                 if applied {
                     Text("Transport set to \(advice.transportMode.label).")
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                 } else if outstanding.isEmpty {
                     Text(advice.needsNothing
                          ? "Nothing else to do - press Apply to set the transport mode."
                          : "Everything this needs is already configured - press Apply to set the transport mode.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accent)
+                        .foregroundStyle(OpenNOWDesign.accentInk)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     VStack(alignment: .leading, spacing: 7 * uiScale) {

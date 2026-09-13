@@ -461,7 +461,7 @@ struct CatalogBrowseControlsView: View {
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.88))
+                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.88))
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
@@ -555,7 +555,7 @@ struct CatalogEmptyDestinationView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .catalogFont(size: 22, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)

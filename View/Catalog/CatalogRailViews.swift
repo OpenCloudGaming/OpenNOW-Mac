@@ -198,7 +198,7 @@ struct CatalogDestinationGridView: View {
                 if !section.isPlaceholder {
                     Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
+                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.86))
                         .tracking(0.8)
                 }
                 Spacer(minLength: 0)
@@ -351,7 +351,7 @@ struct CatalogPanelActionTile: View {
                         Text(tile.subtitle.uppercased())
                             .catalogFont(size: 10, weight: .bold)
                             .tracking(0.8)
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                             .lineLimit(1)
                     }
                     Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
@@ -409,7 +409,7 @@ struct VendorActiveSessionHomeBanner: View {
             VStack(alignment: .leading, spacing: 2 * uiScale) {
                 Text("SESSION ACTIVE")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.2)
                 Text(title)
                     .catalogFont(size: 14, weight: .bold)

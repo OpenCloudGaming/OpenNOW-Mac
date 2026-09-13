@@ -95,7 +95,7 @@ struct RecordingEditorView: View {
             if let window = viewModel.timelineWindowDescription {
                 Text(window)
                     .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.80))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.80))
                     .fixedSize()
                     .padding(.trailing, 2 * uiScale)
             }

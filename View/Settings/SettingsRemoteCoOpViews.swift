@@ -176,7 +176,7 @@ struct RemoteCoOpSettingsPage: View {
                 VStack(alignment: .leading, spacing: 6 * uiScale) {
                     if !viewModel.remoteCoOpAblyKeyMessage.isEmpty {
                         Text(viewModel.remoteCoOpAblyKeyMessage)
-                            .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive)
+                            .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.destructive)
                     }
                     Text("Ably's free tier covers 6 million messages a month, then $2.50 per million. A whole session is a few hundred messages, so this is unlikely to cost anything.")
                     Link("Open the Ably dashboard", destination: Self.ablyDashboardURL)
@@ -260,7 +260,7 @@ struct RemoteCoOpSettingsPage: View {
                     if let setupGuideURL = Self.setupGuideURL {
                         Link("Remote Co-Op setup guide", destination: setupGuideURL)
                             .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.accentInk)
                     }
                 }
                 .padding(.vertical, 4 * uiScale)

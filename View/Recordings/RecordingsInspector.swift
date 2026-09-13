@@ -40,7 +40,7 @@ struct RecordingInspector: View {
             Text("NOW PLAYING")
                 .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(1.3)
-                .foregroundStyle(OpenNOWDesign.accent)
+                .foregroundStyle(OpenNOWDesign.accentInk)
                 .fixedSize()
             Text(recording.title)
                 .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
@@ -119,7 +119,7 @@ struct RecordingDetailTile: View {
             Text(title)
                 .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                 .tracking(1.1)
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.86))
+                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.86))
             Text(value)
                 .font(.recordingsFont(size: 14 * uiScale, weight: .bold))
                 .foregroundStyle(OpenNOWDesign.Text.primary)
@@ -157,7 +157,7 @@ struct RecordingEmptyState: View {
                     .frame(width: 78 * uiScale, height: 78 * uiScale)
                 Image(systemName: kind == .library ? "record.circle" : "line.3.horizontal.decrease.circle")
                     .font(.recordingsFont(size: 34 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
             }
             Text(kind == .library ? "No recordings yet" : "No matches")
                 .font(.recordingsFont(size: 18 * uiScale, weight: .bold))
@@ -188,7 +188,7 @@ struct RecordingEmptyPlayer: View {
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "play.rectangle.fill")
                     .font(.recordingsFont(size: 46 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.88))
             }
             Text("Select a recording")
                 .font(.recordingsFont(size: 24 * uiScale, weight: .bold))

@@ -168,7 +168,7 @@ struct ControllerGameRail: View {
                 if !section.isPlaceholder {
                     Text("\(section.games.count) games".uppercased())
                         .catalogFont(size: 11, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accent.opacity(0.82))
+                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.82))
                 }
                 Spacer(minLength: 0)
                 if canShowAll, !section.isPlaceholder {
@@ -369,7 +369,7 @@ struct ControllerEmbeddedPage<Content: View>: View {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.4)
                 Text(subtitle)
                     .catalogFont(size: 15, weight: .medium)

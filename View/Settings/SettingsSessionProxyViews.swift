@@ -117,7 +117,7 @@ struct SessionProxySettingsPage: View {
                     if !testMessage.isEmpty {
                         Text(testMessage)
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(testSucceeded ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(testSucceeded ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)

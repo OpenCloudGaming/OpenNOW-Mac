@@ -64,7 +64,7 @@ struct RecordingEditorAdvancedDrawer: View {
 
             Text(detail)
                 .font(.recordingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(detailIsNotice ? OpenNOWDesign.accent.opacity(0.80) : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(detailIsNotice ? OpenNOWDesign.accentInk.opacity(0.80) : OpenNOWDesign.Text.tertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: 14 * uiScale, alignment: .topLeading)

@@ -222,11 +222,11 @@ struct StoreLocalIconImage: View {
         if monogram.isEmpty {
             Image(systemName: "link")
                 .font(.settingsFont(size: 17 * uiScale, weight: .bold))
-                .foregroundStyle(isConnected ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(isConnected ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
         } else {
             Text(monogram)
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(isConnected ? OpenNOWDesign.accent : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(isConnected ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }

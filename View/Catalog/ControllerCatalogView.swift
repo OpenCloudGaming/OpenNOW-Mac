@@ -334,7 +334,7 @@ private struct ControllerHeader: View {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text("GEFORCE NOW")
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.accentInk)
                     .tracking(1.6)
                 Text(headerTitle)
                     .catalogFont(size: 24, weight: .bold)

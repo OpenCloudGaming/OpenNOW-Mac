@@ -88,7 +88,7 @@ struct LabsEmptyState: View {
                 .frame(width: 132 * uiScale, height: 132 * uiScale)
             Image(systemName: "flask.fill")
                 .font(.settingsFont(size: 48 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accent.opacity(0.85))
+                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
             bubbles
         }
         .accessibilityHidden(true)
