@@ -188,12 +188,23 @@ struct SettingsSearchField: View {
             Image(systemName: "magnifyingglass")
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .foregroundStyle(isFocused ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
-            TextField("Search settings", text: $query, prompt: Text("Search settings").foregroundColor(OpenNOWDesign.Text.muted))
+            // The placeholder is drawn rather than handed to the field: a prompt takes its colour
+            // from the system appearance, which is not the palette this page is painted in.
+            TextField("", text: $query)
                 .textFieldStyle(.plain)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .focused($isFocused)
                 .onSubmit { isFocused = false }
+                .overlay(alignment: .leading) {
+                    guard query.isEmpty else { return AnyView(EmptyView()) }
+                    return AnyView(
+                        Text("Search settings")
+                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                            .foregroundStyle(OpenNOWDesign.Text.muted)
+                            .allowsHitTesting(false)
+                    )
+                }
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark")

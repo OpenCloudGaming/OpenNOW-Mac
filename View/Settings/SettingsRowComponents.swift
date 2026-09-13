@@ -373,6 +373,10 @@ struct SettingsSliderRow: View {
         Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
             .frame(height: 20 * uiScale)
             .tint(OpenNOWDesign.accent)
+            .background(alignment: .center) {
+                guard OpenNOWDesign.isLightAppearance else { return AnyView(EmptyView()) }
+                return AnyView(Rectangle().fill(OpenNOWDesign.Fill.neutral(0.30)).frame(height: 4 * uiScale))
+            }
     }
 }
 

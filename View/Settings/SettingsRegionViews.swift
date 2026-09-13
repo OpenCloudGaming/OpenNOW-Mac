@@ -13,7 +13,7 @@ struct SettingsRegionRow: View {
                 HStack(alignment: .top, spacing: 8 * uiScale) {
                     Text(SettingsRegionName.shortName(for: option))
                         .font(.settingsFont(size: 13 * uiScale, weight: .bold))
-                        .foregroundStyle(isSelected ? .white : OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
                     Spacer(minLength: 6 * uiScale)
@@ -66,7 +66,7 @@ struct RegionLatencyBadge: View {
         }
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 24 * uiScale)
-        .background(isSelected ? Color.black.opacity(0.20) : OpenNOWDesign.Fill.neutral(0.045))
+        .background(isSelected ? OpenNOWDesign.Fill.neutral(0.20) : OpenNOWDesign.Fill.neutral(0.045))
         .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent.opacity(0.30) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 

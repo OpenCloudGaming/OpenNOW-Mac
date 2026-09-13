@@ -212,6 +212,10 @@ enum OpenNOWDesign {
     /// accents are bright enough to disappear on a light page, so this darkens them to clear 4.5:1.
     static var accentInk: Color { resolvedAccentInk }
 
+    /// For the few controls that have to compensate for the appearance rather than just take a
+    /// colour from it - a native control whose own chrome does not follow this palette.
+    static var isLightAppearance: Bool { !isDarkPalette }
+
     nonisolated(unsafe) private static var resolvedAccentInk = accentInkColor(for: .cloudGreen, isDark: true)
 
     private static func accentInkColor(for preset: OpenNOWThemePreferences.AccentColor, isDark: Bool) -> Color {

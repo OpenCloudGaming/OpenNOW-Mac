@@ -86,7 +86,7 @@ struct LoginFormView: View {
                 .frame(maxHeight: .infinity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .background(.black)
+        .background(OpenNOWDesign.Surface.deep)
     }
 
     private func marketingColumn(metrics: VendorLoginWallMetrics, headlineSize: CGFloat, logoWidth: CGFloat, logoHeight: CGFloat, showsBullets: Bool) -> some View {

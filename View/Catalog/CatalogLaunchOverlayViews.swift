@@ -10,7 +10,7 @@ struct VendorLaunchFlowOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.82)
+            OpenNOWDesign.Surface.app.opacity(0.94)
                 .ignoresSafeArea()
             RadialGradient(
                 colors: [OpenNOWDesign.accent.opacity(0.20), .clear],
