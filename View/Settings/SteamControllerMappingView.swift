@@ -412,7 +412,7 @@ private struct SteamControllerCategoryRow: View {
     }
 
     private var foreground: Color {
-        if isActive { return OpenNOWDesign.accent }
+        if isActive { return OpenNOWDesign.accentInk }
         return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
     }
 

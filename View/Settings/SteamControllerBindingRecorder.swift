@@ -47,7 +47,7 @@ struct SteamControllerBindingRecorder: View {
     }
 
     private var foreground: Color {
-        if isRecording { return OpenNOWDesign.accent }
+        if isRecording { return OpenNOWDesign.accentInk }
         return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
     }
 

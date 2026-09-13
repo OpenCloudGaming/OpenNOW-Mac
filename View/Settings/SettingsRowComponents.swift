@@ -425,7 +425,7 @@ struct SettingsActionButton: View {
         guard isEnabled else { return OpenNOWDesign.Text.muted }
         switch tone {
         case .primary: return .black
-        case .secondary: return OpenNOWDesign.accent
+        case .secondary: return OpenNOWDesign.accentInk
         }
     }
 
