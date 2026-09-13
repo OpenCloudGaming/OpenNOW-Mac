@@ -459,19 +459,31 @@ private struct SignInModal: View {
 
             if !viewModel.deviceCodeUserCode.isEmpty {
                 VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
-                    Text("ENTER THIS CODE IN YOUR BROWSER")
+                    Text("SIGN IN FROM ANOTHER DEVICE")
                         .font(.uiSans(size: 11, weight: .bold))
                         .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .tracking(0.8)
-                    Text(viewModel.deviceCodeUserCode)
-                        .font(.uiSans(size: 22, weight: .bold))
-                        .monospacedDigit()
-                        .tracking(1.6)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
-                    Text(viewModel.deviceCodeVerificationURI)
-                        .font(.uiSans(size: 12, weight: .regular))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
-                        .lineLimit(2)
+
+                    HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.medium) {
+                        DeviceCodeQRView(payload: viewModel.deviceCodeVerificationURI)
+                            .frame(width: 132, height: 132)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("ENTER THIS CODE")
+                                .font(.uiSans(size: 11, weight: .bold))
+                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .tracking(0.8)
+                            Text(viewModel.deviceCodeUserCode)
+                                .font(.uiSans(size: 20, weight: .bold))
+                                .monospacedDigit()
+                                .tracking(1.4)
+                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                            Text(viewModel.deviceCodeVerificationURI)
+                                .font(.uiSans(size: 11, weight: .regular))
+                                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                .lineLimit(3)
+                        }
+                    }
                 }
             }
 
