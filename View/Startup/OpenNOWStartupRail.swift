@@ -54,7 +54,7 @@ private struct OpenNOWStartupSegmentBar: View {
     let scale: CGFloat
 
     var body: some View {
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
 
         HStack(spacing: 3 * scale) {
             ForEach(0..<cells, id: \.self) { index in

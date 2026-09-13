@@ -9,7 +9,7 @@ enum WebRTCMediaStreamTheme {
     /// chosen accent instead of a hardcoded green. The stream view is deliberately never
     /// invalidated while a session is live, so a mid-session accent change still waits for the
     /// next render, same as before this read became dynamic.
-    static var accent: Color { OpenNOWDesign.accent }
+    static var accent: Color { OpenNOWDesign.Fixed.accent }
 
     static var accentSoft: Color { OpenNOWDesign.accentSoft }
 

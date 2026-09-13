@@ -46,3 +46,49 @@ import Testing
         #expect(luminance >= OpenNOWThemePreferences.minimumAccentLuminance)
     }
 }
+
+/// A preset chosen to glow on near-black glares on near-white, so each carries a deeper twin. Both
+/// halves are a contract: the dark half is what ships today, the light half has to be readable.
+@Test func everyAccentPresetCarriesADeeperTwinForLightPages() {
+    let page = OpenNOWThemePreferences.lightPaletteTokens.surfaceApp
+    for preset in OpenNOWThemePreferences.AccentColor.allCases {
+        let dark = preset.components
+        let light = preset.lightComponents
+        let darkLuminance = OpenNOWThemePreferences.relativeLuminance(red: dark.red, green: dark.green, blue: dark.blue)
+        let lightLuminance = OpenNOWThemePreferences.relativeLuminance(red: light.red, green: light.green, blue: light.blue)
+        #expect(lightLuminance < darkLuminance, "\(preset.label)'s light twin is not deeper than its dark value")
+
+        let ratio = OpenNOWThemePreferences.contrastRatio(
+            red: light.red, green: light.green, blue: light.blue,
+            againstRed: page.red, againstGreen: page.green, againstBlue: page.blue
+        )
+        #expect(ratio >= OpenNOWThemePreferences.minimumTextContrastRatio, "\(preset.label) is unreadable on a light page")
+    }
+}
+
+/// Whatever is written on an accent fill has to be readable on it: black over the bright value,
+/// white over the deep one.
+@Test func whateverIsWrittenOnAnAccentFillStaysReadable() {
+    for preset in OpenNOWThemePreferences.AccentColor.allCases {
+        let dark = preset.components
+        let onDark = OpenNOWThemePreferences.contrastRatio(
+            red: 0, green: 0, blue: 0,
+            againstRed: dark.red, againstGreen: dark.green, againstBlue: dark.blue
+        )
+        #expect(onDark >= OpenNOWThemePreferences.minimumTextContrastRatio, "black is unreadable on \(preset.label)")
+
+        let light = preset.lightComponents
+        let onLight = OpenNOWThemePreferences.contrastRatio(
+            red: 1, green: 1, blue: 1,
+            againstRed: light.red, againstGreen: light.green, againstBlue: light.blue
+        )
+        #expect(onLight >= OpenNOWThemePreferences.minimumTextContrastRatio, "white is unreadable on \(preset.label)'s light twin")
+    }
+}
+
+@Test func theComponentsForAnAppearanceAreTheHalvesThemselves() {
+    for preset in OpenNOWThemePreferences.AccentColor.allCases {
+        #expect(preset.components(isDark: true) == preset.components)
+        #expect(preset.components(isDark: false) == preset.lightComponents)
+    }
+}

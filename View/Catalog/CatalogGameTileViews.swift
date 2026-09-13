@@ -111,11 +111,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.Fixed.accent)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.Fixed.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -212,7 +212,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         .overlay(alignment: .top) {
             if isSelected {
                 Rectangle()
-                    .fill(OpenNOWDesign.accent)
+                    .fill(OpenNOWDesign.Fixed.accent)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: 4)
                     .offset(y: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity) - 4)
             }
@@ -232,7 +232,7 @@ struct CatalogGameCardBadge: View {
     var body: some View {
         HStack(spacing: 0) {
             MallRibbonShape()
-                .fill(OpenNOWDesign.accent)
+                .fill(OpenNOWDesign.Fixed.accent)
                 .frame(width: 7, height: 24)
             Text(label)
                 .catalogFont(size: 13, weight: .bold)

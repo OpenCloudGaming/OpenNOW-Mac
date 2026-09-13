@@ -1,3 +1,26 @@
+/// Each appearance now resolves an accent that is already readable on its own page, so the ink and
+/// the fill agree - and dark keeps exactly the colour that ships today.
+@MainActor @Test func theAccentAndItsInkAgreeOnEveryPage() {
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    let darkAccent = brightness(of: OpenNOWDesign.accent)
+    #expect(brightness(of: OpenNOWDesign.accentInk) == darkAccent)
+    withAppearance(.light) {
+        #expect(brightness(of: OpenNOWDesign.accentInk) == brightness(of: OpenNOWDesign.accent))
+        #expect(brightness(of: OpenNOWDesign.accent) < darkAccent, "the light page kept the bright accent")
+        // Artwork and video never turn light, so the accent drawn on them does not either.
+        #expect(brightness(of: OpenNOWDesign.Fixed.accent) == darkAccent)
+    }
+}
+
+/// Black reads on the bright accent, white on the deep one; the token has to follow the fill.
+@MainActor @Test func theInkOnAnAccentFillFollowsWhichAccentIsUnderIt() {
+    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    #expect(brightness(of: OpenNOWDesign.onAccent) == 0)
+    withAppearance(.light) {
+        #expect(brightness(of: OpenNOWDesign.onAccent) > 0.9)
+    }
+}
+
 import AppKit
 import SwiftUI
 import Testing
@@ -90,16 +113,6 @@ import Testing
             againstRed: surface.red, againstGreen: surface.green, againstBlue: surface.blue
         )
         #expect(ratio >= OpenNOWThemePreferences.minimumTextContrastRatio, "\(preset.label) is unreadable as text on a light page")
-    }
-}
-
-/// Dark mode must keep the accent exactly as it ships: the ink treatment is a light-page fix, not a
-/// change to the look everyone already has.
-@MainActor @Test func theAccentInkIsTheUntouchedAccentOnADarkPage() {
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-    #expect(brightness(of: OpenNOWDesign.accentInk) == brightness(of: OpenNOWDesign.accent))
-    withAppearance(.light) {
-        #expect(brightness(of: OpenNOWDesign.accentInk) < brightness(of: OpenNOWDesign.accent))
     }
 }
 

@@ -163,7 +163,7 @@ struct CatalogStorePickerOverlay: View {
             VStack(spacing: OpenNOWDesign.Spacing.large(scale: uiScale)) {
                 ProgressView()
                     .controlSize(.large)
-                    .tint(OpenNOWDesign.accent)
+                    .tint(OpenNOWDesign.Fixed.accent)
                 Text(viewModel.ownershipFlowMessage.isEmpty ? "Syncing connected game libraries..." : viewModel.ownershipFlowMessage)
                     .catalogFont(size: 12, weight: .medium)
                     .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
@@ -228,7 +228,7 @@ struct CatalogStorePickerOverlay: View {
                 Button("Get this game.") { viewModel.openStoreForSelectedVariant() }
                     .buttonStyle(.plain)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.Fixed.accent)
             }
             HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
                 Button("CONTINUE") { viewModel.confirmSelectedVariantOwned() }
@@ -259,7 +259,7 @@ struct CatalogStorePickerOverlay: View {
                     HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
                         Image(systemName: "checkmark.circle.fill")
                             .catalogFont(size: 12, weight: .bold)
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.Fixed.accent)
                         Text(CatalogStorePresentation.successSyncText(account: account))
                             .catalogFont(size: 12, weight: .medium)
                             .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
@@ -294,7 +294,7 @@ struct CatalogStorePickerOverlay: View {
                     .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
                 Image(systemName: "checkmark")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.Fixed.accent)
             }
         }
     }
@@ -318,7 +318,7 @@ struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(.black.opacity(0.88))
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
             .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OpenNOWDesign.accent.opacity(configuration.isPressed ? 0.76 : 1))
+            .background(OpenNOWDesign.Fixed.accent.opacity(configuration.isPressed ? 0.76 : 1))
     }
 }
 
@@ -444,7 +444,7 @@ extension CatalogStorePickerRow {
     private var selectedCheckmark: some View {
         Image(systemName: "checkmark")
             .catalogFont(size: 12, weight: .bold)
-            .foregroundStyle(OpenNOWDesign.accent)
+            .foregroundStyle(OpenNOWDesign.Fixed.accent)
             .frame(width: 18 * uiScale, height: 18 * uiScale)
             .opacity(isSelected ? 1 : 0)
     }

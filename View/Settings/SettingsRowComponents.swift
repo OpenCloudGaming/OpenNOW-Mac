@@ -424,7 +424,7 @@ struct SettingsActionButton: View {
     private var foregroundColor: Color {
         guard isEnabled else { return OpenNOWDesign.Text.muted }
         switch tone {
-        case .primary: return .black
+        case .primary: return OpenNOWDesign.onAccent
         case .secondary: return OpenNOWDesign.accentInk
         }
     }

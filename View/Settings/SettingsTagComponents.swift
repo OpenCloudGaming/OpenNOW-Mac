@@ -59,7 +59,7 @@ struct OpenNOWNewTag: View {
         Text("NEW")
             .font(.settingsFont(size: 8 * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
-            .foregroundStyle(.black)
+            .foregroundStyle(OpenNOWDesign.onAccent)
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
             .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
@@ -95,7 +95,7 @@ struct OpenNOWBetaTag: View {
     private var leadingPadding: CGFloat { compact ? 4 : 5 }
 
     private var foreground: Color {
-        if prominent { return .black }
+        if prominent { return OpenNOWDesign.onAccent }
         return OpenNOWDesign.accentInk
     }
 

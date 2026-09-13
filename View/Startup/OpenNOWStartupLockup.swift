@@ -55,7 +55,7 @@ private struct OpenNOWStartupLogoCore: View {
         let chroma = stage.chroma
         let bloom = stage.bloom
         let offset = CGFloat(chroma) * (metrics.compact ? 9 : 14) * metrics.uiScale
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
 
         ZStack {
             // RGB split ghosts collapse into register as the beam clears the logo. Dropped rather

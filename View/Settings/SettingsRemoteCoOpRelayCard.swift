@@ -243,7 +243,7 @@ extension RemoteCoOpSettingsPage {
         Text(passed ? "SUCCESS" : "FAILED")
             .font(.settingsFont(size: 11 * uiScale, weight: .bold))
             .tracking(0.8)
-            .foregroundStyle(.black)
+            .foregroundStyle(OpenNOWDesign.onAccent)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 22 * uiScale)
             .background(passed ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive)

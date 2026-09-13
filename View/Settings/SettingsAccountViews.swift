@@ -27,7 +27,7 @@ struct AccountSettingsPage: View {
                                 .lineLimit(1)
                             Text(account.membershipTier.uppercased())
                                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                                .foregroundStyle(.black)
+                                .foregroundStyle(OpenNOWDesign.onAccent)
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)

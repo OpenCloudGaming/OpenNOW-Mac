@@ -90,7 +90,7 @@ private struct OpenNOWStartupBusTrack: View {
                 .frame(width: trackWidth, height: 1)
 
             Rectangle()
-                .fill(OpenNOWDesign.accent.opacity(0.60))
+                .fill(OpenNOWDesign.Fixed.accent.opacity(0.60))
                 .frame(width: trackWidth * CGFloat(fill), height: 1)
                 .shadow(color: OpenNOWDesign.accent.opacity(0.55), radius: 4 * scale)
         }
@@ -107,7 +107,7 @@ private struct OpenNOWStartupBusStation: View {
     let scale: CGFloat
 
     var body: some View {
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
 
         VStack(spacing: 8 * scale) {
             Rectangle()

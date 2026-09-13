@@ -81,7 +81,7 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, height: metrics.height)
 
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OpenNOWDesign.Fixed.accent)
                 .frame(width: 8)
                 .frame(maxHeight: .infinity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -99,7 +99,7 @@ struct LoginFormView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text("OPENNOW")
                     .font(.uiSans(size: 11, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accent)
+                    .foregroundStyle(OpenNOWDesign.Fixed.accent)
                     .tracking(1.4)
                     .padding(.bottom, OpenNOWDesign.Spacing.xxSmall)
 

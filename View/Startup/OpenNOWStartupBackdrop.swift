@@ -35,7 +35,7 @@ struct OpenNOWStartupBackdrop: View {
     }
 
     private func drawCoreBloom(in context: inout GraphicsContext, size: CGSize, centerY: CGFloat, develop: Double, bloom: Double) {
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
         let radius = min(size.width, size.height) * (0.34 + bloom * 0.06)
         let center = CGPoint(x: size.width / 2, y: centerY)
         let gradient = Gradient(stops: [
@@ -54,7 +54,7 @@ struct OpenNOWStartupBackdrop: View {
     /// one `Path` each so the whole grid costs two stroke calls.
     private func drawFloorGrid(in context: inout GraphicsContext, size: CGSize, ignite: Double, drift: Double) {
         guard ignite > 0.001 else { return }
-        let accent = OpenNOWDesign.accent
+        let accent = OpenNOWDesign.Fixed.accent
         let vanishing = CGPoint(x: size.width / 2, y: size.height * 0.46)
         let depth = size.height - vanishing.y
         guard depth > 0 else { return }

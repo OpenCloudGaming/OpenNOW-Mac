@@ -37,7 +37,8 @@ struct ThemeSettingsPage: View {
 
     private var accentColorSwatches: [Color] {
         OpenNOWThemePreferences.AccentColor.allCases.map {
-            Color(.sRGB, red: $0.components.red, green: $0.components.green, blue: $0.components.blue)
+            let components = $0.components(isDark: !OpenNOWDesign.isLightAppearance)
+            return Color(.sRGB, red: components.red, green: components.green, blue: components.blue)
         }
     }
 

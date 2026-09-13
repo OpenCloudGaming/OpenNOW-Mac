@@ -157,7 +157,7 @@ struct VendorIndeterminateProgressBar: View {
                     Rectangle()
                         .fill(OpenNOWDesign.Fixed.ink(0.22))
                     Rectangle()
-                        .fill(OpenNOWDesign.accent)
+                        .fill(OpenNOWDesign.Fixed.accent)
                         .frame(width: indicatorWidth)
                         .offset(x: phase * width)
                 }
@@ -350,6 +350,6 @@ struct AccountAvatar: View {
             .frame(width: size, height: size)
             // DESIGN.md radius exception: the login vendor icon button, at size * 0.32.
             // swiftlint:disable:next design_no_corner_radius
-            .background(OpenNOWDesign.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
+            .background(OpenNOWDesign.Fixed.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
     }
 }

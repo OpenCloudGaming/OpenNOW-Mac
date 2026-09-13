@@ -266,7 +266,7 @@ struct RecordingActionButtonStyle: ButtonStyle {
 
     private var foreground: Color {
         switch tone {
-        case .primary: return .black.opacity(0.88)
+        case .primary: return OpenNOWDesign.onAccent.opacity(0.88)
         case .secondary: return OpenNOWDesign.Text.primary
         case .destructive: return RecordingsLayout.danger
         }

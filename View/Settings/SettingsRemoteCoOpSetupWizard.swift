@@ -205,7 +205,7 @@ struct RemoteCoOpSetupWizard: View {
                 HStack(spacing: 7 * uiScale) {
                     Text("\u{2713}")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(OpenNOWDesign.onAccent)
                         .frame(width: 18 * uiScale, height: 18 * uiScale)
                         .background(OpenNOWDesign.accent)
                     Text(advice.headline)
@@ -313,7 +313,7 @@ struct RemoteCoOpSetupWizard: View {
             HStack(spacing: 7 * uiScale) {
                 Text("\(number)")
                     .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(OpenNOWDesign.onAccent)
                     .frame(width: 18 * uiScale, height: 18 * uiScale)
                     .background(OpenNOWDesign.accent)
                 Text(title)

@@ -25,7 +25,13 @@ enum OpenNOWDesign {
         static let surfaceDeep = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
 
         static func ink(_ opacity: Double) -> Color { Color.white.opacity(opacity) }
+
+        /// The accent as it reads on those surfaces: always the bright value, because the deep one
+        /// is for light pages and these never are.
+        static var accent: Color { brightAccent }
     }
+
+    nonisolated(unsafe) static var brightAccent = color(OpenNOWThemePreferences.AccentColor.cloudGreen.components)
 
     enum Semantic {
         static let destructive = Color(red: 1, green: 0.54, blue: 0.50)
@@ -204,50 +210,10 @@ enum OpenNOWDesign {
         }
     }
 
-    /// Cached so the 384 call sites never touch UserDefaults per read. Plain global, not
+    /// Cached so the 384 call sites never touch UserDefaults per read. Plain globals, not
     /// main-actor isolated: some readers are `ButtonStyle` bodies, which aren't either.
-    nonisolated(unsafe) private static var resolvedAccent = accentColor(for: .cloudGreen)
-
-    /// Cached beside the accent for the same reason: the stream HUD reads it every render.
-    nonisolated(unsafe) private static var resolvedAccentSoft = softAccentColor(for: .cloudGreen)
-
-    static var accent: Color { resolvedAccent }
-
-    /// The lightened accent, for text and glyphs that sit on a dark surface beside an accent fill.
-    static var accentSoft: Color { resolvedAccentSoft }
-
-    /// The accent as TEXT. A fill can be any weight - a label has to be read, and the shipping
-    /// accents are bright enough to disappear on a light page, so this darkens them to clear 4.5:1.
-    static var accentInk: Color { resolvedAccentInk }
-
-    /// For the few controls that have to compensate for the appearance rather than just take a
-    /// colour from it - a native control whose own chrome does not follow this palette.
-    static var isLightAppearance: Bool { !isDarkPalette }
-
-    nonisolated(unsafe) private static var resolvedAccentInk = accentInkColor(for: .cloudGreen, isDark: true)
-
-    private static func accentInkColor(for preset: OpenNOWThemePreferences.AccentColor, isDark: Bool) -> Color {
-        let components = preset.components
-        guard !isDark else { return Color(red: components.red, green: components.green, blue: components.blue) }
-        let surface = OpenNOWThemePreferences.lightPaletteTokens.surfaceApp
-        let legible = OpenNOWThemePreferences.legibleAccentComponents(
-            red: components.red,
-            green: components.green,
-            blue: components.blue,
-            onSurfaceLuminance: OpenNOWThemePreferences.relativeLuminance(red: surface.red, green: surface.green, blue: surface.blue)
-        )
-        return Color(red: legible.red, green: legible.green, blue: legible.blue)
-    }
-
-    static func applyAccent(_ preset: OpenNOWThemePreferences.AccentColor) {
-        appliedAccent = preset
-        resolvedAccent = accentColor(for: preset)
-        resolvedAccentSoft = softAccentColor(for: preset)
-        resolvedAccentInk = accentInkColor(for: preset, isDark: isDarkPalette)
-    }
-
-    nonisolated(unsafe) private static var appliedAccent = OpenNOWThemePreferences.AccentColor.cloudGreen
-    nonisolated(unsafe) private static var isDarkPalette = true
+    nonisolated(unsafe) static var appliedAccent = OpenNOWThemePreferences.AccentColor.cloudGreen
+    nonisolated(unsafe) static var isDarkPalette = true
 
     /// Cached for the same reason as `resolvedAccent`: every `Surface`/`Text`/`Stroke` token reads
     /// this on every render of every row and tile, so it must never touch UserDefaults itself.
@@ -292,7 +258,7 @@ enum OpenNOWDesign {
         let isDark = isDarkAppearance(preference, systemColorScheme: systemColorScheme)
         isDarkPalette = isDark
         resolvedPalette = palette(isDark: isDark)
-        resolvedAccentInk = accentInkColor(for: appliedAccent, isDark: isDark)
+        resolveAccentColors()
     }
 
     private static func palette(isDark: Bool) -> ResolvedPalette {
@@ -300,7 +266,7 @@ enum OpenNOWDesign {
     }
 
     /// The `Color` form of one `PaletteTokens` set. The one place a palette's plain sRGB tuples turn
-    /// into `Color`, mirroring `accentColor(for:)` just above.
+    /// into `Color`.
     private struct ResolvedPalette {
         let fillBase: Color
         let fillScale: Double

@@ -25,7 +25,7 @@ struct OpenNOWStartupFrameMarks: View, Equatable {
         ZStack {
             ForEach(0..<4, id: \.self) { corner in
                 OpenNOWStartupCornerBracket(arm: arm)
-                    .stroke(OpenNOWDesign.accent.opacity(0.52 * reveal), lineWidth: 1)
+                    .stroke(OpenNOWDesign.Fixed.accent.opacity(0.52 * reveal), lineWidth: 1)
                     .frame(width: arm, height: arm)
                     .rotationEffect(.degrees(Double(corner) * 90))
                     .padding(metrics.inset)

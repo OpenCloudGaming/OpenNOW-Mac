@@ -79,11 +79,11 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.Fixed.accent)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.Fixed.accent, lineWidth: 1) }
         }
         .buttonStyle(.opnPressable(scale: 0.94))
         .disabled(game.isLaunchPatching && isQueuedForPatching)
@@ -173,7 +173,7 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
                 }
             }
             .overlay {
-                Rectangle().stroke(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: isSelected ? 2 : 1)
+                Rectangle().stroke(isSelected ? OpenNOWDesign.Fixed.accent : OpenNOWDesign.Stroke.subtle, lineWidth: isSelected ? 2 : 1)
             }
         }
         .frame(width: posterWidth, alignment: .top)
@@ -239,7 +239,7 @@ struct CatalogPosterActionTile: View {
                         Text(tile.subtitle.uppercased())
                             .catalogFont(size: 10, weight: .bold)
                             .tracking(0.8)
-                            .foregroundStyle(OpenNOWDesign.accent)
+                            .foregroundStyle(OpenNOWDesign.Fixed.accent)
                             .lineLimit(1)
                     }
                     Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
@@ -252,12 +252,12 @@ struct CatalogPosterActionTile: View {
                         .foregroundStyle(.black.opacity(0.88))
                         .padding(.horizontal, 10)
                         .frame(height: 25)
-                        .background(OpenNOWDesign.accent)
+                        .background(OpenNOWDesign.Fixed.accent)
                 }
                 .padding(14)
             }
             .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
-            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
+            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.Fixed.accent : OpenNOWDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))

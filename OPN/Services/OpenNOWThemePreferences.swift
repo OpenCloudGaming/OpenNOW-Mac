@@ -66,7 +66,8 @@ enum OpenNOWThemePreferences {
         }
 
         /// The one place these presets' sRGB values are written down. Every other reader, in this
-        /// file or in the View layer, goes through this rather than repeating a literal.
+        /// file or in the View layer, goes through this rather than repeating a literal. These are
+        /// the values chosen to sit on a near-black page; `lightComponents` is their light twin.
         var components: (red: Double, green: Double, blue: Double) {
             switch self {
             case .cloudGreen: (0.46, 0.90, 0.10)
@@ -76,6 +77,24 @@ enum OpenNOWThemePreferences {
             case .amber: (1.00, 0.75, 0.20)
             case .coral: (1.00, 0.55, 0.45)
             }
+        }
+
+        /// The same hue taken deeper and a little less saturated, because a colour picked to glow
+        /// on near-black glares on near-white. Each clears the text contrast floor against the
+        /// light page and carries white text when it is used as a fill.
+        var lightComponents: (red: Double, green: Double, blue: Double) {
+            switch self {
+            case .cloudGreen: (0.24, 0.43, 0.04)
+            case .sky: (0.05, 0.34, 0.56)
+            case .violet: (0.36, 0.25, 0.68)
+            case .magenta: (0.64, 0.07, 0.41)
+            case .amber: (0.45, 0.30, 0.02)
+            case .coral: (0.64, 0.17, 0.11)
+            }
+        }
+
+        func components(isDark: Bool) -> (red: Double, green: Double, blue: Double) {
+            isDark ? components : lightComponents
         }
     }
 

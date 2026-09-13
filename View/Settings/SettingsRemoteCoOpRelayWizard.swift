@@ -245,7 +245,7 @@ struct RemoteCoOpRelayWizard: View {
                 .frame(width: 132 * uiScale, alignment: .leading)
             Text(level)
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(OpenNOWDesign.onAccent)
                 .padding(.horizontal, 6 * uiScale)
                 .background(OpenNOWDesign.accent)
             Text(why)

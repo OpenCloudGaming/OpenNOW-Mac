@@ -157,7 +157,7 @@ custom_rules:
   design_no_system_font_design:
     name: "System rounded or monospaced font"
     included: ".*/View/.*\\.swift"
-    excluded: ".*/View/(OpenNOWDesign|Stream/StreamHUDComponents)\\.swift"
+    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Stream/StreamHUDComponents)\\.swift"
     regex: 'design:\s*\.(rounded|monospaced|serif)'
     excluded_match_kinds:
       - comment
@@ -172,7 +172,7 @@ custom_rules:
   design_no_raw_semantic_color:
     name: "Raw semantic colour"
     included: ".*/View/.*\\.swift"
-    excluded: ".*/View/(OpenNOWDesign|Stream/StreamHUDComponents|Components/OpenNOWButtons)\\.swift"
+    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Stream/StreamHUDComponents|Components/OpenNOWButtons)\\.swift"
     regex: 'Color\.(orange|yellow|purple|pink|brown|mint|teal|indigo|cyan)(?![\w(])|(?<![\w.])\.(orange|yellow|purple|pink|brown|mint|teal|indigo|cyan)(?![\w(])'
     excluded_match_kinds:
       - comment
@@ -215,7 +215,7 @@ custom_rules:
   design_no_hardcoded_surface_color:
     name: "Hardcoded colour channels"
     included: ".*/View/.*\\.swift"
-    excluded: ".*/View/(OpenNOWDesign|Settings/SettingsView|Stream/StreamHUDComponents|Login/LoginStyles)\\.swift"
+    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Settings/SettingsView|Stream/StreamHUDComponents|Login/LoginStyles)\\.swift"
     regex: 'Color\(\s*(red|white|hue):'
     excluded_match_kinds:
       - comment

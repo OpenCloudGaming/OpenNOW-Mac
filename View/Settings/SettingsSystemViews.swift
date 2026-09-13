@@ -160,7 +160,7 @@ struct SystemHealthChip: View {
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
         }
-        .foregroundStyle(.black)
+        .foregroundStyle(OpenNOWDesign.onAccent)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 20 * uiScale)
         .background(positive ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.warning)

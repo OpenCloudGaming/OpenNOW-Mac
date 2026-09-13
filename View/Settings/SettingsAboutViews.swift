@@ -27,7 +27,7 @@ struct AboutSettingsPage: View {
                                 .foregroundStyle(OpenNOWDesign.Text.primary)
                             Text("UNOFFICIAL CLIENT SHELL")
                                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                                .foregroundStyle(.black)
+                                .foregroundStyle(OpenNOWDesign.onAccent)
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)
