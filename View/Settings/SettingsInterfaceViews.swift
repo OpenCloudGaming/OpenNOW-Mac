@@ -5,7 +5,6 @@ import SwiftUI
 struct InterfaceSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScaleStorage = OpenNOWInterfacePreferences.defaultUIScale
     @AppStorage(OpenNOWSessionReadyAction.modeKey) private var sessionReadyActionRawValue = OpenNOWSessionReadyAction.Mode.notification.rawValue
 
     private var selectedSessionReadyActionIndex: Int {
@@ -14,24 +13,11 @@ struct InterfaceSettingsPage: View {
     }
 
     static let sections: [SettingsSection] = [
-        SettingsSection("interface", "Interface"),
         SettingsSection("session-ready", "Session Ready"),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
-            SettingsCard(title: "Interface", uiScale: uiScale) {
-                SettingsSliderRow(title: "Interface Scale", valueText: "\(Int((uiScaleStorage * 100).rounded()))%", value: uiScaleStorage, range: OpenNOWInterfacePreferences.uiScaleRange, step: 0.05, uiScale: uiScale) { scale in
-                    uiScaleStorage = scale
-                }
-                SettingsDivider(uiScale: uiScale)
-                Text("Scales the catalog, settings, and in-stream HUD. Increase it on high-resolution displays (for example 5K) when the interface feels too small.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .settingsSection("interface")
-
             SettingsCard(title: "Session Ready", uiScale: uiScale) {
                 SettingsOptionRow(title: "When the Stream Is Ready", subtitle: "While OpenNOW is in the background and a queued or provisioning session becomes ready: post a system notification, bring OpenNOW to the front automatically, or do nothing.", options: OpenNOWSessionReadyAction.Mode.allCases.map(\.label), selectedIndex: selectedSessionReadyActionIndex, isNew: OpenNOWNewSettings.isNew(.sessionReadyAction), uiScale: uiScale) { index in
                     OpenNOWNewSettings.acknowledge(.sessionReadyAction)

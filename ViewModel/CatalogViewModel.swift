@@ -139,8 +139,8 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .recording: return "What Command-R writes to disk, and where to find it afterwards."
         case .network: return "Server location, stream transport, and proxy routing."
         case .remoteCoOp: return "Invite a friend into your session from a browser."
-        case .theme: return "How OpenNOW looks, starting with the layout the home page draws its games in."
-        case .general: return "Interface, alerts, Discord, updates, privacy, and what this Mac can do."
+        case .theme: return "How OpenNOW looks: interface scale, and the layout the home page draws its games in."
+        case .general: return "Alerts, game launch, Discord, updates, privacy, and what this Mac can do."
         case .labs: return "Features on trial. Off by default, and liable to change or vanish."
         }
     }

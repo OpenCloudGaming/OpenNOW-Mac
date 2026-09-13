@@ -65,6 +65,7 @@ import Foundation
         (.input, InputSettingsGroup.sections),
         (.recording, RecordingSettingsGroup.sections),
         (.network, NetworkSettingsGroup.sections),
+        (.theme, ThemeSettingsPage.sections),
         (.general, GeneralSettingsGroup.sections),
         // Labs carries one section, so its bar is hidden; it is checked by the flag test instead.
     ]
