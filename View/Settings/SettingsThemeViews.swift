@@ -8,6 +8,12 @@ struct ThemeSettingsPage: View {
     @AppStorage(OpenNOWThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OpenNOWThemePreferences.TileTitleVisibility.onHover.rawValue
     @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isMotionReduced = false
     @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
+    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
+
+    private var selectedAppearanceIndex: Int {
+        let appearance = OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
+        return OpenNOWThemePreferences.Appearance.allCases.firstIndex(of: appearance) ?? 0
+    }
 
     private var selectedHomeLayoutIndex: Int {
         let mode = OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic
@@ -36,6 +42,7 @@ struct ThemeSettingsPage: View {
     }
 
     static let sections: [SettingsSection] = [
+        SettingsSection("appearance", "Appearance"),
         SettingsSection("interface", "Interface"),
         SettingsSection("accent", "Accent Colour"),
         SettingsSection("home-layout", "Home Layout"),
@@ -45,6 +52,14 @@ struct ThemeSettingsPage: View {
 
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
+            SettingsCard(title: "Appearance", uiScale: uiScale) {
+                SettingsOptionRow(title: "Appearance", subtitle: "Dark, light, or follow the macOS setting. The in-stream HUD and the sign-in screen stay dark either way.", options: OpenNOWThemePreferences.Appearance.allCases.map(\.label), selectedIndex: selectedAppearanceIndex, isNew: OpenNOWNewSettings.isNew(.appearance), uiScale: uiScale) { index in
+                    OpenNOWNewSettings.acknowledge(.appearance)
+                    appearanceRawValue = OpenNOWThemePreferences.Appearance.allCases[index].rawValue
+                }
+            }
+            .settingsSection("appearance")
+
             SettingsCard(title: "Interface", uiScale: uiScale) {
                 SettingsSliderRow(title: "Interface Scale", valueText: "\(Int((uiScaleStorage * 100).rounded()))%", value: uiScaleStorage, range: OpenNOWInterfacePreferences.uiScaleRange, step: 0.05, uiScale: uiScale) { scale in
                     uiScaleStorage = scale
@@ -52,7 +67,7 @@ struct ThemeSettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 Text("Scales the catalog, settings, and in-stream HUD. Increase it on high-resolution displays (for example 5K) when the interface feels too small.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsSection("interface")

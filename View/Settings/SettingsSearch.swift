@@ -97,6 +97,7 @@ enum SettingsSearchIndex {
     ]
 
     private static let themeEntries: [SettingsSearchEntry] = [
+        SettingsSearchEntry("Appearance", .theme, "appearance", keywords: ["light", "dark", "mode", "system", "theme", "night"]),
         SettingsSearchEntry("Interface Scale", .theme, "interface", keywords: ["ui", "size", "zoom", "text size", "5k"]),
         SettingsSearchEntry("Accent Colour", .theme, "accent", keywords: [
             "color", "colour", "highlight", "tint", "theme", "cloud green", "sky", "violet", "magenta", "amber", "coral",
@@ -186,18 +187,18 @@ struct SettingsSearchField: View {
         HStack(spacing: 8 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(isFocused ? 0.72 : 0.42))
+                .foregroundStyle(isFocused ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
             TextField("Search settings", text: $query)
                 .textFieldStyle(.plain)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .focused($isFocused)
                 .onSubmit { isFocused = false }
             if !query.isEmpty {
                 Button { query = "" } label: {
                     Image(systemName: "xmark")
                         .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -206,9 +207,9 @@ struct SettingsSearchField: View {
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(height: 30 * uiScale)
-        .background(Color.white.opacity(0.07))
+        .background(OpenNOWDesign.Stroke.subtle)
         .overlay {
-            Rectangle().strokeBorder(isFocused ? OpenNOWDesign.accent.opacity(0.44) : Color.white.opacity(0.12), lineWidth: 1)
+            Rectangle().strokeBorder(isFocused ? OpenNOWDesign.accent.opacity(0.44) : OpenNOWDesign.Stroke.regular, lineWidth: 1)
         }
     }
 }
@@ -226,7 +227,7 @@ struct SettingsSearchResults: View {
             if results.isEmpty {
                 Text("No setting matches \u{201C}\(query)\u{201D}.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14 * uiScale)
                     .padding(.vertical, 10 * uiScale)
@@ -251,17 +252,17 @@ struct SettingsSearchResultRow: View {
             VStack(alignment: .leading, spacing: 3 * uiScale) {
                 Text(entry.title)
                     .font(.settingsFont(size: 12.5 * uiScale, weight: .bold))
-                    .foregroundStyle(.white.opacity(isHovering ? 1 : 0.88))
+                    .foregroundStyle(OpenNOWDesign.Fill.neutral(isHovering ? 1 : 0.88))
                     .lineLimit(1)
                 Text(SettingsSearchIndex.location(of: entry))
                     .font(.settingsFont(size: 10.5 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .lineLimit(1)
             }
             .padding(.horizontal, 14 * uiScale)
             .padding(.vertical, 8 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isHovering ? Color.white.opacity(0.06) : .clear)
+            .background(isHovering ? OpenNOWDesign.Fill.neutral(0.06) : .clear)
             .overlay(alignment: .leading) {
                 Rectangle()
                     .fill(isHovering ? OpenNOWDesign.accent : .clear)

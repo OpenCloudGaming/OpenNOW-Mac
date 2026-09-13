@@ -85,7 +85,7 @@ struct CatalogStorePickerOverlay: View {
                 .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 32 * uiScale, height: 32 * uiScale)
-                .background(Color.white.opacity(isCloseHovering ? 0.16 : 0.08))
+                .background(OpenNOWDesign.Fill.neutral(isCloseHovering ? 0.16 : 0.08))
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)
@@ -290,7 +290,7 @@ struct CatalogStorePickerOverlay: View {
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                     .frame(height: 20 * uiScale)
-                    .background(Color.white.opacity(0.08))
+                    .background(OpenNOWDesign.Fill.neutral(0.08))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "checkmark")
                     .catalogFont(size: 10, weight: .bold)
@@ -332,7 +332,7 @@ struct CatalogOwnershipSecondaryButtonStyle: ButtonStyle {
             .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
             .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .background(OpenNOWDesign.Fill.neutral(configuration.isPressed ? 0.16 : 0.08))
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }
@@ -421,7 +421,7 @@ extension CatalogStorePickerRow {
         }
         .frame(maxWidth: .infinity, minHeight: 44 * uiScale, maxHeight: 44 * uiScale, alignment: .leading)
         .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
-        .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+        .background(OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
         .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         .contentShape(Rectangle())
     }
@@ -436,7 +436,7 @@ extension CatalogStorePickerRow {
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                 .frame(height: 22 * uiScale)
-                .background(Color.white.opacity(0.08))
+                .background(OpenNOWDesign.Fill.neutral(0.08))
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         }
     }

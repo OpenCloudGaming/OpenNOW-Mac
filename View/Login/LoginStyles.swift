@@ -13,11 +13,11 @@ struct LoginTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .font(.uiSans(size: 14 * uiScale, weight: .regular))
-            .foregroundStyle(.white)
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .tint(OpenNOWDesign.accent)
             .padding(.horizontal, 16 * uiScale)
             .padding(.vertical, 14 * uiScale)
-            .background(Color.white.opacity(0.08))
+            .background(OpenNOWDesign.Fill.neutral(0.08))
             .overlay {
                 Rectangle()
                     .stroke(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: isFocused ? 2 : 1)
@@ -70,11 +70,11 @@ struct SecondaryLoginButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.uiSans(size: compact ? 13 : 14, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .tracking(0.3)
             .padding(.horizontal, compact ? 14 : 16)
             .padding(.vertical, compact ? 8 : 12)
-            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .background(configuration.isPressed ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
             .overlay {
                 Rectangle()
                     .stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1)

@@ -39,7 +39,7 @@ struct RemoteCoOpSettingsPage: View {
                             .foregroundStyle(OpenNOWDesign.Semantic.destructive)
                         Text("Your streams are set to WebRTC, where hosting is not supported: that path decodes inside libwebrtc and gives no way to share frames without decoding and encoding them a second time, which guests experienced as a sluggish picture. Everything below is still editable, but no invite can be created until you switch Settings > Streaming > Transport to Native/NVST and relaunch.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.62))
+                            .foregroundStyle(OpenNOWDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -158,7 +158,7 @@ struct RemoteCoOpSettingsPage: View {
             Group {
                 Text("Lets guests join when this Mac cannot be reached at all - behind carrier-grade NAT, or on a cafe or hotel network where no tunnel can help. Both sides connect outward to a channel instead. Guests who can already reach you keep connecting directly; this costs nothing when it is not needed.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 SettingsDivider(uiScale: uiScale)
@@ -183,7 +183,7 @@ struct RemoteCoOpSettingsPage: View {
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 }
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.58))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if viewModel.remoteCoOpAblyKey.isUsable {
@@ -223,7 +223,7 @@ struct RemoteCoOpSettingsPage: View {
             Group {
                 Text("Gives this Mac a public web address so a guest anywhere can open an invite link with nothing installed. Without one, invites resolve only on your own network or over a VPN. You run the tunnel yourself - cloudflared, ngrok, or Tailscale Funnel if you already use Tailscale - and paste the address it prints.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 SettingsDivider(uiScale: uiScale)
@@ -243,19 +243,19 @@ struct RemoteCoOpSettingsPage: View {
                 VStack(alignment: .leading, spacing: 6 * uiScale) {
                     Text("Point a tunnel at the address above, then paste the public HTTPS URL it prints.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(Self.tunnelExampleCommands)
                         .font(.system(size: 11 * uiScale, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .textSelection(.enabled)
                         .padding(10 * uiScale)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.white.opacity(0.05))
-                        .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                        .background(OpenNOWDesign.Fill.neutral(0.05))
+                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                     Text("Both flags matter: the tunnel reaches this Mac over HTTPS with a self-signed certificate, so it has to be told not to verify it. Your guest only ever sees the tunnel's own certificate.")
                         .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.44))
+                        .foregroundStyle(OpenNOWDesign.Text.muted)
                         .fixedSize(horizontal: false, vertical: true)
                     if let setupGuideURL = Self.setupGuideURL {
                         Link("Remote Co-Op setup guide", destination: setupGuideURL)

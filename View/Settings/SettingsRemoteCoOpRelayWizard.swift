@@ -49,26 +49,26 @@ struct RemoteCoOpRelayWizard: View {
         VStack(alignment: .leading, spacing: 18 * uiScale) {
             header
             progress
-            Divider().overlay(Color.white.opacity(0.12))
+            Rectangle().fill(OpenNOWDesign.Stroke.regular).frame(height: 1)
             ScrollView { stepBody.padding(.trailing, 4 * uiScale) }
                 .frame(maxHeight: 360 * uiScale)
-            Divider().overlay(Color.white.opacity(0.12))
+            Rectangle().fill(OpenNOWDesign.Stroke.regular).frame(height: 1)
             footer
         }
         .padding(24 * uiScale)
         .frame(width: 560 * uiScale, alignment: .leading)
         .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.16), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6 * uiScale) {
             Text("Set Up Relay")
                 .font(.settingsFont(size: 19 * uiScale, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(OpenNOWDesign.Text.primary)
             Text("A relay lets guests play from networks that block direct connections - schools, libraries, cafes. It is free for 1,000 GB a month, and only guests who actually need it use any of that.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -79,17 +79,17 @@ struct RemoteCoOpRelayWizard: View {
                 HStack(spacing: 6 * uiScale) {
                     Text("\(entry.rawValue + 1)")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(entry.rawValue <= stepIndex ? .black : .white.opacity(0.5))
+                        .foregroundStyle(entry.rawValue <= stepIndex ? .black : OpenNOWDesign.Text.tertiary)
                         .frame(width: 18 * uiScale, height: 18 * uiScale)
-                        .background(entry.rawValue <= stepIndex ? OpenNOWDesign.accent : Color.white.opacity(0.1))
+                        .background(entry.rawValue <= stepIndex ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
                     Text(entry.title)
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(0.5)
-                        .foregroundStyle(entry.rawValue == stepIndex ? .white : .white.opacity(0.42))
+                        .foregroundStyle(entry.rawValue == stepIndex ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.muted)
                 }
                 if entry != .finish {
                     Rectangle()
-                        .fill(Color.white.opacity(0.12))
+                        .fill(OpenNOWDesign.Stroke.regular)
                         .frame(height: 1)
                         .frame(maxWidth: .infinity)
                 }
@@ -119,7 +119,7 @@ struct RemoteCoOpRelayWizard: View {
             }
             Text("Prefer not to put a card down? Tailscale covers the same blocked-network case for free, with no Cloudflare account at all - each guest just installs it and joins your tailnet. Close this and see the README.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -147,14 +147,14 @@ struct RemoteCoOpRelayWizard: View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
             Text("Paste the token Cloudflare showed you. OpenNOW finds your account and creates the TURN key itself. The token is stored in your keychain and never travels with an invite.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             wizardField(title: "Cloudflare API Token", text: $apiTokenDraft, secure: true, placeholder: "Paste the token")
 
             if !viewModel.remoteCoOpTURNSetupMessage.isEmpty {
                 Text(viewModel.remoteCoOpTURNSetupMessage)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(credentials.canRelay ? OpenNOWDesign.accent : .white.opacity(0.72))
+                    .foregroundStyle(credentials.canRelay ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -171,7 +171,7 @@ struct RemoteCoOpRelayWizard: View {
                 VStack(alignment: .leading, spacing: 10 * uiScale) {
                     Text("Make one at Realtime > TURN in the dashboard and paste both halves. It works identically; only the making of it differs. Cloudflare shows the token once, at creation.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     wizardField(title: "TURN Key ID", text: $keyIDDraft, secure: false, placeholder: "Key ID")
                     wizardField(title: "TURN Key Token", text: $keyTokenDraft, secure: true, placeholder: "Bearer token")
@@ -229,10 +229,10 @@ struct RemoteCoOpRelayWizard: View {
         HStack(alignment: .top, spacing: 7 * uiScale) {
             Text("\u{2022}")
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
             Text(text)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -241,7 +241,7 @@ struct RemoteCoOpRelayWizard: View {
         HStack(alignment: .top, spacing: 8 * uiScale) {
             Text(name)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 132 * uiScale, alignment: .leading)
             Text(level)
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
@@ -250,7 +250,7 @@ struct RemoteCoOpRelayWizard: View {
                 .background(OpenNOWDesign.accent)
             Text(why)
                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.52))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -260,7 +260,7 @@ struct RemoteCoOpRelayWizard: View {
             Rectangle().fill(OpenNOWDesign.accent).frame(width: 3 * uiScale)
             Text(text)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .fixedSize(horizontal: false, vertical: true)
@@ -271,7 +271,7 @@ struct RemoteCoOpRelayWizard: View {
         VStack(alignment: .leading, spacing: 4 * uiScale) {
             Text(title)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.82))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
             Group {
                 if secure {
                     SecureField(placeholder, text: text)
@@ -281,11 +281,11 @@ struct RemoteCoOpRelayWizard: View {
             }
             .textFieldStyle(.plain)
             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-            .foregroundStyle(.white)
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(Color.white.opacity(0.06))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+            .background(OpenNOWDesign.Fill.neutral(0.06))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         }
     }
 }

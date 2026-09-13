@@ -79,11 +79,11 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
             .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
         }
         .buttonStyle(.opnPressable(scale: 0.94))
         .disabled(game.isLaunchPatching && isQueuedForPatching)
@@ -155,11 +155,11 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
                             Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                                 .catalogFont(size: 12, weight: isSelected ? .medium : .regular)
                                 .lineLimit(1)
-                                .foregroundStyle(.white.opacity(0.90))
+                                .foregroundStyle(OpenNOWDesign.Text.primary)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                                 .catalogFont(size: 10, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.76))
+                                .foregroundStyle(OpenNOWDesign.Text.secondary)
                         }
                         .padding(.horizontal, 12 * uiScale)
                         .frame(width: posterWidth, height: CatalogPosterLayout.trayHeight(scale: uiScale))
@@ -197,14 +197,14 @@ struct CatalogPosterSeeMoreTile: View {
             VStack(spacing: 12) {
                 Image(systemName: "ellipsis")
                     .catalogFont(size: 34, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                 Text(title.uppercased())
                     .catalogFont(size: 16, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
             }
             .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
             .background(OpenNOWDesign.Surface.tileTray)
-            .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.strong, lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))
@@ -257,7 +257,7 @@ struct CatalogPosterActionTile: View {
                 .padding(14)
             }
             .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
-            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
+            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))

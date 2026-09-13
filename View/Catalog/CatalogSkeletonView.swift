@@ -53,7 +53,7 @@ struct SkeletonBlock: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.white.opacity(0.06))
+            .fill(OpenNOWDesign.Fill.neutral(0.06))
             .overlay {
                 if !isMotionReduced {
                     GeometryReader { geo in
@@ -63,7 +63,7 @@ struct SkeletonBlock: View {
                         LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0),
-                                .init(color: Color.white.opacity(0.14), location: 0.5),
+                                .init(color: OpenNOWDesign.Fill.neutral(0.14), location: 0.5),
                                 .init(color: .clear, location: 1),
                             ],
                             startPoint: .leading,
@@ -127,7 +127,7 @@ struct CatalogRailSkeletonView: View {
                 if let title {
                     Text(title)
                         .catalogFont(size: 20, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.96))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                         .accessibilityAddTraits(.isHeader)
                 } else {
                     SkeletonBlock(cornerRadius: 4)

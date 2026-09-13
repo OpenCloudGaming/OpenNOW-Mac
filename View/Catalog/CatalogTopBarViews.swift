@@ -45,7 +45,7 @@ struct CatalogTopBar: View {
                         .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
                         Text(mainPageTitle)
                             .catalogFont(size: 17, weight: .medium)
-                            .foregroundStyle(.white.opacity(0.92))
+                            .foregroundStyle(OpenNOWDesign.Text.primary)
                             .frame(height: 40 * uiScale, alignment: .center)
                     }
                     .background(sideClusterWidthReader)
@@ -65,7 +65,7 @@ struct CatalogTopBar: View {
                     // is a single page, so a subtitle there only repeats the title on the left.
                     Text(viewModel.selectedSettingsGroup.title)
                         .catalogFont(size: 15, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.70))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .tracking(1.1)
                         .frame(width: centeredWidth(for: proxy.size.width))
                 }
@@ -143,12 +143,12 @@ struct CatalogTopBar: View {
                                         .lineLimit(1)
                                     Text(viewModel.subscriptionStatus.membershipTier)
                                         .catalogFont(size: 12, weight: .medium)
-                                        .foregroundStyle(.white.opacity(0.78))
+                                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                                 }
                             }
                             Image(systemName: "chevron.down")
                                 .catalogFont(size: 10, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.88))
+                                .foregroundStyle(OpenNOWDesign.Text.primary)
                                 .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
                                 .opnMotion(OpenNOWDesign.Motion.toggle, value: showsAccountMenu)
                         }
@@ -227,7 +227,7 @@ struct CatalogTopBar: View {
         HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .catalogFont(size: 18, weight: .medium)
-                .foregroundStyle(.white.opacity(0.76))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
             TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .catalogFont(size: 16, weight: .medium)
@@ -249,7 +249,7 @@ struct CatalogTopBar: View {
                 Image(systemName: hasActiveSearchQuery ? "xmark.circle.fill" : "xmark")
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.white.opacity(0.52))
+            .foregroundStyle(OpenNOWDesign.Text.tertiary)
             .accessibilityLabel(hasActiveSearchQuery ? "Clear search" : "Close search")
         }
         .padding(.horizontal, 18 * uiScale)
@@ -291,7 +291,7 @@ struct CatalogAccountAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(.white.opacity(0.16), lineWidth: 1))
+        .overlay(Circle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1))
     }
 
     private var fallbackAvatar: some View {
@@ -327,7 +327,7 @@ struct CatalogTopBarIconLabel: View {
     var body: some View {
         Image(systemName: systemName)
             .catalogFont(size: 17, weight: .medium)
-            .foregroundStyle(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.84))
+            .foregroundStyle(isHovering ? OpenNOWDesign.accent : OpenNOWDesign.Text.primary)
             .modifier(CatalogTopBarPlate(isActive: isHovering))
             .onHover { isHovering = $0 }
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
@@ -344,7 +344,7 @@ struct CatalogHamburgerLabel: View {
             VStack(spacing: 4 * uiScale) {
                 ForEach(0..<3, id: \.self) { index in
                     Rectangle()
-                        .fill((isOpen || isHovering) ? OpenNOWDesign.accent : Color.white.opacity(0.84))
+                        .fill((isOpen || isHovering) ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.84))
                         .frame(width: (index == 1 ? 20 : 23) * uiScale, height: 2)
                         // Folds into a close cross while the drawer is open, so the button says
                         // what the click will do instead of only recolouring.

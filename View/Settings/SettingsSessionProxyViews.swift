@@ -106,7 +106,7 @@ struct SessionProxySettingsPage: View {
                     if !settings.isEnabled {
                         Text(savedSettings.isEnabled ? "Proxy still active until saved." : "Proxy off. Requests connect directly.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.75))
+                            .foregroundStyle(OpenNOWDesign.Text.secondary)
                     }
                     if !passwordSaveFailure.isEmpty {
                         Text(passwordSaveFailure)
@@ -117,7 +117,7 @@ struct SessionProxySettingsPage: View {
                     if !testMessage.isEmpty {
                         Text(testMessage)
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(testSucceeded ? OpenNOWDesign.accent : Color.white.opacity(0.75))
+                            .foregroundStyle(testSucceeded ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)

@@ -145,6 +145,7 @@ struct CatalogView: View {
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
     @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
+    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -163,6 +164,18 @@ struct CatalogView: View {
 
     private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
         OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
+    }
+
+    private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)" }
+
+    /// Nil under Match System, so the window inherits whatever macOS is set to rather than pinning
+    /// a scheme the palette would then have to agree with.
+    private var preferredColorScheme: ColorScheme? {
+        switch OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark {
+        case .system: nil
+        case .dark: .dark
+        case .light: .light
+        }
     }
 
     init(
@@ -288,7 +301,7 @@ struct CatalogView: View {
                 .environment(\.opnTileDensity, tileDensity)
                 // `OpenNOWDesign.accent` is a static, so nothing here re-renders when it changes on
                 // its own; bumping identity with the preset forces this branch to rebuild instead.
-                .id(accentColorRawValue)
+                .id(themeIdentity)
             }
 
             if viewModel.isStreamLaunchLoadingVisible {
@@ -320,7 +333,7 @@ struct CatalogView: View {
             OpenNOWDesign.applyAccent(accentColorPreset)
         }
         .onDisappear { @MainActor in onWindowTitleChange(nil) }
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(preferredColorScheme)
     }
 
     private func updateWindowTitleForActiveStream() {

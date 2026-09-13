@@ -28,7 +28,7 @@ struct CatalogLegacyTransportNotice: View {
                 HStack(spacing: 8 * uiScale) {
                     Text("You are streaming over WebRTC")
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text("LEGACY")
                         .catalogFont(size: 9, weight: .bold)
                         .tracking(0.9)
@@ -39,7 +39,7 @@ struct CatalogLegacyTransportNotice: View {
                 }
                 Text("New work goes to the Native transport: Remote Co-Op hosting, HDR, 10-bit 4:4:4, 120 fps, controller rumble. WebRTC keeps streaming and keeps getting fixes, but no new features.")
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12 * uiScale)
@@ -59,10 +59,10 @@ struct CatalogLegacyTransportNotice: View {
             Button { viewModel.dismissLegacyTransportNotice() } label: {
                 Image(systemName: "xmark")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(.white.opacity(isHoveringDismiss ? 0.92 : 0.60))
+                    .foregroundStyle(isHoveringDismiss ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary)
                     .frame(width: 30 * uiScale, height: 30 * uiScale)
-                    .background(Color.white.opacity(isHoveringDismiss ? 0.12 : 0.065))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.13), lineWidth: 1) }
+                    .background(OpenNOWDesign.Fill.neutral(isHoveringDismiss ? 0.12 : 0.065))
+                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .onHover { isHoveringDismiss = $0 }
@@ -70,8 +70,8 @@ struct CatalogLegacyTransportNotice: View {
             .help("Dismiss. Settings, Stream Transport, keeps the switch.")
         }
         .padding(14 * uiScale)
-        .background(Color.white.opacity(0.060))
+        .background(OpenNOWDesign.Fill.neutral(0.060))
         .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

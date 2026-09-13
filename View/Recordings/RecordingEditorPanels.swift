@@ -64,7 +64,7 @@ struct RecordingEditorAdvancedDrawer: View {
 
             Text(detail)
                 .font(.recordingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(detailIsNotice ? OpenNOWDesign.accent.opacity(0.80) : .white.opacity(0.46))
+                .foregroundStyle(detailIsNotice ? OpenNOWDesign.accent.opacity(0.80) : OpenNOWDesign.Text.tertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: 14 * uiScale, alignment: .topLeading)
@@ -96,11 +96,11 @@ struct RecordingEditorAdvancedDrawer: View {
                 Image(systemName: "chevron.down")
             }
             .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-            .foregroundStyle(.white.opacity(0.88))
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, 10 * uiScale)
             .frame(height: RecordingEditorMetrics.compactControlHeight * uiScale)
-            .background(Color.white.opacity(0.075))
-            .overlay { Rectangle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1) }
+            .background(OpenNOWDesign.Stroke.subtle)
+            .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         }
     }
 
@@ -185,7 +185,7 @@ struct RecordingEditorAdvancedDrawer: View {
     /// Groups controls that do different jobs on the same line.
     private var separator: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.12))
+            .fill(OpenNOWDesign.Stroke.regular)
             .frame(width: 1, height: RecordingEditorMetrics.compactControlHeight * uiScale * 0.7)
             .padding(.horizontal, 4 * uiScale)
     }
@@ -249,7 +249,7 @@ struct RecordingEditorSlider: View {
         HStack(spacing: 8 * uiScale) {
             Text(title)
                 .font(.recordingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .frame(width: 78 * uiScale, alignment: .leading)
                 .lineLimit(1)
             Slider(value: $value, in: range, onEditingChanged: onEditingChanged)

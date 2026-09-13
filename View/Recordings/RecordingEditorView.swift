@@ -44,7 +44,7 @@ struct RecordingEditorView: View {
         .background(OpenNOWDesign.Surface.deep.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(isControllerFocused ? OpenNOWDesign.accent : Color.white.opacity(0.10))
+                .fill(isControllerFocused ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
                 .frame(height: isControllerFocused ? 2 : 1)
         }
         .onChange(of: viewModel.previewSignature) { _, _ in onPreviewChanged() }
@@ -140,13 +140,13 @@ struct RecordingEditorView: View {
         HStack(spacing: 4 * uiScale) {
             Text(recordingEditorPreciseTimeText(playheadSeconds))
                 .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
             Text("/")
                 .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.30))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
             Text(recordingEditorPreciseTimeText(previewDurationSeconds))
                 .font(.recordingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(.white.opacity(0.48))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
         }
         .monospacedDigit()
         .fixedSize()

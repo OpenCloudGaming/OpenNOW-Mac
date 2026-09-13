@@ -223,7 +223,7 @@ private struct ProviderCard: View {
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+            .background(isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
             .overlay {
                 Rectangle()
                     .stroke(isSelected ? OpenNOWDesign.accent : (isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular), lineWidth: isSelected ? 2 : 1)
@@ -269,7 +269,7 @@ private struct SavedAccountCard: View {
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .background(Color.white.opacity(isHovering ? 0.16 : 0.08))
+            .background(isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
             .overlay {
                 Rectangle()
                     .stroke(isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular, lineWidth: 1)
@@ -387,7 +387,7 @@ private struct SignInModal: View {
                 }
                 .padding(OpenNOWDesign.Spacing.small)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.06))
+                .background(OpenNOWDesign.Stroke.subtle)
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
 
@@ -497,7 +497,7 @@ private struct ModalCloseButton: View {
                 .font(.uiSans(size: 11, weight: .bold))
                 .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
                 .frame(width: 28, height: 28)
-                .background(isHovering ? Color.white.opacity(0.08) : Color.clear)
+                .background(isHovering ? OpenNOWDesign.Stroke.subtle : Color.clear)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -568,10 +568,10 @@ private struct VendorTermsDeclineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.uiSans(size: 13, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(OpenNOWDesign.Text.primary)
             .padding(.horizontal, OpenNOWDesign.Spacing.medium)
             .frame(height: 36)
-            .background(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08))
+            .background(configuration.isPressed ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }

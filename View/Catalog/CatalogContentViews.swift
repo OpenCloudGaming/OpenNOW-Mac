@@ -387,7 +387,7 @@ struct CatalogHeroView: View {
                         ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
                             Button { onSelectSlide(index) } label: {
                                 Circle()
-                                    .fill(index == activeIndex ? OpenNOWDesign.accent : Color.white.opacity(0.58))
+                                    .fill(index == activeIndex ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.58))
                                     .frame(width: index == activeIndex ? 12 * uiScale : 9 * uiScale, height: index == activeIndex ? 12 * uiScale : 9 * uiScale)
                             }
                             .buttonStyle(.plain)
@@ -456,7 +456,7 @@ struct CatalogBrowseControlsView: View {
                 if !viewModel.resultSummary.isEmpty {
                     Text(viewModel.resultSummary.uppercased())
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
@@ -472,7 +472,7 @@ struct CatalogBrowseControlsView: View {
                     }
                         .buttonStyle(.plain)
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.84))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
                 OpenNOWDropdownMenu(
                     items: viewModel.sortOptions.map { option in
@@ -489,10 +489,10 @@ struct CatalogBrowseControlsView: View {
                         Image(systemName: "chevron.down")
                     }
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                     .frame(height: 34)
-                    .background(Color.white.opacity(0.08))
+                    .background(OpenNOWDesign.Fill.neutral(0.08))
                 }
             }
 
@@ -514,11 +514,11 @@ struct CatalogBrowseControlsView: View {
                                     Image(systemName: "slider.horizontal.3")
                                 }
                                 .catalogFont(size: 11, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.82))
+                                .foregroundStyle(OpenNOWDesign.Text.secondary)
                                 .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
                                 .frame(height: 32)
-                                .background(Color.white.opacity(0.075))
-                                .overlay { Rectangle().stroke(Color.white.opacity(0.12), lineWidth: 1) }
+                                .background(OpenNOWDesign.Fill.neutral(0.075))
+                                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                             }
                         }
                         ForEach(selectedFilterOptions, id: \.id) { option in
@@ -560,10 +560,10 @@ struct CatalogEmptyDestinationView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .catalogFont(size: 24, weight: .bold)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text(message)
                         .catalogFont(size: 14, weight: .medium)
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 }
             }
             HStack(spacing: 10) {
@@ -582,8 +582,8 @@ struct CatalogEmptyDestinationView: View {
         }
         .padding(22)
         .frame(maxWidth: 620, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+        .background(OpenNOWDesign.Fill.neutral(0.055))
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private var icon: String {

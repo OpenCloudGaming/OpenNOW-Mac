@@ -41,7 +41,7 @@ struct InterfaceInputLegend: View {
             Text(title.uppercased())
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(.white.opacity(0.44))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
             HStack(spacing: 6 * uiScale) {
                 ForEach(Array(glyphs.enumerated()), id: \.offset) { _, glyph in
                     InterfaceGlyphPill(glyph: glyph, uiScale: uiScale)
@@ -51,8 +51,8 @@ struct InterfaceInputLegend: View {
         .padding(.horizontal, 12 * uiScale)
         .padding(.vertical, 11 * uiScale)
         .frame(minWidth: 132 * uiScale, minHeight: 70 * uiScale, alignment: .leading)
-        .background(Color.white.opacity(0.045))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 1) }
+        .background(OpenNOWDesign.Fill.neutral(0.045))
+        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 

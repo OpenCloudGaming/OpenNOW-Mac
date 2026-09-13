@@ -51,14 +51,14 @@ struct CatalogRailView: View {
             HStack {
                 Text(section.title)
                     .catalogFont(size: 20, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if canShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
             }
             .frame(height: 28 * uiScale)
@@ -193,7 +193,7 @@ struct CatalogDestinationGridView: View {
             HStack(alignment: .lastTextBaseline, spacing: 20 * uiScale) {
                 Text(section.title)
                     .catalogFont(size: 24, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 if !section.isPlaceholder {
                     Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
@@ -309,14 +309,14 @@ struct CatalogSeeMoreTile: View {
             VStack(spacing: 12) {
                 Image(systemName: "ellipsis")
                     .catalogFont(size: 34, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                 Text(title.uppercased())
                     .catalogFont(size: 16, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
-            .background(Color(red: 43 / 255, green: 43 / 255, blue: 43 / 255))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.24), lineWidth: 2) }
+            .background(OpenNOWDesign.Surface.tileTray)
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.strong, lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
@@ -369,7 +369,7 @@ struct CatalogPanelActionTile: View {
                 .padding(14)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
-            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : Color.white.opacity(0.16), lineWidth: isHovering ? 2 : 1) }
+            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
@@ -413,7 +413,7 @@ struct VendorActiveSessionHomeBanner: View {
                     .tracking(1.2)
                 Text(title)
                     .catalogFont(size: 14, weight: .bold)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .lineLimit(1)
             }
 
@@ -436,7 +436,7 @@ struct VendorActiveSessionHomeBanner: View {
         .background(OpenNOWDesign.Surface.chrome)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
         }
     }
@@ -448,16 +448,16 @@ private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .catalogFont(size: 11, weight: .bold)
-            .foregroundStyle(primary ? .black : .white.opacity(0.86))
+            .foregroundStyle(primary ? .black : OpenNOWDesign.Text.primary)
             .tracking(0.8)
             .padding(.horizontal, 14)
             .frame(height: 28)
             .background(primary
                 ? OpenNOWDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
-                : Color.white.opacity(configuration.isPressed ? 0.10 : 0.055))
+                : OpenNOWDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055))
             .overlay {
                 if !primary {
-                    Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1)
                 }
             }
     }

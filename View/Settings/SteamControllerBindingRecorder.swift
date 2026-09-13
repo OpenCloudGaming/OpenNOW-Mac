@@ -53,7 +53,7 @@ struct SteamControllerBindingRecorder: View {
 
     private var background: Color {
         if isRecording { return OpenNOWDesign.accent.opacity(0.12) }
-        return Color.white.opacity(isHovering ? 0.14 : 0.075)
+        return isHovering ? OpenNOWDesign.Stroke.regular : Color.white.opacity(0.075)
     }
 
     private func startRecording() {

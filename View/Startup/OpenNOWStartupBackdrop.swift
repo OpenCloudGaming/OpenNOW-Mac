@@ -124,6 +124,6 @@ struct OpenNOWStartupBackdrop: View {
             let y = CGFloat(startupHash(seed &+ 7919)) * size.height
             path.addRect(CGRect(x: x, y: y, width: 1.5, height: 1.5))
         }
-        context.fill(path, with: .color(.white.opacity(0.035)))
+        context.fill(path, with: .color(OpenNOWDesign.Fill.neutral(0.035)))
     }
 }

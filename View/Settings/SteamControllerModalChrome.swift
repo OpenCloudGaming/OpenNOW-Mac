@@ -132,7 +132,8 @@ struct SteamControllerChip: View {
 
     private var background: Color {
         if isSelected { return OpenNOWDesign.accent }
-        return Color.white.opacity(isHovering ? 0.14 : 0.075)
+        if isHovering { return OpenNOWDesign.Stroke.regular }
+        return OpenNOWDesign.Fill.neutral(0.075)
     }
 
     private var stroke: Color {
@@ -182,7 +183,7 @@ struct SteamControllerValueBar: View {
             let clamped = CGFloat(max(-1, min(1, value)))
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.075))
+                    .fill(OpenNOWDesign.Fill.neutral(0.075))
                 if signed {
                     Rectangle()
                         .fill(OpenNOWDesign.Stroke.regular)
@@ -225,7 +226,7 @@ struct SteamControllerBadge<Content: View>: View {
         content
             .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
             .frame(height: 20 * uiScale)
-            .background(Color.white.opacity(0.055))
+            .background(OpenNOWDesign.Fill.neutral(0.055))
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
@@ -243,7 +244,7 @@ struct SteamControllerSection<Content: View>: View {
         }
         .padding(OpenNOWDesign.Spacing.card(scale: uiScale))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.055))
+        .background(OpenNOWDesign.Fill.neutral(0.055))
         .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

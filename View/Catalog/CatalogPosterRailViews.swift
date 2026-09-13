@@ -42,14 +42,14 @@ struct CatalogPosterRailView: View {
             HStack {
                 Text(section.title)
                     .catalogFont(size: 20, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if canShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                 }
             }
             .frame(height: 28 * uiScale)

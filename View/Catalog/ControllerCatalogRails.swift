@@ -50,7 +50,7 @@ struct ControllerHeroBillboard: View {
             if showsDescription {
                 Text(heroDescription(game))
                     .catalogFont(size: descriptionPointSize, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.74))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .lineLimit(descriptionLineLimit)
                     .frame(maxWidth: descriptionWidth * uiScale, alignment: .leading)
             }
@@ -164,7 +164,7 @@ struct ControllerGameRail: View {
             HStack(alignment: .firstTextBaseline, spacing: 12 * uiScale) {
                 Text(section.title)
                     .catalogFont(size: isFocused ? 24 : 21, weight: .bold)
-                    .foregroundStyle(isFocused ? .white : .white.opacity(0.84))
+                    .foregroundStyle(isFocused ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.primary)
                 if !section.isPlaceholder {
                     Text("\(section.games.count) games".uppercased())
                         .catalogFont(size: 11, weight: .bold)
@@ -175,7 +175,7 @@ struct ControllerGameRail: View {
                     Button("SHOW ALL", action: showAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.82))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                 }
             }
             .frame(width: layout.contentWidth, alignment: .leading)
@@ -328,7 +328,7 @@ struct ControllerGameTile: View, Equatable {
                     }
                     Text(subtitle)
                         .catalogFont(size: 11, weight: .bold)
-                        .foregroundStyle(.white.opacity(0.62))
+                        .foregroundStyle(OpenNOWDesign.Text.secondary)
                         .lineLimit(1)
                 }
                 .padding(15 * uiScale)
@@ -373,7 +373,7 @@ struct ControllerEmbeddedPage<Content: View>: View {
                     .tracking(1.4)
                 Text(subtitle)
                     .catalogFont(size: 15, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
             .frame(width: layout.contentWidth, alignment: .leading)
             .padding(.top, 20 * uiScale)

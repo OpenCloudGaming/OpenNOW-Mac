@@ -24,9 +24,9 @@ extension GameDetailPanel {
             Button { showsActionsMenu.toggle() } label: {
                 Image(systemName: "ellipsis")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .frame(width: 40 * uiScale, height: 40 * uiScale)
-                    .background(Color.white.opacity(0.08))
+                    .background(OpenNOWDesign.Fill.neutral(0.08))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
@@ -103,11 +103,11 @@ extension GameDetailPanel {
                         Text(option.title)
                             .catalogFont(size: 12, weight: .bold)
                     }
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
                     .frame(height: 28 * uiScale)
                     .padding(.horizontal, 10 * uiScale)
-                    .background(Color.white.opacity(0.10))
-                    .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
+                    .background(OpenNOWDesign.Fill.neutral(0.10))
+                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Change game store, currently \(option.title)")
@@ -115,11 +115,11 @@ extension GameDetailPanel {
             // The state reads as a state, not as a second button: a dot and a word, no box.
             HStack(spacing: 6) {
                 Circle()
-                    .fill(hasAccess ? OpenNOWDesign.accent : Color.white.opacity(0.42))
+                    .fill(hasAccess ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
                     .frame(width: 6, height: 6)
                 Text(hasAccess ? "Ready" : "Not Owned")
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(.white.opacity(hasAccess ? 0.86 : 0.66))
+                    .foregroundStyle(hasAccess ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
             }
             .frame(height: 28 * uiScale)
             Spacer(minLength: 0)
@@ -134,12 +134,12 @@ extension GameDetailPanel {
         VStack(alignment: .leading, spacing: 3) {
             Text(accessBody(game: game))
                 .catalogFont(size: 13, weight: .medium)
-                .foregroundStyle(.white.opacity(0.76))
+                .foregroundStyle(OpenNOWDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if showsStoreConfigurationHint(game: game) {
                 Text("Configure stores from Connections.")
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.52))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
         }
         .frame(maxWidth: 520 * uiScale, alignment: .leading)

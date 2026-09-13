@@ -147,7 +147,7 @@ struct SteamControllerMappingView: View {
             }
             .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
             .frame(height: 30 * uiScale)
-            .background(Color.white.opacity(0.075))
+            .background(OpenNOWDesign.Fill.neutral(0.075))
             .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             .contentShape(Rectangle())
         }
@@ -289,7 +289,7 @@ struct SteamControllerMappingView: View {
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                         .frame(minWidth: 48 * uiScale)
                         .frame(height: 26 * uiScale)
-                        .background(held ? OpenNOWDesign.accent : Color.white.opacity(0.075))
+                        .background(held ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.075))
                         .overlay {
                             Rectangle().stroke(
                                 held ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle,
@@ -418,6 +418,6 @@ private struct SteamControllerCategoryRow: View {
 
     private var background: Color {
         if isActive { return OpenNOWDesign.accent.opacity(0.095) }
-        return isHovering ? Color.white.opacity(0.08) : .clear
+        return isHovering ? OpenNOWDesign.Stroke.subtle : .clear
     }
 }

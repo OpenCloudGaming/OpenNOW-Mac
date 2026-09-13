@@ -16,6 +16,10 @@ struct ContentView: View {
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
     @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
     @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
+    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
+    /// Read at the true root, above anywhere the app forces `.preferredColorScheme`, so it always
+    /// reflects what macOS is actually set to rather than an override further down the tree.
+    @Environment(\.colorScheme) private var systemColorScheme
 
     private var tileDensity: CGFloat {
         (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
@@ -24,6 +28,13 @@ struct ContentView: View {
     private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
         OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
     }
+
+    private var appearancePreference: OpenNOWThemePreferences.Appearance {
+        OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
+    }
+
+    /// Bumped on every surface that rebuilds a subtree to invalidate the cached palette statics.
+    private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)" }
 
     var body: some View {
         ZStack {
@@ -36,7 +47,7 @@ struct ContentView: View {
             // must never cover the launch animation, and must never be covered by a game.
             // Can outlive `CatalogView`'s own accent invalidation (signed out), so it gets its own.
             OpenNOWUpdateOverlay()
-                .id(accentColorRawValue)
+                .id(themeIdentity)
                 .zIndex(90)
 
             if root.isShowingStartupLoading {
@@ -63,6 +74,12 @@ struct ContentView: View {
             .environment(\.opnTileDensity, tileDensity)
             .onChange(of: accentColorRawValue, initial: true) { _, _ in
                 OpenNOWDesign.applyAccent(accentColorPreset)
+            }
+            .onChange(of: appearanceRawValue, initial: true) { _, _ in
+                OpenNOWDesign.applyAppearance(appearancePreference, systemColorScheme: systemColorScheme)
+            }
+            .onChange(of: systemColorScheme) { _, _ in
+                OpenNOWDesign.applyAppearance(appearancePreference, systemColorScheme: systemColorScheme)
             }
             .onDisappear { root.unbind() }
             // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`

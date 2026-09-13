@@ -421,11 +421,11 @@ struct CatalogShowAllGridTile: View {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
             .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -453,11 +453,11 @@ struct CatalogShowAllGridTile: View {
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                             .catalogFont(size: 12, weight: isSelected ? .medium : .regular)
                             .lineLimit(1)
-                            .foregroundStyle(.white.opacity(0.90))
+                            .foregroundStyle(OpenNOWDesign.Text.primary)
                         Spacer(minLength: 0)
                         Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                             .catalogFont(size: 10, weight: .bold)
-                            .foregroundStyle(.white.opacity(0.76))
+                            .foregroundStyle(OpenNOWDesign.Text.secondary)
                     }
                     .padding(.horizontal, 16 * uiScale)
                     .frame(height: CatalogShowAllLayout.cardTrayHeight * uiScale)

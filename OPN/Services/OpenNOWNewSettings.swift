@@ -17,13 +17,14 @@ enum OpenNOWNewSettings {
         case tileTitles
         case reduceMotion
         case accentColor
+        case appearance
 
         /// The marketing version the row shipped in.
         nonisolated var introducedIn: String {
             switch self {
             case .surroundSound, .sessionReadyAction: "0.6.0"
             case .steamBigPictureMode: "0.8.0"
-            case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor: "0.9.0"
+            case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance: "0.9.0"
             }
         }
     }

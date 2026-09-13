@@ -19,7 +19,7 @@ struct CatalogMainMenuOverlay: View {
                 // and the panel can carry separate transitions. A conditional ancestor animates as
                 // one block: the dimming would slide in with the drawer.
                 if isPresented {
-                    Color.black.opacity(0.6)
+                    OpenNOWDesign.Surface.scrim
                         .ignoresSafeArea()
                         .onTapGesture { isPresented = false }
                         .transition(.opacity)
@@ -60,14 +60,14 @@ struct CatalogMainMenuPanel: View {
                     .foregroundStyle(OpenNOWDesign.accent)
                 Text("OpenNOW Menu")
                     .catalogFont(size: 20, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.96))
+                    .foregroundStyle(OpenNOWDesign.Text.primary)
             }
             .padding(.horizontal, 22 * uiScale)
             .padding(.top, OpenNOWDesign.Spacing.large(scale: uiScale))
             .padding(.bottom, OpenNOWDesign.Spacing.card(scale: uiScale))
 
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
 
             CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
@@ -75,7 +75,7 @@ struct CatalogMainMenuPanel: View {
                 .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -124,7 +124,7 @@ struct CatalogMainMenuPanel: View {
             }
 
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(height: 1)
 
             CatalogMainMenuRow(title: "Sign Out", subtitle: viewModel.account.displayName, systemImage: "rectangle.portrait.and.arrow.right", isActive: false) {
@@ -138,7 +138,7 @@ struct CatalogMainMenuPanel: View {
         .background(OpenNOWDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(Color.white.opacity(0.10))
+                .fill(OpenNOWDesign.Stroke.subtle)
                 .frame(width: 1)
         }
         .overlay(alignment: .top) {
@@ -179,7 +179,7 @@ struct CatalogMainMenuSectionLabel: View {
         Text(title)
             .catalogFont(size: 10, weight: .bold)
             .tracking(1.1)
-            .foregroundStyle(.white.opacity(0.42))
+            .foregroundStyle(OpenNOWDesign.Text.muted)
             .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, 5 * uiScale)
     }
@@ -199,7 +199,7 @@ struct CatalogMainMenuPlaytimeCard: View {
                     Text(activeSession == nil ? "REMAINING PLAYTIME" : "CURRENT SESSION")
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(1.1)
-                        .foregroundStyle(.white.opacity(0.46))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     Spacer(minLength: 0)
                     Text(status.membershipTier.uppercased())
                         .catalogFont(size: 10, weight: .bold)
@@ -211,16 +211,16 @@ struct CatalogMainMenuPlaytimeCard: View {
                 }
                 Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
                     .catalogFont(size: 22, weight: .bold)
-                    .foregroundStyle((activeSession != nil || status.isAvailable) ? .white.opacity(0.95) : .white.opacity(0.56))
+                    .foregroundStyle((activeSession != nil || status.isAvailable) ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary)
                     .lineLimit(1)
                 Text(activeSession?.usageText ?? status.usageText)
                     .catalogFont(size: 11, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.56))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .lineLimit(1)
             }
             .padding(OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .background(Color.white.opacity(0.055))
-            .overlay { Rectangle().stroke(Color.white.opacity(0.10), lineWidth: 1) }
+            .background(OpenNOWDesign.Fill.neutral(0.055))
+            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 
@@ -266,7 +266,7 @@ struct CatalogMainMenuRow: View {
             HStack(spacing: 13 * uiScale) {
                 ZStack {
                     Rectangle()
-                        .fill(isActive ? OpenNOWDesign.accent : Color.white.opacity(isHovering ? 0.16 : 0.08))
+                        .fill(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
@@ -288,7 +288,7 @@ struct CatalogMainMenuRow: View {
                     if !subtitle.isEmpty {
                         Text(subtitle)
                             .catalogFont(size: 11, weight: .medium)
-                            .foregroundStyle(.white.opacity(0.52))
+                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
                             .lineLimit(1)
                     }
                 }
@@ -315,17 +315,17 @@ struct CatalogMainMenuRow: View {
 
     private var rowBackground: Color {
         if isActive { return OpenNOWDesign.accent.opacity(0.095) }
-        return Color.white.opacity(isHovering ? 0.085 : 0)
+        return OpenNOWDesign.Fill.neutral(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
         if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? .white : .white.opacity(isHovering ? 0.96 : 0.82)
+        return isActive ? OpenNOWDesign.Text.primary : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
         if isActive { return .black.opacity(0.86) }
         if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return .white.opacity(isHovering ? 0.94 : 0.72)
+        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
     }
 }

@@ -111,11 +111,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : .white.opacity(0.86)) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
             .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : Color.white.opacity(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -188,11 +188,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                             Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                                 .catalogFont(size: 12, weight: isSelected ? .medium : .regular)
                                 .lineLimit(1)
-                                .foregroundStyle(.white.opacity(0.90))
+                                .foregroundStyle(OpenNOWDesign.Text.primary)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                                 .catalogFont(size: 10, weight: .bold)
-                                .foregroundStyle(.white.opacity(0.76))
+                                .foregroundStyle(OpenNOWDesign.Text.secondary)
                         }
                         .padding(.horizontal, 16 * uiScale)
                         .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
@@ -236,11 +236,11 @@ struct CatalogGameCardBadge: View {
                 .frame(width: 7, height: 24)
             Text(label)
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(.white.opacity(0.94))
+                .foregroundStyle(OpenNOWDesign.Text.primary)
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(height: 24)
-                .background(Color(red: 56 / 255, green: 56 / 255, blue: 56 / 255).opacity(0.94))
+                .background(OpenNOWDesign.Surface.chrome.opacity(0.94))
         }
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -262,7 +262,7 @@ struct CatalogGameAccessBadge: View {
         .padding(.horizontal, 10)
         .frame(height: 28)
         .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))
-        .overlay { Rectangle().stroke(Color.white.opacity(0.42), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OpenNOWDesign.Fill.neutral(0.42), lineWidth: 1) }
         .shadow(color: .black.opacity(0.44), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: true, vertical: false)
     }

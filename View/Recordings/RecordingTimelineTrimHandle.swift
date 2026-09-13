@@ -31,7 +31,7 @@ extension RecordingTimelineView {
     func trimHandle(item: TimelineClipFrame, layout: RecordingTimelineGeometry, isLeading: Bool) -> some View {
         ZStack {
             // Transparent, and wider than the bar: this is what the pointer actually has to hit.
-            Color.white.opacity(0.001)
+            OpenNOWDesign.Fill.neutral(0.001)
             Rectangle()
                 .fill(OpenNOWDesign.accent)
                 .frame(width: handleBarWidth, height: handleBarHeight)

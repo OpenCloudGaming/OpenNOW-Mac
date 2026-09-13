@@ -4,17 +4,19 @@ import QuartzCore
 import SwiftUI
 
 enum OpenNOWDesign {
+    /// Every reader goes through the cached statics below rather than through these directly: a
+    /// `static let` here would freeze at the dark values and never see `applyAppearance`.
     enum Surface {
-        static let app = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
-        static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
-        static let panel = Color(red: 28 / 255, green: 28 / 255, blue: 28 / 255)
-        static let panelRaised = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
-        static let tileTray = Color(red: 41 / 255, green: 41 / 255, blue: 41 / 255)
-        static let field = Color(red: 31 / 255, green: 31 / 255, blue: 31 / 255)
-        static let scrim = Color.black.opacity(0.58)
-        static let deep = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
-        static let overlay = Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255)
-        static let chrome = Color(red: 57 / 255, green: 57 / 255, blue: 59 / 255)
+        static var app: Color { resolvedPalette.surfaceApp }
+        static var appBar: Color { resolvedPalette.surfaceAppBar }
+        static var panel: Color { resolvedPalette.surfacePanel }
+        static var panelRaised: Color { resolvedPalette.surfacePanelRaised }
+        static var tileTray: Color { resolvedPalette.surfaceTileTray }
+        static var field: Color { resolvedPalette.surfaceField }
+        static var scrim: Color { resolvedPalette.surfaceScrim }
+        static var deep: Color { resolvedPalette.surfaceDeep }
+        static var overlay: Color { resolvedPalette.surfaceOverlay }
+        static var chrome: Color { resolvedPalette.surfaceChrome }
     }
 
     enum Semantic {
@@ -29,10 +31,10 @@ enum OpenNOWDesign {
     }
 
     enum Text {
-        static let primary = Color.white.opacity(0.96)
-        static let secondary = Color.white.opacity(0.72)
-        static let tertiary = Color.white.opacity(0.52)
-        static let muted = Color.white.opacity(0.38)
+        static var primary: Color { resolvedPalette.textPrimary }
+        static var secondary: Color { resolvedPalette.textSecondary }
+        static var tertiary: Color { resolvedPalette.textTertiary }
+        static var muted: Color { resolvedPalette.textMuted }
     }
 
     /// Budget for `opnTakingFocus`.
@@ -40,9 +42,18 @@ enum OpenNOWDesign {
     static let focusRetryMilliseconds = 30
 
     enum Stroke {
-        static let subtle = Color.white.opacity(0.10)
-        static let regular = Color.white.opacity(0.14)
-        static let strong = Color.white.opacity(0.22)
+        static var subtle: Color { resolvedPalette.strokeSubtle }
+        static var regular: Color { resolvedPalette.strokeRegular }
+        static var strong: Color { resolvedPalette.strokeStrong }
+    }
+
+    /// Translucent neutral fills - row backgrounds, hover washes, chip and pill fills. The palette
+    /// has no named colour for these because each site picks its own weight; what flips with the
+    /// appearance is which way the wash goes, white over a dark page and black over a light one.
+    enum Fill {
+        static func neutral(_ opacity: Double) -> Color {
+            resolvedPalette.fillBase.opacity(opacity)
+        }
     }
 
     enum Spacing {
@@ -196,6 +207,85 @@ enum OpenNOWDesign {
     static func applyAccent(_ preset: OpenNOWThemePreferences.AccentColor) {
         resolvedAccent = accentColor(for: preset)
         resolvedAccentSoft = softAccentColor(for: preset)
+    }
+
+    /// Cached for the same reason as `resolvedAccent`: every `Surface`/`Text`/`Stroke` token reads
+    /// this on every render of every row and tile, so it must never touch UserDefaults itself.
+    /// Starts resolved to dark so a reader that renders before the root's first `onChange` fires -
+    /// there isn't one, since `initial: true` runs it before the first frame - still sees today's
+    /// shipping colours rather than an unresolved gap.
+    nonisolated(unsafe) private static var resolvedPalette = palette(isDark: true)
+
+    /// Single write path for the appearance palette, mirroring `applyAccent`. `.system` is resolved
+    /// against `systemColorScheme` here rather than upstream, so every caller passes the same two
+    /// things - the stored preference and what the OS currently is - and only this function decides
+    /// what they add up to.
+    static func applyAppearance(_ preference: OpenNOWThemePreferences.Appearance, systemColorScheme: ColorScheme) {
+        let isDark: Bool
+        switch preference {
+        case .system: isDark = systemColorScheme == .dark
+        case .dark: isDark = true
+        case .light: isDark = false
+        }
+        resolvedPalette = palette(isDark: isDark)
+    }
+
+    private static func palette(isDark: Bool) -> ResolvedPalette {
+        ResolvedPalette(tokens: isDark ? OpenNOWThemePreferences.darkPaletteTokens : OpenNOWThemePreferences.lightPaletteTokens)
+    }
+
+    /// The `Color` form of one `PaletteTokens` set. The one place a palette's plain sRGB tuples turn
+    /// into `Color`, mirroring `accentColor(for:)` just above.
+    private struct ResolvedPalette {
+        let fillBase: Color
+        let surfaceApp: Color
+        let surfaceAppBar: Color
+        let surfacePanel: Color
+        let surfacePanelRaised: Color
+        let surfaceTileTray: Color
+        let surfaceField: Color
+        let surfaceScrim: Color
+        let surfaceDeep: Color
+        let surfaceOverlay: Color
+        let surfaceChrome: Color
+        let textPrimary: Color
+        let textSecondary: Color
+        let textTertiary: Color
+        let textMuted: Color
+        let strokeSubtle: Color
+        let strokeRegular: Color
+        let strokeStrong: Color
+
+        init(tokens: OpenNOWThemePreferences.PaletteTokens) {
+            // The text token already carries the direction a palette washes in: white on dark,
+            // black on light. A fill is that same ink at a much lower weight.
+            fillBase = Self.opaque((tokens.textPrimary.red, tokens.textPrimary.green, tokens.textPrimary.blue))
+            surfaceApp = Self.opaque(tokens.surfaceApp)
+            surfaceAppBar = Self.opaque(tokens.surfaceAppBar)
+            surfacePanel = Self.opaque(tokens.surfacePanel)
+            surfacePanelRaised = Self.opaque(tokens.surfacePanelRaised)
+            surfaceTileTray = Self.opaque(tokens.surfaceTileTray)
+            surfaceField = Self.opaque(tokens.surfaceField)
+            surfaceScrim = Self.translucent(tokens.surfaceScrim)
+            surfaceDeep = Self.opaque(tokens.surfaceDeep)
+            surfaceOverlay = Self.opaque(tokens.surfaceOverlay)
+            surfaceChrome = Self.opaque(tokens.surfaceChrome)
+            textPrimary = Self.translucent(tokens.textPrimary)
+            textSecondary = Self.translucent(tokens.textSecondary)
+            textTertiary = Self.translucent(tokens.textTertiary)
+            textMuted = Self.translucent(tokens.textMuted)
+            strokeSubtle = Self.translucent(tokens.strokeSubtle)
+            strokeRegular = Self.translucent(tokens.strokeRegular)
+            strokeStrong = Self.translucent(tokens.strokeStrong)
+        }
+
+        private static func opaque(_ components: (red: Double, green: Double, blue: Double)) -> Color {
+            Color(red: components.red, green: components.green, blue: components.blue)
+        }
+
+        private static func translucent(_ components: (red: Double, green: Double, blue: Double, opacity: Double)) -> Color {
+            Color(red: components.red, green: components.green, blue: components.blue, opacity: components.opacity)
+        }
     }
 
     private static func accentColor(for preset: OpenNOWThemePreferences.AccentColor) -> Color {

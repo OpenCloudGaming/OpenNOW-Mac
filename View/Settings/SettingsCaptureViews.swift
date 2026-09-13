@@ -42,10 +42,10 @@ struct RecordingLibraryCard: View {
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("Your recordings")
                         .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(OpenNOWDesign.Text.primary)
                     Text("Command-R starts and stops a capture during a stream. Finished recordings are browsable, and can be trimmed, cropped and exported.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.58))
+                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12 * uiScale)

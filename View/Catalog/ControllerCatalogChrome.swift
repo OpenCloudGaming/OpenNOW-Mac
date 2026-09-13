@@ -22,7 +22,7 @@ struct ControllerOverlayHeader: View {
                     .lineLimit(1)
                 Text(subtitle)
                     .catalogFont(size: 14, weight: .medium)
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
@@ -30,14 +30,14 @@ struct ControllerOverlayHeader: View {
                 ControllerGlyphPill(glyph: glyphs.back)
                 Text("BACK")
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.62))
+                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
             }
             Button(action: close) {
                 Image(systemName: "xmark")
                     .catalogFont(size: 16, weight: .bold)
-                    .foregroundStyle(.white.opacity(0.80))
+                    .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .frame(width: 38 * uiScale, height: 38 * uiScale)
-                    .background(Color.white.opacity(0.08))
+                    .background(OpenNOWDesign.Fill.neutral(0.08))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
@@ -68,10 +68,10 @@ struct ControllerMetadataPill: View {
         Text(text.uppercased())
             .catalogFont(size: 11, weight: .bold)
             .tracking(0.7)
-            .foregroundStyle(highlighted ? .black.opacity(0.88) : .white.opacity(0.82))
+            .foregroundStyle(highlighted ? .black.opacity(0.88) : OpenNOWDesign.Text.secondary)
             .padding(.horizontal, 10 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(highlighted ? OpenNOWDesign.accent : Color.white.opacity(0.075))
+            .background(highlighted ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.075))
             .overlay { Rectangle().stroke(highlighted ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
     }
 }
@@ -106,7 +106,7 @@ struct ControllerHintBar: View {
             Spacer(minLength: 0)
             Text(glyphs.usesControllerGlyphs ? "Controller mode" : "Keyboard fallback")
                 .catalogFont(size: 11, weight: .bold)
-                .foregroundStyle(.white.opacity(0.38))
+                .foregroundStyle(OpenNOWDesign.Text.muted)
                 .tracking(0.8)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -114,7 +114,7 @@ struct ControllerHintBar: View {
         .frame(width: layout.contentWidth, alignment: .leading)
         .frame(height: 46 * uiScale)
         .background(Color.black.opacity(0.36))
-        .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1) }
+        .overlay(alignment: .top) { Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(height: 1) }
     }
 }
 
@@ -135,7 +135,7 @@ struct ControllerHintItem: View {
             }
             Text(title)
                 .catalogFont(size: 10, weight: .bold)
-                .foregroundStyle(.white.opacity(0.64))
+                .foregroundStyle(OpenNOWDesign.Text.tertiary)
                 .tracking(0.5)
         }
     }

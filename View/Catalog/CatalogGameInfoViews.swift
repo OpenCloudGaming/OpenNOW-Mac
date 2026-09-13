@@ -143,7 +143,7 @@ struct CatalogGameInfoOverlay: View {
                         .foregroundStyle(OpenNOWDesign.Text.primary)
                         .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
                         .frame(height: 24 * uiScale)
-                        .background(Color.white.opacity(0.12))
+                        .background(OpenNOWDesign.Fill.neutral(0.12))
                         .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                 }
             }
@@ -530,7 +530,7 @@ private struct CatalogGameInfoLightbox: View {
                     .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OpenNOWDesign.Text.primary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(Color.white.opacity(0.10))
+                    .background(OpenNOWDesign.Fill.neutral(0.10))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
@@ -546,7 +546,7 @@ private struct CatalogGameInfoLightbox: View {
                     .foregroundStyle(OpenNOWDesign.Text.secondary)
                     .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
                     .frame(height: 26 * uiScale)
-                    .background(Color.white.opacity(0.08))
+                    .background(OpenNOWDesign.Fill.neutral(0.08))
                     .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
                     .padding(.bottom, OpenNOWDesign.Spacing.large(scale: uiScale))
             }
@@ -559,7 +559,7 @@ private struct CatalogGameInfoLightbox: View {
                 .catalogFont(size: 16, weight: .bold)
                 .foregroundStyle(OpenNOWDesign.Text.primary)
                 .frame(width: 44 * uiScale, height: 64 * uiScale)
-                .background(Color.white.opacity(0.10))
+                .background(OpenNOWDesign.Fill.neutral(0.10))
                 .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)
