@@ -31,7 +31,7 @@ enum SettingsSearchIndex {
     /// lies about where the setting is: rows that exist only inside a modal wizard, and rows that
     /// appear only once another setting is switched on. The second kind hands its words to the
     /// control that gates it, so searching "socks" still reaches the session proxy.
-    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + recordingEntries + networkEntries + generalEntries + remoteCoOpEntries
+    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + recordingEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries
 
     private static let videoEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Quality Preset", .video, "display", keywords: ["profile", "balanced", "competitive", "cinematic", "custom", "data saver"]),
@@ -96,9 +96,12 @@ enum SettingsSearchIndex {
         ]),
     ]
 
+    private static let themeEntries: [SettingsSearchEntry] = [
+        SettingsSearchEntry("Home Layout", .theme, "home-layout", keywords: ["poster", "box art", "classic", "portrait", "tiles", "carousel", "hero", "banner", "grid", "theme"]),
+    ]
+
     private static let generalEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Interface Scale", .general, "interface", keywords: ["ui", "size", "zoom", "text size", "5k"]),
-        SettingsSearchEntry("Home Layout", .general, "home-layout", keywords: ["poster", "box art", "classic", "portrait", "tiles", "carousel", "hero", "banner", "grid"]),
         SettingsSearchEntry("When the Stream Is Ready", .general, "session-ready", keywords: ["notification", "alert", "queue", "bring to front", "focus", "off", "disable"]),
         SettingsSearchEntry("Steam Big Picture Mode", .general, "game-launch", keywords: ["launcher", "gamepad friendly", "steam", "tv", "couch"]),
         SettingsSearchEntry("Rich Presence", .general, "discord", keywords: ["discord", "status", "friends", "profile"]),
@@ -158,6 +161,7 @@ enum SettingsSearchIndex {
         case .recording: RecordingSettingsGroup.sections
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []
+        case .theme: ThemeSettingsPage.sections
         case .general: GeneralSettingsGroup.sections
         case .labs: LabsSettingsPage.sections
         }

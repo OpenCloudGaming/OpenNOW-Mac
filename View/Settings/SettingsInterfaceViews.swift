@@ -7,21 +7,14 @@ struct InterfaceSettingsPage: View {
     let uiScale: CGFloat
     @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScaleStorage = OpenNOWInterfacePreferences.defaultUIScale
     @AppStorage(OpenNOWSessionReadyAction.modeKey) private var sessionReadyActionRawValue = OpenNOWSessionReadyAction.Mode.notification.rawValue
-    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
 
     private var selectedSessionReadyActionIndex: Int {
         let mode = OpenNOWSessionReadyAction.Mode(rawValue: sessionReadyActionRawValue) ?? .notification
         return OpenNOWSessionReadyAction.Mode.allCases.firstIndex(of: mode) ?? 0
     }
 
-    private var selectedHomeLayoutIndex: Int {
-        let mode = OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic
-        return OpenNOWHomeLayout.Mode.allCases.firstIndex(of: mode) ?? 0
-    }
-
     static let sections: [SettingsSection] = [
         SettingsSection("interface", "Interface"),
-        SettingsSection("home-layout", "Home Layout"),
         SettingsSection("session-ready", "Session Ready"),
     ]
 
@@ -38,14 +31,6 @@ struct InterfaceSettingsPage: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsSection("interface")
-
-            SettingsCard(title: "Home Layout", uiScale: uiScale) {
-                SettingsOptionRow(title: "Home Layout", subtitle: "How the keyboard-and-mouse home page is laid out. Classic keeps today's featured banner and wide landscape tiles. Poster switches to rows of tall, portrait box-art tiles. Controller mode is unaffected.", options: OpenNOWHomeLayout.Mode.allCases.map(\.label), selectedIndex: selectedHomeLayoutIndex, isNew: OpenNOWNewSettings.isNew(.homeLayout), uiScale: uiScale) { index in
-                    OpenNOWNewSettings.acknowledge(.homeLayout)
-                    homeLayoutRawValue = OpenNOWHomeLayout.Mode.allCases[index].rawValue
-                }
-            }
-            .settingsSection("home-layout")
 
             SettingsCard(title: "Session Ready", uiScale: uiScale) {
                 SettingsOptionRow(title: "When the Stream Is Ready", subtitle: "While OpenNOW is in the background and a queued or provisioning session becomes ready: post a system notification, bring OpenNOW to the front automatically, or do nothing.", options: OpenNOWSessionReadyAction.Mode.allCases.map(\.label), selectedIndex: selectedSessionReadyActionIndex, isNew: OpenNOWNewSettings.isNew(.sessionReadyAction), uiScale: uiScale) { index in

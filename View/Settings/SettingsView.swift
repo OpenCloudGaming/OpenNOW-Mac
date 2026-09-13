@@ -565,6 +565,7 @@ struct SettingsContent: View {
         case .recording: RecordingSettingsGroup.sections
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []
+        case .theme: ThemeSettingsPage.sections
         case .general: GeneralSettingsGroup.sections
         case .labs: LabsSettingsPage.sections
         }
@@ -586,6 +587,8 @@ struct SettingsContent: View {
             NetworkSettingsGroup(viewModel: viewModel)
         case .remoteCoOp:
             RemoteCoOpSettingsPage(viewModel: viewModel, uiScale: uiScale)
+        case .theme:
+            ThemeSettingsPage(uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
         case .labs:
