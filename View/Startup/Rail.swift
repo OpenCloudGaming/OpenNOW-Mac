@@ -65,7 +65,6 @@ private struct StartupSegmentBar: View {
                     .fill(isFilled ? accent.opacity(isHead ? 1.0 : 0.72) : OPNDesign.Fixed.ink(0.14))
                     .frame(maxWidth: .infinity)
                     .scaleEffect(y: isHead ? 1.0 : (isFilled ? 0.78 : 0.42), anchor: .bottom)
-                    .shadow(color: isHead ? accent.opacity(0.95) : .clear, radius: 10 * scale)
             }
         }
     }

@@ -500,8 +500,10 @@ struct StreamHUDSection<Content: View>: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+        .background {
+            Rectangle().fill(Color.white.opacity(0.055))
+            Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1)
+        }
         .onPreferenceChange(StreamHUDExpandedPanelKey.self) { hasExpandedPanel = $0 }
         // Above every sibling section while one of this section's dropdowns is open, so the panel
         // is not tinted by the next section's background painting over it.

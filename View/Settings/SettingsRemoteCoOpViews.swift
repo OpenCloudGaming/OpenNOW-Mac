@@ -246,7 +246,7 @@ struct RemoteCoOpSettingsPage: View {
                         .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(Self.tunnelExampleCommands)
-                        .font(.system(size: 11 * uiScale, design: .monospaced))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .regular).monospacedDigit())
                         .foregroundStyle(OPNDesign.Text.secondary)
                         .textSelection(.enabled)
                         .padding(10 * uiScale)

@@ -9,7 +9,7 @@ enum RecordingsLayout {
     static var raised: Color { OPNDesign.Fill.neutral(0.085) }
     static var stroke: Color { OPNDesign.Stroke.subtle }
     static var strongStroke: Color { OPNDesign.Stroke.strong }
-    static let danger = Color(red: 1, green: 78 / 255, blue: 78 / 255)
+    static let danger = OPNDesign.Semantic.destructive
 }
 
 extension Font {
@@ -116,6 +116,8 @@ struct RecordingsView: View {
                                 Button("Edit Recording") { model.startEditing(recording) }
                                 Button("Reveal in Finder") { model.reveal(recording) }
                                 Button("Copy File Path") { model.copyPath(recording) }
+                                // DESIGN.md divider exception: native context-menu separator, rendered by AppKit.
+                                // swiftlint:disable:next design_no_native_divider
                                 Divider()
                                 Button("Delete", role: .destructive) { model.pendingDelete = recording }
                             }

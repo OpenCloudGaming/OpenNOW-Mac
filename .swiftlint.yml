@@ -5,10 +5,11 @@
 # style linter — every stylistic rule stays disabled so the diff noise stays zero.
 #
 # Layering and size rules have no baseline and apply to every file. The `design_*` rules ship with
-# one: .swiftlint-baseline.json records the surfaces that predate them (stream HUD legacy pills,
+# one: `.swiftlint-baseline.json` records the surfaces that predate them (stream HUD legacy pills,
 # the startup splash glow, the recordings pickers, the guest window), so new and edited code is
 # held to DESIGN.md without a 100-line annotation diff across files nobody is touching. Anything
-# not in that file fails. CI runs:
+# not in that file fails. The baseline is currently empty: every pre-rule surface has been
+# redesigned to spec, so the ledger is a gate rather than a backlog. CI runs:
 #
 #   swiftlint lint --strict --baseline .swiftlint-baseline.json App GFN Model OPN View ViewModel Tests
 

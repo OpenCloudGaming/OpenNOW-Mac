@@ -55,7 +55,6 @@ private struct StartupLogoCore: View {
         let chroma = stage.chroma
         let bloom = stage.bloom
         let offset = CGFloat(chroma) * (metrics.compact ? 9 : 14) * metrics.uiScale
-        let accent = OPNDesign.Fixed.accent
 
         ZStack {
             // RGB split ghosts collapse into register as the beam clears the logo. Dropped rather
@@ -76,7 +75,6 @@ private struct StartupLogoCore: View {
             }
 
             logo
-                .shadow(color: accent.opacity(0.34 + bloom * 0.22), radius: (metrics.compact ? 14 : 20) * metrics.uiScale)
         }
         .scaleEffect(1 + CGFloat(bloom) * 0.03)
         .frame(width: metrics.bandWidth, height: metrics.logoHeight)

@@ -184,7 +184,7 @@ struct AccountHealthBadge: View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
             HStack(spacing: 7 * uiScale) {
                 Circle()
-                    .fill(positive ? OPNDesign.accent : Color.orange)
+                    .fill(positive ? OPNDesign.accent : OPNDesign.Semantic.warning)
                     .frame(width: 7 * uiScale, height: 7 * uiScale)
                 Text(title)
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
@@ -199,8 +199,8 @@ struct AccountHealthBadge: View {
         .padding(.horizontal, 14 * uiScale)
         .frame(width: 172 * uiScale, height: 64 * uiScale, alignment: .leading)
         .background(SettingsVendorLayout.cardRaised)
-        .overlay(alignment: .leading) { Rectangle().fill(positive ? OPNDesign.accent : Color.orange).frame(width: 3 * uiScale) }
-        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.35) : Color.orange.opacity(0.30), lineWidth: 1) }
+        .overlay(alignment: .leading) { Rectangle().fill(positive ? OPNDesign.accent : OPNDesign.Semantic.warning).frame(width: 3 * uiScale) }
+        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.35) : OPNDesign.Semantic.warning.opacity(0.30), lineWidth: 1) }
     }
 }
 

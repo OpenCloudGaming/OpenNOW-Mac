@@ -95,7 +95,7 @@ extension NativeNVSTMediaStreamSurface {
                         )
                     }
                     Text("\(StreamCommand.shortcutGuide)   Esc Resume")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.streamFont(size: 11, weight: .medium).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.36))
                 }
                 .padding(18)

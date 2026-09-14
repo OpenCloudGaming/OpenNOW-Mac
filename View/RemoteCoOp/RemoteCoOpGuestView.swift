@@ -129,7 +129,6 @@ struct RemoteCoOpGuestView: View {
                             .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                             .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
                             .background(OPNDesign.Surface.scrim)
-                            .clipShape(Capsule())
                     }
                     Spacer()
                 }
@@ -278,7 +277,6 @@ struct RemoteCoOpGuestView: View {
         }
         .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
         .background(OPNDesign.Surface.panel)
-        .clipShape(RoundedRectangle(cornerRadius: 14 * uiScale, style: .continuous))
     }
 
     /// The only way out of a live session that is not closing the window. Every other phase has an
@@ -294,7 +292,6 @@ struct RemoteCoOpGuestView: View {
             .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
             .background(OPNDesign.Surface.scrim)
-            .clipShape(Capsule())
         }
         .buttonStyle(.opnPressable(scale: 0.95))
         .accessibilityLabel("Leave this session")
@@ -327,13 +324,23 @@ struct RemoteCoOpGuestView: View {
     @ViewBuilder
     private var qualityMenu: some View {
         if viewModel.phase == .connected {
-            Menu {
-                Button("Host Default") { viewModel.requestQualityPreset(nil) }
-                Divider()
-                ForEach(viewModel.selectableQualityPresets, id: \.self) { preset in
-                    Button(preset.label) { viewModel.requestQualityPreset(preset) }
+            OPNDropdownMenu(
+                items: [
+                    OPNDropdownItem(
+                        id: "host-default",
+                        title: "Host Default",
+                        isSelected: viewModel.participant?.guestRequestedQualityPreset?.label == nil,
+                        action: { viewModel.requestQualityPreset(nil) }
+                    )
+                ] + viewModel.selectableQualityPresets.map { preset in
+                    OPNDropdownItem(
+                        id: preset.label,
+                        title: preset.label,
+                        isSelected: viewModel.participant?.guestRequestedQualityPreset?.label == preset.label,
+                        action: { viewModel.requestQualityPreset(preset) }
+                    )
                 }
-            } label: {
+            ) {
                 HStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                     Image(systemName: "slider.horizontal.3")
                     Text(viewModel.participant?.guestRequestedQualityPreset?.label ?? "Quality")
@@ -341,13 +348,11 @@ struct RemoteCoOpGuestView: View {
                 .catalogFont(size: 11 * uiScale, weight: .medium)
                 .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
-                .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
+                .frame(height: OPNDesign.Spacing.controlRow(scale: uiScale))
                 .background(OPNDesign.Surface.scrim)
-                .clipShape(Capsule())
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
             .help("Lower your own stream quality. The host sets the maximum.")
         }
     }
@@ -370,7 +375,6 @@ struct RemoteCoOpGuestView: View {
         .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
         .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
         .background(OPNDesign.Semantic.destructive.opacity(0.75))
-        .clipShape(Capsule())
     }
 
     private func failurePanel(reason: String) -> some View {

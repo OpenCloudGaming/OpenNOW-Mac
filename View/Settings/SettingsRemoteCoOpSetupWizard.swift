@@ -140,7 +140,7 @@ struct RemoteCoOpSetupWizard: View {
         }
         .padding(24 * uiScale)
         .frame(width: 580 * uiScale, alignment: .leading)
-        .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))
+        .background(OPNDesign.Surface.panel)
         .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         .onAppear {
             reachabilityChoice = hasTunnel ? .tunnel : (hasHostedSignaling ? .hostedSignaling : .tunnel)

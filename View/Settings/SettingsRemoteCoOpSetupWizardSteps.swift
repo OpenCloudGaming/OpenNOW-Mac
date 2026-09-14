@@ -59,7 +59,7 @@ extension RemoteCoOpSetupWizard {
                 action: viewModel.setRemoteCoOpPublicAddress
             )
             Text(RemoteCoOpSettingsPage.tunnelExampleCommands)
-                .font(.system(size: 11 * uiScale, design: .monospaced))
+                .font(.settingsFont(size: 11 * uiScale, weight: .regular).monospacedDigit())
                 .foregroundStyle(OPNDesign.Text.secondary)
                 .textSelection(.enabled)
                 .padding(10 * uiScale)

@@ -238,7 +238,6 @@ struct RecordingTimelineView: View {
         Rectangle()
             .fill(OPNDesign.Fill.neutral(0.94))
             .frame(width: 2, height: trackHeight + 8 * uiScale)
-            .shadow(color: OPNDesign.accent.opacity(0.95), radius: 7)
             .offset(x: layout.x(forSeconds: playheadSeconds + trimHeadroom.leading), y: -4 * uiScale)
     }
 
@@ -285,7 +284,6 @@ struct RecordingTimelineView: View {
         Rectangle()
             .fill(OPNDesign.accent)
             .frame(width: 3, height: clipHeight + 8 * uiScale)
-            .shadow(color: OPNDesign.accent.opacity(0.80), radius: 8)
             .offset(x: x - 1.5, y: clipTop - 4 * uiScale)
     }
 

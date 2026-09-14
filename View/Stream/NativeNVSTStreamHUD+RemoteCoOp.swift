@@ -159,27 +159,35 @@ extension NativeNVSTMediaStreamSurface {
     /// costs the others nothing. "Session default" is a distinct choice from the preset that happens
     /// to match it today: a guest left on it follows later changes to the session setting.
     func nativeHUDRemoteCoOpQualityMenu(_ participant: OPNRemoteCoOpParticipant) -> some View {
-        Menu {
-            Button {
-                model.setRemoteCoOpParticipantQualityPreset(nil, for: participant.id)
-            } label: {
-                Label("Session Default (\(model.remoteCoOpSnapshot.preferences.qualityPreset.label))", systemImage: participant.qualityPreset == nil ? "checkmark" : "")
+        OPNDropdownMenu(
+            items: [
+                OPNDropdownItem(
+                    id: "session-default",
+                    title: "Session Default (\(model.remoteCoOpSnapshot.preferences.qualityPreset.label))",
+                    isSelected: participant.qualityPreset == nil,
+                    action: { model.setRemoteCoOpParticipantQualityPreset(nil, for: participant.id) }
+                )
+            ] + OPNRemoteCoOpQualityPreset.allCases.map { preset in
+                OPNDropdownItem(
+                    id: preset.label,
+                    title: preset.label,
+                    isSelected: participant.qualityPreset == preset,
+                    action: { model.setRemoteCoOpParticipantQualityPreset(preset, for: participant.id) }
+                )
             }
-            Divider()
-            ForEach(OPNRemoteCoOpQualityPreset.allCases, id: \.self) { preset in
-                Button {
-                    model.setRemoteCoOpParticipantQualityPreset(preset, for: participant.id)
-                } label: {
-                    Label(preset.label, systemImage: participant.qualityPreset == preset ? "checkmark" : "")
-                }
+        ) {
+            HStack(spacing: 4) {
+                Text(participant.qualityPreset?.label ?? "Auto")
+                Image(systemName: "chevron.down")
             }
-        } label: {
-            Text(participant.qualityPreset?.label ?? "Auto")
-                .font(.streamFont(size: 10, weight: .bold))
-                .foregroundStyle(participant.qualityPreset == nil ? StreamHUDTheme.textTertiary : StreamHUDTheme.accent)
+            .font(.streamFont(size: 10, weight: .bold))
+            .foregroundStyle(participant.qualityPreset == nil ? StreamHUDTheme.textTertiary : StreamHUDTheme.accent)
+            .padding(.horizontal, 8)
+            .frame(height: 26)
+            .background(StreamHUDTheme.surfaceRaised)
+            .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+            .contentShape(Rectangle())
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
         .help("Stream quality for this guest")
     }
 }

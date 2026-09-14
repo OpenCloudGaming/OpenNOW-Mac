@@ -261,6 +261,8 @@ struct CatalogGameAccessBadge: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .frame(height: 28)
+        // DESIGN.md colour exception: solid-red lock/restriction badge; no token maps a filled red callout.
+        // swiftlint:disable:next design_no_hardcoded_surface_color
         .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))
         .overlay { Rectangle().stroke(OPNDesign.Fill.neutral(0.42), lineWidth: 1) }
         .shadow(color: .black.opacity(0.44), radius: 8, x: 0, y: 3)

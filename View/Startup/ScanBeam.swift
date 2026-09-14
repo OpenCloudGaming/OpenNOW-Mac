@@ -44,8 +44,6 @@ struct StartupScanBeam: View {
             Rectangle()
                 .fill(accent)
                 .frame(height: thickness)
-                .shadow(color: accent.opacity(0.85), radius: 8 * metrics.uiScale)
-                .shadow(color: accent.opacity(0.30), radius: 22 * metrics.uiScale)
         }
         .frame(width: width)
         .opacity(intensity)

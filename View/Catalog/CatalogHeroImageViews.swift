@@ -127,6 +127,8 @@ struct CatalogHeroVendorGradientOverlays: View {
 }
 
 struct CatalogMarqueeScrimColor: Equatable, Sendable {
+    // DESIGN.md colour exception: runtime artwork-average colour, not a design token.
+    // swiftlint:disable:next design_no_hardcoded_surface_color
     static let black = CatalogMarqueeScrimColor(red: 0, green: 0, blue: 0)
 
     let red: Double
@@ -134,6 +136,8 @@ struct CatalogMarqueeScrimColor: Equatable, Sendable {
     let blue: Double
 
     var color: Color {
+        // DESIGN.md colour exception: runtime artwork-average colour, not a design token.
+        // swiftlint:disable:next design_no_hardcoded_surface_color
         Color(red: red / 255, green: green / 255, blue: blue / 255)
     }
 
@@ -276,6 +280,8 @@ enum CatalogHeroImageMetadata {
             }
         }
         guard count > 0 else { return nil }
+        // DESIGN.md colour exception: runtime artwork-average colour, not a design token.
+        // swiftlint:disable:next design_no_hardcoded_surface_color
         return CatalogMarqueeScrimColor(red: red / count, green: green / count, blue: blue / count)
     }
 }

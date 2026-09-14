@@ -231,7 +231,7 @@ extension WebRTCMediaStreamSurface {
                         .tracking(2.2)
                         .foregroundStyle(StreamHUDTheme.accent)
                     Text(sessionLimitCountdownText(at: context.date))
-                        .font(.system(size: 74, weight: .black, design: .monospaced))
+                        .font(.streamFont(size: 74, weight: .black).monospacedDigit())
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
                     Text("Save progress now. GeForce NOW may close this session when the timer reaches zero.")
@@ -242,10 +242,8 @@ extension WebRTCMediaStreamSurface {
                 }
                 .padding(.horizontal, 34)
                 .padding(.vertical, 28)
-                .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-                // DESIGN.md radius exception: legacy session-limit countdown overlay panel, grandfathered in the lint baseline.
-                // swiftlint:disable:next design_no_corner_radius
-                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(StreamHUDTheme.accent.opacity(0.42), lineWidth: 1))
+                .background(.black.opacity(0.76))
+                .overlay { Rectangle().strokeBorder(StreamHUDTheme.accent.opacity(0.42), lineWidth: 1) }
                 .shadow(color: .black.opacity(0.64), radius: 30, x: 0, y: 18)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(.opacity)
@@ -446,14 +444,12 @@ extension WebRTCMediaStreamSurface {
 
     var transientStreamMessageOverlay: some View {
         Text(transientStreamMessage)
-            .font(.system(size: 12, weight: .black, design: .rounded))
+            .font(.streamFont(size: 12, weight: .black))
             .foregroundStyle(.white.opacity(0.94))
             .padding(.horizontal, 14)
             .frame(height: 34)
-            .background(.black.opacity(0.68), in: Capsule())
-            // DESIGN.md radius exception: legacy transient stream message capsule, grandfathered in the lint baseline.
-            // swiftlint:disable:next design_no_corner_radius
-            .overlay(Capsule().stroke(StreamHUDTheme.accent.opacity(0.36), lineWidth: 1))
+            .background(.black.opacity(0.68))
+            .overlay { Rectangle().strokeBorder(StreamHUDTheme.accent.opacity(0.36), lineWidth: 1) }
             .shadow(color: .black.opacity(0.36), radius: 18, x: 0, y: 8)
             .padding(.bottom, 34)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)

@@ -196,6 +196,8 @@ struct GFNHeroArtwork: View {
 
         return ZStack {
             RadialGradient(
+                // DESIGN.md colour exception: login-wall marketing gradient stop.
+                // swiftlint:disable:next design_no_hardcoded_surface_color
                 colors: [Color(red: 0.286, green: 0.286, blue: 0.286), .black],
                 center: UnitPoint(x: 0.65, y: 0.25),
                 startRadius: 0,

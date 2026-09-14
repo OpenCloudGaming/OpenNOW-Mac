@@ -53,7 +53,7 @@ struct UnavailableRegionPrompt: View {
             HStack(alignment: .top, spacing: 10 * uiScale) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.uiSans(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(Color.orange)
+                    .foregroundStyle(OPNDesign.Semantic.warning)
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text("Selected Region Unavailable")
                         .font(.settingsFont(size: 13 * uiScale, weight: .bold))
@@ -62,7 +62,7 @@ struct UnavailableRegionPrompt: View {
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(OPNDesign.Text.secondary)
                     Text(regionUrl)
-                        .font(.system(size: 11 * uiScale, weight: .medium, design: .monospaced))
+                        .font(.settingsFont(size: 11 * uiScale, weight: .medium).monospacedDigit())
                         .foregroundStyle(OPNDesign.Text.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -75,8 +75,8 @@ struct UnavailableRegionPrompt: View {
             }
         }
         .padding(14 * uiScale)
-        .background(Color.orange.opacity(0.08))
-        .overlay { Rectangle().stroke(Color.orange.opacity(0.22), lineWidth: 1) }
+        .background(OPNDesign.Semantic.warning.opacity(0.08))
+        .overlay { Rectangle().stroke(OPNDesign.Semantic.warning.opacity(0.22), lineWidth: 1) }
     }
 }
 

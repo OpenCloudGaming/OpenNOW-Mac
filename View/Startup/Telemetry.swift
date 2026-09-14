@@ -92,7 +92,6 @@ private struct StartupBusTrack: View {
             Rectangle()
                 .fill(OPNDesign.Fixed.accent.opacity(0.60))
                 .frame(width: trackWidth * CGFloat(fill), height: 1)
-                .shadow(color: OPNDesign.accent.opacity(0.55), radius: 4 * scale)
         }
         .frame(width: trackWidth, alignment: .leading)
     }
@@ -117,7 +116,6 @@ private struct StartupBusStation: View {
                     Rectangle()
                         .stroke(settled ? accent : OPNDesign.Fixed.ink(0.22), lineWidth: 1)
                 }
-                .shadow(color: settled ? accent.opacity(0.85) : .clear, radius: 6 * scale)
                 // Opaque pad so the bus line passes between stations, not through them.
                 .padding(4 * scale)
                 .background(Color.black)

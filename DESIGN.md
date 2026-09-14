@@ -604,6 +604,8 @@ Seven SwiftLint custom rules in `.swiftlint.yml` check the "Don't" list mechanic
   artwork; the login vendor icon annotates its one line.
 - Surfaces that predate the rules are grandfathered in `.swiftlint-baseline.json`, not exempted:
   the tree still reports them when the baseline is dropped, and each one is a burn-down item.
+  The baseline is currently empty: every pre-rule surface has been
+  redesigned to spec, so the ledger is a gate rather than a backlog.
 - Token files (`OPNDesign.swift`, `StreamHUDComponents.swift`, `SettingsView.swift`,
   `LoginStyles.swift`, `OPNButtons.swift`) are excluded where they define the literals the
   rules ban elsewhere — that is where a colour or font is allowed to be spelled out.

@@ -42,7 +42,6 @@ import SwiftUI
 /// A single shimmering placeholder block used to build skeleton loading screens.
 /// Falls back to a static translucent block when Reduce Motion is enabled.
 struct SkeletonBlock: View {
-    var cornerRadius: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
     @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @State private var isHoldingShimmerClock = false
@@ -52,7 +51,7 @@ struct SkeletonBlock: View {
     }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        Rectangle()
             .fill(OPNDesign.Fill.neutral(0.06))
             .overlay {
                 if !isMotionReduced {
@@ -74,7 +73,6 @@ struct SkeletonBlock: View {
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .onAppear {
                 guard !isMotionReduced else { return }
                 isHoldingShimmerClock = true
@@ -130,7 +128,7 @@ struct CatalogRailSkeletonView: View {
                         .foregroundStyle(OPNDesign.Text.primary)
                         .accessibilityAddTraits(.isHeader)
                 } else {
-                    SkeletonBlock(cornerRadius: 4)
+                    SkeletonBlock()
                         .frame(width: 190 * uiScale, height: 20 * uiScale)
                 }
                 Spacer()
@@ -140,7 +138,7 @@ struct CatalogRailSkeletonView: View {
 
             HStack(spacing: 0) {
                 ForEach(0..<tileCount, id: \.self) { _ in
-                    SkeletonBlock(cornerRadius: 2)
+                    SkeletonBlock()
                         .frame(width: tileSize.width, height: tileSize.height)
                         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                         .padding(.top, tileVerticalMargin)
@@ -207,7 +205,7 @@ struct CatalogGridSkeletonView: View {
     private var grid: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8 * uiScale) {
             ForEach(0..<tileCount, id: \.self) { _ in
-                SkeletonBlock(cornerRadius: 2)
+                SkeletonBlock()
                     .frame(width: tileSize.width, height: tileSize.height)
                     .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
                     .padding(.top, tileVerticalMargin)

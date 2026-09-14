@@ -63,7 +63,7 @@ struct RecordingRightsNotice: View {
                 HStack(spacing: 12 * uiScale) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.recordingsFont(size: 22 * uiScale, weight: .bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OPNDesign.Semantic.warning)
                     Text("About Recording GeForce NOW Sessions")
                         .font(.recordingsFont(size: 18 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.Text.primary)

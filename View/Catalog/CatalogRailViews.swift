@@ -403,7 +403,6 @@ struct VendorActiveSessionHomeBanner: View {
             Circle()
                 .fill(OPNDesign.accent)
                 .frame(width: 8 * uiScale, height: 8 * uiScale)
-                .shadow(color: OPNDesign.accent, radius: 4)
                 .padding(.trailing, 10 * uiScale)
 
             VStack(alignment: .leading, spacing: 2 * uiScale) {
