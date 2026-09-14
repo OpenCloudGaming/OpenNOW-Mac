@@ -136,10 +136,7 @@ struct NativeNVSTMediaStreamSurface: View {
 
     @ViewBuilder var nativeWindowOverlay: some View {
         ZStack(alignment: .topLeading) {
-            if model.nativeStatsVisible && !model.streamControlsVisible {
-                nativeStatsHUD.allowsHitTesting(false)
-                    .opnTransition(.move(edge: .top).combined(with: .opacity))
-            }
+            if model.nativeStatsVisible && !model.streamControlsVisible { nativeStatsHUD.allowsHitTesting(false) }
             // Presentation is decided here rather than nested inside one `if` so the tap-catcher
             // and the dock carry separate transitions: a conditional ancestor animates as one
             // block, and the invisible catcher would slide in with the drawer.

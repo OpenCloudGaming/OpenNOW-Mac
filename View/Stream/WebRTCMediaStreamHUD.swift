@@ -12,10 +12,7 @@ extension WebRTCMediaStreamSurface {
     var hudChrome: some View {
         if !isStreamReady { launchOverlay }
         if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
-        if statsVisible {
-            statsHUD
-                .opnTransition(.move(edge: .top).combined(with: .opacity))
-        }
+        if statsVisible { statsHUD }
         if unifiedHUDVisible { unifiedHUD }
         if onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: onScreenKeyboard) }
         if isStreamReady { sessionLimitCountdownOverlay }
@@ -55,6 +52,7 @@ extension WebRTCMediaStreamSurface {
         }
         .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
         .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
+        .opnTransition(.move(edge: .trailing).combined(with: .opacity))
         .padding(.top, 5)
         .padding(.trailing, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
