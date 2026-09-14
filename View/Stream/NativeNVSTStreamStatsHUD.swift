@@ -261,7 +261,7 @@ extension NativeNVSTMediaStreamSurface {
                 ]),
             ]
         )
-        .opnTransition(.move(edge: .trailing).combined(with: .opacity))
+        .opnTransition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
         .padding([.top, .trailing], OPNDesign.Spacing.small)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .allowsHitTesting(false)

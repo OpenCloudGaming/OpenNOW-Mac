@@ -52,7 +52,7 @@ extension WebRTCMediaStreamSurface {
         }
         .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
         .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
-        .opnTransition(.move(edge: .trailing).combined(with: .opacity))
+        .opnTransition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
         .padding(.top, 5)
         .padding(.trailing, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
