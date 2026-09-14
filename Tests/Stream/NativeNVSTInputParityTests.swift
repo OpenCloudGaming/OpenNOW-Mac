@@ -350,7 +350,7 @@ private actor ControlledNativeInputRecorder {
     #expect(removed.first?.identifier == "a")
     #expect(removed.first?.playerIndex == 0)
     #expect(slots.slots == ["b": 1, "c": 2, "d": 0])
-    #expect(NativeWebRTCGamepadTopology(playerIndices: Array(slots.slots.values)).registrationBitmap == 0x0707)
+    #expect(StreamGamepadTopology(playerIndices: Array(slots.slots.values)).registrationBitmap == 0x0707)
 }
 
 @Test func nativeTextCompositionUsesUTF16RangesAndCommitsMarkedText() throws {

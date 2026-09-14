@@ -70,12 +70,12 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
     }
 
     public func start() async throws {
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.start", level: .info, message: "Starting WebRTC Remote Co-Op host peer.", attributes: ["participantID": participantID.uuidString])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.host_peer.start", level: .info, message: "Starting WebRTC Remote Co-Op host peer.", attributes: ["participantID": participantID.uuidString])
         let peerConnection = try makePeerConnection()
         createInputChannel(peerConnection: peerConnection)
         try await createAndSendOffer(peerConnection: peerConnection)
         startSenderStatsPolling(peerConnection: peerConnection)
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.started", level: .info, message: "WebRTC Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.host_peer.started", level: .info, message: "WebRTC Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
     }
 
     public func apply(_ signal: OPNRemoteCoOpWirePeerSignal) async throws {
@@ -254,7 +254,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         guard let peerConnection = factory.peerConnection(with: configuration, constraints: constraints, delegate: self) else {
             throw OPNRemoteCoOpHostPeerError.negotiationFailed("Unable to create Remote Co-Op WebRTC peer connection.")
         }
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.connection", level: .info, message: "Remote Co-Op peer connection created.", attributes: ["participantID": participantID.uuidString, "iceServers": String(configuration.iceServers.count), "policy": networkConfiguration.iceTransportPolicy.rawValue])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.host_peer.connection", level: .info, message: "Remote Co-Op peer connection created.", attributes: ["participantID": participantID.uuidString, "iceServers": String(configuration.iceServers.count), "policy": networkConfiguration.iceTransportPolicy.rawValue])
         attachVideoTrack(peerConnection: peerConnection, factory: factory)
         attachAudioTrack(peerConnection: peerConnection, factory: factory)
         stateLock.withLock {
@@ -310,7 +310,7 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
         videoQueue.async { [weak self] in
             self?.videoRateLimiter = OPNRemoteCoOpVideoRateLimiter(targetFps: preset.fps)
         }
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.quality", level: .info, message: "Remote Co-Op guest quality retargeted.", attributes: [
+        OPNStreamTelemetry.capture("webrtc.remote_coop.peer.quality", level: .info, message: "Remote Co-Op guest quality retargeted.", attributes: [
             "participantID": participantID.uuidString,
             "preset": "\(preset.width)x\(preset.height)@\(preset.fps)",
             "maxBitrateBps": String(preset.videoMaxBitrateBps(for: latencyMode))
@@ -424,14 +424,14 @@ public final class OPNRemoteCoOpWebRTCHostPeer: NSObject, OPNRemoteCoOpHostPeer,
 
     private func createAndSendOffer(peerConnection: RTCPeerConnection) async throws {
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.offer.create", level: .info, message: "Creating Remote Co-Op WebRTC offer.", attributes: ["participantID": participantID.uuidString])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.host_peer.offer.create", level: .info, message: "Creating Remote Co-Op WebRTC offer.", attributes: ["participantID": participantID.uuidString])
         let generatedOffer = try await createOffer(peerConnection: peerConnection, constraints: constraints)
         // The guest has to be offered the same description this side sets locally, so the tuning is
         // applied once and both uses read from it.
         let offer = RTCSessionDescription(type: generatedOffer.type, sdp: OPNRemoteCoOpSDPTuning.tunedForGameStreaming(generatedOffer.sdp))
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.offer.created", level: .info, message: "Remote Co-Op WebRTC offer created.", attributes: ["participantID": participantID.uuidString, "sdpBytes": String(offer.sdp.utf8.count), "audioTuned": String(offer.sdp != generatedOffer.sdp)])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.host_peer.offer.created", level: .info, message: "Remote Co-Op WebRTC offer created.", attributes: ["participantID": participantID.uuidString, "sdpBytes": String(offer.sdp.utf8.count), "audioTuned": String(offer.sdp != generatedOffer.sdp)])
         try await setLocalDescription(offer, peerConnection: peerConnection)
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.host_peer.offer.local_description", level: .info, message: "Remote Co-Op local offer description set.", attributes: ["participantID": participantID.uuidString])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.host_peer.offer.local_description", level: .info, message: "Remote Co-Op local offer description set.", attributes: ["participantID": participantID.uuidString])
         await callbacks.sendSignal(OPNRemoteCoOpWirePeerSignal(kind: .offer, sdp: offer.sdp))
     }
 

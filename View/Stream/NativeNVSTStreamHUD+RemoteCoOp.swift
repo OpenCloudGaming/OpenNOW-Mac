@@ -10,21 +10,21 @@ extension NativeNVSTMediaStreamSurface {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(model.remoteCoOpTitle)
                             .font(.streamFont(size: 14, weight: .bold))
-                            .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                            .foregroundStyle(StreamHUDTheme.textPrimary)
                         Text(model.remoteCoOpSubtitle)
                             .font(.streamFont(size: 11, weight: .medium))
-                            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                            .foregroundStyle(StreamHUDTheme.textTertiary)
                             .lineLimit(1)
                     }
                     Spacer(minLength: 8)
                     Text(model.remoteCoOpSnapshot.preferences.transportMode.label.uppercased())
                         .font(.streamFont(size: 9, weight: .bold))
                         .tracking(0.7)
-                        .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .directOnly ? WebRTCMediaStreamTheme.warning : WebRTCMediaStreamTheme.accent)
+                        .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .directOnly ? StreamHUDTheme.warning : StreamHUDTheme.accent)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(Color.white.opacity(0.07))
-                        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+                        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
                 }
                 HStack(spacing: 8) {
                     StreamHUDActionRow(
@@ -66,7 +66,7 @@ extension NativeNVSTMediaStreamSurface {
                             nativeHUDDetailRow(label: "App Guests", value: address)
                             Image(systemName: "doc.on.doc")
                                 .font(.streamFont(size: 9, weight: .bold))
-                                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                                .foregroundStyle(StreamHUDTheme.textTertiary)
                         }
                     }
                     .buttonStyle(.plain)
@@ -78,7 +78,7 @@ extension NativeNVSTMediaStreamSurface {
                 if !model.remoteCoOpMessage.isEmpty {
                     Text(model.remoteCoOpMessage)
                         .font(.streamFont(size: 11, weight: .medium))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .foregroundStyle(StreamHUDTheme.textSecondary)
                         .lineLimit(1)
                 }
                 if !model.remoteCoOpSnapshot.participants.isEmpty {
@@ -98,15 +98,15 @@ extension NativeNVSTMediaStreamSurface {
     func nativeHUDRemoteCoOpParticipantRow(_ participant: OPNRemoteCoOpParticipant) -> some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(participant.connectionState == .connected ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning)
+                .fill(participant.connectionState == .connected ? StreamHUDTheme.accent : StreamHUDTheme.warning)
                 .frame(width: 7, height: 7)
             Text(participant.displayName)
                 .font(.streamFont(size: 11, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .foregroundStyle(StreamHUDTheme.textPrimary)
             Spacer(minLength: 8)
             Text(participant.playerIndex.map { "P\($0 + 1)" } ?? participant.connectionState.label)
                 .font(.streamFont(size: 10, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
             if participant.connectionState == .connected {
                 nativeHUDRemoteCoOpQualityMenu(participant)
             }
@@ -114,7 +114,7 @@ extension NativeNVSTMediaStreamSurface {
                 StreamHUDParticipantIconButton(
                     systemName: "checkmark",
                     label: "Approve guest",
-                    color: WebRTCMediaStreamTheme.accent,
+                    color: StreamHUDTheme.accent,
                     isFocused: model.hudFocusID == "coop-approve-\(participant.id.uuidString)"
                 ) {
                     model.approveRemoteCoOpParticipant(participant.id)
@@ -123,7 +123,7 @@ extension NativeNVSTMediaStreamSurface {
             StreamHUDParticipantIconButton(
                 systemName: "xmark",
                 label: "Remove guest",
-                color: WebRTCMediaStreamTheme.danger,
+                color: StreamHUDTheme.danger,
                 isFocused: model.hudFocusID == "coop-remove-\(participant.id.uuidString)"
             ) {
                 model.removeRemoteCoOpParticipant(participant.id)
@@ -143,10 +143,10 @@ extension NativeNVSTMediaStreamSurface {
             HStack(spacing: 6) {
                 Image(systemName: stats.isAtBest ? "checkmark.circle" : "arrow.down.circle")
                     .font(.streamFont(size: 9, weight: .bold))
-                    .foregroundStyle(stats.isAtBest ? WebRTCMediaStreamTheme.textTertiary : WebRTCMediaStreamTheme.warning)
+                    .foregroundStyle(stats.isAtBest ? StreamHUDTheme.textTertiary : StreamHUDTheme.warning)
                 Text(stats.summary)
                     .font(.streamFont(size: 10, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -176,7 +176,7 @@ extension NativeNVSTMediaStreamSurface {
         } label: {
             Text(participant.qualityPreset?.label ?? "Auto")
                 .font(.streamFont(size: 10, weight: .bold))
-                .foregroundStyle(participant.qualityPreset == nil ? WebRTCMediaStreamTheme.textTertiary : WebRTCMediaStreamTheme.accent)
+                .foregroundStyle(participant.qualityPreset == nil ? StreamHUDTheme.textTertiary : StreamHUDTheme.accent)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()

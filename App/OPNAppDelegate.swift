@@ -40,7 +40,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         // Before anything can log: installed from the stream view's `onAppear`, every line captured
         // ahead of the first stream took the sinkless path and went to `NSLog` only — out of the
         // unified log's category, out of Sentry, and out of the diagnostics file the user uploads.
-        WebRTCMediaTelemetry.configure(sink: OPNWebRTCMediaTelemetrySink())
+        OPNStreamTelemetry.configure(sink: OPNStreamTelemetrySink())
         OPNLog.info(.app, "NSApplication did finish launching")
         installStreamShortcutMonitor()
         bindUpdatePresentation()
@@ -64,12 +64,12 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
             OPNLog.info(.app, "Completing user-approved application termination")
             return .terminateNow
         }
-        guard WebRTCMediaStreamLifecycle.hasActiveStream else {
+        guard StreamSessionLifecycle.hasActiveStream else {
             OPNLog.info(.app, "Application termination allowed with no active stream")
             return .terminateNow
         }
         OPNLog.warning(.app, "Application termination requested while a stream is active")
-        guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, sender] shouldTerminateApplication in
+        guard StreamSessionLifecycle.requestApplicationQuitDecision(completion: { [weak self, sender] shouldTerminateApplication in
             if shouldTerminateApplication {
                 self?.isCompletingUserApprovedTermination = true
                 OPNLog.info(.app, "User approved application termination with active stream")
@@ -93,9 +93,9 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private func installStreamShortcutMonitor() {
         guard streamShortcutMonitor == nil else { return }
         streamShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard NSApplication.shared.isActive, WebRTCMediaStreamLifecycle.hasActiveStream else { return event }
+            guard NSApplication.shared.isActive, StreamSessionLifecycle.hasActiveStream else { return event }
             guard let command = Self.streamCommand(for: event) else { return event }
-            guard WebRTCMediaStreamLifecycle.sendCommand(command) else { return event }
+            guard StreamSessionLifecycle.sendCommand(command) else { return event }
             return nil
         }
     }
@@ -106,8 +106,8 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         self.streamShortcutMonitor = nil
     }
 
-    private static func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
-        guard let command = WebRTCMediaStreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags) else { return nil }
+    private static func streamCommand(for event: NSEvent) -> StreamCommand? {
+        guard let command = StreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags) else { return nil }
         switch command {
         case .toggleMicrophone, .toggleRecording, .toggleAntiAFK:
             return command
@@ -212,7 +212,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     /// An automatic check that lands mid-session would drop a modal over the game, so it waits for
     /// the stream to end. A check the user asked for is shown immediately either way.
     private func presentUpdate(for release: OPNGitHubRelease, automatic: Bool) {
-        guard !(automatic && WebRTCMediaStreamLifecycle.hasActiveStream) else {
+        guard !(automatic && StreamSessionLifecycle.hasActiveStream) else {
             OPNLog.info(.app, "Deferring update prompt for \(release.version) until the active stream ends")
             deferredUpdateRelease = release
             observeStreamEndForDeferredUpdate()
@@ -225,7 +225,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private func observeStreamEndForDeferredUpdate() {
         guard streamEndUpdateObserver == nil else { return }
         streamEndUpdateObserver = NotificationCenter.default.addObserver(
-            forName: WebRTCMediaStreamLifecycle.activeStreamDidChangeNotification,
+            forName: StreamSessionLifecycle.activeStreamDidChangeNotification,
             object: nil,
             queue: .main
         ) { _ in
@@ -236,7 +236,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func presentDeferredUpdateIfStreamEnded() {
-        guard !WebRTCMediaStreamLifecycle.hasActiveStream, let release = deferredUpdateRelease else { return }
+        guard !StreamSessionLifecycle.hasActiveStream, let release = deferredUpdateRelease else { return }
         deferredUpdateRelease = nil
         removeStreamEndUpdateObserver()
         OPNUpdatePresentation.shared.present(.available(release))

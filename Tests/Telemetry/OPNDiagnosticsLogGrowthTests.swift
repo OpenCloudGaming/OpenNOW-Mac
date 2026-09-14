@@ -106,7 +106,7 @@ import Testing
 /// An event that has not been scrubbed must still be scrubbed by the sink — the flag is opt-in and
 /// a caller that forgets it loses redaction, not just speed.
 @Test func telemetryEventsDefaultToBeingScrubbedBySink() {
-    let event = WebRTCMediaTelemetryEvent(name: "nvst.test", level: .info, message: "ip=10.0.0.4")
+    let event = StreamTelemetryEvent(name: "nvst.test", level: .info, message: "ip=10.0.0.4")
     #expect(!event.isRedacted)
 }
 

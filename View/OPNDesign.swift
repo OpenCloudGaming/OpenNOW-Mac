@@ -39,7 +39,7 @@ enum OPNDesign {
         /// sitting beside an accent-green Play button reads as a second primary action, not a toggle.
         static let favorite = Color(red: 1, green: 0.30, blue: 0.58)
         /// Degraded-but-not-broken state on app-shell surfaces: unsaved edits, a low battery, a
-        /// value that still works but wants attention. Matches `WebRTCMediaStreamTheme.warning`
+        /// value that still works but wants attention. Matches `StreamHUDTheme.warning`
         /// so the same condition reads the same colour in the stream HUD and in Settings.
         static let warning = Color.orange
     }

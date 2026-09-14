@@ -101,11 +101,11 @@ import Testing
         #expect(descriptorBitmap == 0x0505)
     }
 
-    /// `NativeWebRTCGamepadTopology` already built this value for the vendored path. The native
+    /// `StreamGamepadTopology` already built this value for the vendored path. The native
     /// transport derives its descriptor from the same topology, so the two must agree or a guest
     /// would be announced by one and not the other.
     @Test func theTopologyAndThePacketAgreeOnTheBitmap() {
-        let topology = NativeWebRTCGamepadTopology(playerIndices: [0, 1])
+        let topology = StreamGamepadTopology(playerIndices: [0, 1])
         #expect(topology.registrationBitmap == NvstGamepadPacket.connectedBitmap(for: topology.playerIndices))
     }
 }
@@ -374,7 +374,7 @@ import Testing
     /// topology change to rescue it.
     @Test func aTopologyRequestedBeforeInputIsReadyIsStillRemembered() async {
         let transport = NvstBifrostFreeTransport()
-        let topology = NativeWebRTCGamepadTopology(playerIndices: [0, 1])
+        let topology = StreamGamepadTopology(playerIndices: [0, 1])
 
         await #expect(throws: (any Error).self) {
             try await transport.updateGamepadTopology(topology)
@@ -387,7 +387,7 @@ import Testing
     /// Four local pads is the seat's maximum and must all be announced together.
     @Test func fourLocalControllersAreAllAnnounced() async {
         let transport = NvstBifrostFreeTransport()
-        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0, 1, 2, 3]))
+        try? await transport.updateGamepadTopology(StreamGamepadTopology(playerIndices: [0, 1, 2, 3]))
         #expect(await transport.connectedGamepadIndices == [0, 1, 2, 3])
         #expect(NvstGamepadPacket.connectedBitmap(for: await transport.connectedGamepadIndices) == 0x0F0F)
     }
@@ -399,7 +399,7 @@ import Testing
     @Test func aSteamControllerSlotIsAnnouncedLikeAnyOtherPad() async {
         let transport = NvstBifrostFreeTransport()
         // What the monitor produces for one native pad in slot 0 and one Steam Controller in slot 1.
-        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0, 1], hapticPlayerIndices: [0]))
+        try? await transport.updateGamepadTopology(StreamGamepadTopology(playerIndices: [0, 1], hapticPlayerIndices: [0]))
         #expect(await transport.connectedGamepadIndices == [0, 1])
     }
 
@@ -408,7 +408,7 @@ import Testing
     /// announced bitmap and the set that gates state packets in agreement.
     @Test func anEmptyTopologyKeepsPadZeroAnnounced() async {
         let transport = NvstBifrostFreeTransport()
-        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: []))
+        try? await transport.updateGamepadTopology(StreamGamepadTopology(playerIndices: []))
         #expect(await transport.connectedGamepadIndices == [0])
         #expect(NvstGamepadPacket.connectedBitmap(for: await transport.connectedGamepadIndices) == 0x0101)
     }
@@ -418,11 +418,11 @@ import Testing
     /// packets would look stale.
     @Test func droppingAPadReleasesItsSequenceCounter() async {
         let transport = NvstBifrostFreeTransport()
-        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0, 1]))
+        try? await transport.updateGamepadTopology(StreamGamepadTopology(playerIndices: [0, 1]))
         await transport.seedGamepadSequenceForTesting(pad: 1, sequence: 900)
         #expect(await transport.gamepadSequences[1] == 900)
 
-        try? await transport.updateGamepadTopology(NativeWebRTCGamepadTopology(playerIndices: [0]))
+        try? await transport.updateGamepadTopology(StreamGamepadTopology(playerIndices: [0]))
         #expect(await transport.connectedGamepadIndices == [0])
         #expect(await transport.gamepadSequences[1] == nil)
     }
@@ -432,12 +432,12 @@ import Testing
     /// host's controller.
     @Test func aGuestSlotDoesNotDisplaceTheHostsOwnPad() async {
         let transport = NvstBifrostFreeTransport()
-        let hostOnly = NativeWebRTCGamepadTopology(playerIndices: [0])
+        let hostOnly = StreamGamepadTopology(playerIndices: [0])
         try? await transport.updateGamepadTopology(hostOnly)
         #expect(await transport.connectedGamepadIndices == [0])
 
         // What `mergedGamepadTopology` builds once a guest is approved into slot 1.
-        let withGuest = NativeWebRTCGamepadTopology(playerIndices: hostOnly.playerIndices + [1])
+        let withGuest = StreamGamepadTopology(playerIndices: hostOnly.playerIndices + [1])
         try? await transport.updateGamepadTopology(withGuest)
         #expect(await transport.connectedGamepadIndices == [0, 1])
     }

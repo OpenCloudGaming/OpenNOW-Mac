@@ -35,11 +35,11 @@ enum RecordingEditorDragPayload: Equatable {
 
 struct RecordingEditorSegment: Equatable, Identifiable {
     let id: UUID
-    var recording: WebRTCStreamRecording
+    var recording: StreamRecording
     var startSeconds: Double
     var endSeconds: Double
 
-    init(id: UUID = UUID(), recording: WebRTCStreamRecording, startSeconds: Double, endSeconds: Double) {
+    init(id: UUID = UUID(), recording: StreamRecording, startSeconds: Double, endSeconds: Double) {
         self.id = id
         self.recording = recording
         self.startSeconds = startSeconds
@@ -82,19 +82,19 @@ enum RecordingEditorCropPreset: String, CaseIterable, Identifiable {
     /// Crop fractions are relative to the source frame, so the same numbers mean a different shape
     /// on a 16:9 capture than on the 21:9 ones this app records. They used to be hardcoded - "1:1"
     /// produced a 4:3 crop and "16:9" a 1.39:1 one - so the ratio is solved from the source instead.
-    func crop(sourceAspect: Double) -> WebRTCStreamRecordingCrop? {
+    func crop(sourceAspect: Double) -> StreamRecordingCrop? {
         let aspect = sourceAspect.isFinite && sourceAspect > 0 ? sourceAspect : 16.0 / 9.0
         switch self {
         case .full:
             return nil
         case .center:
-            return WebRTCStreamRecordingCrop(x: 0.10, y: 0.10, width: 0.80, height: 0.80)
+            return StreamRecordingCrop(x: 0.10, y: 0.10, width: 0.80, height: 0.80)
         case .square, .wide, .vertical:
             guard let target = targetAspect else { return nil }
             // width * aspect / height == target, holding whichever axis fits at full extent.
             let width = min(1, target / aspect)
             let height = min(1, aspect / target)
-            return WebRTCStreamRecordingCrop(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
+            return StreamRecordingCrop(x: (1 - width) / 2, y: (1 - height) / 2, width: width, height: height)
         }
     }
 }
@@ -114,7 +114,7 @@ enum RecordingEditorExportQuality: String, CaseIterable, Identifiable {
         }
     }
 
-    var preset: WebRTCStreamRecordingExportPreset {
+    var preset: StreamRecordingExportPreset {
         switch self {
         case .highest: return .highestQuality
         case .balanced: return .balanced
@@ -133,7 +133,7 @@ struct RecordingEditorSnapshot {
     var cropHeight: Double
     var cropEnabled: Bool
     var isAdjustingCrop: Bool
-    var rotation: WebRTCStreamRecordingRotation
+    var rotation: StreamRecordingRotation
     var isFlippedHorizontally: Bool
     var isFlippedVertically: Bool
     var playbackRate: Double
@@ -148,8 +148,8 @@ struct RecordingEditorSnapshot {
 final class RecordingEditorViewModel: ObservableObject {
     static let sectionJoinTolerance = 0.05
 
-    let primaryRecording: WebRTCStreamRecording
-    @Published var library: [WebRTCStreamRecording]
+    let primaryRecording: StreamRecording
+    @Published var library: [StreamRecording]
     @Published var outputTitle: String
     @Published var segments: [RecordingEditorSegment]
     @Published var selectedSegmentID: UUID?
@@ -160,7 +160,7 @@ final class RecordingEditorViewModel: ObservableObject {
     @Published var cropWidth: Double = 1
     @Published var cropHeight: Double = 1
     @Published var cropEnabled = false
-    @Published var rotation: WebRTCStreamRecordingRotation = .degrees0
+    @Published var rotation: StreamRecordingRotation = .degrees0
     @Published var isFlippedHorizontally = false
     @Published var isFlippedVertically = false
     @Published var playbackRate = 1.0
@@ -198,7 +198,7 @@ final class RecordingEditorViewModel: ObservableObject {
     /// one undo step rather than one per keystroke.
     var coalescedUndoToken: String?
 
-    init(recording: WebRTCStreamRecording, library: [WebRTCStreamRecording]) {
+    init(recording: StreamRecording, library: [StreamRecording]) {
         primaryRecording = recording
         self.library = library
         outputTitle = recording.title + " Edit"
@@ -293,7 +293,7 @@ final class RecordingEditorViewModel: ObservableObject {
     /// What the preview should show, which is not always what the export will produce: while the
     /// crop rectangle is up, the preview drops the crop and the orientation so the rectangle can be
     /// drawn over the original frame.
-    func previewRequest() -> WebRTCStreamRecordingEditRequest {
+    func previewRequest() -> StreamRecordingEditRequest {
         var previewRequest = request()
         guard isAdjustingCrop else { return previewRequest }
         previewRequest.crop = nil
@@ -526,7 +526,7 @@ final class RecordingEditorViewModel: ObservableObject {
         }
     }
 
-    func appendRecording(_ recording: WebRTCStreamRecording) {
+    func appendRecording(_ recording: StreamRecording) {
         guard recording.durationSeconds > 0 else { return }
         recordUndo()
         let segment = RecordingEditorSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds)
@@ -534,7 +534,7 @@ final class RecordingEditorViewModel: ObservableObject {
         selectedSegmentID = segment.id
     }
 
-    func appendRecording(_ recording: WebRTCStreamRecording, at insertionIndex: Int) {
+    func appendRecording(_ recording: StreamRecording, at insertionIndex: Int) {
         guard recording.durationSeconds > 0 else { return }
         recordUndo()
         let segment = RecordingEditorSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds)
@@ -610,14 +610,14 @@ final class RecordingEditorViewModel: ObservableObject {
         segments.swapAt(index, nextIndex)
     }
 
-    func export() async throws -> WebRTCStreamRecording {
-        guard !isExporting else { throw WebRTCStreamRecordingEditorError.exportFailed("An export is already running.") }
+    func export() async throws -> StreamRecording {
+        guard !isExporting else { throw StreamRecordingEditorError.exportFailed("An export is already running.") }
         isExporting = true
         exportProgress = 0
         errorMessage = nil
         do {
             let request = request()
-            let recording = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request) { [weak self] progress in
+            let recording = try await StreamRecordingLibrary.exportEditedRecording(request) { [weak self] progress in
                 // Published only when the number on screen would actually change. Every publish
                 // re-evaluates the editor's whole body - timeline, filmstrips, waveform canvas - and
                 // at the raw update rate that competed with the encoder for the machine.

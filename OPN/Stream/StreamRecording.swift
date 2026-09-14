@@ -5,7 +5,7 @@ import Foundation
 import QuartzCore
 @preconcurrency import WebRTC
 
-public struct WebRTCStreamRecording: Codable, Equatable, Identifiable, Sendable {
+public struct StreamRecording: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
     public let title: String
     public let applicationID: String
@@ -24,12 +24,12 @@ public struct WebRTCStreamRecording: Codable, Equatable, Identifiable, Sendable 
     public var metadataURL: URL { storageDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
 
     private var storageDirectory: URL {
-        guard let storageDirectoryPath, !storageDirectoryPath.isEmpty else { return WebRTCStreamRecordingLibrary.recordingsDirectory(forGameTitle: title) }
+        guard let storageDirectoryPath, !storageDirectoryPath.isEmpty else { return StreamRecordingLibrary.recordingsDirectory(forGameTitle: title) }
         return URL(fileURLWithPath: storageDirectoryPath, isDirectory: true)
     }
 }
 
-public enum WebRTCStreamRecordingLibrary {
+public enum StreamRecordingLibrary {
     public static var recordingsDirectory: URL {
         let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
         return base.appendingPathComponent("NVIDIA", isDirectory: true).appendingPathComponent("GeForce NOW", isDirectory: true)
@@ -50,14 +50,14 @@ public enum WebRTCStreamRecordingLibrary {
         return directory
     }
 
-    public static func loadRecordings() -> [WebRTCStreamRecording] {
+    public static func loadRecordings() -> [StreamRecording] {
         recordingMetadataURLs()
             .filter { $0.pathExtension.caseInsensitiveCompare("json") == .orderedSame }
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                guard let recording = try? JSONDecoder.recordingDecoder.decode(WebRTCStreamRecording.self, from: data) else { return nil }
+                guard let recording = try? JSONDecoder.recordingDecoder.decode(StreamRecording.self, from: data) else { return nil }
                 if recording.storageDirectoryPath == nil {
-                    return WebRTCStreamRecording(
+                    return StreamRecording(
                         id: recording.id,
                         title: recording.title,
                         applicationID: recording.applicationID,
@@ -79,7 +79,7 @@ public enum WebRTCStreamRecordingLibrary {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    public static func delete(_ recording: WebRTCStreamRecording) throws {
+    public static func delete(_ recording: StreamRecording) throws {
         if FileManager.default.fileExists(atPath: recording.videoURL.path) { try FileManager.default.removeItem(at: recording.videoURL) }
         if FileManager.default.fileExists(atPath: recording.metadataURL.path) { try FileManager.default.removeItem(at: recording.metadataURL) }
         let directory = recording.videoURL.deletingLastPathComponent()
@@ -114,7 +114,7 @@ public enum WebRTCStreamRecordingLibrary {
     }
 }
 
-public struct WebRTCStreamRecordingConfiguration: Equatable, Sendable {
+public struct StreamRecordingConfiguration: Equatable, Sendable {
     public let title: String
     public let applicationID: String
     public let width: Int
@@ -136,12 +136,12 @@ public struct WebRTCStreamRecordingConfiguration: Equatable, Sendable {
     }
 }
 
-public enum WebRTCStreamRecordingStatus: Equatable, Sendable {
+public enum StreamRecordingStatus: Equatable, Sendable {
     case idle
     case starting
     case recording(startedAt: Date, elapsedSeconds: Double)
     case finishing
-    case finished(WebRTCStreamRecording)
+    case finished(StreamRecording)
     case failed(String)
 
     public var isRecording: Bool {
@@ -164,14 +164,14 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     let pixelTransfer = OPNPixelBufferTransfer()
     /// Written by whoever owns the recorder, read on `queue` by `emit`. Locked because those are
     /// different threads and the NVST transport installs the handler from its actor.
-    var onStatusChanged: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)? {
+    var onStatusChanged: (@MainActor @Sendable (StreamRecordingStatus) -> Void)? {
         get { statusHandlerLock.withLock { storedStatusHandler } }
         set { statusHandlerLock.withLock { storedStatusHandler = newValue } }
     }
 
     private let statusHandlerLock = NSLock()
-    private var storedStatusHandler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?
-    var statusHandler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)? {
+    private var storedStatusHandler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?
+    var statusHandler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)? {
         statusHandlerLock.withLock { storedStatusHandler }
     }
 
@@ -192,7 +192,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     var videoInput: AVAssetWriterInput?
     var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     var audioInput: AVAssetWriterInput?
-    var configuration: WebRTCStreamRecordingConfiguration?
+    var configuration: StreamRecordingConfiguration?
     var id = UUID()
     var outputURL: URL?
     let i420BGRAConverter = WebRTCI420BGRAConverter()
@@ -234,11 +234,11 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         return writer.status == .unknown || writer.status == .writing
     }
 
-    func start(configuration: WebRTCStreamRecordingConfiguration) {
+    func start(configuration: StreamRecordingConfiguration) {
         queue.async {
             guard self.configuration == nil, self.writer == nil else { return }
             do {
-                let directory = try WebRTCStreamRecordingLibrary.ensureDirectory(forGameTitle: configuration.title)
+                let directory = try StreamRecordingLibrary.ensureDirectory(forGameTitle: configuration.title)
                 self.id = UUID()
                 self.setActiveRecordingId(self.id, enhancedVideoPreferred: configuration.enhancedVideoEnabled)
                 self.configuration = configuration

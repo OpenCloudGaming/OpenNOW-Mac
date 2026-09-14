@@ -15,7 +15,7 @@ extension WebRTCMediaStreamSurface {
         defer { startTask = nil }
         beginStreamingPerformanceMode()
         let transport = NativeWebRTCTransport(nativeView: nativeView)
-        let path = WebRTCStreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
+        let path = StreamingPath(sessionProvider: sessionProvider, transport: transport, signaling: signaling)
         transport.onEnded = { message in
             handleTransportEnded(message: message)
         }
@@ -70,7 +70,7 @@ extension WebRTCMediaStreamSurface {
     }
 
     /// Runs the streaming path and applies what the established session says about itself.
-    func launchSession(path: WebRTCStreamingPath, transport: NativeWebRTCTransport, nativeView: NativeWebRTCStreamView) async {
+    func launchSession(path: StreamingPath, transport: NativeWebRTCTransport, nativeView: NativeWebRTCStreamView) async {
         do {
             let session = try await path.start(configuration: configuration) { progress in
                 await MainActor.run {
@@ -130,7 +130,7 @@ extension WebRTCMediaStreamSurface {
         guard let limit = StreamSessionSidebarLimit(update: update) else { return }
         sessionLimit = limit
         publishSessionLimitProgress()
-        WebRTCMediaTelemetry.capture("webrtc.ui.session_limit.update", level: .info, message: "Session limit timer updated from stream message.", attributes: ["applicationID": configuration.applicationID, "remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
+        OPNStreamTelemetry.capture("webrtc.ui.session_limit.update", level: .info, message: "Session limit timer updated from stream message.", attributes: ["applicationID": configuration.applicationID, "remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
     }
 
     func publishSessionLimitProgress() {
@@ -146,7 +146,7 @@ extension WebRTCMediaStreamSurface {
         ))
     }
 
-    func handleRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus) {
+    func handleRecordingStatusChanged(_ status: StreamRecordingStatus) {
         recordingNotificationTask?.cancel()
         let previousStatus = recordingStatus
         recordingStatus = status
@@ -160,22 +160,22 @@ extension WebRTCMediaStreamSurface {
         }
     }
 
-    func logRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus, previousStatus: WebRTCStreamRecordingStatus) {
+    func logRecordingStatusChanged(_ status: StreamRecordingStatus, previousStatus: StreamRecordingStatus) {
         switch status {
         case .idle:
             return
         case .starting:
-            WebRTCMediaTelemetry.capture("webrtc.ui.recording.starting", level: .info, message: "Stream recording accepted start request.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("webrtc.ui.recording.starting", level: .info, message: "Stream recording accepted start request.", attributes: ["applicationID": configuration.applicationID])
         case .recording:
             guard !previousStatus.isRecording else { return }
-            WebRTCMediaTelemetry.capture("webrtc.ui.recording.active", level: .info, message: "Stream recording captured its first video frame.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("webrtc.ui.recording.active", level: .info, message: "Stream recording captured its first video frame.", attributes: ["applicationID": configuration.applicationID])
         case .finishing:
             guard previousStatus != .finishing else { return }
-            WebRTCMediaTelemetry.capture("webrtc.ui.recording.finishing", level: .info, message: "Stream recording is saving.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("webrtc.ui.recording.finishing", level: .info, message: "Stream recording is saving.", attributes: ["applicationID": configuration.applicationID])
         case .finished(let recording):
-            WebRTCMediaTelemetry.capture("webrtc.ui.recording.finished", level: .info, message: "Stream recording saved.", attributes: ["applicationID": configuration.applicationID, "file": recording.videoURL.lastPathComponent, "durationSeconds": String(format: "%.2f", recording.durationSeconds), "fileSizeBytes": String(recording.fileSizeBytes)])
+            OPNStreamTelemetry.capture("webrtc.ui.recording.finished", level: .info, message: "Stream recording saved.", attributes: ["applicationID": configuration.applicationID, "file": recording.videoURL.lastPathComponent, "durationSeconds": String(format: "%.2f", recording.durationSeconds), "fileSizeBytes": String(recording.fileSizeBytes)])
         case .failed(let message):
-            WebRTCMediaTelemetry.capture("webrtc.ui.recording.failed", level: .warning, message: message, attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("webrtc.ui.recording.failed", level: .warning, message: message, attributes: ["applicationID": configuration.applicationID])
         }
     }
 
@@ -236,7 +236,7 @@ extension WebRTCMediaStreamSurface {
         return !isPressed
     }
 
-    func handle(_ command: WebRTCMediaStreamCommand) {
+    func handle(_ command: StreamCommand) {
         switch command {
         case .toggleStatsHUD:
             toggleStatsHUD()
@@ -260,7 +260,7 @@ extension WebRTCMediaStreamSurface {
     func toggleOnScreenKeyboard() {
         guard isStreamReady, !isEndingStream, !didEndStream else { return }
         setOnScreenKeyboardVisible(!onScreenKeyboardVisible)
-        WebRTCMediaTelemetry.capture("webrtc.ui.osk.toggle", level: .info, message: onScreenKeyboardVisible ? "On-screen keyboard shown." : "On-screen keyboard hidden.", attributes: ["visible": String(onScreenKeyboardVisible)])
+        OPNStreamTelemetry.capture("webrtc.ui.osk.toggle", level: .info, message: onScreenKeyboardVisible ? "On-screen keyboard shown." : "On-screen keyboard hidden.", attributes: ["visible": String(onScreenKeyboardVisible)])
     }
 
     func setOnScreenKeyboardVisible(_ visible: Bool) {
@@ -297,7 +297,7 @@ extension WebRTCMediaStreamSurface {
         onAntiAFKStateChange?(runtimeSettings.antiAFKMouseMovementEnabled)
         refreshAntiAFKMouseMovementTask()
         showTransientStreamMessage(runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK On" : "Anti-AFK Off")
-        WebRTCMediaTelemetry.capture("webrtc.ui.anti_afk.toggle", level: .info, message: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK mouse movement enabled." : "Anti-AFK mouse movement disabled.", attributes: ["enabled": String(runtimeSettings.antiAFKMouseMovementEnabled)])
+        OPNStreamTelemetry.capture("webrtc.ui.anti_afk.toggle", level: .info, message: runtimeSettings.antiAFKMouseMovementEnabled ? "Anti-AFK mouse movement enabled." : "Anti-AFK mouse movement disabled.", attributes: ["enabled": String(runtimeSettings.antiAFKMouseMovementEnabled)])
     }
 
     func refreshAntiAFKMouseMovementTask() {
@@ -369,7 +369,7 @@ extension WebRTCMediaStreamSurface {
         }
         microphoneEnabled.toggle()
         transport?.setMicrophoneEnabled(microphoneEnabled)
-        WebRTCMediaTelemetry.capture("webrtc.ui.microphone.toggle", level: .info, message: microphoneEnabled ? "Microphone enabled." : "Microphone muted.", attributes: ["enabled": String(microphoneEnabled)])
+        OPNStreamTelemetry.capture("webrtc.ui.microphone.toggle", level: .info, message: microphoneEnabled ? "Microphone enabled." : "Microphone muted.", attributes: ["enabled": String(microphoneEnabled)])
     }
 
     func handlePointerLockChanged(_ locked: Bool) {
@@ -380,7 +380,7 @@ extension WebRTCMediaStreamSurface {
     }
 
     func registerStreamLifecycle() {
-        WebRTCMediaStreamLifecycle.activate(
+        StreamSessionLifecycle.activate(
             configuration.id,
             quitRequestHandler: { completion in
                 showQuitMenu(completion: completion)
@@ -390,7 +390,7 @@ extension WebRTCMediaStreamSurface {
         )
     }
 
-    func showQuitMenu(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
+    func showQuitMenu(completion: StreamSessionQuitDecisionHandler? = nil) {
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = completion
         if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
@@ -400,7 +400,7 @@ extension WebRTCMediaStreamSurface {
         quitMenuFocusIndex = 0
         hudGamepadTracker.reset()
         quitMenuVisible = true
-        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("webrtc.ui.quit_menu.show", level: .info, message: "Stream quit menu shown.", attributes: ["applicationID": configuration.applicationID])
     }
 
     func dismissQuitMenu() {
@@ -408,7 +408,7 @@ extension WebRTCMediaStreamSurface {
         quitMenuVisible = false
         let completion = pendingApplicationQuitCompletion
         pendingApplicationQuitCompletion = nil
-        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.dismiss", level: .info, message: "Stream quit menu dismissed.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("webrtc.ui.quit_menu.dismiss", level: .info, message: "Stream quit menu dismissed.", attributes: ["applicationID": configuration.applicationID])
         completion?(false)
     }
 
@@ -422,7 +422,7 @@ extension WebRTCMediaStreamSurface {
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         transport?.stopRecording()
-        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.pause", level: .info, message: "Stream paused from quit menu.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("webrtc.ui.quit_menu.pause", level: .info, message: "Stream paused from quit menu.", attributes: ["applicationID": configuration.applicationID])
         Task {
             let report = await finishStream(reason: .paused, message: "Stream paused.")
             await MainActor.run {
@@ -442,7 +442,7 @@ extension WebRTCMediaStreamSurface {
         microphoneEnabled = false
         transport?.setMicrophoneEnabled(false)
         transport?.stopRecording()
-        WebRTCMediaTelemetry.capture("webrtc.ui.quit_menu.quit_stream", level: .info, message: "Stream quit requested from quit menu.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("webrtc.ui.quit_menu.quit_stream", level: .info, message: "Stream quit requested from quit menu.", attributes: ["applicationID": configuration.applicationID])
         Task {
             let report = await finishStream(reason: .userRequested, message: "Stream ended by user.")
             await MainActor.run {
@@ -491,7 +491,7 @@ extension WebRTCMediaStreamSurface {
 
     func stopStream() {
         endStreamingPerformanceMode()
-        WebRTCMediaStreamLifecycle.deactivate(configuration.id)
+        StreamSessionLifecycle.deactivate(configuration.id)
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
         startTask?.cancel()
@@ -525,14 +525,14 @@ extension WebRTCMediaStreamSurface {
     func beginStreamingPerformanceMode() {
         guard streamingPerformanceActivity == nil else { return }
         streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: streamingPerformanceActivityOptions, reason: "OpenNOW active cloud gaming stream")
-        WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.begin", level: .info, message: "Streaming performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
+        OPNStreamTelemetry.capture("webrtc.stream.performance_mode.begin", level: .info, message: "Streaming performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
     }
 
     func endStreamingPerformanceMode() {
         guard let streamingPerformanceActivity else { return }
         ProcessInfo.processInfo.endActivity(streamingPerformanceActivity)
         self.streamingPerformanceActivity = nil
-        WebRTCMediaTelemetry.capture("webrtc.stream.performance_mode.end", level: .info, message: "Streaming performance mode disabled.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("webrtc.stream.performance_mode.end", level: .info, message: "Streaming performance mode disabled.", attributes: ["applicationID": configuration.applicationID])
     }
 
     func refreshStreamingPerformanceMode() {

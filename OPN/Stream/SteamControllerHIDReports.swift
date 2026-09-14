@@ -106,7 +106,7 @@ extension SteamControllerHIDMonitor {
         let report = SteamControllerReport.powerOffReport(model: context.model)
         sendFeatureReport(report, to: context.device, attempts: Self.featureReportAttempts)
         OPNLog.info(.controller, "Power-off combo (Steam+Y) triggered for controllerID=0x\(String(format: "%016X", context.controllerID))")
-        WebRTCMediaTelemetry.capture(
+        OPNStreamTelemetry.capture(
             "webrtc.input.steamcontroller.poweroff.combo",
             level: .info,
             message: "Steam+Y power-off combo triggered.",
@@ -144,7 +144,7 @@ extension SteamControllerHIDMonitor {
         guard context.isActive != isActive else { return }
         context.isActive = isActive
         publishActiveCount()
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.presence", level: .info, message: "Steam Controller presence changed.", attributes: ["active": String(isActive)])
+        OPNStreamTelemetry.capture("webrtc.input.steamcontroller.device.presence", level: .info, message: "Steam Controller presence changed.", attributes: ["active": String(isActive)])
     }
 
     func publishActiveCount() {

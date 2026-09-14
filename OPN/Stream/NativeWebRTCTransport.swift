@@ -3,9 +3,9 @@ import CoreVideo
 import Foundation
 @preconcurrency import WebRTC
 
-public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unchecked Sendable {
+public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked Sendable {
     public var onEnded: (@MainActor @Sendable (_ message: String) -> Void)?
-    public var onRecordingStatusChanged: (@MainActor @Sendable (_ status: WebRTCStreamRecordingStatus) -> Void)?
+    public var onRecordingStatusChanged: (@MainActor @Sendable (_ status: StreamRecordingStatus) -> Void)?
 
     let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
@@ -57,7 +57,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func connect(offer: StreamOffer, mediaReceiver: any MediaFrameReceiver) async throws -> StreamAnswer {
-        WebRTCMediaTelemetry.capture("webrtc.transport.connect.start", level: .info, message: "Starting native WebRTC transport.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
+        OPNStreamTelemetry.capture("webrtc.transport.connect.start", level: .info, message: "Starting native WebRTC transport.", attributes: ["sessionId": offer.session.id, "applicationID": offer.session.applicationID])
         let nativeWindowAddress = await MainActor.run { nativeView.map { UInt(bitPattern: Unmanaged.passUnretained($0.nativeVideoView()).toOpaque()) } }
         return try await withCheckedThrowingContinuation { continuation in
             self.installContinuation(continuation)
@@ -97,7 +97,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 },
                 stateHandler: { [weak self] connected, error in
                     if connected {
-                        WebRTCMediaTelemetry.capture("webrtc.transport.connected", level: .info, message: "Native WebRTC transport connected.", attributes: ["sessionId": offer.session.id])
+                        OPNStreamTelemetry.capture("webrtc.transport.connected", level: .info, message: "Native WebRTC transport connected.", attributes: ["sessionId": offer.session.id])
                     }
                     guard !connected, !(error as String).isEmpty else { return }
                     self?.handleEnded(message: error as String)
@@ -160,7 +160,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         session.setLocalVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight, pillarboxFillMode: pillarboxFillMode, pillarboxFillDim: pillarboxFillDim, pillarboxFillColor: pillarboxFillColor)
     }
 
-    public func startRecording(configuration: WebRTCStreamRecordingConfiguration) {
+    public func startRecording(configuration: StreamRecordingConfiguration) {
         session.setEnhancedVideoFrameCaptureEnabled(configuration.enhancedVideoEnabled)
         recorder.start(configuration: configuration)
     }
@@ -171,7 +171,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
     }
 
     public func disconnect() async {
-        WebRTCMediaTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
+        OPNStreamTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
         isDisconnecting = true
         answerTimeoutTask?.cancel()
         answerTimeoutTask = nil
@@ -251,7 +251,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         guard let continuation = takeContinuation() else { return }
         answerTimeoutTask?.cancel()
         answerTimeoutTask = nil
-        WebRTCMediaTelemetry.capture("webrtc.transport.answer.created", level: .info, message: "Created local WebRTC answer.")
+        OPNStreamTelemetry.capture("webrtc.transport.answer.created", level: .info, message: "Created local WebRTC answer.")
         // `resumeAnswer` arrives on libwebrtc's signalling thread and can land after `disconnect()`
         // has cancelled the loop; starting one here then kept a strongly captured session polling
         // stats every ten seconds for the life of the process.
@@ -264,7 +264,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         guard let continuation = takeContinuation() else { return }
         answerTimeoutTask?.cancel()
         answerTimeoutTask = nil
-        WebRTCMediaTelemetry.capture("webrtc.transport.error", level: .error, message: error.localizedDescription)
+        OPNStreamTelemetry.capture("webrtc.transport.error", level: .error, message: error.localizedDescription)
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
         continuation.resume(throwing: error)
@@ -321,7 +321,7 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
         didEmitEnd = true
         statsTelemetryTask?.cancel()
         statsTelemetryTask = nil
-        WebRTCMediaTelemetry.capture("webrtc.transport.ended", level: .warning, message: message)
+        OPNStreamTelemetry.capture("webrtc.transport.ended", level: .warning, message: message)
         Task { @MainActor [onEnded] in onEnded?(message) }
     }
 
@@ -333,14 +333,14 @@ public final class NativeWebRTCTransport: NSObject, WebRTCStreamTransport, @unch
                 let stats = session.latestStatsSnapshot()
                 guard stats.available else { continue }
                 let attributes = ["codec": stats.codec, "resolution": stats.resolution]
-                WebRTCMediaTelemetry.record("webrtc.media.latency_ms", kind: .gauge, value: stats.latencyMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.jitter_ms", kind: .gauge, value: stats.jitterMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.inbound_bitrate_mbps", kind: .gauge, value: stats.inboundBitrateMbps, unit: "megabit/second", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.packet_loss_percent", kind: .gauge, value: stats.packetLossPercent, unit: "percent", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.render_fps", kind: .gauge, value: stats.renderFps, attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.decode_time_ms", kind: .gauge, value: stats.decodeTimeMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.frame_interval_ms", kind: .gauge, value: stats.videoFrameIntervalMs, unit: "millisecond", attributes: attributes)
-                WebRTCMediaTelemetry.record("webrtc.media.max_frame_interval_ms", kind: .gauge, value: stats.videoMaxFrameIntervalMs, unit: "millisecond", attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.latency_ms", kind: .gauge, value: stats.latencyMs, unit: "millisecond", attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.jitter_ms", kind: .gauge, value: stats.jitterMs, unit: "millisecond", attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.inbound_bitrate_mbps", kind: .gauge, value: stats.inboundBitrateMbps, unit: "megabit/second", attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.packet_loss_percent", kind: .gauge, value: stats.packetLossPercent, unit: "percent", attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.render_fps", kind: .gauge, value: stats.renderFps, attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.decode_time_ms", kind: .gauge, value: stats.decodeTimeMs, unit: "millisecond", attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.frame_interval_ms", kind: .gauge, value: stats.videoFrameIntervalMs, unit: "millisecond", attributes: attributes)
+                OPNStreamTelemetry.record("webrtc.media.max_frame_interval_ms", kind: .gauge, value: stats.videoMaxFrameIntervalMs, unit: "millisecond", attributes: attributes)
             }
         }
     }

@@ -82,10 +82,10 @@ extension WebRTCMediaStreamSurface {
                     Text("STREAM PAUSED")
                         .font(.streamFont(size: 10, weight: .bold))
                         .tracking(1.1)
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                        .foregroundStyle(StreamHUDTheme.accent)
                     Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
                         .font(.streamFont(size: 20, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .foregroundStyle(StreamHUDTheme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -93,14 +93,14 @@ extension WebRTCMediaStreamSurface {
                 .padding(.top, 16)
                 .padding(.bottom, 14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(WebRTCMediaStreamTheme.appBar)
+                .background(StreamHUDTheme.appBar)
                 Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
+                    .fill(StreamHUDTheme.divider)
                     .frame(height: 1)
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
                         .font(.streamFont(size: 12, weight: .medium))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .foregroundStyle(StreamHUDTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         StreamQuitMenuButton(
@@ -130,14 +130,14 @@ extension WebRTCMediaStreamSurface {
                 .padding(18)
             }
             .frame(width: 440)
-            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .background(StreamHUDTheme.panel.opacity(0.985))
             .overlay {
                 Rectangle()
-                    .stroke(WebRTCMediaStreamTheme.accent.opacity(0.28), lineWidth: 1)
+                    .stroke(StreamHUDTheme.accent.opacity(0.28), lineWidth: 1)
             }
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(WebRTCMediaStreamTheme.accent)
+                    .fill(StreamHUDTheme.accent)
                     .frame(height: 2)
             }
             .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)

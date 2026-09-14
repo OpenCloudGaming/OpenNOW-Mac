@@ -4,7 +4,7 @@ import GameController
 import Foundation
 import SwiftUI
 
-enum WebRTCMediaStreamTheme {
+enum StreamHUDTheme {
     /// Same resolved colour the rest of the app paints with, so the HUD follows the user's
     /// chosen accent instead of a hardcoded green. The stream view is deliberately never
     /// invalidated while a session is live, so a mid-session accent change still waits for the
@@ -71,12 +71,12 @@ struct StreamHUDActionRow: View {
     }
 
     private var strokeColor: Color {
-        if isFocused { return WebRTCMediaStreamTheme.accent }
-        return isActive ? WebRTCMediaStreamTheme.accent.opacity(0.86) : WebRTCMediaStreamTheme.divider
+        if isFocused { return StreamHUDTheme.accent }
+        return isActive ? StreamHUDTheme.accent.opacity(0.86) : StreamHUDTheme.divider
     }
 
     private var rowBackground: Color {
-        if isActive { return WebRTCMediaStreamTheme.accent }
+        if isActive { return StreamHUDTheme.accent }
         return Color.white.opacity(isHovering ? 0.14 : 0.075)
     }
 
@@ -209,12 +209,12 @@ struct StreamQuitMenuButton: View {
     }
 
     private var strokeColor: Color {
-        if isFocused { return WebRTCMediaStreamTheme.accent }
-        return isPrimary ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider
+        if isFocused { return StreamHUDTheme.accent }
+        return isPrimary ? StreamHUDTheme.accent : StreamHUDTheme.divider
     }
 
     private var backgroundColor: Color {
-        if isPrimary { return WebRTCMediaStreamTheme.accent.opacity(isHovering ? 0.82 : 1) }
+        if isPrimary { return StreamHUDTheme.accent.opacity(isHovering ? 0.82 : 1) }
         return Color.white.opacity(isHovering ? 0.14 : 0.075)
     }
 
@@ -261,17 +261,17 @@ struct StreamHUDDropdown: View {
         HStack(spacing: 12) {
             Text(label)
                 .font(.streamFont(size: 11, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
             Spacer(minLength: 8)
             Button { isExpanded.toggle() } label: {
                 HStack(spacing: 6) {
                     Text(selectedTitle)
                         .font(.streamFont(size: 12, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .foregroundStyle(StreamHUDTheme.textPrimary)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                        .foregroundStyle(StreamHUDTheme.textSecondary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
                 .padding(.horizontal, 10)
@@ -279,7 +279,7 @@ struct StreamHUDDropdown: View {
                 .background(Color.white.opacity(isHovering ? 0.14 : 0.075))
                 .overlay {
                     Rectangle()
-                        .stroke((isExpanded || isFocused) ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider, lineWidth: isFocused ? 2 : 1)
+                        .stroke((isExpanded || isFocused) ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
             }
@@ -346,11 +346,11 @@ struct StreamHUDDropdown: View {
         .frame(width: 208)
         // Two fills: the sidebar itself is slightly translucent over the video, and a single
         // near-black fill over it still let the picture read through the panel.
-        .background(WebRTCMediaStreamTheme.surfaceRaised)
-        .background(WebRTCMediaStreamTheme.panel)
+        .background(StreamHUDTheme.surfaceRaised)
+        .background(StreamHUDTheme.panel)
         .overlay {
             Rectangle()
-                .stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1)
+                .stroke(StreamHUDTheme.divider, lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.55), radius: 14, x: 0, y: 8)
     }
@@ -367,13 +367,13 @@ private struct StreamHUDDropdownRow: View {
             HStack(spacing: 8) {
                 Text(title)
                     .font(.streamFont(size: 12, weight: .bold))
-                    .foregroundStyle(isSelected ? WebRTCMediaStreamTheme.accent : (isHovering ? WebRTCMediaStreamTheme.textPrimary : WebRTCMediaStreamTheme.textSecondary))
+                    .foregroundStyle(isSelected ? StreamHUDTheme.accent : (isHovering ? StreamHUDTheme.textPrimary : StreamHUDTheme.textSecondary))
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                        .foregroundStyle(StreamHUDTheme.accent)
                 }
             }
             .padding(.horizontal, 12)
@@ -407,10 +407,10 @@ struct StreamUnifiedSidebar<Content: View>: View {
                         Text("STREAM HUD")
                             .font(.streamFont(size: 9, weight: .bold))
                             .tracking(1.4)
-                            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                            .foregroundStyle(StreamHUDTheme.textTertiary)
                         Text(title)
                             .font(.streamFont(size: 14, weight: .bold))
-                            .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                            .foregroundStyle(StreamHUDTheme.textPrimary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -429,27 +429,27 @@ struct StreamUnifiedSidebar<Content: View>: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(WebRTCMediaStreamTheme.appBar)
-                Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
+                .background(StreamHUDTheme.appBar)
+                Rectangle().fill(StreamHUDTheme.divider).frame(height: 1)
                 ScrollView(.vertical, showsIndicators: false) {
                     content
                         .padding(.horizontal, 18)
                         .padding(.vertical, 14)
                 }
-                Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
-                Text(WebRTCMediaStreamCommand.shortcutGuide)
+                Rectangle().fill(StreamHUDTheme.divider).frame(height: 1)
+                Text(StreamCommand.shortcutGuide)
                     .font(.streamFont(size: 10, weight: .bold))
                     .tracking(0.8)
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 9)
             }
-            .frame(width: WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
-            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
-            .overlay(alignment: .trailing) { Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(width: 1) }
-            .overlay(alignment: .top) { Rectangle().fill(WebRTCMediaStreamTheme.accent).frame(height: 2) }
+            .frame(width: StreamHUDTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
+            .background(StreamHUDTheme.panel.opacity(0.985))
+            .overlay(alignment: .trailing) { Rectangle().fill(StreamHUDTheme.divider).frame(width: 1) }
+            .overlay(alignment: .top) { Rectangle().fill(StreamHUDTheme.accent).frame(height: 2) }
             .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
@@ -484,7 +484,7 @@ struct StreamHUDSection<Content: View>: View {
                 Text(label)
                     .font(.streamFont(size: 10, weight: .bold))
                     .tracking(1.1)
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
                 if showsBetaTag { OPNBetaTag(uiScale: 1, prominent: true) }
                 Spacer(minLength: 0)
             }
@@ -492,7 +492,7 @@ struct StreamHUDSection<Content: View>: View {
             if let caption, !caption.isEmpty {
                 Text(caption)
                     .font(.streamFont(size: 10, weight: .bold))
-                    .foregroundStyle(WebRTCMediaStreamTheme.accentSoft)
+                    .foregroundStyle(StreamHUDTheme.accentSoft)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .accessibilityHidden(true)
@@ -501,7 +501,7 @@ struct StreamHUDSection<Content: View>: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
         .onPreferenceChange(StreamHUDExpandedPanelKey.self) { hasExpandedPanel = $0 }
         // Above every sibling section while one of this section's dropdowns is open, so the panel
         // is not tinted by the next section's background painting over it.

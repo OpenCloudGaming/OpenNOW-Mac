@@ -191,7 +191,7 @@ extension NativeNVSTHostViewModel {
                 // thing a guest cannot join with.
                 remoteCoOpMessage = invite.joinURL == nil ? "Token copied" : "Link copied"
                 showNativeTransientStreamMessage("Remote Co-Op invite copied")
-                WebRTCMediaTelemetry.capture("nvst.remote_coop.invite.created", level: .info, message: "Remote Co-Op invite created.", attributes: [
+                OPNStreamTelemetry.capture("nvst.remote_coop.invite.created", level: .info, message: "Remote Co-Op invite created.", attributes: [
                     "applicationID": configuration.applicationID,
                     "reservedSlots": String(preferences.effectiveReservedGuestSlots),
                     "transportMode": preferences.transportMode.rawValue,
@@ -201,7 +201,7 @@ extension NativeNVSTHostViewModel {
                 _ = await stopRemoteCoOpSession()
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
                 remoteCoOpMessage = Self.message(for: error)
-                WebRTCMediaTelemetry.capture("nvst.remote_coop.invite.failed", level: .warning, message: remoteCoOpMessage, attributes: ["applicationID": configuration.applicationID])
+                OPNStreamTelemetry.capture("nvst.remote_coop.invite.failed", level: .warning, message: remoteCoOpMessage, attributes: ["applicationID": configuration.applicationID])
             }
         }
     }
@@ -217,7 +217,7 @@ extension NativeNVSTHostViewModel {
             await syncRemoteCoOpGamepadTopology()
             remoteCoOpMessage = "Ended"
             showNativeTransientStreamMessage("Remote Co-Op invite ended")
-            WebRTCMediaTelemetry.capture("nvst.remote_coop.invite.ended", level: .info, message: "Remote Co-Op invite ended.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("nvst.remote_coop.invite.ended", level: .info, message: "Remote Co-Op invite ended.", attributes: ["applicationID": configuration.applicationID])
         }
     }
 
@@ -357,7 +357,7 @@ extension NativeNVSTHostViewModel {
             // that has no guests and needs none.
             guard remoteCoOpSnapshot.invite != nil else { return }
             remoteCoOpMessage = Self.message(for: error)
-            WebRTCMediaTelemetry.capture("nvst.remote_coop.topology.failed", level: .warning, message: Self.message(for: error), attributes: [
+            OPNStreamTelemetry.capture("nvst.remote_coop.topology.failed", level: .warning, message: Self.message(for: error), attributes: [
                 "applicationID": configuration.applicationID,
                 "playerIndices": topology.playerIndices.map(String.init).joined(separator: ",")
             ])
@@ -367,13 +367,13 @@ extension NativeNVSTHostViewModel {
     /// The local pads plus the slot of every guest whose input is enabled. Guests never get
     /// haptics: the rumble path drives a physical device on this Mac, and a guest's pad is on the
     /// other side of a browser.
-    func mergedGamepadTopology(localTopology: NativeWebRTCGamepadTopology) -> NativeWebRTCGamepadTopology {
+    func mergedGamepadTopology(localTopology: StreamGamepadTopology) -> StreamGamepadTopology {
         let guestIndices = remoteCoOpSnapshot.participants.compactMap { participant -> Int? in
             guard participant.inputEnabled, participant.connectionState == .connected else { return nil }
             return participant.playerIndex
         }
         guard !guestIndices.isEmpty else { return localTopology }
-        return NativeWebRTCGamepadTopology(
+        return StreamGamepadTopology(
             playerIndices: localTopology.playerIndices + guestIndices,
             hapticPlayerIndices: localTopology.hapticPlayerIndices
         )
@@ -407,7 +407,7 @@ extension NativeNVSTHostViewModel {
         return OPNRemoteCoOpAblyChannel(
             token: token,
             channelName: channel,
-            logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.hosted_signaling", level: .warning, message: message) }
+            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.hosted_signaling", level: .warning, message: message) }
         )
     }
 
@@ -442,7 +442,7 @@ extension NativeNVSTHostViewModel {
             inviteProvider: { [remoteCoOpHostSession] in await remoteCoOpHostSession.greetingInvite() },
             participantOwnership: remoteCoOpHostSession.participantOwnership,
             networkConfiguration: remoteCoOpNetworkConfiguration,
-            logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.native_server", level: .info, message: message) }
+            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.native_server", level: .info, message: message) }
         )
         nativeServer.start()
         remoteCoOpNativeServer = nativeServer
@@ -458,7 +458,7 @@ extension NativeNVSTHostViewModel {
                 // hosted guest is handed no ICE servers at all and cannot connect from a network
                 // that blocks a direct route.
                 networkConfiguration: remoteCoOpNetworkConfiguration,
-                logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.hosted_signaling", level: .info, message: message) }
+                logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.hosted_signaling", level: .info, message: message) }
             )
             sessions.append(hosted)
         }
@@ -495,7 +495,7 @@ extension NativeNVSTHostViewModel {
                     // against signaling that is not carrying anything.
                     remoteCoOpMessage = reason
                     showNativeTransientStreamMessage("Remote Co-Op: \(reason)")
-                    WebRTCMediaTelemetry.capture("nvst.remote_coop.signaling.error", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
+                    OPNStreamTelemetry.capture("nvst.remote_coop.signaling.error", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
                 case .guestInput:
                     // Input stops here, and that is the whole point.
                     //
@@ -549,13 +549,13 @@ extension NativeNVSTHostViewModel {
                 sessionQualityPreset: preferences.qualityPreset
             ),
             credentials: OPNRemoteCoOpTURNKeyStore.load(),
-            logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.relay", level: .info, message: message) }
+            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.relay", level: .info, message: message) }
         )
         let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
             preferences: preferences,
             networkConfiguration: remoteCoOpNetworkConfiguration,
             participantOwnership: remoteCoOpHostSession.participantOwnership,
-            logger: { message in WebRTCMediaTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
+            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
         )
         // Generated here rather than inside `startInvite`, because the hosted channel is named
         // after it and the host must be subscribed before the invite naming it is handed out.
@@ -679,7 +679,7 @@ extension NativeNVSTHostViewModel {
             await refreshRemoteCoOpDeliveryStats()
         } catch {
             remoteCoOpMessage = Self.message(for: error)
-            WebRTCMediaTelemetry.capture("nvst.remote_coop.peer_sync.failed", level: .warning, message: remoteCoOpMessage, attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("nvst.remote_coop.peer_sync.failed", level: .warning, message: remoteCoOpMessage, attributes: ["applicationID": configuration.applicationID])
             throw error
         }
     }

@@ -98,7 +98,7 @@ extension NativeNVSTHostViewModel {
         let clamped = min(max(percent, ControllerRumblePreference.range.lowerBound), ControllerRumblePreference.range.upperBound)
         rumbleIntensityPercent = clamped
         ControllerRumblePreference.saveIntensityPercent(clamped)
-        WebRTCMediaTelemetry.capture("nvst.ui.rumble.intensity", level: .info, message: "Rumble intensity changed.", attributes: ["applicationID": configuration.applicationID, "percent": String(clamped)])
+        OPNStreamTelemetry.capture("nvst.ui.rumble.intensity", level: .info, message: "Rumble intensity changed.", attributes: ["applicationID": configuration.applicationID, "percent": String(clamped)])
     }
 
     /// Controller/keyboard step through the HUD row: +25% per press, wrapping to off.
@@ -114,7 +114,7 @@ extension NativeNVSTHostViewModel {
         mouseSensitivityPercent = clamped
         OPNStreamPreferences.saveMouseSensitivityPercent(clamped)
         nativeView?.mouseSensitivity = Double(clamped) / 100
-        WebRTCMediaTelemetry.capture("nvst.ui.mouse.sensitivity", level: .info, message: "Native NVST mouse sensitivity changed.", attributes: ["applicationID": configuration.applicationID, "percent": String(clamped)])
+        OPNStreamTelemetry.capture("nvst.ui.mouse.sensitivity", level: .info, message: "Native NVST mouse sensitivity changed.", attributes: ["applicationID": configuration.applicationID, "percent": String(clamped)])
     }
 
     /// Controller/keyboard step through the HUD row: +25% per press, wrapping to the minimum.
@@ -177,7 +177,7 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    func handleNativeCommand(_ command: WebRTCMediaStreamCommand) {
+    func handleNativeCommand(_ command: StreamCommand) {
         switch command {
         case .toggleStatsHUD:
             toggleNativeStatsHUD()
@@ -202,7 +202,7 @@ extension NativeNVSTHostViewModel {
     func toggleOnScreenKeyboard() {
         guard isConnected, !isEnding, !didEnd, !streamControlsVisible else { return }
         setOnScreenKeyboardVisible(!onScreenKeyboardVisible)
-        WebRTCMediaTelemetry.capture("nvst.ui.osk.toggle", level: .info, message: onScreenKeyboardVisible ? "On-screen keyboard shown." : "On-screen keyboard hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(onScreenKeyboardVisible)])
+        OPNStreamTelemetry.capture("nvst.ui.osk.toggle", level: .info, message: onScreenKeyboardVisible ? "On-screen keyboard shown." : "On-screen keyboard hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(onScreenKeyboardVisible)])
     }
 
     func setOnScreenKeyboardVisible(_ visible: Bool) {
@@ -273,14 +273,14 @@ extension NativeNVSTHostViewModel {
                     microphoneEnabled = target
                     let enabledMessage = microphoneMode == "voice-activity" ? "Voice Activity On" : "Microphone On"
                     showNativeTransientStreamMessage(target ? enabledMessage : "Microphone Muted")
-                    WebRTCMediaTelemetry.capture("nvst.ui.microphone.update", level: .info, message: target ? "Native NVST microphone enabled." : "Native NVST microphone muted.", attributes: ["applicationID": configuration.applicationID, "enabled": String(target), "source": source])
+                    OPNStreamTelemetry.capture("nvst.ui.microphone.update", level: .info, message: target ? "Native NVST microphone enabled." : "Native NVST microphone muted.", attributes: ["applicationID": configuration.applicationID, "enabled": String(target), "source": source])
                 } catch {
                     guard !Task.isCancelled, !didEnd else { return }
                     microphoneDesiredEnabled = microphoneEnabled
                     microphonePendingStates.removeAll()
                     let message = Self.message(for: error)
                     showNativeTransientStreamMessage(message)
-                    WebRTCMediaTelemetry.capture("nvst.ui.microphone.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID, "source": source])
+                    OPNStreamTelemetry.capture("nvst.ui.microphone.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID, "source": source])
                 }
             }
         }
@@ -310,7 +310,7 @@ extension NativeNVSTHostViewModel {
         OPNStreamPreferences.saveAntiAFKMouseMovementEnabled(antiAFKMouseMovementEnabled)
         refreshAntiAFKMouseMovementTask()
         showNativeTransientStreamMessage(antiAFKMouseMovementEnabled ? "Anti-AFK On" : "Anti-AFK Off")
-        WebRTCMediaTelemetry.capture("nvst.ui.anti_afk.toggle", level: .info, message: antiAFKMouseMovementEnabled ? "Native NVST Anti-AFK mouse movement enabled." : "Native NVST Anti-AFK mouse movement disabled.", attributes: ["applicationID": configuration.applicationID, "enabled": String(antiAFKMouseMovementEnabled)])
+        OPNStreamTelemetry.capture("nvst.ui.anti_afk.toggle", level: .info, message: antiAFKMouseMovementEnabled ? "Native NVST Anti-AFK mouse movement enabled." : "Native NVST Anti-AFK mouse movement disabled.", attributes: ["applicationID": configuration.applicationID, "enabled": String(antiAFKMouseMovementEnabled)])
     }
 
     func refreshAntiAFKMouseMovementTask() {
@@ -387,7 +387,7 @@ extension NativeNVSTHostViewModel {
         recordingStatusResetTask = nil
     }
 
-    func showStreamControls(completion: WebRTCMediaStreamQuitDecisionHandler? = nil) {
+    func showStreamControls(completion: StreamSessionQuitDecisionHandler? = nil) {
         guard isConnected else {
             let pendingStartTask = startTask
             let pendingPath = path
@@ -410,7 +410,7 @@ extension NativeNVSTHostViewModel {
         nativeView?.remoteInputEnabled = false
         nativeView?.setNativeNVSTVideoVisible(isConnected)
         streamControlsVisible = true
-        WebRTCMediaTelemetry.capture("nvst.ui.controls.show", level: .info, message: "Native NVST stream controls shown.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("nvst.ui.controls.show", level: .info, message: "Native NVST stream controls shown.", attributes: ["applicationID": configuration.applicationID])
     }
 
     func dismissStreamControls() {
@@ -423,7 +423,7 @@ extension NativeNVSTHostViewModel {
         nativeView?.setNativeNVSTVideoVisible(isConnected)
         nativeView?.restoreInputFocus()
         completion?(false)
-        WebRTCMediaTelemetry.capture("nvst.ui.controls.dismiss", level: .info, message: "Native NVST stream controls dismissed.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("nvst.ui.controls.dismiss", level: .info, message: "Native NVST stream controls dismissed.", attributes: ["applicationID": configuration.applicationID])
     }
 
     func setUnifiedHUDVisible(_ visible: Bool) {
@@ -457,7 +457,7 @@ extension NativeNVSTHostViewModel {
                 nativeView?.setManualPointerCapture(true)
             }
         }
-        WebRTCMediaTelemetry.capture("nvst.ui.hud.toggle", level: .info, message: visible ? "Native NVST HUD shown." : "Native NVST HUD hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(visible)])
+        OPNStreamTelemetry.capture("nvst.ui.hud.toggle", level: .info, message: visible ? "Native NVST HUD shown." : "Native NVST HUD hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(visible)])
     }
 
     func toggleNativePointerLock() {
@@ -476,7 +476,7 @@ extension NativeNVSTHostViewModel {
     func toggleNativeStatsHUD() {
         guard isConnected, !isEnding, !didEnd else { return }
         nativeStatsVisible.toggle()
-        WebRTCMediaTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "OpenNOW NVST stats shown." : "OpenNOW NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
+        OPNStreamTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "OpenNOW NVST stats shown." : "OpenNOW NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
     }
 
     /// The window owns the transition: nothing here touches the style mask, collection behaviour,
@@ -490,7 +490,7 @@ extension NativeNVSTHostViewModel {
         let willEnterFullScreen = !window.styleMask.contains(.fullScreen)
         window.toggleFullScreen(nil)
         showNativeTransientStreamMessage(willEnterFullScreen ? "Entering full screen" : "Leaving full screen")
-        WebRTCMediaTelemetry.capture("nvst.ui.fullscreen.toggle", level: .info, message: willEnterFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.", attributes: ["applicationID": configuration.applicationID, "fullScreen": String(willEnterFullScreen)])
+        OPNStreamTelemetry.capture("nvst.ui.fullscreen.toggle", level: .info, message: willEnterFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.", attributes: ["applicationID": configuration.applicationID, "fullScreen": String(willEnterFullScreen)])
     }
 
     /// The window is only reachable once the view is in a hierarchy and the aspect coordinator has
@@ -506,7 +506,7 @@ extension NativeNVSTHostViewModel {
                 guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { continue }
                 guard !window.styleMask.contains(.fullScreen) else { return }
                 window.toggleFullScreen(nil)
-                WebRTCMediaTelemetry.capture("nvst.ui.fullscreen.sessionReady", level: .info, message: "Native NVST stream entered full screen because the session-ready action requests it.", attributes: ["applicationID": self.configuration.applicationID])
+                OPNStreamTelemetry.capture("nvst.ui.fullscreen.sessionReady", level: .info, message: "Native NVST stream entered full screen because the session-ready action requests it.", attributes: ["applicationID": self.configuration.applicationID])
                 return
             }
         }
@@ -543,7 +543,7 @@ extension NativeNVSTHostViewModel {
                     if failure == .streamStalled, await attemptInPlaceReconnect(path: path, reason: "stall") {
                         continue
                     }
-                    WebRTCMediaTelemetry.capture("nvst.stream.health.failed", level: .error, message: failure.message, attributes: ["applicationID": configuration.applicationID])
+                    OPNStreamTelemetry.capture("nvst.stream.health.failed", level: .error, message: failure.message, attributes: ["applicationID": configuration.applicationID])
                     _ = await finish(reason: .failed, message: failure.message)
                     return
                 }
@@ -558,12 +558,12 @@ extension NativeNVSTHostViewModel {
 
     func recordNativeNetworkTelemetry(_ snapshot: NativeNVSTPerformanceSnapshot) {
         let attributes = ["transport": "nvst", "applicationID": configuration.applicationID]
-        if snapshot.latencyMilliseconds >= 0 { WebRTCMediaTelemetry.record("nvst.network.latency_ms", kind: .gauge, value: snapshot.latencyMilliseconds, unit: "millisecond", attributes: attributes) }
-        if snapshot.jitterMilliseconds >= 0 { WebRTCMediaTelemetry.record("nvst.network.jitter_ms", kind: .gauge, value: snapshot.jitterMilliseconds, unit: "millisecond", attributes: attributes) }
-        if snapshot.bitrateMegabitsPerSecond >= 0 { WebRTCMediaTelemetry.record("nvst.network.bitrate_mbps", kind: .gauge, value: snapshot.bitrateMegabitsPerSecond, unit: "megabit/second", attributes: attributes) }
-        if snapshot.bandwidthUtilizationPercent >= 0 { WebRTCMediaTelemetry.record("nvst.network.bandwidth_utilization_percent", kind: .gauge, value: snapshot.bandwidthUtilizationPercent, unit: "percent", attributes: attributes) }
-        WebRTCMediaTelemetry.record("nvst.network.packet_loss", kind: .gauge, value: Double(snapshot.packetLoss), unit: "packet", attributes: attributes)
-        WebRTCMediaTelemetry.record("nvst.network.frame_loss", kind: .gauge, value: Double(snapshot.frameLoss), unit: "frame", attributes: attributes)
+        if snapshot.latencyMilliseconds >= 0 { OPNStreamTelemetry.record("nvst.network.latency_ms", kind: .gauge, value: snapshot.latencyMilliseconds, unit: "millisecond", attributes: attributes) }
+        if snapshot.jitterMilliseconds >= 0 { OPNStreamTelemetry.record("nvst.network.jitter_ms", kind: .gauge, value: snapshot.jitterMilliseconds, unit: "millisecond", attributes: attributes) }
+        if snapshot.bitrateMegabitsPerSecond >= 0 { OPNStreamTelemetry.record("nvst.network.bitrate_mbps", kind: .gauge, value: snapshot.bitrateMegabitsPerSecond, unit: "megabit/second", attributes: attributes) }
+        if snapshot.bandwidthUtilizationPercent >= 0 { OPNStreamTelemetry.record("nvst.network.bandwidth_utilization_percent", kind: .gauge, value: snapshot.bandwidthUtilizationPercent, unit: "percent", attributes: attributes) }
+        OPNStreamTelemetry.record("nvst.network.packet_loss", kind: .gauge, value: Double(snapshot.packetLoss), unit: "packet", attributes: attributes)
+        OPNStreamTelemetry.record("nvst.network.frame_loss", kind: .gauge, value: Double(snapshot.frameLoss), unit: "frame", attributes: attributes)
     }
 
     func startNetworkPathMonitoring() {
@@ -576,7 +576,7 @@ extension NativeNVSTHostViewModel {
                 if networkPath.isSatisfied {
                     networkPathAvailable = true
                     if isConnected, !unifiedHUDVisible, !streamControlsVisible { nativeView?.remoteInputEnabled = true }
-                    WebRTCMediaTelemetry.capture("nvst.network.path.available", level: .info, message: "Native NVST network path is available.", attributes: ["wifi": String(networkPath.usesWiFi), "ethernet": String(networkPath.usesWiredEthernet), "expensive": String(networkPath.isExpensive), "constrained": String(networkPath.isConstrained)])
+                    OPNStreamTelemetry.capture("nvst.network.path.available", level: .info, message: "Native NVST network path is available.", attributes: ["wifi": String(networkPath.usesWiFi), "ethernet": String(networkPath.usesWiredEthernet), "expensive": String(networkPath.isExpensive), "constrained": String(networkPath.isConstrained)])
                     // The path came back. The seat still sends to the address the old path had, so
                     // a stream that has already gone quiet will not resume on its own: reconnect
                     // now rather than waiting out the stall watchdog.
@@ -594,7 +594,7 @@ extension NativeNVSTHostViewModel {
                     networkPathAvailable = false
                     nativeView?.remoteInputEnabled = false
                     showNativeTransientStreamMessage("Network interrupted - waiting to reconnect", duration: .seconds(30))
-                    WebRTCMediaTelemetry.capture("nvst.network.path.unavailable", level: .warning, message: "Native NVST network path is unavailable.")
+                    OPNStreamTelemetry.capture("nvst.network.path.unavailable", level: .warning, message: "Native NVST network path is unavailable.")
                 }
             }
         }
@@ -608,11 +608,11 @@ extension NativeNVSTHostViewModel {
         isReconnecting = true
         nativeView?.remoteInputEnabled = false
         showNativeTransientStreamMessage("Connection lost - reconnecting…", duration: .seconds(60))
-        WebRTCMediaTelemetry.capture("nvst.stream.reconnect.start", level: .warning, message: "Native NVST reconnecting in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
+        OPNStreamTelemetry.capture("nvst.stream.reconnect.start", level: .warning, message: "Native NVST reconnecting in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
         let recovered = await path.recoverInPlace(reason: reason)
         isReconnecting = false
         guard recovered, !didEnd, !isEnding else {
-            WebRTCMediaTelemetry.capture("nvst.stream.reconnect.failed", level: .error, message: "Native NVST could not reconnect in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
+            OPNStreamTelemetry.capture("nvst.stream.reconnect.failed", level: .error, message: "Native NVST could not reconnect in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
             return false
         }
         // A fresh transport: the watchdog starts over, the mic gate is re-applied (the new bundle
@@ -621,7 +621,7 @@ extension NativeNVSTHostViewModel {
         try? await path.setMicrophoneEnabled(microphoneEnabled)
         if isConnected, !unifiedHUDVisible, !streamControlsVisible { nativeView?.remoteInputEnabled = networkPathAvailable }
         showNativeTransientStreamMessage("Reconnected")
-        WebRTCMediaTelemetry.capture("nvst.stream.reconnect.succeeded", level: .info, message: "Native NVST reconnected in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
+        OPNStreamTelemetry.capture("nvst.stream.reconnect.succeeded", level: .info, message: "Native NVST reconnected in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])
         return true
     }
 
@@ -632,9 +632,9 @@ extension NativeNVSTHostViewModel {
             case .dynamicStreamingMode(let mode): try await path.setDynamicStreamingMode(mode)
             case .l4sEnabled(let enabled): try await path.setL4SEnabled(enabled)
             }
-            WebRTCMediaTelemetry.capture("nvst.network.adjustment", level: .info, message: "Applied native NVST network adjustment.", attributes: ["adjustment": String(describing: adjustment)])
+            OPNStreamTelemetry.capture("nvst.network.adjustment", level: .info, message: "Applied native NVST network adjustment.", attributes: ["adjustment": String(describing: adjustment)])
         } catch {
-            WebRTCMediaTelemetry.capture("nvst.network.adjustment.failed", level: .warning, message: Self.message(for: error), attributes: ["adjustment": String(describing: adjustment)])
+            OPNStreamTelemetry.capture("nvst.network.adjustment.failed", level: .warning, message: Self.message(for: error), attributes: ["adjustment": String(describing: adjustment)])
         }
     }
 
@@ -669,7 +669,7 @@ extension NativeNVSTHostViewModel {
         OPNStreamPreferences.savePillarboxFillModeIndex(mode.rawValue)
         let dim = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).pillarboxFillDim
         nativeView?.setPillarboxFill(mode: mode.rawValue, dim: dim)
-        WebRTCMediaTelemetry.capture("nvst.ui.pillarbox.update", level: .info, message: "Native NVST pillarbox fill changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode.label])
+        OPNStreamTelemetry.capture("nvst.ui.pillarbox.update", level: .info, message: "Native NVST pillarbox fill changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode.label])
     }
 
     /// Selection 0 is "Off"; selection N>0 is MetalFX targeting `upscalingTargetOptions[N-1]`. One
@@ -681,7 +681,7 @@ extension NativeNVSTHostViewModel {
         OPNStreamPreferences.saveUpscalingSettings(mode: value, sharpness: upscalingSharpness, denoise: upscalingDenoise, forGame: configuration.applicationID)
         let targetHeight = OPNStreamPreferences.upscalingTargetOptions[upscalingTargetIndex].height
         nativeView?.setVideoEnhancement(mode: value, sharpness: upscalingSharpness, denoise: upscalingDenoise, targetHeight: targetHeight)
-        WebRTCMediaTelemetry.capture("nvst.ui.upscaling.tier", level: .info, message: "Native NVST upscaling tier changed.", attributes: ["applicationID": configuration.applicationID, "mode": String(value)])
+        OPNStreamTelemetry.capture("nvst.ui.upscaling.tier", level: .info, message: "Native NVST upscaling tier changed.", attributes: ["applicationID": configuration.applicationID, "mode": String(value)])
     }
 
     func updateNativeUpscalingTarget(targetIndex: Int) {
@@ -691,7 +691,7 @@ extension NativeNVSTHostViewModel {
         let targetHeight = OPNStreamPreferences.upscalingTargetOptions[clampedIndex].height
         let mode = OPNStreamPreferences.upscalingModeOptions[upscalingModeIndex].value
         nativeView?.setVideoEnhancement(mode: mode, sharpness: upscalingSharpness, denoise: upscalingDenoise, targetHeight: targetHeight)
-        WebRTCMediaTelemetry.capture("nvst.ui.upscaling.target", level: .info, message: "Native NVST upscaling target changed.", attributes: ["applicationID": configuration.applicationID, "targetHeight": String(targetHeight)])
+        OPNStreamTelemetry.capture("nvst.ui.upscaling.target", level: .info, message: "Native NVST upscaling target changed.", attributes: ["applicationID": configuration.applicationID, "targetHeight": String(targetHeight)])
     }
 
     /// Mirrors `WebRTCMediaStreamSurface.updateVideoEnhancement`'s sharpness/denoise handling for
@@ -703,7 +703,7 @@ extension NativeNVSTHostViewModel {
         let targetHeight = OPNStreamPreferences.upscalingTargetOptions[upscalingTargetIndex].height
         OPNStreamPreferences.saveUpscalingSettings(mode: mode, sharpness: upscalingSharpness, denoise: upscalingDenoise, forGame: configuration.applicationID)
         nativeView?.setVideoEnhancement(mode: mode, sharpness: upscalingSharpness, denoise: upscalingDenoise, targetHeight: targetHeight)
-        WebRTCMediaTelemetry.capture("nvst.ui.upscaling.clarity", level: .info, message: "Native NVST clarity/noise reduction changed.", attributes: ["applicationID": configuration.applicationID, "sharpness": String(upscalingSharpness), "denoise": String(upscalingDenoise)])
+        OPNStreamTelemetry.capture("nvst.ui.upscaling.clarity", level: .info, message: "Native NVST clarity/noise reduction changed.", attributes: ["applicationID": configuration.applicationID, "sharpness": String(upscalingSharpness), "denoise": String(upscalingDenoise)])
     }
 
     static func nativeVideoSurfaceHandle(for view: NativeWebRTCStreamView) -> UInt? {
@@ -716,14 +716,14 @@ extension NativeNVSTHostViewModel {
         var options: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical, .idleSystemSleepDisabled]
         if preventDisplaySleep { options.insert(.idleDisplaySleepDisabled) }
         streamingPerformanceActivity = ProcessInfo.processInfo.beginActivity(options: options, reason: "OpenNOW active native NVST stream")
-        WebRTCMediaTelemetry.capture("nvst.stream.performance_mode.begin", level: .info, message: "Native NVST performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
+        OPNStreamTelemetry.capture("nvst.stream.performance_mode.begin", level: .info, message: "Native NVST performance mode enabled.", attributes: ["applicationID": configuration.applicationID, "preventDisplaySleep": String(preventDisplaySleep)])
     }
 
     func endStreamingPerformanceMode() {
         guard let streamingPerformanceActivity else { return }
         ProcessInfo.processInfo.endActivity(streamingPerformanceActivity)
         self.streamingPerformanceActivity = nil
-        WebRTCMediaTelemetry.capture("nvst.stream.performance_mode.end", level: .info, message: "Native NVST performance mode disabled.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("nvst.stream.performance_mode.end", level: .info, message: "Native NVST performance mode disabled.", attributes: ["applicationID": configuration.applicationID])
     }
 
     static func message(for error: Error) -> String {

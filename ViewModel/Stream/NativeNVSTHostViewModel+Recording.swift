@@ -42,18 +42,18 @@ extension NativeNVSTHostViewModel {
         guard let path else { return }
         if recordingCanStop {
             Task { await path.stopRecording() }
-            WebRTCMediaTelemetry.capture("nvst.ui.recording.stop", level: .info, message: "Native NVST recording stop requested.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("nvst.ui.recording.stop", level: .info, message: "Native NVST recording stop requested.", attributes: ["applicationID": configuration.applicationID])
             return
         }
         guard !recordingIsBusy else { return }
         guard isConnected, !isEnding, !didEnd else { return }
         guard let settings = resolvedStreamSettings else {
             showNativeTransientStreamMessage("Recording unavailable")
-            WebRTCMediaTelemetry.capture("nvst.ui.recording.start.unavailable", level: .warning, message: "Native NVST recording requested before the stream settings were resolved.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("nvst.ui.recording.start.unavailable", level: .warning, message: "Native NVST recording requested before the stream settings were resolved.", attributes: ["applicationID": configuration.applicationID])
             return
         }
         let size = Self.recordingResolution(settings.resolution)
-        let recordingConfiguration = WebRTCStreamRecordingConfiguration(
+        let recordingConfiguration = StreamRecordingConfiguration(
             title: configuration.title,
             applicationID: configuration.applicationID,
             width: size.width,
@@ -75,7 +75,7 @@ extension NativeNVSTHostViewModel {
             self.handleRecordingStatusChanged(.failed("Recording could not start: the stream ended."))
         }
         showNativeTransientStreamMessage("Recording")
-        WebRTCMediaTelemetry.capture("nvst.ui.recording.start", level: .info, message: "Native NVST recording start requested.", attributes: ["applicationID": configuration.applicationID])
+        OPNStreamTelemetry.capture("nvst.ui.recording.start", level: .info, message: "Native NVST recording start requested.", attributes: ["applicationID": configuration.applicationID])
     }
 
     /// Only a fallback: the writer takes the real dimensions from the first decoded frame, so this
@@ -85,17 +85,17 @@ extension NativeNVSTHostViewModel {
         return (max(1, parts.first ?? 1920), max(1, parts.count > 1 ? parts[1] : 1080))
     }
 
-    func handleRecordingStatusChanged(_ status: WebRTCStreamRecordingStatus) {
+    func handleRecordingStatusChanged(_ status: StreamRecordingStatus) {
         recordingStatus = status
         recordingStatusResetTask?.cancel()
         recordingStatusResetTask = nil
         switch status {
         case .finished(let recording):
             showNativeTransientStreamMessage("Recording Saved")
-            WebRTCMediaTelemetry.capture("nvst.ui.recording.finished", level: .info, message: "Native NVST recording saved.", attributes: ["applicationID": configuration.applicationID, "durationSeconds": String(format: "%.1f", recording.durationSeconds), "resolution": "\(recording.width)x\(recording.height)"])
+            OPNStreamTelemetry.capture("nvst.ui.recording.finished", level: .info, message: "Native NVST recording saved.", attributes: ["applicationID": configuration.applicationID, "durationSeconds": String(format: "%.1f", recording.durationSeconds), "resolution": "\(recording.width)x\(recording.height)"])
         case .failed(let message):
             showNativeTransientStreamMessage("Recording Failed")
-            WebRTCMediaTelemetry.capture("nvst.ui.recording.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("nvst.ui.recording.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID])
         case .idle, .starting, .recording, .finishing:
             break
         }

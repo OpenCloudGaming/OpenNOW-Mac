@@ -8,8 +8,8 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-@Suite("WebRTCStreamRecordingSettings")
-struct WebRTCStreamRecordingSettingsTests {
+@Suite("StreamRecordingSettings")
+struct StreamRecordingSettingsTests {
     @Test("the writer keeps the decoder's pixel format and picks a codec that can encode it")
     func writerKeepsDecoderPixelFormatAndPicksEncodableCodec() throws {
         let nv12 = try #require(Self.makeNV12Frame(width: 16, height: 16))
@@ -29,7 +29,7 @@ struct WebRTCStreamRecordingSettingsTests {
     func automaticBitrateIsCappedAtHighResolutions() {
         let recorder = WebRTCStreamRecorder()
         func automaticBitrate(width: Int, height: Int, fps: Int) -> Int {
-            let configuration = WebRTCStreamRecordingConfiguration(
+            let configuration = StreamRecordingConfiguration(
                 title: "Bitrate Regression",
                 applicationID: "100",
                 width: width,
@@ -47,7 +47,7 @@ struct WebRTCStreamRecordingSettingsTests {
         #expect(automaticBitrate(width: 1920, height: 1080, fps: 60) == 1920 * 1080 * 60 / 8)
         #expect(automaticBitrate(width: 5120, height: 2160, fps: 120) == WebRTCStreamRecorder.automaticVideoBitrateCeiling)
         // An explicit setting is the user's call and stays uncapped.
-        let explicit = WebRTCStreamRecordingConfiguration(
+        let explicit = StreamRecordingConfiguration(
             title: "Bitrate Regression",
             applicationID: "100",
             width: 5120,

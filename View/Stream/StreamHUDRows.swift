@@ -8,7 +8,7 @@ struct StreamHUDMetricCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Circle().fill(isPositive ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning).frame(width: 6, height: 6)
+                Circle().fill(isPositive ? StreamHUDTheme.accent : StreamHUDTheme.warning).frame(width: 6, height: 6)
                 Text(title.uppercased())
                     .font(.streamFont(size: 9, weight: .bold))
                     .tracking(0.7)
@@ -23,7 +23,7 @@ struct StreamHUDMetricCard: View {
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
         .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
     }
 }
 
@@ -42,10 +42,10 @@ struct StreamHUDControllerRow: View {
     /// Charging reads as a positive state (accent soft); low and critical use the same warning and
     /// danger tokens the rest of the HUD uses for those conditions.
     private var gaugeColor: Color {
-        if isCharging { return WebRTCMediaStreamTheme.accentSoft }
-        if isCritical { return WebRTCMediaStreamTheme.danger }
-        if isLow { return WebRTCMediaStreamTheme.warning }
-        return WebRTCMediaStreamTheme.accent
+        if isCharging { return StreamHUDTheme.accentSoft }
+        if isCritical { return StreamHUDTheme.danger }
+        if isLow { return StreamHUDTheme.warning }
+        return StreamHUDTheme.accent
     }
 
     var body: some View {
@@ -58,10 +58,10 @@ struct StreamHUDControllerRow: View {
                 Text(label.uppercased())
                     .font(.streamFont(size: 9, weight: .bold))
                     .tracking(0.7)
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
                 Text(name)
                     .font(.streamFont(size: 11, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -69,14 +69,14 @@ struct StreamHUDControllerRow: View {
             batteryGauge
             Text(level >= 0 ? "\(level)%" : "—")
                 .font(.streamFont(size: 11, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .foregroundStyle(StreamHUDTheme.textPrimary)
                 .frame(width: 34, alignment: .trailing)
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1) }
+        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label) \(name), battery \(level >= 0 ? "\(level) percent" : "unknown")\(isCharging ? ", charging" : "")")
     }
@@ -88,7 +88,7 @@ struct StreamHUDControllerRow: View {
         return HStack(spacing: 1) {
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .stroke(WebRTCMediaStreamTheme.textTertiary, lineWidth: 1)
+                    .stroke(StreamHUDTheme.textTertiary, lineWidth: 1)
                     .frame(width: 26, height: 11)
                 Rectangle()
                     .fill(gaugeColor)
@@ -97,12 +97,12 @@ struct StreamHUDControllerRow: View {
                 if isCharging {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 7, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.panel)
+                        .foregroundStyle(StreamHUDTheme.panel)
                         .frame(width: 26, height: 11)
                 }
             }
             Rectangle()
-                .fill(WebRTCMediaStreamTheme.textTertiary)
+                .fill(StreamHUDTheme.textTertiary)
                 .frame(width: 2, height: 5)
         }
     }
@@ -116,7 +116,7 @@ extension View {
         padding(4)
             .overlay {
                 if isFocused {
-                    Rectangle().stroke(WebRTCMediaStreamTheme.accent, lineWidth: 2)
+                    Rectangle().stroke(StreamHUDTheme.accent, lineWidth: 2)
                 }
             }
     }
@@ -138,11 +138,11 @@ struct StreamHUDSliderRow: View {
             HStack(spacing: 12) {
                 Text(label)
                     .font(.streamFont(size: 11, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
                 Spacer(minLength: 8)
                 Text(String(value))
                     .font(.streamFont(size: 11, weight: .bold))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
                     .frame(minWidth: 28, alignment: .trailing)
             }
             Slider(
@@ -150,7 +150,7 @@ struct StreamHUDSliderRow: View {
                 in: Double(range.lowerBound)...Double(range.upperBound),
                 step: Double(step)
             )
-            .tint(WebRTCMediaStreamTheme.accent)
+            .tint(StreamHUDTheme.accent)
             .disabled(isDisabled)
         }
         .hudFocusRing(isFocused)
@@ -177,7 +177,7 @@ struct StreamHUDSegmentedRow<Value: Hashable>: View {
         HStack(spacing: 12) {
             Text(label)
                 .font(.streamFont(size: 11, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
             Spacer(minLength: 8)
             HStack(spacing: 6) {
                 ForEach(options, id: \.value) { option in
@@ -208,14 +208,14 @@ private struct StreamHUDSegmentedChip: View {
         Button(action: action) {
             Text(title)
                 .font(.streamFont(size: 11, weight: .bold))
-                .foregroundStyle(isSelected ? .black : WebRTCMediaStreamTheme.textPrimary)
+                .foregroundStyle(isSelected ? .black : StreamHUDTheme.textPrimary)
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(height: 26)
                 .background(chipBackground)
                 .overlay {
                     Rectangle()
-                        .stroke(isSelected ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.divider, lineWidth: 1)
+                        .stroke(isSelected ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -224,7 +224,7 @@ private struct StreamHUDSegmentedChip: View {
     }
 
     private var chipBackground: Color {
-        if isSelected { return WebRTCMediaStreamTheme.accent }
+        if isSelected { return StreamHUDTheme.accent }
         return Color.white.opacity(isHovering ? 0.14 : 0.075)
     }
 }

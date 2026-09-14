@@ -33,7 +33,7 @@ struct NativeNVSTStatsPanel: View {
         let label: String
         let value: String
         var detail: String?
-        var color: Color = WebRTCMediaStreamTheme.textPrimary
+        var color: Color = StreamHUDTheme.textPrimary
         var id: String { label }
     }
 
@@ -61,10 +61,10 @@ struct NativeNVSTStatsPanel: View {
             }
         }
         .frame(width: Self.width, alignment: .topLeading)
-        .background(WebRTCMediaStreamTheme.panel.opacity(0.94))
+        .background(StreamHUDTheme.panel.opacity(0.94))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(WebRTCMediaStreamTheme.accent)
+                .fill(StreamHUDTheme.accent)
                 .frame(height: 2)
         }
         .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
@@ -78,21 +78,21 @@ struct NativeNVSTStatsPanel: View {
             Text("STREAM STATS")
                 .font(.streamFont(size: 9, weight: .bold))
                 .tracking(1.4)
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .foregroundStyle(StreamHUDTheme.textSecondary)
             Spacer(minLength: 6)
             Text(transport)
                 .font(.streamFont(size: 9, weight: .bold))
                 .tracking(1.1)
-                .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                .foregroundStyle(StreamHUDTheme.accent)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(WebRTCMediaStreamTheme.accent.opacity(0.14))
-                .overlay(Rectangle().stroke(WebRTCMediaStreamTheme.accent.opacity(0.5), lineWidth: 1))
+                .background(StreamHUDTheme.accent.opacity(0.14))
+                .overlay(Rectangle().stroke(StreamHUDTheme.accent.opacity(0.5), lineWidth: 1))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(WebRTCMediaStreamTheme.appBar)
+        .background(StreamHUDTheme.appBar)
     }
 
     private var heroRow: some View {
@@ -126,7 +126,7 @@ struct NativeNVSTStatsPanel: View {
             Text(hero.label)
                 .font(.streamFont(size: 9, weight: .bold))
                 .tracking(0.9)
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .foregroundStyle(StreamHUDTheme.textSecondary)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -145,9 +145,9 @@ struct NativeNVSTStatsPanel: View {
                 Text(group.label)
                     .font(.streamFont(size: 9, weight: .bold))
                     .tracking(1.2)
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
                 Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
+                    .fill(StreamHUDTheme.divider)
                     .frame(height: 1)
             }
             VStack(alignment: .leading, spacing: 4) {
@@ -191,7 +191,7 @@ struct NativeNVSTStatsPanel: View {
     private func rowLabel(_ label: String) -> some View {
         Text(label)
             .font(.streamFont(size: 10, weight: .medium))
-            .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+            .foregroundStyle(StreamHUDTheme.textSecondary)
             .lineLimit(1)
     }
 
@@ -205,7 +205,7 @@ struct NativeNVSTStatsPanel: View {
     private func rowDetail(_ detail: String) -> some View {
         Text(detail)
             .font(.streamFont(size: 9, weight: .medium))
-            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            .foregroundStyle(StreamHUDTheme.textTertiary)
     }
 }
 
@@ -219,7 +219,7 @@ extension NativeNVSTMediaStreamSurface {
             transport: "NATIVE NVST",
             heroes: [
                 NativeNVSTStatsPanel.Hero(label: "GAME", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.gameFramesPerSecond), unit: "fps", color: nativeGameFPSColor(target: streamFramesPerSecond)),
-                NativeNVSTStatsPanel.Hero(label: "STREAM", value: nativeStatsWholeNumber(streamFramesPerSecond), unit: "fps", color: WebRTCMediaStreamTheme.textPrimary),
+                NativeNVSTStatsPanel.Hero(label: "STREAM", value: nativeStatsWholeNumber(streamFramesPerSecond), unit: "fps", color: StreamHUDTheme.textPrimary),
                 NativeNVSTStatsPanel.Hero(label: "LATENCY", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.latencyMilliseconds), unit: "ms", color: nativeLatencyColor),
             ],
             groups: [
@@ -287,11 +287,11 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeDecodeBudgetColor: Color {
-        guard let stats = model.latestNativeStats else { return WebRTCMediaStreamTheme.textPrimary }
+        guard let stats = model.latestNativeStats else { return StreamHUDTheme.textPrimary }
         switch NativeNVSTDecodeBudget.level(for: stats) {
-        case .over: return WebRTCMediaStreamTheme.danger
-        case .tight: return WebRTCMediaStreamTheme.warning
-        case .comfortable, .unknown: return WebRTCMediaStreamTheme.textPrimary
+        case .over: return StreamHUDTheme.danger
+        case .tight: return StreamHUDTheme.warning
+        case .comfortable, .unknown: return StreamHUDTheme.textPrimary
         }
     }
 
@@ -310,9 +310,9 @@ extension NativeNVSTMediaStreamSurface {
         guard let stats = model.latestNativeStats, stats.audioChannelCount > 0,
               stats.requestedAudioChannelCount > 0,
               stats.requestedAudioChannelCount != stats.audioChannelCount else {
-            return WebRTCMediaStreamTheme.textPrimary
+            return StreamHUDTheme.textPrimary
         }
-        return WebRTCMediaStreamTheme.warning
+        return StreamHUDTheme.warning
     }
 
     /// Video lead/lag estimate: (decode + present) − audio jitter-buffer dwell. Positive means the
@@ -397,8 +397,8 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeStatsColourColor: Color {
-        guard let render = model.latestRenderDiagnostics else { return WebRTCMediaStreamTheme.textPrimary }
-        return render.isHDR || render.outputFormat == "bgr10a2" ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.textPrimary
+        guard let render = model.latestRenderDiagnostics else { return StreamHUDTheme.textPrimary }
+        return render.isHDR || render.outputFormat == "bgr10a2" ? StreamHUDTheme.accent : StreamHUDTheme.textPrimary
     }
 
     /// The active render tier and how many frames the display loop skipped.
@@ -414,25 +414,25 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     func nativeGameFPSColor(target: Double) -> Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.gameFramesPerSecond >= 0 else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestNativeStats.gameFramesPerSecond >= max(1, target * 0.9) ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.gameFramesPerSecond >= 0 else { return StreamHUDTheme.textTertiary }
+        return latestNativeStats.gameFramesPerSecond >= max(1, target * 0.9) ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
     var nativeLatencyColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.latencyMilliseconds >= 0 else { return WebRTCMediaStreamTheme.textTertiary }
-        if latestNativeStats.latencyMilliseconds >= 120 { return WebRTCMediaStreamTheme.danger }
-        if latestNativeStats.latencyMilliseconds >= 90 { return WebRTCMediaStreamTheme.warning }
-        return WebRTCMediaStreamTheme.accent
+        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.latencyMilliseconds >= 0 else { return StreamHUDTheme.textTertiary }
+        if latestNativeStats.latencyMilliseconds >= 120 { return StreamHUDTheme.danger }
+        if latestNativeStats.latencyMilliseconds >= 90 { return StreamHUDTheme.warning }
+        return StreamHUDTheme.accent
     }
 
     var nativeFrameLossColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestNativeStats.frameLoss == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return StreamHUDTheme.textTertiary }
+        return latestNativeStats.frameLoss == 0 ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
     var nativePacketLossColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestNativeStats.packetLossPercent <= 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return StreamHUDTheme.textTertiary }
+        return latestNativeStats.packetLossPercent <= 0 ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
     func nativeStatsWholeNumber(_ value: Double?) -> String {

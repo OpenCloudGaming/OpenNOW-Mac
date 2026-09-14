@@ -279,7 +279,7 @@ extension NvstBifrostFreeTransport {
     /// Callers are expected to have already sent a neutral state for any pad they are dropping —
     /// once it is out of the bitmap the seat will not accept one, and the game keeps whatever was
     /// held down at the moment it vanished.
-    public func updateGamepadTopology(_ topology: NativeWebRTCGamepadTopology) async throws {
+    public func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws {
         // The requested set is recorded before the readiness check, and this ordering is
         // load-bearing.
         //

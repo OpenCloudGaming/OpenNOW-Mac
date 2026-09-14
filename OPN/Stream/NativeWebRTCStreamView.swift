@@ -26,7 +26,7 @@ final class NativeNVSTRendererWindow: NSWindow {
     override var canBecomeMain: Bool { false }
 }
 
-public enum WebRTCMediaStreamCommand: Equatable, Sendable {
+public enum StreamCommand: Equatable, Sendable {
     case toggleStatsHUD
     case toggleUnifiedHUD
     case toggleMicrophone
@@ -38,7 +38,7 @@ public enum WebRTCMediaStreamCommand: Equatable, Sendable {
 
     static let shortcutGuide = "⌘G HUD   ⌘N Stats   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘P Capture   ⌘Q Quit"
 
-    static func shortcutCommand(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> WebRTCMediaStreamCommand? {
+    static func shortcutCommand(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> StreamCommand? {
         let modifiers = modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
         guard modifiers == .command else { return nil }
         switch keyCode {
@@ -157,13 +157,13 @@ final class NativeNVSTPushToTalkState {
 public final class NativeWebRTCStreamView: NSView {
     public var onInputEvent: ((UserInputEvent) -> Void)?
     public var onAbsoluteMouseMove: ((NativeNVSTAbsoluteMouseEvent) -> Void)?
-    public var onGamepadTopologyChanged: ((NativeWebRTCGamepadTopology) -> Void)?
+    public var onGamepadTopologyChanged: ((StreamGamepadTopology) -> Void)?
     /// Fires whenever the mode input actually travels in changes — mode switches and pointer-lock
     /// changes both, because a manual capture sends relative deltas from an absolute mode.
     public var onMouseInputModeChanged: ((NativeStreamMouseInputMode) -> Void)?
     public var onPointerLockChanged: ((Bool) -> Void)?
-    public var onCommand: ((WebRTCMediaStreamCommand) -> Void)?
-    public var shouldHandleCommand: ((WebRTCMediaStreamCommand) -> Bool)?
+    public var onCommand: ((StreamCommand) -> Void)?
+    public var shouldHandleCommand: ((StreamCommand) -> Bool)?
     /// Gamepad states delivered while `remoteInputEnabled` is false, for local
     /// overlay navigation (unified HUD, quit menu).
     public var onLocalGamepadState: ((GamepadState) -> Void)?
@@ -543,7 +543,7 @@ public final class NativeWebRTCStreamView: NSView {
     }
 
 
-    public var gamepadTopology: NativeWebRTCGamepadTopology {
+    public var gamepadTopology: StreamGamepadTopology {
         gamepadMonitor.topology
     }
 

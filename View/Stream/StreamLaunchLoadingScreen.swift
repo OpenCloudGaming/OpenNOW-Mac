@@ -154,16 +154,16 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         ZStack {
             LinearGradient(
                 stops: [
-                    .init(color: WebRTCMediaStreamTheme.scrim, location: 0),
-                    .init(color: WebRTCMediaStreamTheme.scrim.opacity(0), location: 0.22)
+                    .init(color: StreamHUDTheme.scrim, location: 0),
+                    .init(color: StreamHUDTheme.scrim.opacity(0), location: 0.22)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
             LinearGradient(
                 stops: [
-                    .init(color: WebRTCMediaStreamTheme.scrim.opacity(0), location: 0.66),
-                    .init(color: WebRTCMediaStreamTheme.scrim, location: 1.0)
+                    .init(color: StreamHUDTheme.scrim.opacity(0), location: 0.66),
+                    .init(color: StreamHUDTheme.scrim, location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -246,7 +246,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         if let queued { phrases.append("Position \(queued)") }
         let trailing = phrases.joined(separator: " · ")
         return Text(trailing.isEmpty ? counter : counter + " · ").foregroundStyle(OPNDesign.Text.tertiary)
-            + Text(trailing.uppercased()).foregroundStyle(WebRTCMediaStreamTheme.accentSoft)
+            + Text(trailing.uppercased()).foregroundStyle(StreamHUDTheme.accentSoft)
     }
 
     // MARK: - Step rail
@@ -288,7 +288,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                     .tracking(0.7)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .foregroundStyle(segState == .current ? WebRTCMediaStreamTheme.accentSoft : (segState == .passed ? OPNDesign.Text.tertiary : OPNDesign.Text.muted))
+                    .foregroundStyle(segState == .current ? StreamHUDTheme.accentSoft : (segState == .passed ? OPNDesign.Text.tertiary : OPNDesign.Text.muted))
             }
         }
         .frame(maxWidth: .infinity)
@@ -316,7 +316,7 @@ private struct StreamLaunchStagePlate: View {
             Text(stageWord.uppercased())
                 .font(.catalogText(size: isLarge ? 22 : 16, weight: .bold))
                 .tracking(isLarge ? 4 : 2.6)
-                .foregroundStyle(WebRTCMediaStreamTheme.accentSoft)
+                .foregroundStyle(StreamHUDTheme.accentSoft)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .padding(.horizontal, OPNDesign.Spacing.xLarge)

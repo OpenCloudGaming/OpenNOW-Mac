@@ -48,7 +48,7 @@ private actor CancellableSessionProvider: StreamSessionProvider, StreamSessionSt
     }
 }
 
-private actor RecordingTransport: WebRTCStreamTransport {
+private actor RecordingTransport: StreamTransport {
     private(set) var connectedOffer: StreamOffer?
     private(set) var sentEvents: [UserInputEvent] = []
     private(set) var remoteCandidates: [StreamIceCandidate] = []
@@ -150,13 +150,13 @@ private actor ProgressRecorder {
 }
 
 private actor RecordingStatusRecorder {
-    private(set) var values: [WebRTCStreamRecordingStatus] = []
+    private(set) var values: [StreamRecordingStatus] = []
 
-    func append(_ status: WebRTCStreamRecordingStatus) {
+    func append(_ status: StreamRecordingStatus) {
         values.append(status)
     }
 
-    func terminalStatus() -> WebRTCStreamRecordingStatus? {
+    func terminalStatus() -> StreamRecordingStatus? {
         values.first { $0.isTerminal }
     }
 }
@@ -240,7 +240,7 @@ struct WebRTCMediaSessionTests {
             Task { await statuses.append(status) }
         }
 
-        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
+        recorder.start(configuration: StreamRecordingConfiguration(
             title: "Crash Regression",
             applicationID: "100",
             width: 1280,
@@ -256,7 +256,7 @@ struct WebRTCMediaSessionTests {
         // Up to 10 s, not 1 s: the status hops through `Task { @MainActor }`, and with the whole
         // suite running in parallel the main actor can be busy for far longer than a second. The
         // loop exits the moment the status lands, so a healthy run still finishes immediately.
-        var terminalStatus: WebRTCStreamRecordingStatus?
+        var terminalStatus: StreamRecordingStatus?
         for _ in 0..<200 {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
@@ -267,8 +267,8 @@ struct WebRTCMediaSessionTests {
     }
 }
 
-@Suite("WebRTCStreamingPath")
-struct WebRTCStreamingPathTests {
+@Suite("StreamingPath")
+struct StreamingPathTests {
     @Test("resolves CloudMatch controller settings without virtual HID advertisement")
     func resolvesCloudMatchControllerSettingsWithoutVirtualHIDAdvertisement() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(
@@ -496,7 +496,7 @@ struct WebRTCStreamingPathTests {
         let offer = StreamOffer(session: session, sdp: "offer")
         let provider = RecordingSessionProvider(offer: offer)
         let transport = RecordingTransport()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let path = StreamingPath(sessionProvider: provider, transport: transport)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "100", accessToken: "token", accountLinked: true, selectedStore: "steam")
         let progressRecorder = ProgressRecorder()
 
@@ -519,7 +519,7 @@ struct WebRTCStreamingPathTests {
     func cancelsInFlightStreamStartup() async throws {
         let provider = CancellableSessionProvider()
         let transport = RecordingTransport()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let path = StreamingPath(sessionProvider: provider, transport: transport)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "500", accessToken: "token", accountLinked: true, selectedStore: "steam")
 
         let task = Task { try await path.start(configuration: configuration) }
@@ -544,7 +544,7 @@ struct WebRTCStreamingPathTests {
         let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
         let transport = RecordingTransport()
         let signaling = RecordingSignaling()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let path = StreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "400", accessToken: "token", accountLinked: true, selectedStore: "steam")
         let remoteCandidate = StreamIceCandidate(sdp: "candidate:remote ufrag remoteUfrag", sdpMid: "0", sdpMLineIndex: 0, usernameFragment: "remoteUfrag")
 
@@ -564,7 +564,7 @@ struct WebRTCStreamingPathTests {
         let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
         let transport = RecordingTransport()
         let signaling = RecordingSignaling()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let path = StreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "402", accessToken: "token", accountLinked: true, selectedStore: "steam")
 
         _ = try await path.start(configuration: configuration)
@@ -581,7 +581,7 @@ struct WebRTCStreamingPathTests {
         let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
         let transport = RecordingTransport()
         let signaling = RecordingSignaling()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let path = StreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "401", accessToken: "token", accountLinked: true, selectedStore: "steam")
         let localCandidate = StreamIceCandidate(sdp: "candidate:local", sdpMid: "0", sdpMLineIndex: 0, usernameFragment: "localUfrag")
 
@@ -599,7 +599,7 @@ struct WebRTCStreamingPathTests {
         let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
         let transport = RecordingTransport()
         let signaling = RecordingSignaling()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
+        let path = StreamingPath(sessionProvider: provider, transport: transport, signaling: signaling)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "403", accessToken: "token", accountLinked: true, selectedStore: "steam")
 
         _ = try await path.start(configuration: configuration)
@@ -624,7 +624,7 @@ struct WebRTCStreamingPathTests {
         let offer = StreamOffer(session: session, sdp: "offer", metadata: ["settings": settings])
         let provider = RecordingSessionProvider(offer: offer)
         let transport = RecordingTransport()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let path = StreamingPath(sessionProvider: provider, transport: transport)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "300", accessToken: "token", accountLinked: true, selectedStore: "steam")
 
         let started = try await path.start(configuration: configuration)
@@ -652,7 +652,7 @@ struct WebRTCStreamingPathTests {
         let session = StreamSessionDescriptor(id: "session-2", applicationID: "200", serverAddress: "server", title: "Game")
         let provider = RecordingSessionProvider(offer: StreamOffer(session: session, sdp: "offer"))
         let transport = RecordingTransport()
-        let path = WebRTCStreamingPath(sessionProvider: provider, transport: transport)
+        let path = StreamingPath(sessionProvider: provider, transport: transport)
         let configuration = StreamLaunchConfiguration(title: "Game", applicationID: "200", accessToken: "token", accountLinked: true, selectedStore: "steam")
         let event = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 10, scanCode: 20, isPressed: true, timestamp: MediaTimestamp(nanoseconds: 10)))
 

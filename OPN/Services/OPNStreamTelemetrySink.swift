@@ -1,7 +1,7 @@
 import Foundation
 
-struct OPNWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
-    func capture(_ event: WebRTCMediaTelemetryEvent) {
+struct OPNStreamTelemetrySink: StreamTelemetrySink {
+    func capture(_ event: StreamTelemetryEvent) {
         let suffix = event.attributes.isEmpty ? "" : " " + event.attributes.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " ")
         let level = Self.sentryLevel(for: event)
         // A pre-redacted message is passed through: the attribute suffix is built from key/value
@@ -20,13 +20,13 @@ struct OPNWebRTCMediaTelemetrySink: WebRTCMediaTelemetrySink {
         }
     }
 
-    private static func sentryLevel(for event: WebRTCMediaTelemetryEvent) -> WebRTCMediaTelemetryLevel {
+    private static func sentryLevel(for event: StreamTelemetryEvent) -> StreamTelemetryLevel {
         guard event.level == .error else { return event.level }
         if event.name == "webrtc.path.session_provider.error" { return .warning }
         return event.level
     }
 
-    func record(_ metric: WebRTCMediaTelemetryMetric) {
+    func record(_ metric: StreamTelemetryMetric) {
         let attributes = metric.attributes as [String: Any]
         switch metric.kind {
         case .counter:

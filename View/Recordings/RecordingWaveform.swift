@@ -39,7 +39,7 @@ enum RecordingWaveformLoader {
     /// one clip but not the editor. Without this the `AVAssetReader` kept decoding a forty-minute
     /// audio track after the editor had closed, and the peaks stayed resident for every recording
     /// opened in the life of the process.
-    static func retain(_ recording: WebRTCStreamRecording) {
+    static func retain(_ recording: StreamRecording) {
         _ = interest.retain(recording.id)
         startLoading(recording)
     }
@@ -53,7 +53,7 @@ enum RecordingWaveformLoader {
     }
 
     /// Idempotent: several clips of one recording share a single read.
-    private static func startLoading(_ recording: WebRTCStreamRecording) {
+    private static func startLoading(_ recording: StreamRecording) {
         guard completed[recording.id] == nil, readers[recording.id] == nil else { return }
         let id = recording.id
         let url = recording.videoURL
@@ -132,7 +132,7 @@ enum RecordingWaveformLoader {
 }
 
 struct RecordingWaveformView: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     let startSeconds: Double
     let endSeconds: Double
     let size: CGSize

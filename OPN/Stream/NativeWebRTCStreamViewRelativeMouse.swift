@@ -70,11 +70,11 @@ extension NativeWebRTCStreamView {
         guard rawMouseInputEnabled else { return }
         switch OPNRawMouseHIDMonitor.shared.start() {
         case .started, .alreadyRunning:
-            WebRTCMediaTelemetry.capture("webrtc.input.raw_mouse", level: .info, message: "Reading unaccelerated mouse counts.", attributes: ["raw": "true"])
+            OPNStreamTelemetry.capture("webrtc.input.raw_mouse", level: .info, message: "Reading unaccelerated mouse counts.", attributes: ["raw": "true"])
         case .failed(let reason):
             // Not an error: the stream keeps its mouse, it just keeps the accelerated one. The
             // reason is what tells a player why the setting looks like it did nothing.
-            WebRTCMediaTelemetry.capture("webrtc.input.raw_mouse.unavailable", level: .warning, message: reason.message, attributes: ["reason": reason.rawValue])
+            OPNStreamTelemetry.capture("webrtc.input.raw_mouse.unavailable", level: .warning, message: reason.message, attributes: ["reason": reason.rawValue])
         }
     }
 

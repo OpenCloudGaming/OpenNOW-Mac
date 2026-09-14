@@ -1,21 +1,21 @@
 import Foundation
 
-public enum WebRTCMediaTelemetryLevel: String, Sendable {
+public enum StreamTelemetryLevel: String, Sendable {
     case debug
     case info
     case warning
     case error
 }
 
-public enum WebRTCMediaTelemetryMetricKind: String, Sendable {
+public enum StreamTelemetryMetricKind: String, Sendable {
     case counter
     case gauge
     case distribution
 }
 
-public struct WebRTCMediaTelemetryEvent: Sendable {
+public struct StreamTelemetryEvent: Sendable {
     public let name: String
-    public let level: WebRTCMediaTelemetryLevel
+    public let level: StreamTelemetryLevel
     public let message: String
     public let attributes: [String: String]
     public let timestamp: Date
@@ -26,7 +26,7 @@ public struct WebRTCMediaTelemetryEvent: Sendable {
     public let isRedacted: Bool
 
     public init(name: String,
-                level: WebRTCMediaTelemetryLevel,
+                level: StreamTelemetryLevel,
                 message: String,
                 attributes: [String: String] = [:],
                 timestamp: Date = Date(),
@@ -40,15 +40,15 @@ public struct WebRTCMediaTelemetryEvent: Sendable {
     }
 }
 
-public struct WebRTCMediaTelemetryMetric: Sendable {
+public struct StreamTelemetryMetric: Sendable {
     public let key: String
-    public let kind: WebRTCMediaTelemetryMetricKind
+    public let kind: StreamTelemetryMetricKind
     public let value: Double
     public let unit: String?
     public let attributes: [String: String]
 
     public init(key: String,
-                kind: WebRTCMediaTelemetryMetricKind,
+                kind: StreamTelemetryMetricKind,
                 value: Double,
                 unit: String? = nil,
                 attributes: [String: String] = [:]) {
@@ -60,47 +60,47 @@ public struct WebRTCMediaTelemetryMetric: Sendable {
     }
 }
 
-public protocol WebRTCMediaTelemetrySink: Sendable {
-    func capture(_ event: WebRTCMediaTelemetryEvent)
-    func record(_ metric: WebRTCMediaTelemetryMetric)
+public protocol StreamTelemetrySink: Sendable {
+    func capture(_ event: StreamTelemetryEvent)
+    func record(_ metric: StreamTelemetryMetric)
 }
 
-public extension WebRTCMediaTelemetrySink {
-    func record(_ metric: WebRTCMediaTelemetryMetric) {}
+public extension StreamTelemetrySink {
+    func record(_ metric: StreamTelemetryMetric) {}
 }
 
-public enum WebRTCMediaTelemetry {
+public enum OPNStreamTelemetry {
     static let lock = NSLock()
-    private nonisolated(unsafe) static var sink: (any WebRTCMediaTelemetrySink)?
+    private nonisolated(unsafe) static var sink: (any StreamTelemetrySink)?
 
-    public static func configure(sink: (any WebRTCMediaTelemetrySink)?) {
+    public static func configure(sink: (any StreamTelemetrySink)?) {
         lock.withLock {
             self.sink = sink
         }
     }
 
     public static func capture(_ name: String,
-                               level: WebRTCMediaTelemetryLevel,
+                               level: StreamTelemetryLevel,
                                message: String,
                                attributes: [String: String] = [:],
                                isRedacted: Bool = false) {
-        let event = WebRTCMediaTelemetryEvent(name: name, level: level, message: message, attributes: attributes, isRedacted: isRedacted)
+        let event = StreamTelemetryEvent(name: name, level: level, message: message, attributes: attributes, isRedacted: isRedacted)
         if let sink = currentSink() {
             sink.capture(event)
         } else if level != .debug {
-            NSLog("%@", "[WebRTCMedia][\(level.rawValue)] \(name): \(message)")
+            NSLog("%@", "[Stream][\(level.rawValue)] \(name): \(message)")
         }
     }
 
     public static func record(_ key: String,
-                              kind: WebRTCMediaTelemetryMetricKind,
+                              kind: StreamTelemetryMetricKind,
                               value: Double,
                               unit: String? = nil,
                               attributes: [String: String] = [:]) {
-        currentSink()?.record(WebRTCMediaTelemetryMetric(key: key, kind: kind, value: value, unit: unit, attributes: attributes))
+        currentSink()?.record(StreamTelemetryMetric(key: key, kind: kind, value: value, unit: unit, attributes: attributes))
     }
 
-    private static func currentSink() -> (any WebRTCMediaTelemetrySink)? {
+    private static func currentSink() -> (any StreamTelemetrySink)? {
         lock.withLock { sink }
     }
 }

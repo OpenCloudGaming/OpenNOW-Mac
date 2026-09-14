@@ -67,7 +67,7 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
         }
         self.timer = timer
         timer.resume()
-        WebRTCMediaTelemetry.capture("webrtc.native.stats.polling", level: .debug, message: "Stats polling started.")
+        OPNStreamTelemetry.capture("webrtc.native.stats.polling", level: .debug, message: "Stats polling started.")
     }
 
     @objc func stopPolling() {
@@ -86,7 +86,7 @@ final class OPNLibWebRTCStats: NSObject, @unchecked Sendable {
         let currentBitrateBps = NSNumber(value: max(1, clampedMbps * 7 / 10) * 1_000_000)
         let minBitrateBps = NSNumber(value: max(1, clampedMbps * 35 / 100) * 1_000_000)
         let applied = peerConnection.setBweMinBitrateBps(minBitrateBps, currentBitrateBps: currentBitrateBps, maxBitrateBps: maxBitrateBps)
-        WebRTCMediaTelemetry.capture("webrtc.native.bitrate_limit", level: applied ? .info : .warning, message: applied ? "Runtime bitrate limit applied." : "Runtime bitrate limit was not applied.", attributes: ["mbps": String(clampedMbps), "reason": reason])
+        OPNStreamTelemetry.capture("webrtc.native.bitrate_limit", level: applied ? .info : .warning, message: applied ? "Runtime bitrate limit applied." : "Runtime bitrate limit was not applied.", attributes: ["mbps": String(clampedMbps), "reason": reason])
     }
 
     private static func parse(_ report: RTCStatisticsReport?, reuseResult: [String: Any]?) -> [String: Any]? {

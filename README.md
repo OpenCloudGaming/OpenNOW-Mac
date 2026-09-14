@@ -217,7 +217,7 @@ The root `Package.swift` exposes a testable `OpenNOW` library target over non-ap
 **Focused test runs**
 
 ```sh
-swift test --scratch-path .build/shared --filter WebRTCStreamRecording
+swift test --scratch-path .build/shared --filter StreamRecording
 swift test --scratch-path .build/shared --filter GameServicesTests
 ```
 

@@ -8,7 +8,7 @@ are always plain rectangles.
 Token sources of truth:
 
 - App shell: `View/OPNDesign.swift` (`OPNDesign`), `View/Login/LoginStyles.swift`
-- Stream HUD: `OPN/Stream/WebRTCMediaStreamSurface.swift` (`WebRTCMediaStreamTheme`)
+- Stream HUD: `OPN/Stream/WebRTCMediaStreamSurface.swift` (`StreamHUDTheme`)
 - Typography: `View/Design/OPNUIFont.swift` (`OPNUIFont`)
 
 ## Colors
@@ -16,29 +16,29 @@ Token sources of truth:
 ### Brand
 
 - **Accent** (#75E61A): NVIDIA green, `OPNDesign.accent` /
-  `WebRTCMediaStreamTheme.accent`. Primary actions, active states, focus rings, section
+  `StreamHUDTheme.accent`. Primary actions, active states, focus rings, section
   eyebrows, top edge bars. Never used for large backgrounds.
 - **Destructive** (#FF8980): `OPNDesign.Semantic.destructive`. Destructive menu
   roles, end-stream actions, error accents.
 - **Favorite** (#FF4D94): `OPNDesign.Semantic.favorite`. The favorite toggle only.
   Deliberately not the accent: beside an accent-filled Play button, an accent-filled heart
   reads as a second primary action rather than a state you can switch off.
-- **Accent Soft** (#ABFF5C): `WebRTCMediaStreamTheme.accentSoft`. Status text on the
+- **Accent Soft** (#ABFF5C): `StreamHUDTheme.accentSoft`. Status text on the
   stream launch overlay only.
 
 ### Surfaces
 
 - **App Background** (#191919): `OPNDesign.Surface.app`. Root window background.
-- **App Bar** (#2D2D2D): `Surface.appBar` / `WebRTCMediaStreamTheme.appBar`. Header bands
+- **App Bar** (#2D2D2D): `Surface.appBar` / `StreamHUDTheme.appBar`. Header bands
   on docks, dialogs, and panels.
-- **Panel** (#1C1C1C app, #171717 stream): `Surface.panel` / `WebRTCMediaStreamTheme.panel`.
+- **Panel** (#1C1C1C app, #171717 stream): `Surface.panel` / `StreamHUDTheme.panel`.
   Cards, docks, and dialog bodies.
-- **Panel Raised** (#222222): `Surface.panelRaised` / `WebRTCMediaStreamTheme.surfaceRaised`.
+- **Panel Raised** (#222222): `Surface.panelRaised` / `StreamHUDTheme.surfaceRaised`.
   Nested or elevated panels, gradient stops.
 - **Tile Tray** (#292929): `Surface.tileTray`. Grid/tile containers in the catalog.
 - **Field** (#1F1F1F): `Surface.field`. Input backgrounds on app-shell forms.
 - **Scrim** (#000000 @ 0.58 app, 0.54 stream): `Surface.scrim` /
-  `WebRTCMediaStreamTheme.scrim`. Full-cover dim behind modals and overlays.
+  `StreamHUDTheme.scrim`. Full-cover dim behind modals and overlays.
 - **Deep** (#121312): `Surface.deep`. Full-page backdrops for settings-style flows
   (Settings, Steam Controller test/mapping surfaces).
 - **Overlay** (#171717): `Surface.overlay`. Menu and Show All page backdrops.
@@ -55,7 +55,7 @@ Token sources of truth:
 ### Strokes
 
 - **Stroke Subtle / Divider** (#FFFFFF @ 0.10): `Stroke.subtle` /
-  `WebRTCMediaStreamTheme.divider`. Default 1px borders and divider bars.
+  `StreamHUDTheme.divider`. Default 1px borders and divider bars.
 - **Stroke Regular** (#FFFFFF @ 0.14): `Stroke.regular`. Interactive element borders
   (buttons, fields, pickers).
 - **Stroke Strong** (#FFFFFF @ 0.22): `Stroke.strong`. Emphasized borders, hover states.
@@ -68,10 +68,10 @@ Token sources of truth:
 
 ### Semantic
 
-- **Warning** (#FF9500, system orange): `WebRTCMediaStreamTheme.warning` on the stream HUD,
+- **Warning** (#FF9500, system orange): `StreamHUDTheme.warning` on the stream HUD,
   `OPNDesign.Semantic.warning` on the app shell. Low battery, unsaved edits, degraded
   states, validation messages. The same condition uses the same colour on both surfaces.
-- **Danger** (#FF0000, system red): `WebRTCMediaStreamTheme.danger`. Live badges and
+- **Danger** (#FF0000, system red): `StreamHUDTheme.danger`. Live badges and
   destructive-state indicators. Destructive dialog actions still use the standard
   secondary button style.
 
@@ -502,7 +502,7 @@ pairs for Return/Backspace, matching the physical-keyboard passthrough.
 ### Stream Launch Loading Screen (`StreamLaunchLoadingScreen`)
 
 Full-bleed black surface: blurred loading artwork (10pt blur, 14pt overscan) behind a
-two-strip scrim — full `WebRTCMediaStreamTheme.scrim` (0.54) in the top 22% and bottom
+two-strip scrim — full `StreamHUDTheme.scrim` (0.54) in the top 22% and bottom
 34% of the frame, clear through the middle — and a 2px accent top bar. Corner-anchored
 layout: the 32pt bold title (24 compact) sits top-leading in Text Primary; a fixed-footprint
 hero region sits centered; a footer band sits bottom, holding the eyebrow line and the
@@ -614,7 +614,7 @@ Seven SwiftLint custom rules in `.swiftlint.yml` check the "Don't" list mechanic
 
 - Build every panel, button, field, and card as a `Rectangle` with a 1px stroke.
 - Use Hanken Grotesk on all branded and stream surfaces; keep the size/weight scale above.
-- Pull colors from `OPNDesign` / `WebRTCMediaStreamTheme` tokens; express light
+- Pull colors from `OPNDesign` / `StreamHUDTheme` tokens; express light
   tints as white opacities from the token tables.
 - Reserve accent for primary actions, active/focused states, eyebrows, and edge bars.
 - Indicate keyboard/gamepad focus with the 2px accent focus ring or accent stroke.

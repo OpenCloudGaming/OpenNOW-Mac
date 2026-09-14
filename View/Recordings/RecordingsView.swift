@@ -32,7 +32,7 @@ struct RecordingsView: View {
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
 
-    private var visibleRecordings: [WebRTCStreamRecording] { model.visibleRecordings }
+    private var visibleRecordings: [StreamRecording] { model.visibleRecordings }
 
     /// Formatting the library summary is the view's job; `RecordingLibraryStats` only counts.
     private var librarySubtitle: String {
@@ -224,7 +224,7 @@ struct RecordingsView: View {
         }
     }
 
-    private func selectedPlayer(recording: WebRTCStreamRecording, player: AVPlayer) -> some View {
+    private func selectedPlayer(recording: StreamRecording, player: AVPlayer) -> some View {
         let isEditing = model.editorViewModel?.primaryRecording.id == recording.id
         return VStack(spacing: 0) {
             pageHeader(recording: recording, editorViewModel: isEditing ? model.editorViewModel : nil)
@@ -271,7 +271,7 @@ struct RecordingsView: View {
 
     /// The editor's header replaces the recording's while an edit is open: same row, different job.
     @ViewBuilder
-    private func pageHeader(recording: WebRTCStreamRecording, editorViewModel: RecordingEditorViewModel?) -> some View {
+    private func pageHeader(recording: StreamRecording, editorViewModel: RecordingEditorViewModel?) -> some View {
         if let editorViewModel {
             RecordingEditorHeaderBar(
                 viewModel: editorViewModel,
@@ -380,7 +380,7 @@ private struct RecordingFilterChip: View {
 }
 
 private struct RecordingRow: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     let isSelected: Bool
     let uiScale: CGFloat
     let action: () -> Void
@@ -442,7 +442,7 @@ private struct RecordingRow: View {
 }
 
 private struct RecordingThumbnail: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     let isSelected: Bool
     let isHovering: Bool
     let uiScale: CGFloat
@@ -522,7 +522,7 @@ private struct RecordingPlayerView: NSViewRepresentable {
 private enum RecordingThumbnailLoader {
     private static let cache = NSCache<NSString, NSImage>()
 
-    static func thumbnail(for recording: WebRTCStreamRecording) async -> NSImage? {
+    static func thumbnail(for recording: StreamRecording) async -> NSImage? {
         let key = recording.id.uuidString as NSString
         if let cached = cache.object(forKey: key) { return cached }
         let image = await generateThumbnail(videoURL: recording.videoURL, durationSeconds: recording.durationSeconds)

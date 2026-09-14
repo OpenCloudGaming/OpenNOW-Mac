@@ -35,7 +35,7 @@ enum RecordingFormat {
         return formatter.string(fromByteCount: bytes)
     }
 
-    static func qualityText(_ recording: WebRTCStreamRecording) -> String {
+    static func qualityText(_ recording: StreamRecording) -> String {
         if recording.width >= 3840 || recording.height >= 2160 { return "4K" }
         if recording.width >= 2560 || recording.height >= 1440 { return "1440p" }
         if recording.width >= 1920 || recording.height >= 1080 { return "1080p" }
@@ -43,11 +43,11 @@ enum RecordingFormat {
         return "Auto"
     }
 
-    static func resolutionBadge(_ recording: WebRTCStreamRecording) -> String {
+    static func resolutionBadge(_ recording: StreamRecording) -> String {
         recording.width > 0 && recording.height > 0 ? "\(recording.width)x\(recording.height)" : "AUTO"
     }
 
-    static func bitrateText(_ recording: WebRTCStreamRecording) -> String {
+    static func bitrateText(_ recording: StreamRecording) -> String {
         recording.videoBitrateMbps == 0 ? "Auto" : "\(recording.videoBitrateMbps) Mbps"
     }
 }

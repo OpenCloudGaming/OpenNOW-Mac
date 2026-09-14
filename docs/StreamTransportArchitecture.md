@@ -13,9 +13,9 @@ OpenNOW has two streaming transports selected per game by `OPNStreamTransportSel
 `OPN/Stream/StreamingPath.swift` defines the transport-agnostic contract both paths implement:
 
 - `StreamSessionProvider` — offer/answer lifecycle (`startSession`, `finishSession`)
-- `WebRTCStreamTransport` — connect, ICE, input events, session-limit updates
+- `StreamTransport` — connect, ICE, input events, session-limit updates
 - `StreamSignalingChannel` — answer/ICE/end-event exchange
-- `WebRTCStreamingPath` — actor orchestrating provider + transport + signaling
+- `StreamingPath` — actor orchestrating provider + transport + signaling
 
 ## Audio planes
 

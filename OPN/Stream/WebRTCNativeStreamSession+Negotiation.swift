@@ -25,11 +25,11 @@ extension OPNLibWebRTCStreamSession {
         impl.audioDevice = audioDevice
         impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory, audioDevice: audioDevice)
         if impl.factory == nil {
-            WebRTCMediaTelemetry.capture("webrtc.native.factory.audio_device_fallback", level: .warning, message: "CoreAudio RTC device factory failed; using default WebRTC audio device.")
+            OPNStreamTelemetry.capture("webrtc.native.factory.audio_device_fallback", level: .warning, message: "CoreAudio RTC device factory failed; using default WebRTC audio device.")
             impl.audioDevice = nil
             impl.factory = RTCPeerConnectionFactory(encoderFactory: encoderFactory, decoderFactory: decoderFactory)
         } else {
-            WebRTCMediaTelemetry.capture("webrtc.native.factory.audio_device", level: .debug, message: "CoreAudio RTC audio device enabled.")
+            OPNStreamTelemetry.capture("webrtc.native.factory.audio_device", level: .debug, message: "CoreAudio RTC audio device enabled.")
         }
         guard let factory = impl.factory else { return nil }
         return (impl, factory)
@@ -44,7 +44,7 @@ extension OPNLibWebRTCStreamSession {
         configuration.iceServers = configuredIceServers.isEmpty ? nvstIceServers : configuredIceServers
         configuration.iceTransportPolicy = nvstProfile.iceTransportPolicy == .relay ? .relay : .all
         let iceSource = configuredIceServers.isEmpty ? (nvstIceServers.isEmpty ? "manualDirect" : "nvstSdp") : "sessionInfo"
-        WebRTCMediaTelemetry.capture("webrtc.native.ice_servers", level: .debug, message: "Configured ICE servers.", attributes: ["count": String(configuration.iceServers.count), "source": iceSource, "policy": nvstProfile.iceTransportPolicy == .relay ? "relay" : "all"])
+        OPNStreamTelemetry.capture("webrtc.native.ice_servers", level: .debug, message: "Configured ICE servers.", attributes: ["count": String(configuration.iceServers.count), "source": iceSource, "policy": nvstProfile.iceTransportPolicy == .relay ? "relay" : "all"])
         configuration.sdpSemantics = .unifiedPlan
         configuration.bundlePolicy = .maxBundle
         configuration.rtcpMuxPolicy = .require
@@ -68,7 +68,7 @@ extension OPNLibWebRTCStreamSession {
         if WebRTCSdp.isSupportedCodecPreference(requestedCodec), requestedCodecSupported, WebRTCSdp.envFlagEnabled("OPN_ENABLE_LIBWEBRTC_CODEC_FILTER", defaultValue: false) {
             processedOfferSdp = WebRTCSdp.preferCodecInOffer(processedOfferSdp, normalizedCodec: requestedCodec)
         } else if !requestedCodec.isEmpty, !requestedCodecSupported {
-            WebRTCMediaTelemetry.capture("webrtc.native.codec.unsupported_offer", level: .warning, message: "Requested codec is not supported; retaining full offer.", attributes: ["codec": requestedCodec])
+            OPNStreamTelemetry.capture("webrtc.native.codec.unsupported_offer", level: .warning, message: "Requested codec is not supported; retaining full offer.", attributes: ["codec": requestedCodec])
         }
         return rewriteEmbeddedIceCandidates(processedOfferSdp, ip: manualIceIp, port: manualIcePort)
     }
@@ -139,12 +139,12 @@ extension OPNLibWebRTCStreamSession {
         let answerCodec = WebRTCSdp.normalizedCodec(WebRTCSdp.string(settings["codec"]))
         guard !answerCodec.isEmpty else { return false }
         guard WebRTCSdp.videoSdpContainsCodec(context.remoteOfferSdp, normalizedCodec: answerCodec) else {
-            WebRTCMediaTelemetry.capture("webrtc.native.codec.preference_skipped", level: .debug, message: "Skipping codec preference because the remote offer does not include it.", attributes: ["codec": answerCodec])
+            OPNStreamTelemetry.capture("webrtc.native.codec.preference_skipped", level: .debug, message: "Skipping codec preference because the remote offer does not include it.", attributes: ["codec": answerCodec])
             return false
         }
         let applied = OPNWebRTCCodecSupport.applyVideoCodecPreference(factory: factory, peerConnection: peerConnection, normalizedCodec: answerCodec)
         if !applied {
-            WebRTCMediaTelemetry.capture("webrtc.native.codec.preference_unaccepted", level: .warning, message: "No video transceiver accepted codec preference before answer.", attributes: ["codec": answerCodec])
+            OPNStreamTelemetry.capture("webrtc.native.codec.preference_unaccepted", level: .warning, message: "No video transceiver accepted codec preference before answer.", attributes: ["codec": answerCodec])
         }
         return applied
     }

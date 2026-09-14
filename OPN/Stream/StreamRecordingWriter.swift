@@ -113,7 +113,7 @@ extension WebRTCStreamRecorder {
         }
         let attributes = try? FileManager.default.attributesOfItem(atPath: outputURL.path)
         let fileSize = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
-        let recording = WebRTCStreamRecording(
+        let recording = StreamRecording(
             id: id,
             title: configuration.title,
             applicationID: configuration.applicationID,
@@ -232,7 +232,7 @@ extension WebRTCStreamRecorder {
     /// on a non-terminal status that nothing would ever follow — the Record button stayed disabled
     /// for the rest of the session. Every `emit` runs on `queue`, so chaining each delivery onto
     /// the previous one is enough to serialise them.
-    func emit(_ status: WebRTCStreamRecordingStatus) {
+    func emit(_ status: StreamRecordingStatus) {
         let handler = statusHandler
         let previous = statusDeliveryTask
         statusDeliveryTask = Task { @MainActor in
@@ -255,7 +255,7 @@ extension WebRTCStreamRecorder {
     /// still honoured as-is — this only bounds the guess.
     static let automaticVideoBitrateCeiling = 60_000_000
 
-    func videoSettings(configuration: WebRTCStreamRecordingConfiguration, width: Int, height: Int) -> [String: Any] {
+    func videoSettings(configuration: StreamRecordingConfiguration, width: Int, height: Int) -> [String: Any] {
         let bitrate = configuration.videoBitrateMbps > 0
             ? configuration.videoBitrateMbps * 1_000_000
             : min(Self.automaticVideoBitrateCeiling, max(4_000_000, width * height * configuration.fps / 8))
@@ -276,7 +276,7 @@ extension WebRTCStreamRecorder {
         ]
     }
 
-    func prepareWriterIfNeeded(pixelBuffer: CVPixelBuffer, configuration: WebRTCStreamRecordingConfiguration, outputURL: URL) -> Bool {
+    func prepareWriterIfNeeded(pixelBuffer: CVPixelBuffer, configuration: StreamRecordingConfiguration, outputURL: URL) -> Bool {
         if writer != nil { return true }
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
@@ -315,7 +315,7 @@ extension WebRTCStreamRecorder {
         }
     }
 
-    func audioSettings(configuration: WebRTCStreamRecordingConfiguration) -> [String: Any] {
+    func audioSettings(configuration: StreamRecordingConfiguration) -> [String: Any] {
         [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: 48_000,

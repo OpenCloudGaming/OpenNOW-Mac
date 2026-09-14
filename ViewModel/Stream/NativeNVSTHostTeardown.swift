@@ -14,7 +14,7 @@ import GameController
 
 extension NativeNVSTHostViewModel {
     func stopStream() {
-        WebRTCMediaStreamLifecycle.deactivate(configuration.id)
+        StreamSessionLifecycle.deactivate(configuration.id)
         pendingApplicationQuitCompletion?(false)
         pendingApplicationQuitCompletion = nil
         startTask?.cancel()
@@ -126,7 +126,7 @@ extension NativeNVSTHostViewModel {
             do {
                 try await path.setMicrophoneEnabled(false)
             } catch {
-                WebRTCMediaTelemetry.capture(
+                OPNStreamTelemetry.capture(
                     "nvst.microphone.shutdown.failed",
                     level: .warning,
                     message: Self.message(for: error),
@@ -150,7 +150,7 @@ extension NativeNVSTHostViewModel {
                         }
                     }
                     streamControlsVisible = true
-                    WebRTCMediaTelemetry.capture("nvst.ui.pause.failed", level: .error, message: failureMessage, attributes: ["applicationID": configuration.applicationID])
+                    OPNStreamTelemetry.capture("nvst.ui.pause.failed", level: .error, message: failureMessage, attributes: ["applicationID": configuration.applicationID])
                 }
                 return false
             }
@@ -211,7 +211,7 @@ extension NativeNVSTHostViewModel {
         nativeView?.onPointerLockChanged = nil
         nativeView?.onCommand = nil
         nativeView?.shouldHandleCommand = nil
-        WebRTCMediaStreamLifecycle.deactivate(configuration.id)
+        StreamSessionLifecycle.deactivate(configuration.id)
         onEnd(report.success, report.message, report)
     }
 }

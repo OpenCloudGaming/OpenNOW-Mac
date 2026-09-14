@@ -9,7 +9,7 @@ import SwiftUI
 /// and its four numbers. It used to sit under the player, which put the identity a screen away from
 /// the picture it described and left the actions competing with the editor for the bottom edge.
 struct RecordingInspector: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     let isPathCopied: Bool
     let message: String
     let uiScale: CGFloat

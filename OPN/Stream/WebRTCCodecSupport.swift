@@ -42,7 +42,7 @@ final class OPNWebRTCCodecSupport: NSObject {
             if codecCapability(codec, matches: normalizedCodec) { return true }
         }
 
-        WebRTCMediaTelemetry.capture("webrtc.native.codec.unsupported", level: .warning, message: "Requested receiver codec is unavailable.", attributes: ["codec": normalizedCodec, "available": codecNames.joined(separator: ",")])
+        OPNStreamTelemetry.capture("webrtc.native.codec.unsupported", level: .warning, message: "Requested receiver codec is unavailable.", attributes: ["codec": normalizedCodec, "available": codecNames.joined(separator: ",")])
         return false
     }
 
@@ -99,9 +99,9 @@ final class OPNWebRTCCodecSupport: NSObject {
             do {
                 try transceiver.setCodecPreferences(preferredCodecs, error: ())
                 applied = true
-                WebRTCMediaTelemetry.capture("webrtc.native.codec.preference", level: .debug, message: "Applied video codec preference.", attributes: ["codec": normalizedCodec, "mid": transceiver.mid, "count": String(preferredCodecs.count)])
+                OPNStreamTelemetry.capture("webrtc.native.codec.preference", level: .debug, message: "Applied video codec preference.", attributes: ["codec": normalizedCodec, "mid": transceiver.mid, "count": String(preferredCodecs.count)])
             } catch {
-                WebRTCMediaTelemetry.capture("webrtc.native.codec.preference.error", level: .warning, message: "Failed to apply video codec preference.", attributes: ["codec": normalizedCodec, "mid": transceiver.mid, "error": error.localizedDescription])
+                OPNStreamTelemetry.capture("webrtc.native.codec.preference.error", level: .warning, message: "Failed to apply video codec preference.", attributes: ["codec": normalizedCodec, "mid": transceiver.mid, "error": error.localizedDescription])
             }
         }
         return applied
@@ -115,9 +115,9 @@ final class OPNWebRTCCodecSupport: NSObject {
             do {
                 try transceiver.setCodecPreferences([], error: ())
                 reset = true
-                WebRTCMediaTelemetry.capture("webrtc.native.codec.preference_reset", level: .debug, message: "Reset video codec preferences.", attributes: ["mid": transceiver.mid])
+                OPNStreamTelemetry.capture("webrtc.native.codec.preference_reset", level: .debug, message: "Reset video codec preferences.", attributes: ["mid": transceiver.mid])
             } catch {
-                WebRTCMediaTelemetry.capture("webrtc.native.codec.preference_reset.error", level: .warning, message: "Failed to reset video codec preferences.", attributes: ["mid": transceiver.mid, "error": error.localizedDescription])
+                OPNStreamTelemetry.capture("webrtc.native.codec.preference_reset.error", level: .warning, message: "Failed to reset video codec preferences.", attributes: ["mid": transceiver.mid, "error": error.localizedDescription])
             }
         }
         return reset

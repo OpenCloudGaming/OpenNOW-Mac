@@ -11,8 +11,8 @@ func makeRecording(
     duration: Double = 30,
     width: Int = 1920,
     height: Int = 1080
-) -> WebRTCStreamRecording {
-    WebRTCStreamRecording(
+) -> StreamRecording {
+    StreamRecording(
         id: UUID(),
         title: title,
         applicationID: "com.example.game",

@@ -166,15 +166,15 @@ struct OPNApp: App {
                     openWindow(id: "remote-coop-guest")
                 }
                 Button("Toggle Microphone") {
-                    _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleMicrophone)
+                    _ = StreamSessionLifecycle.sendCommand(.toggleMicrophone)
                 }
                 .keyboardShortcut("m", modifiers: .command)
                 Button("Toggle Recording") {
-                    _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleRecording)
+                    _ = StreamSessionLifecycle.sendCommand(.toggleRecording)
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 Button("Toggle Anti-AFK") {
-                    _ = WebRTCMediaStreamLifecycle.sendCommand(.toggleAntiAFK)
+                    _ = StreamSessionLifecycle.sendCommand(.toggleAntiAFK)
                 }
                 .keyboardShortcut("k", modifiers: .command)
             }

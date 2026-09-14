@@ -1,8 +1,8 @@
 import Foundation
 
-public typealias WebRTCMediaStreamQuitDecisionHandler = @MainActor @Sendable (_ shouldTerminateApplication: Bool) -> Void
-public typealias WebRTCMediaStreamQuitRequestHandler = @MainActor @Sendable (_ completion: @escaping WebRTCMediaStreamQuitDecisionHandler) -> Bool
-public typealias WebRTCMediaStreamCommandHandler = @MainActor @Sendable (_ command: WebRTCMediaStreamCommand) -> Void
+public typealias StreamSessionQuitDecisionHandler = @MainActor @Sendable (_ shouldTerminateApplication: Bool) -> Void
+public typealias StreamSessionQuitRequestHandler = @MainActor @Sendable (_ completion: @escaping StreamSessionQuitDecisionHandler) -> Bool
+public typealias StreamCommandHandler = @MainActor @Sendable (_ command: StreamCommand) -> Void
 
 enum StreamAntiAFKInputPolicy {
     /// The poll phase is pinned to stream start, not to the last input, so the interval is the
@@ -27,20 +27,20 @@ enum StreamAntiAFKInputPolicy {
 }
 
 @MainActor
-public enum WebRTCMediaStreamLifecycle {
+public enum StreamSessionLifecycle {
     /// Posted whenever a stream starts or ends, so surfaces that must not interrupt gameplay — the
     /// update prompt — can wait for the stream to finish instead of polling `hasActiveStream`.
     public static let activeStreamDidChangeNotification = Notification.Name("OPNActiveStreamDidChange")
 
     private static var activeStreamIDs: [UUID] = []
-    private static var quitRequestHandlers: [UUID: WebRTCMediaStreamQuitRequestHandler] = [:]
-    private static var commandHandlers: [UUID: WebRTCMediaStreamCommandHandler] = [:]
+    private static var quitRequestHandlers: [UUID: StreamSessionQuitRequestHandler] = [:]
+    private static var commandHandlers: [UUID: StreamCommandHandler] = [:]
 
     public static var hasActiveStream: Bool {
         !activeStreamIDs.isEmpty
     }
 
-    public static func activate(_ id: UUID, quitRequestHandler: @escaping WebRTCMediaStreamQuitRequestHandler, commandHandler: WebRTCMediaStreamCommandHandler? = nil) {
+    public static func activate(_ id: UUID, quitRequestHandler: @escaping StreamSessionQuitRequestHandler, commandHandler: StreamCommandHandler? = nil) {
         activeStreamIDs.removeAll { $0 == id }
         activeStreamIDs.append(id)
         quitRequestHandlers[id] = quitRequestHandler
@@ -55,12 +55,12 @@ public enum WebRTCMediaStreamLifecycle {
         NotificationCenter.default.post(name: activeStreamDidChangeNotification, object: nil)
     }
 
-    public static func requestApplicationQuitDecision(completion: @escaping WebRTCMediaStreamQuitDecisionHandler) -> Bool {
+    public static func requestApplicationQuitDecision(completion: @escaping StreamSessionQuitDecisionHandler) -> Bool {
         guard let id = activeStreamIDs.last, let handler = quitRequestHandlers[id] else { return false }
         return handler(completion)
     }
 
-    public static func sendCommand(_ command: WebRTCMediaStreamCommand) -> Bool {
+    public static func sendCommand(_ command: StreamCommand) -> Bool {
         guard let id = activeStreamIDs.last, let handler = commandHandlers[id] else { return false }
         handler(command)
         return true

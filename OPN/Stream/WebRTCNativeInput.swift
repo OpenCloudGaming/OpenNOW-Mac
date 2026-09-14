@@ -188,12 +188,12 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         let version: UInt16
         if firstWord == GeronimoInputHandshake.littleEndianVersionMarker {
             version = data.count >= 4 ? UInt16(data[2]) | (UInt16(data[3]) << 8) : 2
-            WebRTCMediaTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "firstWord526"])
+            OPNStreamTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "firstWord526"])
         } else if data[0] == GeronimoInputHandshake.leadingVersionByte {
             version = firstWord
-            WebRTCMediaTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "byte0x0e"])
+            OPNStreamTelemetry.capture("webrtc.native.input.handshake", level: .debug, message: "Input handshake detected.", attributes: ["version": String(version), "shape": "byte0x0e"])
         } else {
-            WebRTCMediaTelemetry.capture("webrtc.native.input.before_handshake", level: .debug, message: "Input channel message received before handshake.", attributes: ["bytes": String(data.count), "firstWord": String(firstWord)])
+            OPNStreamTelemetry.capture("webrtc.native.input.before_handshake", level: .debug, message: "Input channel message received before handshake.", attributes: ["bytes": String(data.count), "firstWord": String(firstWord)])
             return
         }
 
@@ -206,7 +206,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         os_unfair_lock_unlock(&stateLock)
         sendInput(data: data, partiallyReliable: false, sessionImpl: sessionImpl)
         startHeartbeat(sessionImpl: sessionImpl)
-        WebRTCMediaTelemetry.capture("webrtc.native.input.ready", level: .debug, message: "Input handshake complete.", attributes: ["version": String(version), "inputReady": String(isInputReady)])
+        OPNStreamTelemetry.capture("webrtc.native.input.ready", level: .debug, message: "Input handshake complete.", attributes: ["version": String(version), "inputReady": String(isInputReady)])
     }
 
     @objc(stop)
@@ -249,7 +249,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         }
         if let update = StreamSessionLimitUpdate.parse(from: payload) ?? clipboardText.data(using: .utf8).flatMap(StreamSessionLimitUpdate.parse(from:)) {
             owner?.handleSessionLimitUpdate(update)
-            WebRTCMediaTelemetry.capture("webrtc.native.input.session_limit", level: .info, message: "Remote session length timer received.", attributes: ["remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
+            OPNStreamTelemetry.capture("webrtc.native.input.session_limit", level: .info, message: "Remote session length timer received.", attributes: ["remainingSeconds": String(update.remainingSeconds), "timerType": update.timerType])
             return
         }
         if payload.count >= 12, payload.readUInt32LE(at: 0) == GeronimoInputEventType.haptic.rawValue {
@@ -257,7 +257,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
             let leftAmplitude = payload.readUInt16LE(at: 6)
             let rightAmplitude = payload.readUInt16LE(at: 8)
             owner?.handleHapticEvent(deviceIndex: deviceIndex, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
-            WebRTCMediaTelemetry.capture("webrtc.native.input.haptic", level: .debug, message: "Remote haptic event received.", attributes: ["deviceIndex": String(deviceIndex), "leftAmplitude": String(leftAmplitude), "rightAmplitude": String(rightAmplitude)])
+            OPNStreamTelemetry.capture("webrtc.native.input.haptic", level: .debug, message: "Remote haptic event received.", attributes: ["deviceIndex": String(deviceIndex), "leftAmplitude": String(leftAmplitude), "rightAmplitude": String(rightAmplitude)])
             return
         }
         if clipboardText.isEmpty, let first = payload.first, first == UInt8(ascii: "{") || first == UInt8(ascii: "[") {
@@ -265,7 +265,7 @@ final class OPNLibWebRTCInput: NSObject, @unchecked Sendable {
         }
         if !clipboardText.isEmpty {
             owner?.handleClipboardText(clipboardText)
-            WebRTCMediaTelemetry.capture("webrtc.native.input.clipboard", level: .debug, message: "Remote clipboard text received.", attributes: ["bytes": String(data.count)])
+            OPNStreamTelemetry.capture("webrtc.native.input.clipboard", level: .debug, message: "Remote clipboard text received.", attributes: ["bytes": String(data.count)])
         }
     }
 

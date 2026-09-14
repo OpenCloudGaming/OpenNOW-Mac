@@ -18,11 +18,11 @@ enum RecordingsControllerFocus {
 
 @MainActor
 final class RecordingsViewModel: ObservableObject {
-    @Published var recordings: [WebRTCStreamRecording] = []
-    @Published var selectedRecording: WebRTCStreamRecording?
+    @Published var recordings: [StreamRecording] = []
+    @Published var selectedRecording: StreamRecording?
     @Published var player: AVPlayer?
     @Published var message = ""
-    @Published var pendingDelete: WebRTCStreamRecording?
+    @Published var pendingDelete: StreamRecording?
     @Published var searchText = ""
     @Published var sortOrder: RecordingSortOrder = .newest
     @Published var activeFilters = Set<RecordingFilter>()
@@ -35,7 +35,7 @@ final class RecordingsViewModel: ObservableObject {
 
     /// Set when switching away from an edited recording, or closing the editor, would throw the
     /// edit away. The page turns it into a confirmation rather than doing it silently.
-    @Published var pendingEditorDiscardSelection: WebRTCStreamRecording?
+    @Published var pendingEditorDiscardSelection: StreamRecording?
     @Published var isPendingEditorClose = false
     /// Settable across the file split rather than `private(set)`: the editor session owns when
     /// focus moves, and it lives in RecordingsEditorSession.swift.
@@ -63,18 +63,18 @@ final class RecordingsViewModel: ObservableObject {
 
     // MARK: - Derived
 
-    var visibleRecordings: [WebRTCStreamRecording] {
+    var visibleRecordings: [StreamRecording] {
         Self.visibleRecordings(in: recordings, searchText: searchText, filters: activeFilters, sortOrder: sortOrder)
     }
 
     /// Static and pure so the filter-then-sort behaviour can be checked without a view model
     /// instance, and so the view's `onChange` can compare against it cheaply.
     static func visibleRecordings(
-        in recordings: [WebRTCStreamRecording],
+        in recordings: [StreamRecording],
         searchText: String,
         filters: Set<RecordingFilter>,
         sortOrder: RecordingSortOrder
-    ) -> [WebRTCStreamRecording] {
+    ) -> [StreamRecording] {
         let normalizedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return recordings
             .filter { recording in
@@ -101,7 +101,7 @@ final class RecordingsViewModel: ObservableObject {
     // MARK: - Library
 
     func reload(showMessage: Bool) {
-        recordings = WebRTCStreamRecordingLibrary.loadRecordings()
+        recordings = StreamRecordingLibrary.loadRecordings()
         if let selectedRecording, let refreshed = recordings.first(where: { $0.id == selectedRecording.id }) {
             self.selectedRecording = refreshed
             // Not just `player == nil`: leaving the page removes the time observer and the
@@ -124,7 +124,7 @@ final class RecordingsViewModel: ObservableObject {
     /// The visible list is passed in: it is two filters plus a sort with no memoization, and the
     /// old shape read it three times per press. Nothing is highlighted until something is selected,
     /// so the first press only takes the selection rather than also acting on it.
-    func applyControllerCommand(_ command: ControllerInputCommand, in recordings: [WebRTCStreamRecording]) {
+    func applyControllerCommand(_ command: ControllerInputCommand, in recordings: [StreamRecording]) {
         if editorViewModel != nil, controllerFocus == .editor {
             applyEditorControllerCommand(command)
             return
@@ -151,7 +151,7 @@ final class RecordingsViewModel: ObservableObject {
         }
     }
 
-    private func moveSelection(delta: Int, from selected: WebRTCStreamRecording, in recordings: [WebRTCStreamRecording]) {
+    private func moveSelection(delta: Int, from selected: StreamRecording, in recordings: [StreamRecording]) {
         guard let current = recordings.firstIndex(where: { $0.id == selected.id }) else { return }
         let next = min(max(current + delta, 0), recordings.count - 1)
         guard next != current else { return }
@@ -160,7 +160,7 @@ final class RecordingsViewModel: ObservableObject {
 
     // MARK: - Playback
 
-    func select(_ recording: WebRTCStreamRecording?, autoplay: Bool) {
+    func select(_ recording: StreamRecording?, autoplay: Bool) {
         removePlayerTimeObserver()
         if let recording, editorViewModel?.primaryRecording.id != recording.id {
             cancelEditorPreview()
@@ -191,7 +191,7 @@ final class RecordingsViewModel: ObservableObject {
         if autoplay { nextPlayer.play() }
     }
 
-    func restart(_ recording: WebRTCStreamRecording) {
+    func restart(_ recording: StreamRecording) {
         if editorViewModel?.primaryRecording.id == recording.id {
             seekEditorPreview(seconds: 0)
             player?.play()
@@ -205,7 +205,7 @@ final class RecordingsViewModel: ObservableObject {
         player?.play()
     }
 
-    func seek(_ recording: WebRTCStreamRecording, seconds: Double) {
+    func seek(_ recording: StreamRecording, seconds: Double) {
         guard selectedRecording?.id == recording.id else { return }
         let time = CMTime(seconds: min(max(0, seconds), max(0, recording.durationSeconds)), preferredTimescale: 600)
         player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
@@ -244,17 +244,17 @@ final class RecordingsViewModel: ObservableObject {
 
     // MARK: - Desktop integration
 
-    func reveal(_ recording: WebRTCStreamRecording) {
+    func reveal(_ recording: StreamRecording) {
         systemIntegration.revealInFinder(recording.videoURL)
         message = "Revealed \(recording.videoURL.lastPathComponent) in Finder."
     }
 
-    func open(_ recording: WebRTCStreamRecording) {
+    func open(_ recording: StreamRecording) {
         systemIntegration.open(recording.videoURL)
         message = "Opened \(recording.videoURL.lastPathComponent)."
     }
 
-    func copyPath(_ recording: WebRTCStreamRecording) {
+    func copyPath(_ recording: StreamRecording) {
         systemIntegration.copyToPasteboard(recording.videoURL.path)
         copiedPathRecordingID = recording.id
         message = "Copied recording path."
@@ -288,7 +288,7 @@ final class RecordingsViewModel: ObservableObject {
             return
         }
         do {
-            try WebRTCStreamRecordingLibrary.delete(recording)
+            try StreamRecordingLibrary.delete(recording)
             pendingDelete = nil
             message = "Deleted \(recording.title)."
             reload(showMessage: false)

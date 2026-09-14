@@ -34,7 +34,7 @@ enum OPNLog {
         case catalog = "Catalog"
         case launch = "Launch"
         case shortcut = "GFNShortcut"
-        case stream = "WebRTC"
+        case stream = "Stream"
         case controller = "Controller"
     }
 
