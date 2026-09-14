@@ -15,7 +15,7 @@ struct GameDetailPanel: View {
     @State var isHovering = false
     @State var showsActionsMenu = false
     @Environment(\.accessibilityReduceMotion) var isSystemReduceMotionEnabled
-    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+    @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     /// Seconds between detail-image rotations. A `.task` loop, not a stored `Timer.publish`: this
     /// struct is rebuilt on every re-render, and a stored publisher's interval restarts with it.
     private static let imageRotationInterval = Duration.seconds(5)
@@ -23,7 +23,7 @@ struct GameDetailPanel: View {
     @Environment(\.displayScale) private var displayScale
 
     private var isMotionReduced: Bool {
-        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+        OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
     }
 
     var body: some View {
@@ -56,10 +56,10 @@ struct GameDetailPanel: View {
                         .transition(.opacity.animation(.easeInOut(duration: 0.22)))
                     LinearGradient(
                         stops: [
-                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.99), location: 0.00),
-                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.98), location: 0.34),
-                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.84), location: 0.49),
-                            .init(color: OpenNOWDesign.Surface.chrome.opacity(0.22), location: 0.67),
+                            .init(color: OPNDesign.Surface.chrome.opacity(0.99), location: 0.00),
+                            .init(color: OPNDesign.Surface.chrome.opacity(0.98), location: 0.34),
+                            .init(color: OPNDesign.Surface.chrome.opacity(0.84), location: 0.49),
+                            .init(color: OPNDesign.Surface.chrome.opacity(0.22), location: 0.67),
                             .init(color: .clear, location: 1.00)
                         ],
                         startPoint: .leading,
@@ -76,7 +76,7 @@ struct GameDetailPanel: View {
                                 .catalogFont(size: 30, weight: .bold)
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.82)
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Spacer(minLength: 0)
                         }
 
@@ -109,7 +109,7 @@ struct GameDetailPanel: View {
                     Button { viewModel.selectGame(nil) } label: {
                         Image(systemName: "xmark")
                             .catalogFont(size: 22, weight: .regular)
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                             .frame(width: 40 * uiScale, height: 40 * uiScale)
                     }
                     .buttonStyle(.plain)
@@ -139,7 +139,7 @@ struct GameDetailPanel: View {
                                     withAnimation(.easeInOut(duration: 0.18)) { activeImageIndex = index }
                                 } label: {
                                     Circle()
-                                        .fill(index == imageIndex ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.62))
+                                        .fill(index == imageIndex ? OPNDesign.accent : OPNDesign.Fill.neutral(0.62))
                                         .frame(width: (index == imageIndex ? 12 : 9) * uiScale, height: (index == imageIndex ? 12 : 9) * uiScale)
                                 }
                                 .buttonStyle(.plain)
@@ -159,7 +159,7 @@ struct GameDetailPanel: View {
                     }
                 }
                 .frame(width: panelWidth, height: resolvedHeight)
-                .background(OpenNOWDesign.Surface.chrome)
+                .background(OPNDesign.Surface.chrome)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)
@@ -190,11 +190,11 @@ struct GameDetailPanel: View {
                 Text(chip)
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.4)
-                    .foregroundStyle(chip == "IN LIBRARY" ? OpenNOWDesign.onAccent.opacity(0.88) : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(chip == "IN LIBRARY" ? OPNDesign.onAccent.opacity(0.88) : OPNDesign.Text.secondary)
                     .padding(.horizontal, 10)
                     .frame(height: 27)
-                    .background(chip == "IN LIBRARY" ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.09))
-                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(chip == "IN LIBRARY" ? OPNDesign.accent : OPNDesign.Fill.neutral(0.09))
+                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
             }
         }
     }
@@ -214,12 +214,12 @@ struct GameDetailPanel: View {
                 .lineLimit(1)
         }
         .catalogFont(size: 12, weight: .bold)
-        .foregroundStyle(OpenNOWDesign.Text.primary)
+        .foregroundStyle(OPNDesign.Text.primary)
     }
 
     private var metadataSeparator: some View {
         Circle()
-            .fill(OpenNOWDesign.Text.secondary)
+            .fill(OPNDesign.Text.secondary)
             .frame(width: 3, height: 3)
     }
 
@@ -234,10 +234,10 @@ struct GameDetailPanel: View {
                     Text(chip)
                         .catalogFont(size: 12, weight: .bold)
                 }
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, 9)
                 .frame(height: 23)
-                .background(chip == "For Premium Members" ? OpenNOWDesign.Fill.neutral(0.22) : Color.black.opacity(0.18))
+                .background(chip == "For Premium Members" ? OPNDesign.Fill.neutral(0.22) : Color.black.opacity(0.18))
             }
         }
         .frame(maxWidth: 520, alignment: .leading)
@@ -249,7 +249,7 @@ struct GameDetailPanel: View {
                 Text(item.uppercased())
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.8)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
             }
         }
     }
@@ -300,11 +300,11 @@ struct GameDetailPanel: View {
                         Text(option.title)
                             .catalogFont(size: 11, weight: .bold)
                     }
-                    .foregroundStyle(option.isSelected ? OpenNOWDesign.onAccent.opacity(0.88) : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(option.isSelected ? OPNDesign.onAccent.opacity(0.88) : OPNDesign.Text.secondary)
                     .padding(.horizontal, 11 * uiScale)
                     .frame(height: 32 * uiScale)
-                    .background(option.isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.09))
-                    .overlay { Rectangle().stroke(option.isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .background(option.isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.09))
+                    .overlay { Rectangle().stroke(option.isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)
@@ -325,16 +325,16 @@ struct CatalogFeatureAvailabilityRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: isLocked ? "lock.fill" : "checkmark.circle.fill")
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .frame(width: 18)
             Text(title)
                 .catalogFont(size: 14, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .frame(width: 84, alignment: .leading)
                 .lineLimit(1)
             Text(message)
                 .catalogFont(size: 14, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
         }

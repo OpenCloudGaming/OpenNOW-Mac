@@ -51,14 +51,14 @@ struct CatalogRailView: View {
             HStack {
                 Text(section.title)
                     .catalogFont(size: 20, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if canShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                 }
             }
             .frame(height: 28 * uiScale)
@@ -131,7 +131,7 @@ struct CatalogRailView: View {
                         .opacity(isRailHovering ? 1 : 0)
                         .allowsHitTesting(isRailHovering)
                         .accessibilityHidden(!isRailHovering)
-                        .opnMotion(OpenNOWDesign.Motion.hover, value: isRailHovering)
+                        .opnMotion(OPNDesign.Motion.hover, value: isRailHovering)
                     }
                 }
                 .onHover { isRailHovering = $0 }
@@ -193,12 +193,12 @@ struct CatalogDestinationGridView: View {
             HStack(alignment: .lastTextBaseline, spacing: 20 * uiScale) {
                 Text(section.title)
                     .catalogFont(size: 24, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 if !section.isPlaceholder {
                     Text("\(section.games.count) game\(section.games.count == 1 ? "" : "s")")
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.86))
+                        .foregroundStyle(OPNDesign.accentInk.opacity(0.86))
                         .tracking(0.8)
                 }
                 Spacer(minLength: 0)
@@ -293,7 +293,7 @@ struct CatalogRailArrow: View {
         }
         .buttonStyle(.opnPressable(scale: 0.92))
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
     }
 }
 
@@ -309,16 +309,16 @@ struct CatalogSeeMoreTile: View {
             VStack(spacing: 12) {
                 Image(systemName: "ellipsis")
                     .catalogFont(size: 34, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                 Text(title.uppercased())
                     .catalogFont(size: 16, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
-            .background(OpenNOWDesign.Surface.tileTray)
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.strong, lineWidth: 2) }
+            .background(OPNDesign.Surface.tileTray)
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.strong, lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
-            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+            .opnMotion(OPNDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
@@ -351,7 +351,7 @@ struct CatalogPanelActionTile: View {
                         Text(tile.subtitle.uppercased())
                             .catalogFont(size: 10, weight: .bold)
                             .tracking(0.8)
-                            .foregroundStyle(OpenNOWDesign.accentInk)
+                            .foregroundStyle(OPNDesign.accentInk)
                             .lineLimit(1)
                     }
                     Text(tile.title.isEmpty ? (tile.kind == "filter" ? "Browse Games" : "Featured") : tile.title)
@@ -364,14 +364,14 @@ struct CatalogPanelActionTile: View {
                         .foregroundStyle(.black.opacity(0.88))
                         .padding(.horizontal, 10)
                         .frame(height: 25)
-                        .background(OpenNOWDesign.accent)
+                        .background(OPNDesign.accent)
                 }
                 .padding(14)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
-            .overlay { Rectangle().stroke(isHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
+            .overlay { Rectangle().stroke(isHovering ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
-            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+            .opnMotion(OPNDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
             .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
             .padding(.bottom, CatalogVendorLayout.tileBottomMargin(scale: uiScale))
@@ -401,19 +401,18 @@ struct VendorActiveSessionHomeBanner: View {
     var body: some View {
         HStack(spacing: 0) {
             Circle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(width: 8 * uiScale, height: 8 * uiScale)
-                .shadow(color: OpenNOWDesign.accent, radius: 4)
                 .padding(.trailing, 10 * uiScale)
 
             VStack(alignment: .leading, spacing: 2 * uiScale) {
                 Text("SESSION ACTIVE")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
                     .tracking(1.2)
                 Text(title)
                     .catalogFont(size: 14, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
             }
 
@@ -433,10 +432,10 @@ struct VendorActiveSessionHomeBanner: View {
         // Clamp before the chrome so the background and hairline paint at the page width, not at
         // the scroll view's inflated content width.
         .frame(maxWidth: availableWidth > 0 ? availableWidth : .infinity, alignment: .leading)
-        .background(OpenNOWDesign.Surface.chrome)
+        .background(OPNDesign.Surface.chrome)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)
         }
     }
@@ -448,16 +447,16 @@ private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .catalogFont(size: 11, weight: .bold)
-            .foregroundStyle(primary ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.primary)
+            .foregroundStyle(primary ? OPNDesign.onAccent : OPNDesign.Text.primary)
             .tracking(0.8)
             .padding(.horizontal, 14)
             .frame(height: 28)
             .background(primary
-                ? OpenNOWDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
-                : OpenNOWDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055))
+                ? OPNDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
+                : OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055))
             .overlay {
                 if !primary {
-                    Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1)
+                    Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1)
                 }
             }
     }

@@ -54,16 +54,16 @@ struct VideoSettingsPage: View {
         VStack(alignment: .leading, spacing: 10 * uiScale) {
             Text("Per-game overrides")
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             Text("These games ignore the upscaling, pillarbox and frame pacing settings above and use their own.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
             ForEach(overrides) { game in
                 HStack(spacing: 12 * uiScale) {
                     Text(game.title)
                         .font(.settingsFont(size: 13 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .lineLimit(1)
                     Spacer(minLength: 8 * uiScale)
                     SettingsActionButton(title: "RESET", minimumWidth: 92 * uiScale, uiScale: uiScale) {
@@ -73,7 +73,7 @@ struct VideoSettingsPage: View {
                 .padding(.horizontal, 12 * uiScale)
                 .padding(.vertical, 10 * uiScale)
                 .background(SettingsVendorLayout.row)
-                .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -140,15 +140,15 @@ struct VideoSettingsPage: View {
         SettingsCard(title: "Profile Maintenance", uiScale: uiScale) {
             HStack(alignment: .center, spacing: 16 * uiScale) {
                 Rectangle()
-                    .fill(OpenNOWDesign.Stroke.strong)
+                    .fill(OPNDesign.Stroke.strong)
                     .frame(width: 4 * uiScale, height: 48 * uiScale)
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("Restore default streaming settings")
                         .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text("Resets resolution, FPS, codec, bitrate, color precision, latency, HDR, L4S, input, audio, and enhancement options.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12 * uiScale)
@@ -156,7 +156,7 @@ struct VideoSettingsPage: View {
             }
             .padding(12 * uiScale)
             .background(SettingsVendorLayout.row)
-            .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 
@@ -208,10 +208,10 @@ struct StreamingProfileOverview: View {
                 VStack(alignment: .leading, spacing: 6 * uiScale) {
                     Text("Active streaming profile")
                         .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text("These values are sent to OpenNOW when a new stream starts.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
                 Spacer(minLength: 0)
                 SettingsStatusPill(title: "MODE", value: mode, positive: mode != "Balanced defaults", uiScale: uiScale)
@@ -240,17 +240,17 @@ struct StreamingProfileMetricTile: View {
             Text(label.uppercased())
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: (emphasized ? 16 : 14) * uiScale, weight: .bold))
-                .foregroundStyle(emphasized ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
+                .foregroundStyle(emphasized ? OPNDesign.accentInk : OPNDesign.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
         .padding(.horizontal, 13 * uiScale)
         .padding(.vertical, 11 * uiScale)
         .frame(width: width ?? ((emphasized ? 180 : 154) * uiScale), height: 72 * uiScale, alignment: .leading)
-        .background(OpenNOWDesign.Fill.neutral(emphasized ? 0.065 : 0.045))
-        .overlay { Rectangle().strokeBorder(emphasized ? OpenNOWDesign.accent.opacity(0.32) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(emphasized ? 0.065 : 0.045))
+        .overlay { Rectangle().strokeBorder(emphasized ? OPNDesign.accent.opacity(0.32) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

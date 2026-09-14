@@ -16,30 +16,30 @@ struct CatalogLegacyTransportNotice: View {
         HStack(alignment: .top, spacing: 14 * uiScale) {
             ZStack {
                 Rectangle()
-                    .fill(OpenNOWDesign.accent.opacity(0.13))
+                    .fill(OPNDesign.accent.opacity(0.13))
                 Image(systemName: "sparkles")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
             }
             .frame(width: 36 * uiScale, height: 36 * uiScale)
-            .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
+            .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
 
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 HStack(spacing: 8 * uiScale) {
                     Text("You are streaming over WebRTC")
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text("LEGACY")
                         .catalogFont(size: 9, weight: .bold)
                         .tracking(0.9)
                         .foregroundStyle(.black.opacity(0.88))
                         .padding(.horizontal, 6 * uiScale)
                         .frame(height: 16 * uiScale)
-                        .background(OpenNOWDesign.accent)
+                        .background(OPNDesign.accent)
                 }
                 Text("New work goes to the Native transport: Remote Co-Op hosting, HDR, 10-bit 4:4:4, 120 fps, controller rumble. WebRTC keeps streaming and keeps getting fixes, but no new features.")
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12 * uiScale)
@@ -51,7 +51,7 @@ struct CatalogLegacyTransportNotice: View {
                     .foregroundStyle(.black.opacity(0.88))
                     .padding(.horizontal, 14 * uiScale)
                     .frame(height: 30 * uiScale)
-                    .background(OpenNOWDesign.accent)
+                    .background(OPNDesign.accent)
             }
             .buttonStyle(.opnPressable(scale: 0.96))
             .accessibilityLabel("Switch to the Native transport")
@@ -59,10 +59,10 @@ struct CatalogLegacyTransportNotice: View {
             Button { viewModel.dismissLegacyTransportNotice() } label: {
                 Image(systemName: "xmark")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(isHoveringDismiss ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(isHoveringDismiss ? OPNDesign.Text.primary : OPNDesign.Text.tertiary)
                     .frame(width: 30 * uiScale, height: 30 * uiScale)
-                    .background(OpenNOWDesign.Fill.neutral(isHoveringDismiss ? 0.12 : 0.065))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNDesign.Fill.neutral(isHoveringDismiss ? 0.12 : 0.065))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .onHover { isHoveringDismiss = $0 }
@@ -70,8 +70,8 @@ struct CatalogLegacyTransportNotice: View {
             .help("Dismiss. Settings, Stream Transport, keeps the switch.")
         }
         .padding(14 * uiScale)
-        .background(OpenNOWDesign.Fill.neutral(0.060))
-        .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(0.060))
+        .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

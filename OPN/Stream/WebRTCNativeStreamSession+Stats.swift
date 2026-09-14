@@ -125,7 +125,7 @@ extension OPNLibWebRTCStreamSession {
                 audioController.startMicrophoneLevelPolling(sessionImpl: impl, statsQueue: statsQueue)
             }
         } else {
-            WebRTCMediaTelemetry.capture("webrtc.native.microphone.attach.error", level: .warning, message: "Failed to attach local microphone track.")
+            OPNStreamTelemetry.capture("webrtc.native.microphone.attach.error", level: .warning, message: "Failed to attach local microphone track.")
         }
     }
 
@@ -138,7 +138,7 @@ extension OPNLibWebRTCStreamSession {
             if target != transceiver.direction {
                 var directionError: NSError?
                 transceiver.setDirection(target, error: &directionError)
-                if let directionError { WebRTCMediaTelemetry.capture("webrtc.native.microphone.direction.error", level: .warning, message: "Failed to set microphone transceiver direction.", attributes: ["error": directionError.localizedDescription]) }
+                if let directionError { OPNStreamTelemetry.capture("webrtc.native.microphone.direction.error", level: .warning, message: "Failed to set microphone transceiver direction.", attributes: ["error": directionError.localizedDescription]) }
             }
             transceiver.sender.track = audioTrack
             transceiver.sender.streamIds = ["mic"]

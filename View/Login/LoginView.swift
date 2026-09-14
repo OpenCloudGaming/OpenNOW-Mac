@@ -6,13 +6,13 @@ struct LoginView: View {
     let accounts: [LoginAccount]
     let onWindowTitleChange: (String?) -> Void
 
-    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
-    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
+    @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScale = OPNInterfacePreferences.defaultUIScale
+    @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
 
     /// Sign-in cannot reach Settings, but it inherits the appearance chosen in a previous session -
     /// and its own labels come from that palette, so forcing dark here would paint them into it.
     private var preferredColorScheme: ColorScheme? {
-        switch OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark {
+        switch OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark {
         case .system: nil
         case .dark: .dark
         case .light: .light

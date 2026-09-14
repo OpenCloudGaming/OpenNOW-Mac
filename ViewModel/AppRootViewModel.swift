@@ -24,14 +24,14 @@ final class AppRootViewModel: ObservableObject {
     private var fileOpenObserver: AnyCancellable?
 
     var startupAnimationDuration: Double {
-        usesQuickStartupIntro ? OpenNOWStartupAnimation.quickDuration : OpenNOWStartupAnimation.duration
+        usesQuickStartupIntro ? StartupAnimation.quickDuration : StartupAnimation.duration
     }
 
     func bind(login: LoginViewModel) {
         self.login = login
         guard fileOpenObserver == nil else { return }
         fileOpenObserver = NotificationCenter.default
-            .publisher(for: .openNOWDidOpenFile)
+            .publisher(for: .opnDidOpenFile)
             .compactMap { $0.object as? URL }
             .sink { [weak self] url in
                 self?.login?.handleOpenedFile(url)
@@ -68,8 +68,8 @@ final class AppRootViewModel: ObservableObject {
 
     private func dismissStartupLoading() async {
         let delay = usesQuickStartupIntro
-            ? OpenNOWStartupAnimation.quickDismissalDelayNanoseconds
-            : OpenNOWStartupAnimation.dismissalDelayNanoseconds
+            ? StartupAnimation.quickDismissalDelayNanoseconds
+            : StartupAnimation.dismissalDelayNanoseconds
         do {
             try await Task.sleep(nanoseconds: delay)
         } catch {
@@ -80,7 +80,7 @@ final class AppRootViewModel: ObservableObject {
         // first layout pass resizes the top bar and swaps the marquee skeleton for the hero, and
         // playing that out in the open is the flicker the splash exists to cover.
         if usesQuickStartupIntro {
-            await OpenNOWStartupReadiness.shared.waitForContent(timeout: Self.contentReadinessTimeout)
+            await StartupReadiness.shared.waitForContent(timeout: Self.contentReadinessTimeout)
         }
         // The fade itself is the view's: it animates on this value rather than being wrapped in a
         // `withAnimation` here, which is what kept SwiftUI out of this file.
@@ -88,7 +88,7 @@ final class AppRootViewModel: ObservableObject {
     }
 
     private func drainOpenedFiles() {
-        for url in OpenNOWFileOpenCoordinator.shared.drainPendingFileURLs() {
+        for url in OPNFileOpenCoordinator.shared.drainPendingFileURLs() {
             login?.handleOpenedFile(url)
         }
     }
@@ -98,7 +98,7 @@ final class AppRootViewModel: ObservableObject {
         // file URL, not through the AppKit `application(openFile:)` delegate; a `.gfnpc` shortcut
         // arriving this way used to be treated as an OAuth callback and dropped.
         if url.isFileURL {
-            OpenNOWLog.info(.shortcut, "onOpenURL received file: \(url.path)")
+            OPNLog.info(.shortcut, "onOpenURL received file: \(url.path)")
             login?.handleOpenedFile(url)
             return
         }

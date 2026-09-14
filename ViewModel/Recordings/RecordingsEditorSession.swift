@@ -79,7 +79,7 @@ extension RecordingsViewModel {
         editorPreviewDurationSeconds > 0 ? editorPreviewDurationSeconds : (editorViewModel?.outputDurationSeconds ?? 0)
     }
 
-    func startEditing(_ recording: WebRTCStreamRecording) {
+    func startEditing(_ recording: StreamRecording) {
         guard !isExportingEditor else {
             message = "Finish or cancel the export before editing another recording."
             return
@@ -133,7 +133,7 @@ extension RecordingsViewModel {
         editorExportTask = nil
     }
 
-    func editedRecordingSaved(_ recording: WebRTCStreamRecording) {
+    func editedRecordingSaved(_ recording: StreamRecording) {
         cancelEditorPreview()
         editorViewModel = nil
         controllerFocus = .library
@@ -164,13 +164,13 @@ extension RecordingsViewModel {
         let request = editorViewModel.previewRequest()
         let signature = editorViewModel.frameSignature
         let requiresVideoComposition = previewRequiresVideoComposition
-        let asset = WebRTCStreamRecordingLoadedAsset(item.asset)
+        let asset = StreamRecordingLoadedAsset(item.asset)
         editorFramePreviewTask?.cancel()
         editorFramePreviewTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(80))
             if Task.isCancelled { return }
             do {
-                let videoComposition = try await WebRTCStreamRecordingLibrary.previewVideoComposition(
+                let videoComposition = try await StreamRecordingLibrary.previewVideoComposition(
                     for: asset,
                     request: request,
                     requiresVideoComposition: requiresVideoComposition
@@ -190,11 +190,11 @@ extension RecordingsViewModel {
         guard let editorViewModel, let item = player?.currentItem else { return }
         let request = editorViewModel.previewRequest()
         let signature = editorViewModel.audioSignature
-        let asset = WebRTCStreamRecordingLoadedAsset(item.asset)
+        let asset = StreamRecordingLoadedAsset(item.asset)
         editorAudioPreviewTask?.cancel()
         editorAudioPreviewTask = Task { [weak self] in
             do {
-                let audioMix = try await WebRTCStreamRecordingLibrary.previewAudioMix(for: asset, request: request)
+                let audioMix = try await StreamRecordingLibrary.previewAudioMix(for: asset, request: request)
                 guard !Task.isCancelled, let self, self.editorViewModel?.audioSignature == signature, self.player?.currentItem === item else { return }
                 item.audioMix = audioMix
                 self.appliedAudioSignature = signature
@@ -220,7 +220,7 @@ extension RecordingsViewModel {
                 if Task.isCancelled { return }
             }
             do {
-                let preview = try await WebRTCStreamRecordingLibrary.previewEditedRecording(request)
+                let preview = try await StreamRecordingLibrary.previewEditedRecording(request)
                 if Task.isCancelled { return }
                 await MainActor.run {
                     guard let self, self.editorViewModel?.previewSignature == signature else { return }
@@ -235,7 +235,7 @@ extension RecordingsViewModel {
         }
     }
 
-    func applyEditedPreview(_ preview: WebRTCStreamRecordingPreview, targetSeconds: Double, shouldResumePlayback: Bool) {
+    func applyEditedPreview(_ preview: StreamRecordingPreview, targetSeconds: Double, shouldResumePlayback: Bool) {
         guard let player else { return }
         let item = AVPlayerItem(asset: preview.asset)
         // Pinned to match what the exporter uses, so a sped-up preview does not sound different
@@ -297,7 +297,7 @@ extension RecordingsViewModel {
 
     /// What the UI calls. `select` itself still switches unconditionally, because reload and
     /// post-export refresh have to.
-    func requestSelect(_ recording: WebRTCStreamRecording, autoplay: Bool) {
+    func requestSelect(_ recording: StreamRecording, autoplay: Bool) {
         guard !isExportingEditor else {
             message = "Finish or cancel the export before switching recordings."
             return

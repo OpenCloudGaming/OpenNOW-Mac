@@ -5,7 +5,7 @@ OpenNOW has two streaming transports selected per game by `OPNStreamTransportSel
 | | WebRTC path | Native NVST path |
 |---|---|---|
 | Transport | `NativeWebRTCTransport` | `NvstBifrostFreeTransport` |
-| Session/signaling | `OpenNOWStreamSessionCoordinator` + `NVSTWebSocketSignalingClient` | `OpenNOWStreamSessionCoordinator` (as `NativeNVSTSessionProvider`) + RTSPS control plane (`GFN/NVST/Rtsp`) |
+| Session/signaling | `OPNStreamSessionCoordinator` + `NVSTWebSocketSignalingClient` | `OPNStreamSessionCoordinator` (as `NativeNVSTSessionProvider`) + RTSPS control plane (`GFN/NVST/Rtsp`) |
 | Host view | `WebRTCMediaStreamSurface` (SwiftUI) hosting `NativeWebRTCStreamView` | `NativeNVSTStreamingPath` and its surface overlays |
 
 ## Shared boundary
@@ -13,9 +13,9 @@ OpenNOW has two streaming transports selected per game by `OPNStreamTransportSel
 `OPN/Stream/StreamingPath.swift` defines the transport-agnostic contract both paths implement:
 
 - `StreamSessionProvider` — offer/answer lifecycle (`startSession`, `finishSession`)
-- `WebRTCStreamTransport` — connect, ICE, input events, session-limit updates
+- `StreamTransport` — connect, ICE, input events, session-limit updates
 - `StreamSignalingChannel` — answer/ICE/end-event exchange
-- `WebRTCStreamingPath` — actor orchestrating provider + transport + signaling
+- `StreamingPath` — actor orchestrating provider + transport + signaling
 
 ## Audio planes
 

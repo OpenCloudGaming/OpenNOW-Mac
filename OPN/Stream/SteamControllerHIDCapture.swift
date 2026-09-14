@@ -49,7 +49,7 @@ extension SteamControllerHIDMonitor {
             captureDeviceOpenFailure(interface: "vendor", context: context, status: status)
             return false
         }
-        OpenNOWLog.warning(.controller, "Seize failed status=0x\(String(format: "%08X", status)) — falling back to lizard-off capture")
+        OPNLog.warning(.controller, "Seize failed status=0x\(String(format: "%08X", status)) — falling back to lizard-off capture")
         let reopenStatus = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeNone))
         if reopenStatus == kIOReturnSuccess {
             registerVendorReportCallback(for: context)
@@ -136,7 +136,7 @@ extension SteamControllerHIDMonitor {
     private func writeRumble(deviceID: InputDeviceID, leftAmplitude: UInt16, rightAmplitude: UInt16, resend: Bool = false) {
         let contexts = devices.values.filter { $0.deviceID == deviceID }
         guard !contexts.isEmpty else {
-            if !resend { OpenNOWLog.warning(.controller, "Rumble: no HID interface for \(deviceID.rawValue)") }
+            if !resend { OPNLog.warning(.controller, "Rumble: no HID interface for \(deviceID.rawValue)") }
             rumbleResendTasks.removeValue(forKey: deviceID)?.cancel()
             return
         }
@@ -152,7 +152,7 @@ extension SteamControllerHIDMonitor {
             let report = SteamControllerReport.rumbleReport(model: context.model, leftAmplitude: leftAmplitude, rightAmplitude: rightAmplitude)
             let status = sendFeatureReport(report, to: context.device, attempts: 3)
             if shouldLog {
-                OpenNOWLog.info(.controller, String(format: "Rumble #%d %@ model=%@ active=%d left=%d right=%d reportID=%d bytes=%@ -> 0x%08x",
+                OPNLog.info(.controller, String(format: "Rumble #%d %@ model=%@ active=%d left=%d right=%d reportID=%d bytes=%@ -> 0x%08x",
                                                     rumbleReportsSent, deviceID.rawValue, String(describing: context.model), context.isActive ? 1 : 0,
                                                     Int(leftAmplitude), Int(rightAmplitude), report.reportID,
                                                     report.bytes.prefix(12).map { String(format: "%02x", $0) }.joined(), status))

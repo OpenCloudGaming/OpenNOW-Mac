@@ -34,7 +34,7 @@ struct CatalogAccountDropdownOverlay: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .opnMotion(OpenNOWDesign.Motion.panel, value: isPresented)
+        .opnMotion(OPNDesign.Motion.panel, value: isPresented)
         .allowsHitTesting(isPresented)
         .onExitCommand(perform: isPresented ? { isPresented = false } : nil)
     }
@@ -54,28 +54,28 @@ struct CatalogAccountDropdownPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 CatalogAccountAvatar(account: viewModel.account, size: 44 * uiScale)
                 VStack(alignment: .leading, spacing: 3 * uiScale) {
                     Text(viewModel.account.displayName)
                         .catalogFont(size: 15, weight: .medium)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .lineLimit(1)
                     Text(viewModel.subscriptionStatus.membershipTier.uppercased())
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-                        .frame(height: OpenNOWDesign.Spacing.card(scale: uiScale))
-                        .background(OpenNOWDesign.accent)
+                        .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
+                        .frame(height: OPNDesign.Spacing.card(scale: uiScale))
+                        .background(OPNDesign.accent)
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+            .padding(.horizontal, OPNDesign.Spacing.contentVertical(scale: uiScale))
+            .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)
 
             if let pendingForget {
@@ -92,12 +92,12 @@ struct CatalogAccountDropdownPanel: View {
                 // Escape handler (Escape cancels the confirm instead of closing the whole dropdown).
                 .onExitCommand(perform: { self.pendingForget = nil })
             } else {
-                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+                VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                     Text("ACCOUNTS")
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(1.1)
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
-                        .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
+                        .foregroundStyle(OPNDesign.Text.muted)
+                        .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                         .padding(.vertical, 5 * uiScale)
                     ForEach(accounts) { account in
                         let isActive = account === viewModel.account
@@ -144,21 +144,21 @@ struct CatalogAccountDropdownPanel: View {
                         onAddAccount()
                     }
                 }
-                .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
-                .padding(.top, OpenNOWDesign.Spacing.section(scale: uiScale))
-                .padding(.bottom, OpenNOWDesign.Spacing.small(scale: uiScale))
+                .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
+                .padding(.top, OPNDesign.Spacing.section(scale: uiScale))
+                .padding(.bottom, OPNDesign.Spacing.small(scale: uiScale))
             }
         }
         .frame(width: CatalogVendorLayout.accountMenuWidth(scale: uiScale), alignment: .topLeading)
-        .background(OpenNOWDesign.Surface.overlay.opacity(0.985))
+        .background(OPNDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(height: 2)
         }
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(width: 1)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
@@ -189,11 +189,11 @@ struct CatalogAccountDropdownRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: action) {
-                HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+                HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                     if let systemImage {
                         ZStack {
                             Rectangle()
-                                .fill(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
+                                .fill(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                             Image(systemName: systemImage)
                                 .catalogFont(size: 13, weight: .bold)
                                 .foregroundStyle(iconColor)
@@ -208,13 +208,13 @@ struct CatalogAccountDropdownRow: View {
                         if let subtitle {
                             Text(subtitle)
                                 .catalogFont(size: 11, weight: .medium)
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                                 .lineLimit(1)
                         }
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.leading, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                .padding(.leading, OPNDesign.Spacing.xSmall(scale: uiScale))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
@@ -229,36 +229,36 @@ struct CatalogAccountDropdownRow: View {
             }
 
             if isHovering, !trailingActions.isEmpty {
-                HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+                HStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                     ForEach(trailingActions) { rowAction in
                         CatalogAccountDropdownRowActionButton(rowAction: rowAction)
                     }
                 }
-                .padding(.trailing, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                .padding(.trailing, OPNDesign.Spacing.xSmall(scale: uiScale))
                 .accessibilityHidden(true)
             } else {
-                Color.clear.frame(width: OpenNOWDesign.Spacing.controlRow(scale: uiScale) - OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                Color.clear.frame(width: OPNDesign.Spacing.controlRow(scale: uiScale) - OPNDesign.Spacing.xSmall(scale: uiScale))
             }
         }
         .frame(height: 42 * uiScale)
         .background(rowBackground)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
     }
 
     private var rowBackground: Color {
-        if isActive { return OpenNOWDesign.accent.opacity(0.095) }
-        return OpenNOWDesign.Fill.neutral(isHovering ? 0.085 : 0)
+        if isActive { return OPNDesign.accent.opacity(0.095) }
+        return OPNDesign.Fill.neutral(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
-        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? OpenNOWDesign.Text.primary : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
+        if role == .destructive { return OPNDesign.Semantic.destructive }
+        return isActive ? OPNDesign.Text.primary : OPNDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
-        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? OpenNOWDesign.onAccent : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
+        if role == .destructive { return OPNDesign.Semantic.destructive }
+        return isActive ? OPNDesign.onAccent : OPNDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 }
 
@@ -275,18 +275,18 @@ private struct CatalogAccountDropdownRowActionButton: View {
                 .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(tintColor)
                 .frame(width: 26 * uiScale, height: 26 * uiScale)
-                .background(OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
+                .background(OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .accessibilityLabel(rowAction.accessibilityLabel)
     }
 
     private var tintColor: Color {
-        if rowAction.isDestructive { return OpenNOWDesign.Semantic.destructive }
-        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
+        if rowAction.isDestructive { return OPNDesign.Semantic.destructive }
+        return isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary
     }
 }
 
@@ -300,22 +300,22 @@ private struct CatalogAccountForgetConfirmationView: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.card(scale: uiScale)) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.card(scale: uiScale)) {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text("Forget \(account.displayName)?")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                 Text(bodyText)
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 CatalogAccountConfirmButton(title: "Cancel", isDestructive: false, action: onCancel)
                 CatalogAccountConfirmButton(title: "Forget Account", isDestructive: true, action: onConfirm)
             }
         }
-        .padding(OpenNOWDesign.Spacing.section(scale: uiScale))
+        .padding(OPNDesign.Spacing.section(scale: uiScale))
     }
 
     private var bodyText: String {
@@ -343,16 +343,16 @@ private struct CatalogAccountConfirmButton: View {
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .accessibilityLabel(title)
     }
 
     private var foreground: Color {
-        isDestructive ? OpenNOWDesign.Text.primary : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
+        isDestructive ? OPNDesign.Text.primary : OPNDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 
     private var background: Color {
-        if isDestructive { return OpenNOWDesign.Semantic.destructive.opacity(isHovering ? 0.90 : 0.78) }
-        return OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08)
+        if isDestructive { return OPNDesign.Semantic.destructive.opacity(isHovering ? 0.90 : 0.78) }
+        return OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08)
     }
 }

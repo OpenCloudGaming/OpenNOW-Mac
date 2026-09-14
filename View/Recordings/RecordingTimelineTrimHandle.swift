@@ -31,9 +31,9 @@ extension RecordingTimelineView {
     func trimHandle(item: TimelineClipFrame, layout: RecordingTimelineGeometry, isLeading: Bool) -> some View {
         ZStack {
             // Transparent, and wider than the bar: this is what the pointer actually has to hit.
-            OpenNOWDesign.Fill.neutral(0.001)
+            OPNDesign.Fill.neutral(0.001)
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(width: handleBarWidth, height: handleBarHeight)
                 .overlay {
                     // Grip lines, so it reads as something to drag rather than as a marker.
@@ -161,8 +161,8 @@ extension RecordingTimelineView {
                             // immediate and a drag never queues decode work it will throw away.
                             visibleRange: nil
                         )
-                        .overlay { Rectangle().fill(OpenNOWDesign.accent.opacity(0.16)) }
-                        .overlay { Rectangle().strokeBorder(OpenNOWDesign.accent, lineWidth: 1) }
+                        .overlay { Rectangle().fill(OPNDesign.accent.opacity(0.16)) }
+                        .overlay { Rectangle().strokeBorder(OPNDesign.accent, lineWidth: 1) }
                     } else {
                         Rectangle()
                             .fill(Color.black.opacity(0.62))

@@ -75,7 +75,7 @@ extension OPNRemoteCoOpWebRTCHostPeer {
             sourceHeight: source.height,
             targetPreset: preset
         ))
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.sender.video", level: .info, message: "Remote Co-Op outbound video.", attributes: [
+        OPNStreamTelemetry.capture("webrtc.remote_coop.sender.video", level: .info, message: "Remote Co-Op outbound video.", attributes: [
             "participantID": participantID.uuidString,
             // "cpu" means the encoder is the constraint, "bandwidth" the network estimate, "none"
             // neither - in which case a low frame rate is the source's, not ours.
@@ -97,7 +97,7 @@ extension OPNRemoteCoOpWebRTCHostPeer {
 
     func captureVideoPacingTelemetryIfNeeded() {
         guard videoRateLimiter.forwardedCount.isMultiple(of: 240), videoRateLimiter.droppedCount > 0 else { return }
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.video.paced", level: .debug, message: "Remote Co-Op video rate limiter dropped frames above the preset rate.", attributes: [
+        OPNStreamTelemetry.capture("webrtc.remote_coop.video.paced", level: .debug, message: "Remote Co-Op video rate limiter dropped frames above the preset rate.", attributes: [
             "participantID": participantID.uuidString,
             "deliveredFrames": String(videoRateLimiter.forwardedCount),
             "droppedFrames": String(videoRateLimiter.droppedCount),

@@ -89,7 +89,7 @@ import Testing
     #expect(gfnpcType["CFBundleTypeIconFile"] as? String == "AppIcon")
 }
 
-@MainActor @Test func gameShortcutRoundTripsThroughOpenNOWExtension() throws {
+@MainActor @Test func gameShortcutRoundTripsThroughOPNExtension() throws {
     let shortcut = GFNGameShortcut(
         sourceURL: nil,
         displayName: "Portal on OpenNOW",

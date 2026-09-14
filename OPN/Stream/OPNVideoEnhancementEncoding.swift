@@ -164,7 +164,7 @@ extension OPNVideoEnhancementRenderer {
         if fillModeNow != lastLoggedFillMode || contentNow != lastLoggedContentRect {
             lastLoggedFillMode = fillModeNow
             lastLoggedContentRect = contentNow
-            OpenNOWLog.info(.stream, "Pillarbox fill mode=\(fillModeNow.label) content=[\(String(format: "%.4f", contentNow.left)), \(String(format: "%.4f", contentNow.right))] source=\(primaryTexture.width)x\(primaryTexture.height)")
+            OPNLog.info(.stream, "Pillarbox fill mode=\(fillModeNow.label) content=[\(String(format: "%.4f", contentNow.left)), \(String(format: "%.4f", contentNow.right))] source=\(primaryTexture.width)x\(primaryTexture.height)")
         }
         let uniforms = Self.pillarboxUniforms(
             mode: OPNPillarboxFillMode.from(settings.pillarboxFillMode),
@@ -299,7 +299,7 @@ extension OPNVideoEnhancementRenderer {
             descriptor.colorAttachments[0].pixelFormat = pixelFormat
             return try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
-            WebRTCMediaTelemetry.capture("webrtc.native.video_enhancement.pipeline.error", level: .warning, message: "Spatial enhancement pipeline failed.", attributes: ["function": fragmentFunctionName, "error": error.localizedDescription])
+            OPNStreamTelemetry.capture("webrtc.native.video_enhancement.pipeline.error", level: .warning, message: "Spatial enhancement pipeline failed.", attributes: ["function": fragmentFunctionName, "error": error.localizedDescription])
             return nil
         }
     }
@@ -322,7 +322,7 @@ extension OPNVideoEnhancementRenderer {
             descriptor.colorAttachments[0].destinationAlphaBlendFactor = .zero
             return try device.makeRenderPipelineState(descriptor: descriptor)
         } catch {
-            WebRTCMediaTelemetry.capture("webrtc.native.video_enhancement.pipeline.error", level: .warning, message: "Pillarbox fill history pipeline failed.", attributes: ["function": fragmentFunctionName, "error": error.localizedDescription])
+            OPNStreamTelemetry.capture("webrtc.native.video_enhancement.pipeline.error", level: .warning, message: "Pillarbox fill history pipeline failed.", attributes: ["function": fragmentFunctionName, "error": error.localizedDescription])
             return nil
         }
     }
@@ -431,7 +431,7 @@ extension OPNVideoEnhancementRenderer {
         do {
             return try device.makeLibrary(source: OPNVideoTextureSource.spatialShaderSource, options: nil)
         } catch {
-            WebRTCMediaTelemetry.capture("webrtc.native.video_enhancement.library.error", level: .warning, message: "Spatial enhancement shader library failed.", attributes: ["error": error.localizedDescription])
+            OPNStreamTelemetry.capture("webrtc.native.video_enhancement.library.error", level: .warning, message: "Spatial enhancement shader library failed.", attributes: ["error": error.localizedDescription])
             return nil
         }
     }

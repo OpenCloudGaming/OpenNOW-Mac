@@ -18,10 +18,10 @@ struct LoginFormView: View {
                 if isShowingSignIn {
                     SignInModal(viewModel: viewModel, accounts: accounts, availableSize: proxy.size, onClose: closeSignIn)
                         // Inset lives outside the panel's own background so it never paints it.
-                        .padding(OpenNOWDesign.Spacing.pageHorizontal)
+                        .padding(OPNDesign.Spacing.pageHorizontal)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background {
-                            OpenNOWDesign.Surface.scrim
+                            OPNDesign.Surface.scrim
                                 .contentShape(Rectangle())
                                 .onTapGesture { closeSignIn() }
                         }
@@ -37,7 +37,7 @@ struct LoginFormView: View {
                         }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(OpenNOWDesign.Surface.scrim)
+                    .background(OPNDesign.Surface.scrim)
                     .transition(.opacity)
                 }
             }
@@ -80,12 +80,12 @@ struct LoginFormView: View {
             .frame(width: metrics.panelWidth, height: metrics.height)
 
             Rectangle()
-                .fill(OpenNOWDesign.Fixed.accent)
+                .fill(OPNDesign.Fixed.accent)
                 .frame(width: 8)
                 .frame(maxHeight: .infinity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .background(OpenNOWDesign.Fixed.surfaceDeep)
+        .background(OPNDesign.Fixed.surfaceDeep)
     }
 
     private func marketingColumn(metrics: VendorLoginWallMetrics, headlineSize: CGFloat, logoWidth: CGFloat, logoHeight: CGFloat, showsBullets: Bool) -> some View {
@@ -93,23 +93,23 @@ struct LoginFormView: View {
             VendorResourceImage(name: "logo-isolated", fileExtension: "svg")
                 .scaledToFit()
                 .frame(width: logoWidth, height: logoHeight)
-                .padding(.bottom, OpenNOWDesign.Spacing.large)
+                .padding(.bottom, OPNDesign.Spacing.large)
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("OPENNOW")
                     .font(.uiSans(size: 11, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Fixed.accent)
+                    .foregroundStyle(OPNDesign.Fixed.accent)
                     .tracking(1.4)
-                    .padding(.bottom, OpenNOWDesign.Spacing.xxSmall)
+                    .padding(.bottom, OPNDesign.Spacing.xxSmall)
 
                 Text("Get In. Game On.")
                     .font(.uiSans(size: headlineSize, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
+                    .foregroundStyle(OPNDesign.Fixed.ink(0.96))
                     .lineLimit(1)
-                    .padding(.bottom, OpenNOWDesign.Spacing.medium)
+                    .padding(.bottom, OPNDesign.Spacing.medium)
 
                 if showsBullets {
-                    VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small) {
+                    VStack(alignment: .leading, spacing: OPNDesign.Spacing.small) {
                         VendorContentString(text: "GeForce RTX performance on any device")
                         VendorContentString(text: "Connect to top PC game stores")
                         VendorContentString(text: "Stream thousands of supported titles")
@@ -117,7 +117,7 @@ struct LoginFormView: View {
                     }
                 }
             }
-            .padding(.bottom, OpenNOWDesign.Spacing.xxxLarge)
+            .padding(.bottom, OPNDesign.Spacing.xxxLarge)
 
             Button(action: openSignIn) {
                 Text("GET IN")
@@ -127,7 +127,7 @@ struct LoginFormView: View {
             .frame(maxWidth: 260)
             .accessibilityHint("Opens the GeForce NOW sign-in window")
         }
-        .padding(.vertical, OpenNOWDesign.Spacing.medium)
+        .padding(.vertical, OPNDesign.Spacing.medium)
         .padding(.leading, metrics.contentLeft)
         .padding(.trailing, metrics.contentRight)
         .frame(width: metrics.panelWidth, alignment: .leading)
@@ -193,14 +193,14 @@ private struct VendorContentString: View {
     let text: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.medium) {
+        HStack(alignment: .top, spacing: OPNDesign.Spacing.medium) {
             Circle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(width: 8, height: 8)
-                .padding(.top, OpenNOWDesign.Spacing.xxSmall)
+                .padding(.top, OPNDesign.Spacing.xxSmall)
             Text(text)
                 .font(.uiSans(size: 14, weight: .regular))
-                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
+                .foregroundStyle(OPNDesign.Fixed.ink(0.72))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -214,52 +214,52 @@ private struct TermsOfUseDialog: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(height: 2)
                 .frame(maxWidth: .infinity)
 
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
-                HStack(spacing: OpenNOWDesign.Spacing.small) {
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium) {
+                HStack(spacing: OPNDesign.Spacing.small) {
                     Image(systemName: "doc.text.magnifyingglass")
                         .font(.uiSans(size: 20, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accentInk)
+                        .foregroundStyle(OPNDesign.accentInk)
                     Text("GeForce NOW Terms of Use")
                         .font(.uiSans(size: 20, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                 }
 
                 Text("OpenNOW is not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation. You must use your own GeForce NOW account and comply with the GeForce NOW Terms of Use.")
                     .font(.uiSans(size: 13, weight: .regular))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let touURL = URL(string: "https://www.nvidia.com/en-us/geforce-now/terms-of-use/") {
-                    HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
+                    HStack(spacing: OPNDesign.Spacing.xSmall) {
                         Image(systemName: "link")
                             .font(.uiSans(size: 11, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accentInk)
+                            .foregroundStyle(OPNDesign.accentInk)
                         Link("Read the full GeForce NOW Terms of Use", destination: touURL)
                             .font(.uiSans(size: 13, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accentInk)
+                            .foregroundStyle(OPNDesign.accentInk)
                     }
                 }
             }
-            .padding(OpenNOWDesign.Spacing.card)
+            .padding(OPNDesign.Spacing.card)
 
             HStack {
                 Button("Decline", action: viewModel.declineTermsOfUse)
                     .buttonStyle(VendorTermsDeclineButtonStyle())
-                Spacer(minLength: OpenNOWDesign.Spacing.small)
+                Spacer(minLength: OPNDesign.Spacing.small)
                 Button("Accept & Continue", action: onAccept)
                     .buttonStyle(VendorGetInButtonStyle())
             }
-            .padding(.horizontal, OpenNOWDesign.Spacing.card)
-            .padding(.bottom, OpenNOWDesign.Spacing.card)
+            .padding(.horizontal, OPNDesign.Spacing.card)
+            .padding(.bottom, OPNDesign.Spacing.card)
         }
         .frame(width: 460)
-        .background(OpenNOWDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNDesign.Surface.panel)
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
         .onExitCommand(perform: viewModel.declineTermsOfUse)
     }
@@ -269,10 +269,10 @@ private struct VendorTermsDeclineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.uiSans(size: 13, weight: .bold))
-            .foregroundStyle(OpenNOWDesign.Text.primary)
-            .padding(.horizontal, OpenNOWDesign.Spacing.medium)
+            .foregroundStyle(OPNDesign.Text.primary)
+            .padding(.horizontal, OPNDesign.Spacing.medium)
             .frame(height: 36)
-            .background(configuration.isPressed ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .background(configuration.isPressed ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle)
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }

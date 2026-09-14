@@ -15,11 +15,11 @@ private struct CatalogStorePickerMetrics {
     let contentWidth: CGFloat
 
     init(viewport: CGSize, scale: CGFloat) {
-        let padding = OpenNOWDesign.clamped(viewport.width * 0.07, minimum: 32, maximum: 120) * scale
+        let padding = OPNDesign.clamped(viewport.width * 0.07, minimum: 32, maximum: 120) * scale
         horizontalPadding = min(padding, viewport.width * 0.16)
-        contentTopInset = OpenNOWDesign.clamped(viewport.height * 0.14, minimum: 56, maximum: 128) * scale
-        bottomInset = OpenNOWDesign.Spacing.xxxLarge(scale: scale)
-        columnGap = OpenNOWDesign.clamped(viewport.width * 0.06, minimum: 40, maximum: 96) * scale
+        contentTopInset = OPNDesign.clamped(viewport.height * 0.14, minimum: 56, maximum: 128) * scale
+        bottomInset = OPNDesign.Spacing.xxxLarge(scale: scale)
+        columnGap = OPNDesign.clamped(viewport.width * 0.06, minimum: 40, maximum: 96) * scale
         posterWidth = 292 * scale
         posterHeight = 410 * scale
         let available = viewport.width - horizontalPadding * 2 - posterWidth - columnGap
@@ -74,7 +74,7 @@ struct CatalogStorePickerOverlay: View {
                 .frame(width: viewport.width, height: viewport.height)
                 .clipped()
                 .blur(radius: 18)
-            OpenNOWDesign.Surface.scrim
+            OPNDesign.Surface.scrim
             LinearGradient(colors: [.black.opacity(0.36), .clear, .black.opacity(0.44)], startPoint: .top, endPoint: .bottom)
         }
     }
@@ -83,46 +83,46 @@ struct CatalogStorePickerOverlay: View {
         Button { viewModel.closeStorePicker() } label: {
             Image(systemName: "xmark")
                 .catalogFont(size: 12, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
+                .foregroundStyle(OPNDesign.Fixed.ink(0.96))
                 .frame(width: 32 * uiScale, height: 32 * uiScale)
-                .background(OpenNOWDesign.Fill.neutral(isCloseHovering ? 0.16 : 0.08))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
+                .background(OPNDesign.Fill.neutral(isCloseHovering ? 0.16 : 0.08))
+                .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isCloseHovering = $0 }
-        .padding(.top, topInset + OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-        .padding(.trailing, OpenNOWDesign.Spacing.medium(scale: uiScale))
+        .padding(.top, topInset + OPNDesign.Spacing.xSmall(scale: uiScale))
+        .padding(.trailing, OPNDesign.Spacing.medium(scale: uiScale))
     }
 
     private func header(game: OPNCatalogGameObject) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(game.title.isEmpty ? "Selected Game" : game.title)
                 .catalogFont(size: 14, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
+                .foregroundStyle(OPNDesign.Fixed.ink(0.96))
                 .lineLimit(1)
-                .padding(.bottom, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-            FlowLayout(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                .padding(.bottom, OPNDesign.Spacing.xSmall(scale: uiScale))
+            FlowLayout(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 if viewModel.ownershipFlowStage == .success, let option = selectedOption(game: game) {
                     storeInlineLabel(option: option, owned: true)
                 } else {
                     Text("PC DIGITAL VERSION")
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(1.1)
-                        .foregroundStyle(OpenNOWDesign.Fixed.ink(0.52))
+                        .foregroundStyle(OPNDesign.Fixed.ink(0.52))
                     if viewModel.ownershipFlowStage == .manualMark, let option = selectedOption(game: game) {
                         Text("|")
                             .catalogFont(size: 10, weight: .bold)
                             .tracking(1.1)
-                            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.52))
+                            .foregroundStyle(OPNDesign.Fixed.ink(0.52))
                         storeInlineLabel(option: option, owned: false)
                     }
                 }
             }
             Rectangle()
-                .fill(OpenNOWDesign.Fixed.ink(0.10))
+                .fill(OPNDesign.Fixed.ink(0.10))
                 .frame(height: 1)
-                .padding(.top, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-                .padding(.bottom, OpenNOWDesign.Spacing.xLarge(scale: uiScale))
+                .padding(.top, OPNDesign.Spacing.contentVertical(scale: uiScale))
+                .padding(.bottom, OPNDesign.Spacing.xLarge(scale: uiScale))
         }
     }
 
@@ -145,14 +145,14 @@ struct CatalogStorePickerOverlay: View {
     private func stageTitle(_ title: String) -> some View {
         Text(title)
             .catalogFont(size: 20, weight: .bold)
-            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
-            .padding(.bottom, OpenNOWDesign.Spacing.small(scale: uiScale))
+            .foregroundStyle(OPNDesign.Fixed.ink(0.96))
+            .padding(.bottom, OPNDesign.Spacing.small(scale: uiScale))
     }
 
     private func stageDescription(_ text: String) -> some View {
         Text(text)
             .catalogFont(size: 12, weight: .medium)
-            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
+            .foregroundStyle(OPNDesign.Fixed.ink(0.72))
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -160,21 +160,21 @@ struct CatalogStorePickerOverlay: View {
         VStack(alignment: .leading, spacing: 0) {
             stageTitle("Finding where you own this game")
             stageDescription("Checking all your connected accounts to sync this game. This may take some time...")
-            VStack(spacing: OpenNOWDesign.Spacing.large(scale: uiScale)) {
+            VStack(spacing: OPNDesign.Spacing.large(scale: uiScale)) {
                 ProgressView()
                     .controlSize(.large)
-                    .tint(OpenNOWDesign.Fixed.accent)
+                    .tint(OPNDesign.Fixed.accent)
                 Text(viewModel.ownershipFlowMessage.isEmpty ? "Syncing connected game libraries..." : viewModel.ownershipFlowMessage)
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
+                    .foregroundStyle(OPNDesign.Fixed.ink(0.72))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, OpenNOWDesign.Spacing.xxxLarge(scale: uiScale) * 2)
-            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            .padding(.vertical, OPNDesign.Spacing.xxxLarge(scale: uiScale) * 2)
+            HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 Button("STOP RESYNC") { viewModel.stopOwnershipResync() }
                     .buttonStyle(CatalogOwnershipSecondaryButtonStyle(uiScale: uiScale))
             }
-            .padding(.top, OpenNOWDesign.Spacing.xxLarge(scale: uiScale))
+            .padding(.top, OPNDesign.Spacing.xxLarge(scale: uiScale))
         }
     }
 
@@ -185,8 +185,8 @@ struct CatalogStorePickerOverlay: View {
         return VStack(alignment: .leading, spacing: 0) {
             stageTitle("Choose a game store")
             stageDescription("Where do you own this game and want to play?")
-                .padding(.bottom, OpenNOWDesign.Spacing.xxLarge(scale: uiScale))
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.large(scale: uiScale)) {
+                .padding(.bottom, OPNDesign.Spacing.xxLarge(scale: uiScale))
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.large(scale: uiScale)) {
                 if !storeOptions.isEmpty {
                     CatalogStorePickerSection(label: "GAME STORES", uiScale: uiScale) {
                         storeOptionList(options: storeOptions)
@@ -202,7 +202,7 @@ struct CatalogStorePickerOverlay: View {
     }
 
     private func storeOptionList(options: [CatalogPlatformOption]) -> some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
             ForEach(options) { option in
                 CatalogStorePickerRow(
                     title: option.title,
@@ -223,20 +223,20 @@ struct CatalogStorePickerOverlay: View {
         let storeName = option?.title ?? "this store"
         return VStack(alignment: .leading, spacing: 0) {
             stageTitle("Mark as owned")
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 stageDescription("Press CONTINUE to manually mark this game as owned only if you have this in your \(storeName) library or it may fail to launch. Don't own it?")
                 Button("Get this game.") { viewModel.openStoreForSelectedVariant() }
                     .buttonStyle(.plain)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Fixed.accent)
+                    .foregroundStyle(OPNDesign.Fixed.accent)
             }
-            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 Button("CONTINUE") { viewModel.confirmSelectedVariantOwned() }
                     .buttonStyle(CatalogOwnershipPrimaryButtonStyle(uiScale: uiScale))
                 Button("EXIT") { viewModel.closeStorePicker() }
                     .buttonStyle(CatalogOwnershipSecondaryButtonStyle(uiScale: uiScale))
             }
-            .padding(.top, OpenNOWDesign.Spacing.xxLarge(scale: uiScale))
+            .padding(.top, OPNDesign.Spacing.xxLarge(scale: uiScale))
         }
     }
 
@@ -246,31 +246,31 @@ struct CatalogStorePickerOverlay: View {
         let account = option.flatMap { viewModel.accountStatus(forStore: $0.accountStore) }
         return VStack(alignment: .leading, spacing: 0) {
             stageTitle("You're all set to play")
-                .padding(.bottom, OpenNOWDesign.Spacing.xLarge(scale: uiScale))
-            HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+                .padding(.bottom, OPNDesign.Spacing.xLarge(scale: uiScale))
+            HStack(alignment: .top, spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
                 if let option { storeIconView(iconURL: option.iconURL, size: 20) }
-                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                     Text(CatalogStorePresentation.successAccountTitle(storeName: storeName, account: account))
                         .catalogFont(size: 14, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
+                        .foregroundStyle(OPNDesign.Fixed.ink(0.96))
                     Text(CatalogStorePresentation.successAccountSubtitle(storeName: storeName, account: account))
                         .catalogFont(size: 12, weight: .medium)
-                        .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
-                    HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                        .foregroundStyle(OPNDesign.Fixed.ink(0.72))
+                    HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                         Image(systemName: "checkmark.circle.fill")
                             .catalogFont(size: 12, weight: .bold)
-                            .foregroundStyle(OpenNOWDesign.Fixed.accent)
+                            .foregroundStyle(OPNDesign.Fixed.accent)
                         Text(CatalogStorePresentation.successSyncText(account: account))
                             .catalogFont(size: 12, weight: .medium)
-                            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
+                            .foregroundStyle(OPNDesign.Fixed.ink(0.72))
                     }
                 }
             }
-            HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 Button("DONE") { viewModel.finishOwnershipFlow() }
                     .buttonStyle(CatalogOwnershipPrimaryButtonStyle(uiScale: uiScale))
             }
-            .padding(.top, OpenNOWDesign.Spacing.xxLarge(scale: uiScale))
+            .padding(.top, OPNDesign.Spacing.xxLarge(scale: uiScale))
         }
     }
 
@@ -279,22 +279,22 @@ struct CatalogStorePickerOverlay: View {
     }
 
     private func storeInlineLabel(option: CatalogPlatformOption, owned: Bool) -> some View {
-        HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             storeIconView(iconURL: option.iconURL, size: 14)
             Text(option.title)
                 .catalogFont(size: 11, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
+                .foregroundStyle(OPNDesign.Fixed.ink(0.72))
             if owned {
                 Text(option.status.isEmpty ? "Ready" : option.status)
                     .catalogFont(size: 10, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
-                    .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                    .foregroundStyle(OPNDesign.Fixed.ink(0.72))
+                    .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
                     .frame(height: 20 * uiScale)
-                    .background(OpenNOWDesign.Fixed.ink(0.08))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
+                    .background(OPNDesign.Fixed.ink(0.08))
+                    .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
                 Image(systemName: "checkmark")
                     .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Fixed.accent)
+                    .foregroundStyle(OPNDesign.Fixed.accent)
             }
         }
     }
@@ -316,9 +316,9 @@ struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
             .font(.catalogText(size: 14 * uiScale, weight: .bold))
             .tracking(0.4)
             .foregroundStyle(.black.opacity(0.88))
-            .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
-            .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OpenNOWDesign.Fixed.accent.opacity(configuration.isPressed ? 0.76 : 1))
+            .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
+            .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
+            .background(OPNDesign.Fixed.accent.opacity(configuration.isPressed ? 0.76 : 1))
     }
 }
 
@@ -329,11 +329,11 @@ struct CatalogOwnershipSecondaryButtonStyle: ButtonStyle {
         configuration.label
             .font(.catalogText(size: 13 * uiScale, weight: .bold))
             .tracking(0.4)
-            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
-            .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
-            .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OpenNOWDesign.Fill.neutral(configuration.isPressed ? 0.16 : 0.08))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
+            .foregroundStyle(OPNDesign.Fixed.ink(0.96))
+            .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
+            .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
+            .background(OPNDesign.Fill.neutral(configuration.isPressed ? 0.16 : 0.08))
+            .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 
@@ -345,13 +345,13 @@ struct CatalogStorePickerPoster: View {
 
     var body: some View {
         ZStack {
-            OpenNOWDesign.Surface.panel
+            OPNDesign.Surface.panel
             CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestStorePickerPosterURL, width: 720), contentMode: .fill, maxPixelSize: 720)
                 .frame(width: width, height: height)
                 .clipped()
         }
         .frame(width: width, height: height)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 
@@ -367,7 +367,7 @@ struct CatalogStorePickerSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             sectionLabel
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -378,7 +378,7 @@ struct CatalogStorePickerSection<Content: View>: View {
         Text(label)
             .catalogFont(size: 10, weight: .bold)
             .tracking(1.1)
-            .foregroundStyle(OpenNOWDesign.Fixed.ink(0.52))
+            .foregroundStyle(OPNDesign.Fixed.ink(0.52))
             .fixedSize(horizontal: true, vertical: false)
     }
 }
@@ -408,11 +408,11 @@ struct CatalogStorePickerRow: View {
 
 extension CatalogStorePickerRow {
     private var rowContent: some View {
-        HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             storeIcon
             Text(title)
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
+                .foregroundStyle(OPNDesign.Fixed.ink(0.96))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -420,9 +420,9 @@ extension CatalogStorePickerRow {
             selectedCheckmark
         }
         .frame(maxWidth: .infinity, minHeight: 44 * uiScale, maxHeight: 44 * uiScale, alignment: .leading)
-        .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
-        .background(OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
+        .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
+        .background(OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
+        .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
         .contentShape(Rectangle())
     }
 
@@ -431,20 +431,20 @@ extension CatalogStorePickerRow {
         if !status.isEmpty {
             Text(status)
                 .catalogFont(size: 11, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.52))
+                .foregroundStyle(OPNDesign.Fixed.ink(0.52))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
                 .frame(height: 22 * uiScale)
-                .background(OpenNOWDesign.Fixed.ink(0.08))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
+                .background(OPNDesign.Fixed.ink(0.08))
+                .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
         }
     }
 
     private var selectedCheckmark: some View {
         Image(systemName: "checkmark")
             .catalogFont(size: 12, weight: .bold)
-            .foregroundStyle(OpenNOWDesign.Fixed.accent)
+            .foregroundStyle(OPNDesign.Fixed.accent)
             .frame(width: 18 * uiScale, height: 18 * uiScale)
             .opacity(isSelected ? 1 : 0)
     }

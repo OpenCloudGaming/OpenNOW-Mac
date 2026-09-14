@@ -14,7 +14,7 @@ struct AccountSettingsPage: View {
                 HStack(alignment: .top, spacing: 20 * uiScale) {
                     ZStack {
                         SettingsVendorLayout.cardRaised
-                            .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.42), lineWidth: 1) }
+                            .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
                         SettingsAccountAvatar(email: viewModel.account.email, size: 58 * uiScale)
                     }
                     .frame(width: 92 * uiScale, height: 92 * uiScale)
@@ -23,19 +23,19 @@ struct AccountSettingsPage: View {
                         HStack(alignment: .firstTextBaseline, spacing: 10 * uiScale) {
                             Text(account.displayName)
                                 .font(.settingsFont(size: 25 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                                 .lineLimit(1)
                             Text(account.membershipTier.uppercased())
                                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.onAccent)
+                                .foregroundStyle(OPNDesign.onAccent)
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)
-                                .background(OpenNOWDesign.accent)
+                                .background(OPNDesign.accent)
                         }
                         Text(accountSummaryText)
                             .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(OPNDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8 * uiScale) {
                             AboutStatusPill(title: "Provider", value: account.providerName, uiScale: uiScale)
@@ -85,10 +85,10 @@ struct AccountSettingsPage: View {
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text("Personal account details are masked by default.")
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text("Reveal only when validating account state on your own machine.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
                 Spacer()
                 SettingsRevealButton(revealed: revealSensitive, uiScale: uiScale) { revealSensitive.toggle() }
@@ -184,23 +184,23 @@ struct AccountHealthBadge: View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
             HStack(spacing: 7 * uiScale) {
                 Circle()
-                    .fill(positive ? OpenNOWDesign.accent : Color.orange)
+                    .fill(positive ? OPNDesign.accent : OPNDesign.Semantic.warning)
                     .frame(width: 7 * uiScale, height: 7 * uiScale)
                 Text(title)
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
+                    .foregroundStyle(positive ? OPNDesign.accentInk : OPNDesign.Text.primary)
                     .tracking(1.1)
             }
             Text(subtitle)
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .lineLimit(2)
         }
         .padding(.horizontal, 14 * uiScale)
         .frame(width: 172 * uiScale, height: 64 * uiScale, alignment: .leading)
         .background(SettingsVendorLayout.cardRaised)
-        .overlay(alignment: .leading) { Rectangle().fill(positive ? OpenNOWDesign.accent : Color.orange).frame(width: 3 * uiScale) }
-        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.35) : Color.orange.opacity(0.30), lineWidth: 1) }
+        .overlay(alignment: .leading) { Rectangle().fill(positive ? OPNDesign.accent : OPNDesign.Semantic.warning).frame(width: 3 * uiScale) }
+        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.35) : OPNDesign.Semantic.warning.opacity(0.30), lineWidth: 1) }
     }
 }
 
@@ -215,12 +215,12 @@ struct SettingsRevealButton: View {
         Button(action: action) {
             Text(revealed ? "HIDE DETAILS" : "REVEAL DETAILS")
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(revealed ? OpenNOWDesign.onAccent : (isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary))
+                .foregroundStyle(revealed ? OPNDesign.onAccent : (isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary))
                 .tracking(0.8)
                 .padding(.horizontal, 13 * uiScale)
                 .frame(height: 32 * uiScale)
-                .background(revealed ? OpenNOWDesign.accent.opacity(isHovering ? 0.90 : 1) : (isHovering ? OpenNOWDesign.Stroke.subtle : OpenNOWDesign.Fill.neutral(0.065)))
-                .overlay { Rectangle().stroke(revealed ? OpenNOWDesign.accent : (isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular), lineWidth: 1) }
+                .background(revealed ? OPNDesign.accent.opacity(isHovering ? 0.90 : 1) : (isHovering ? OPNDesign.Stroke.subtle : OPNDesign.Fill.neutral(0.065)))
+                .overlay { Rectangle().stroke(revealed ? OPNDesign.accent : (isHovering ? OPNDesign.Stroke.strong : OPNDesign.Stroke.regular), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -259,7 +259,7 @@ struct SettingsAccountAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1))
+        .overlay(Circle().stroke(OPNDesign.Stroke.regular, lineWidth: 1))
     }
 
     private var fallbackAvatar: some View {
@@ -279,18 +279,18 @@ struct AccountStatusTile: View {
             Text(label.uppercased())
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
             Text(value.isEmpty ? "Unknown" : value)
                 .font(.settingsFont(size: 16 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(positive ? OPNDesign.accentInk : OPNDesign.Text.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
         .padding(.horizontal, 14 * uiScale)
         .padding(.vertical, 12 * uiScale)
         .frame(width: 188 * uiScale, height: 74 * uiScale, alignment: .leading)
-        .background(OpenNOWDesign.Fill.neutral(positive ? 0.065 : 0.045))
-        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.32) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(positive ? 0.065 : 0.045))
+        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.32) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -302,21 +302,21 @@ struct AccountEmptyState: View {
     var body: some View {
         HStack(spacing: 12 * uiScale) {
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.strong)
+                .fill(OPNDesign.Stroke.strong)
                 .frame(width: 4 * uiScale, height: 44 * uiScale)
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(title)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                 Text(subtitle)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             Spacer(minLength: 0)
         }
         .padding(12 * uiScale)
-        .background(OpenNOWDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(0.045))
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -331,17 +331,17 @@ struct SettingsStatisticTile: View {
             Text(label.uppercased())
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: (emphasized ? 24 : 19) * uiScale, weight: .bold))
-                .foregroundStyle(emphasized ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
+                .foregroundStyle(emphasized ? OPNDesign.accentInk : OPNDesign.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
         .padding(.horizontal, 14 * uiScale)
         .padding(.vertical, 12 * uiScale)
         .frame(width: (emphasized ? 206 : 164) * uiScale, height: 78 * uiScale, alignment: .leading)
-        .background(OpenNOWDesign.Fill.neutral(emphasized ? 0.075 : 0.052))
-        .overlay { Rectangle().stroke(emphasized ? OpenNOWDesign.accent.opacity(0.36) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(emphasized ? 0.075 : 0.052))
+        .overlay { Rectangle().stroke(emphasized ? OPNDesign.accent.opacity(0.36) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

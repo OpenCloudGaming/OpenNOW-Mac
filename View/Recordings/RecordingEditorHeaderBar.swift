@@ -34,11 +34,11 @@ struct RecordingEditorHeaderBar: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-            .background(OpenNOWDesign.Surface.deep)
-            .overlay(alignment: .bottom) { Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(height: 1) }
+            .background(OPNDesign.Surface.deep)
+            .overlay(alignment: .bottom) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1) }
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(isControllerFocused ? OpenNOWDesign.accent : Color.clear)
+                    .fill(isControllerFocused ? OPNDesign.accent : Color.clear)
                     .frame(height: 2)
             }
             .animation(.easeOut(duration: 0.2), value: viewModel.isExporting)
@@ -53,12 +53,12 @@ struct RecordingEditorHeaderBar: View {
         HStack(spacing: 12 * uiScale) {
             ProgressView(value: viewModel.exportProgress)
                 .progressViewStyle(.linear)
-                .tint(OpenNOWDesign.accent)
+                .tint(OPNDesign.accent)
                 .accessibilityLabel("Export progress")
                 .accessibilityValue("\(Int(viewModel.exportProgress * 100)) percent")
             Text("Exporting \(Int(viewModel.exportProgress * 100))%")
                 .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .monospacedDigit()
                 .fixedSize()
         }
@@ -73,20 +73,20 @@ struct RecordingEditorHeaderBar: View {
                 Text("QUICK EDIT")
                     .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.4)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
-                OpenNOWBetaTag(uiScale: uiScale, prominent: true)
+                    .foregroundStyle(OPNDesign.accentInk)
+                OPNBetaTag(uiScale: uiScale, prominent: true)
             }
             .fixedSize()
             statusLine
             TextField("New clip title", text: coalescedUndoable(\.outputTitle, token: "outputTitle"))
                 .textFieldStyle(.plain)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, 10 * uiScale)
                 // Matches the buttons beside it; 34 against their 36 read as a misaligned field.
                 .frame(height: RecordingActionButtonStyle.height * uiScale)
-                .background(OpenNOWDesign.Surface.field)
-                .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNDesign.Surface.field)
+                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .help("Name of the video the export will create")
                 .focused($isTitleFocused)
                 .onChange(of: isTitleFocused) { _, focused in viewModel.isTitleFieldFocused = focused }
@@ -144,15 +144,15 @@ struct RecordingEditorHeaderBar: View {
             } else if let hint = viewModel.hint {
                 Image(systemName: "info.circle.fill")
                     .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
+                    .foregroundStyle(OPNDesign.accentInk.opacity(0.85))
                 Text(hint)
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .lineLimit(1)
             } else {
                 Text(exportSummary)
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .lineLimit(1)
             }
             if let markSummary = viewModel.markedRangeDescription {

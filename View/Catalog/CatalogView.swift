@@ -6,9 +6,9 @@ import ImageIO
 import SwiftUI
 
 enum CatalogVendorLayout {
-    static var appBarBackground: Color { OpenNOWDesign.Surface.appBar }
-    static var mallSurface: Color { OpenNOWDesign.Surface.app }
-    static var tileTray: Color { OpenNOWDesign.Surface.tileTray }
+    static var appBarBackground: Color { OPNDesign.Surface.appBar }
+    static var mallSurface: Color { OPNDesign.Surface.app }
+    static var tileTray: Color { OPNDesign.Surface.tileTray }
     /// Hover growth stops just short of the neighbouring tile's artwork: a tile is 352pt wide in a
     /// 368pt slot, so anything past 192/176 = 1.09 crosses into the tile beside it, which a rail
     /// cannot order around (a `LazyHStack` paints its children in index order and ignores `zIndex`).
@@ -82,48 +82,48 @@ enum CatalogVendorLayout {
         if viewportHeight > 0 {
             maximum = min(maximum, max(minimum, viewportHeight * 0.78))
         }
-        return OpenNOWDesign.clamped(width * detailPanelAspectRatio, minimum: minimum, maximum: maximum)
+        return OPNDesign.clamped(width * detailPanelAspectRatio, minimum: minimum, maximum: maximum)
     }
 
     static func heroImageLeading(for width: CGFloat) -> CGFloat {
-        width > 0 ? OpenNOWDesign.clamped(56 + width * 0.14, minimum: 120, maximum: 280) : 258
+        width > 0 ? OPNDesign.clamped(56 + width * 0.14, minimum: 120, maximum: 280) : 258
     }
 
     static func searchWidth(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width * 0.46, minimum: 280, maximum: 640)
+        OPNDesign.clamped(width * 0.46, minimum: 280, maximum: 640)
     }
 
     static func launchPanelWidth(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width - 64, minimum: 360, maximum: 640)
+        OPNDesign.clamped(width - 64, minimum: 360, maximum: 640)
     }
 
     static func heroTextLeading(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width * 0.09, minimum: 42, maximum: 108)
+        OPNDesign.clamped(width * 0.09, minimum: 42, maximum: 108)
     }
 
     static func heroTextWidth(for width: CGFloat) -> CGFloat {
-        OpenNOWDesign.clamped(width * 0.39, minimum: 320, maximum: 470)
+        OPNDesign.clamped(width * 0.39, minimum: 320, maximum: 470)
     }
 }
 
 extension Font {
-    static func catalogText(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
-        OpenNOWUIFont.font(size: size, weight: weight)
+    static func catalogText(size: CGFloat, weight: OPNUIFont.Weight = .regular) -> Font {
+        OPNUIFont.font(size: size, weight: weight)
     }
 }
 
 struct CatalogFontModifier: ViewModifier {
     @Environment(\.opnUIScale) private var uiScale
     let size: CGFloat
-    let weight: OpenNOWUIFont.Weight
+    let weight: OPNUIFont.Weight
 
     func body(content: Content) -> some View {
-        content.font(OpenNOWUIFont.font(size: size * uiScale, weight: weight))
+        content.font(OPNUIFont.font(size: size * uiScale, weight: weight))
     }
 }
 
 extension View {
-    func catalogFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> some View {
+    func catalogFont(size: CGFloat, weight: OPNUIFont.Weight = .regular) -> some View {
         modifier(CatalogFontModifier(size: size, weight: weight))
     }
 }
@@ -141,12 +141,12 @@ struct CatalogView: View {
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
-    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
-    @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
-    @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
-    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
-    @EnvironmentObject private var systemAppearance: OpenNOWSystemAppearance
+    @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScale = OPNInterfacePreferences.defaultUIScale
+    @AppStorage(OPNThemePreferences.tileDensityKey) private var tileDensityRawValue = OPNThemePreferences.TileDensity.comfortable.rawValue
+    @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
+    @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
+    @EnvironmentObject private var systemAppearance: OPNSystemAppearance
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
@@ -164,15 +164,15 @@ struct CatalogView: View {
     private var isCatalogPageActive: Bool { viewModel.selectedMainPage == .games }
 
     private var tileDensity: CGFloat {
-        (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
+        (OPNThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
     }
 
-    private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
-        OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
+    private var accentColorPreset: OPNThemePreferences.AccentColor {
+        OPNThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
     }
 
-    private var appearancePreference: OpenNOWThemePreferences.Appearance {
-        OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
+    private var appearancePreference: OPNThemePreferences.Appearance {
+        OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
     }
 
     private var themeIdentity: String { "\(accentColorRawValue)-\(appearanceRawValue)-\(systemAppearance.isDark)" }
@@ -180,7 +180,7 @@ struct CatalogView: View {
     /// Nil under Match System, so the window inherits whatever macOS is set to rather than pinning
     /// a scheme the palette would then have to agree with.
     private var preferredColorScheme: ColorScheme? {
-        switch OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark {
+        switch OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark {
         case .system: nil
         case .dark: .dark
         case .light: .light
@@ -215,7 +215,7 @@ struct CatalogView: View {
     var body: some View {
         // Same reason as `ContentView`: the panes keyed on `themeIdentity` rebuild inside this body
         // pass, so the palette has to be resolved before they draw rather than in an `onChange`.
-        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
+        let _ = OPNDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
         ZStack {
             if let streamConfiguration = viewModel.activeStreamConfiguration {
                 GeometryReader { proxy in
@@ -326,7 +326,7 @@ struct CatalogView: View {
             }
         }
         .ignoresSafeArea(edges: .all)
-        .background(OpenNOWDesign.Surface.app)
+        .background(OPNDesign.Surface.app)
         .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
         .task { @MainActor in
             viewModel.start()
@@ -338,7 +338,7 @@ struct CatalogView: View {
         // that a frame carrying real content has been built, not that bytes arrived.
         .task(id: viewModel.hasStartupContent) { @MainActor in
             guard viewModel.hasStartupContent else { return }
-            OpenNOWStartupReadiness.shared.markContentReady()
+            StartupReadiness.shared.markContentReady()
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
@@ -365,7 +365,7 @@ struct CatalogView: View {
 
     private func consumePendingGameShortcut() {
         guard let shortcut = pendingGameShortcut else { return }
-        OpenNOWLog.info(.shortcut, "CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) title=\(shortcut.lookupTitle)")
+        OPNLog.info(.shortcut, "CatalogView consuming pending shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) title=\(shortcut.lookupTitle)")
         pendingGameShortcut = nil
         viewModel.openGameShortcut(shortcut)
     }

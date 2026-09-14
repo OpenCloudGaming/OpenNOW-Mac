@@ -9,7 +9,7 @@ import SwiftUI
 /// and its four numbers. It used to sit under the player, which put the identity a screen away from
 /// the picture it described and left the actions competing with the editor for the bottom edge.
 struct RecordingInspector: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     let isPathCopied: Bool
     let message: String
     let uiScale: CGFloat
@@ -23,11 +23,11 @@ struct RecordingInspector: View {
     var body: some View {
         VStack(spacing: 0) {
             identityRow
-            Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(height: 1)
+            Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1)
             tileRow
         }
-        .background(OpenNOWDesign.Surface.deep)
-        .overlay(alignment: .bottom) { Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(height: 1) }
+        .background(OPNDesign.Surface.deep)
+        .overlay(alignment: .bottom) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1) }
     }
 
     /// Identity on the left, what you can do with it on the right - one row rather than a title
@@ -35,20 +35,20 @@ struct RecordingInspector: View {
     private var identityRow: some View {
         HStack(alignment: .center, spacing: 12 * uiScale) {
             Circle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(width: 7 * uiScale, height: 7 * uiScale)
             Text("NOW PLAYING")
                 .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(1.3)
-                .foregroundStyle(OpenNOWDesign.accentInk)
+                .foregroundStyle(OPNDesign.accentInk)
                 .fixedSize()
             Text(recording.title)
                 .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .lineLimit(1)
             Text(RecordingFormat.dateText(recording.createdAt))
                 .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .lineLimit(1)
             Spacer(minLength: 12 * uiScale)
             actionButtons
@@ -66,7 +66,7 @@ struct RecordingInspector: View {
         Button(action: onEdit) {
             HStack(spacing: 6 * uiScale) {
                 Text("Edit")
-                OpenNOWBetaTag(uiScale: uiScale * 0.9)
+                OPNBetaTag(uiScale: uiScale * 0.9)
             }
         }
         .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
@@ -100,7 +100,7 @@ struct RecordingInspector: View {
                     Spacer(minLength: 0)
                 }
                 .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .padding(.horizontal, 22 * uiScale)
                 .padding(.bottom, 14 * uiScale)
             }
@@ -119,14 +119,14 @@ struct RecordingDetailTile: View {
             Text(title)
                 .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                 .tracking(1.1)
-                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.86))
+                .foregroundStyle(OPNDesign.accentInk.opacity(0.86))
             Text(value)
                 .font(.recordingsFont(size: 14 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .lineLimit(1)
             Text(detail)
                 .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -153,18 +153,18 @@ struct RecordingEmptyState: View {
         VStack(spacing: 16 * uiScale) {
             ZStack {
                 Circle()
-                    .fill(OpenNOWDesign.accent.opacity(0.10))
+                    .fill(OPNDesign.accent.opacity(0.10))
                     .frame(width: 78 * uiScale, height: 78 * uiScale)
                 Image(systemName: kind == .library ? "record.circle" : "line.3.horizontal.decrease.circle")
                     .font(.recordingsFont(size: 34 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
             }
             Text(kind == .library ? "No recordings yet" : "No matches")
                 .font(.recordingsFont(size: 18 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             Text(kind == .library ? "Start a stream, open the sidebar, and press Record to save gameplay videos here." : "Clear search or filters to show the rest of your recording library.")
                 .font(.recordingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 280 * uiScale)
             Button(kind == .library ? "Refresh" : "Clear Filters", action: action)
@@ -182,20 +182,20 @@ struct RecordingEmptyPlayer: View {
         VStack(spacing: 18 * uiScale) {
             ZStack {
                 Rectangle()
-                    .fill(OpenNOWDesign.Fill.neutral(0.045))
+                    .fill(OPNDesign.Fill.neutral(0.045))
                     .frame(width: 180 * uiScale, height: 108 * uiScale)
-                    .overlay { DiagonalGrid().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .overlay { DiagonalGrid().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "play.rectangle.fill")
                     .font(.recordingsFont(size: 46 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.88))
+                    .foregroundStyle(OPNDesign.accentInk.opacity(0.88))
             }
             Text("Select a recording")
                 .font(.recordingsFont(size: 24 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             Text(message.isEmpty ? "Your saved gameplay videos appear here with playback, file actions, and capture details." : message)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420 * uiScale)
         }
@@ -207,10 +207,10 @@ struct RecordingsBackdrop: View {
     var body: some View {
         ZStack {
             RecordingsLayout.surface
-            RadialGradient(colors: [OpenNOWDesign.accent.opacity(0.12), .clear], center: .topLeading, startRadius: 20, endRadius: 620)
-            RadialGradient(colors: [OpenNOWDesign.Fill.neutral(0.06), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 520)
+            RadialGradient(colors: [OPNDesign.accent.opacity(0.12), .clear], center: .topLeading, startRadius: 20, endRadius: 620)
+            RadialGradient(colors: [OPNDesign.Fill.neutral(0.06), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 520)
             DiagonalGrid()
-                .stroke(OpenNOWDesign.Fill.neutral(0.026), lineWidth: 1)
+                .stroke(OPNDesign.Fill.neutral(0.026), lineWidth: 1)
                 .blendMode(.screen)
         }
         .ignoresSafeArea()
@@ -266,23 +266,23 @@ struct RecordingActionButtonStyle: ButtonStyle {
 
     private var foreground: Color {
         switch tone {
-        case .primary: return OpenNOWDesign.onAccent.opacity(0.88)
-        case .secondary: return OpenNOWDesign.Text.primary
+        case .primary: return OPNDesign.onAccent.opacity(0.88)
+        case .secondary: return OPNDesign.Text.primary
         case .destructive: return RecordingsLayout.danger
         }
     }
 
     private func background(isPressed: Bool) -> Color {
         switch tone {
-        case .primary: return OpenNOWDesign.accent.opacity(isPressed ? 0.78 : 1)
-        case .secondary: return isPressed ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle
+        case .primary: return OPNDesign.accent.opacity(isPressed ? 0.78 : 1)
+        case .secondary: return isPressed ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle
         case .destructive: return RecordingsLayout.danger.opacity(isPressed ? 0.18 : 0.10)
         }
     }
 
     private var stroke: Color {
         switch tone {
-        case .primary: return OpenNOWDesign.accent
+        case .primary: return OPNDesign.accent
         case .secondary: return RecordingsLayout.stroke
         case .destructive: return RecordingsLayout.danger.opacity(0.36)
         }

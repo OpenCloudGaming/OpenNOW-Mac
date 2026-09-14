@@ -487,7 +487,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
 
     // MARK: - Recording
 
-    public func startRecording(configuration: WebRTCStreamRecordingConfiguration) async {
+    public func startRecording(configuration: StreamRecordingConfiguration) async {
         recorder.start(configuration: configuration)
         logger?("NVST recording started \(configuration.width)x\(configuration.height)@\(configuration.fps)")
     }
@@ -496,7 +496,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         recorder.stop()
     }
 
-    public func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (WebRTCStreamRecordingStatus) -> Void)?) async {
+    public func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async {
         recorder.onStatusChanged = handler
     }
 

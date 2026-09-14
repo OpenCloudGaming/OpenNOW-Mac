@@ -232,7 +232,7 @@ final class OPNLibWebRTCStreamSession: NSObject, OPNCoreAudioRTCDeviceOwner, @un
             }
             return pendingRemoteIcePayloads.count
         }
-        WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.buffered", level: .debug, message: "Buffered remote ICE candidate until remote description is ready.", attributes: ["pending": String(count)])
+        OPNStreamTelemetry.capture("webrtc.native.remote_ice.buffered", level: .debug, message: "Buffered remote ICE candidate until remote description is ready.", attributes: ["pending": String(count)])
     }
 
     func markRemoteDescriptionReady() {
@@ -247,7 +247,7 @@ final class OPNLibWebRTCStreamSession: NSObject, OPNCoreAudioRTCDeviceOwner, @un
             addRemoteIceCandidatePayload(payload, peerConnection: peerConnection)
         }
         if !buffered.isEmpty {
-            WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.flushed", level: .debug, message: "Flushed buffered remote ICE candidates.", attributes: ["count": String(buffered.count)])
+            OPNStreamTelemetry.capture("webrtc.native.remote_ice.flushed", level: .debug, message: "Flushed buffered remote ICE candidates.", attributes: ["count": String(buffered.count)])
         }
     }
 
@@ -258,7 +258,7 @@ final class OPNLibWebRTCStreamSession: NSObject, OPNCoreAudioRTCDeviceOwner, @un
         let sdpMLineIndex = Int32(WebRTCSdp.int(payload["sdpMLineIndex"]))
         let rtcCandidate = RTCIceCandidate(sdp: candidate, sdpMLineIndex: sdpMLineIndex, sdpMid: sdpMid.isEmpty ? nil : sdpMid)
         peerConnection.add(rtcCandidate) { error in
-            if let error { WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.add.error", level: .warning, message: "Failed to add remote ICE candidate.", attributes: ["error": error.localizedDescription]) }
+            if let error { OPNStreamTelemetry.capture("webrtc.native.remote_ice.add.error", level: .warning, message: "Failed to add remote ICE candidate.", attributes: ["error": error.localizedDescription]) }
         }
     }
 
@@ -267,7 +267,7 @@ final class OPNLibWebRTCStreamSession: NSObject, OPNCoreAudioRTCDeviceOwner, @un
         let targets = WebRTCSdp.extractIceTargets(from: offerSdp)
         guard !targets.isEmpty else { return }
         let candidate = "candidate:1 1 udp 2130706431 \(ip) \(port) typ host generation 0 ufrag \(serverIceUfrag) network-cost 999"
-        WebRTCMediaTelemetry.capture("webrtc.native.remote_ice.inject", level: .debug, message: "Injecting direct ICE candidates.", attributes: ["count": String(targets.count), "port": String(port)])
+        OPNStreamTelemetry.capture("webrtc.native.remote_ice.inject", level: .debug, message: "Injecting direct ICE candidates.", attributes: ["count": String(targets.count), "port": String(port)])
         for target in targets {
             addRemoteIceCandidatePayload(["candidate": candidate, "sdpMid": target.mid, "sdpMLineIndex": target.mLineIndex, "usernameFragment": serverIceUfrag])
         }

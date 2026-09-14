@@ -46,12 +46,12 @@ extension RecordingEditorViewModel {
 
     func rotateLeft() {
         recordUndo()
-        rotation = WebRTCStreamRecordingRotation(rawValue: (rotation.rawValue + 270) % 360) ?? .degrees0
+        rotation = StreamRecordingRotation(rawValue: (rotation.rawValue + 270) % 360) ?? .degrees0
     }
 
     func rotateRight() {
         recordUndo()
-        rotation = WebRTCStreamRecordingRotation(rawValue: (rotation.rawValue + 90) % 360) ?? .degrees0
+        rotation = StreamRecordingRotation(rawValue: (rotation.rawValue + 90) % 360) ?? .degrees0
     }
 
     func toggleHorizontalFlip() {
@@ -103,16 +103,16 @@ extension RecordingEditorViewModel {
         apply(snapshot)
     }
 
-    func request() -> WebRTCStreamRecordingEditRequest {
-        WebRTCStreamRecordingEditRequest(
+    func request() -> StreamRecordingEditRequest {
+        StreamRecordingEditRequest(
             title: outputTitle,
-            segments: segments.map { WebRTCStreamRecordingEditSegment(recording: $0.recording, startSeconds: $0.startSeconds, endSeconds: $0.endSeconds) },
-            crop: cropEnabled ? WebRTCStreamRecordingCrop(x: cropX, y: cropY, width: cropWidth, height: cropHeight) : nil,
+            segments: segments.map { StreamRecordingEditSegment(recording: $0.recording, startSeconds: $0.startSeconds, endSeconds: $0.endSeconds) },
+            crop: cropEnabled ? StreamRecordingCrop(x: cropX, y: cropY, width: cropWidth, height: cropHeight) : nil,
             rotation: rotation,
             isFlippedHorizontally: isFlippedHorizontally,
             isFlippedVertically: isFlippedVertically,
             playbackRate: playbackRate,
-            audio: WebRTCStreamRecordingAudioEdit(volume: volume, isMuted: isMuted, fadeInSeconds: fadeInSeconds, fadeOutSeconds: fadeOutSeconds),
+            audio: StreamRecordingAudioEdit(volume: volume, isMuted: isMuted, fadeInSeconds: fadeInSeconds, fadeOutSeconds: fadeOutSeconds),
             exportPreset: exportQuality.preset
         )
     }

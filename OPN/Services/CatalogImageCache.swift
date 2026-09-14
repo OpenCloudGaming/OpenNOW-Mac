@@ -285,30 +285,30 @@ actor CatalogImageCache {
             let (data, response) = try await URLSession.shared.data(for: request)
             OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: data, response: response, error: nil)
             guard let httpResponse = response as? HTTPURLResponse else {
-                await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image response was not HTTP url=\(url.absoluteString)") }
+                await MainActor.run { OPNLog.warning(.cache, "Catalog image response was not HTTP url=\(url.absoluteString)") }
                 return nil
             }
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
-                await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
+                await MainActor.run { OPNLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
                 if let stored = await loadStoredImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
                     return (stored.imageData, nil, httpResponse)
                 }
                 return nil
             }
             guard (200..<300).contains(httpResponse.statusCode) else {
-                await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
+                await MainActor.run { OPNLog.warning(.cache, "Catalog image download failed status=\(httpResponse.statusCode) url=\(url.absoluteString)") }
                 return nil
             }
             guard let decoded = Self.downsampledImage(from: data, maxPixelSize: maxPixelSize) else {
-                await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)") }
+                await MainActor.run { OPNLog.warning(.cache, "Catalog image data could not be decoded url=\(url.absoluteString) bytes=\(data.count)") }
                 return nil
             }
             let imageData = CatalogCachedImageData(sourceData: retainingSourceData ? data : nil, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
             return (imageData, data, httpResponse)
         } catch {
             OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: nil, response: nil, error: error)
-            await MainActor.run { OpenNOWLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)") }
+            await MainActor.run { OPNLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)") }
             return nil
         }
     }
@@ -316,7 +316,7 @@ actor CatalogImageCache {
     nonisolated private func storeImage(_ downloaded: (imageData: CatalogCachedImageData, data: Data?, response: HTTPURLResponse), for url: URL) async {
         guard let data = downloaded.data else { return }
         store(imageData: downloaded.imageData, sourceData: data, response: downloaded.response, for: url)
-        await MainActor.run { OpenNOWLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)") }
+        await MainActor.run { OPNLog.debug(.cache, "Catalog image cached url=\(url.absoluteString) bytes=\(data.count)") }
     }
 
     nonisolated private func hasCachedImage(for url: URL) -> Bool {

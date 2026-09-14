@@ -178,7 +178,7 @@ public enum SteamControllerReport {
         default:
             if reportID != tritonStateReportID, reportID != tritonBLEStateReportID, reportID != tritonTimestampedStateReportID {
                 let hex = report.prefix(min(8, report.count)).map { String(format: "%02X", $0) }.joined(separator: " ")
-                OpenNOWLog.debug(.controller, "Unknown Triton reportID=0x\(String(format: "%02X", reportID)) length=\(report.count) bytes=\(hex)")
+                OPNLog.debug(.controller, "Unknown Triton reportID=0x\(String(format: "%02X", reportID)) length=\(report.count) bytes=\(hex)")
             }
             return .ignored
         }

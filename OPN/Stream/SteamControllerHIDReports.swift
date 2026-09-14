@@ -22,7 +22,7 @@ extension SteamControllerHIDMonitor {
         // content) up to a cap so a button press is visible in the raw bytes.
         let isDeckStateReport = report.first == SteamControllerReport.deckStateReportID
         if isGamepad, !isDeckStateReport, report.first != 0 {
-            OpenNOWLog.debug(.controller, "Gamepad input report: id=0x\(String(format: "%02X", report.first ?? 0)) length=\(report.count)")
+            OPNLog.debug(.controller, "Gamepad input report: id=0x\(String(format: "%02X", report.first ?? 0)) length=\(report.count)")
         }
         let event = isDeckStateReport
             ? SteamControllerReport.parseDeckState(report, previous: context.deckSnapshot)
@@ -80,13 +80,13 @@ extension SteamControllerHIDMonitor {
                                  isDeckStateReport: Bool) {
         if isDeckStateReport, report.count >= 16 {
             let bits = UInt64(report[8]) | (UInt64(report[9]) << 8) | (UInt64(report[10]) << 16) | (UInt64(report[11]) << 24) | (UInt64(report[12]) << 32) | (UInt64(report[13]) << 40) | (UInt64(report[14]) << 48) | (UInt64(report[15]) << 56)
-            OpenNOWLog.debug(.controller, "Buttons changed: deck raw=0x\(String(format: "%016X", bits)) parsed=\(buttons)")
+            OPNLog.debug(.controller, "Buttons changed: deck raw=0x\(String(format: "%016X", bits)) parsed=\(buttons)")
         } else if context.model == .triton, report.count >= 6 {
             let bits = UInt32(report[2]) | (UInt32(report[3]) << 8) | (UInt32(report[4]) << 16) | (UInt32(report[5]) << 24)
             let hex = report.map { String(format: "%02x", $0) }.joined()
-            OpenNOWLog.debug(.controller, "Buttons changed: triton raw=0x\(String(format: "%08X", bits)) parsed=\(buttons) len=\(report.count) full=\(hex)")
+            OPNLog.debug(.controller, "Buttons changed: triton raw=0x\(String(format: "%08X", bits)) parsed=\(buttons) len=\(report.count) full=\(hex)")
         } else {
-            OpenNOWLog.debug(.controller, "Buttons changed: \(buttons)")
+            OPNLog.debug(.controller, "Buttons changed: \(buttons)")
         }
     }
 
@@ -105,8 +105,8 @@ extension SteamControllerHIDMonitor {
     func powerOff(_ context: DeviceContext) {
         let report = SteamControllerReport.powerOffReport(model: context.model)
         sendFeatureReport(report, to: context.device, attempts: Self.featureReportAttempts)
-        OpenNOWLog.info(.controller, "Power-off combo (Steam+Y) triggered for controllerID=0x\(String(format: "%016X", context.controllerID))")
-        WebRTCMediaTelemetry.capture(
+        OPNLog.info(.controller, "Power-off combo (Steam+Y) triggered for controllerID=0x\(String(format: "%016X", context.controllerID))")
+        OPNStreamTelemetry.capture(
             "webrtc.input.steamcontroller.poweroff.combo",
             level: .info,
             message: "Steam+Y power-off combo triggered.",
@@ -144,7 +144,7 @@ extension SteamControllerHIDMonitor {
         guard context.isActive != isActive else { return }
         context.isActive = isActive
         publishActiveCount()
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.presence", level: .info, message: "Steam Controller presence changed.", attributes: ["active": String(isActive)])
+        OPNStreamTelemetry.capture("webrtc.input.steamcontroller.device.presence", level: .info, message: "Steam Controller presence changed.", attributes: ["active": String(isActive)])
     }
 
     func publishActiveCount() {

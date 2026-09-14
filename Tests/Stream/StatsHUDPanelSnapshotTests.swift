@@ -11,29 +11,29 @@ import Testing
         NativeNVSTStatsPanel(
             transport: "NATIVE NVST",
             heroes: [
-                .init(label: "GAME", value: "120", unit: "fps", color: WebRTCMediaStreamTheme.accent),
-                .init(label: "STREAM", value: "120", unit: "fps", color: WebRTCMediaStreamTheme.textPrimary),
-                .init(label: "LATENCY", value: "5", unit: "ms", color: WebRTCMediaStreamTheme.accent),
+                .init(label: "GAME", value: "120", unit: "fps", color: StreamHUDTheme.accent),
+                .init(label: "STREAM", value: "120", unit: "fps", color: StreamHUDTheme.textPrimary),
+                .init(label: "LATENCY", value: "5", unit: "ms", color: StreamHUDTheme.accent),
             ],
             groups: [
                 .init(label: "NETWORK", rows: [
-                    .init(label: "Frame Loss", value: "0", detail: "(2 Total)", color: WebRTCMediaStreamTheme.accent),
-                    .init(label: "Packet Loss", value: "0.0%", detail: "(89 Total)", color: WebRTCMediaStreamTheme.accent),
+                    .init(label: "Frame Loss", value: "0", detail: "(2 Total)", color: StreamHUDTheme.accent),
+                    .init(label: "Packet Loss", value: "0.0%", detail: "(89 Total)", color: StreamHUDTheme.accent),
                     .init(label: "Bandwidth Used", value: "3.2", detail: "Mbps of 150"),
                     .init(label: "Jitter", value: "0.2", detail: "ms"),
                 ]),
                 .init(label: "VIDEO", rows: [
                     .init(label: "Resolution", value: "5120x2160"),
                     .init(label: "Codec", value: "H265", detail: "hw"),
-                    .init(label: "Colour", value: "10-bit 4:2:0", detail: "xf20 → bgr10a2 · game HDR", color: WebRTCMediaStreamTheme.accent),
+                    .init(label: "Colour", value: "10-bit 4:2:0", detail: "xf20 → bgr10a2 · game HDR", color: StreamHUDTheme.accent),
                     .init(label: "Render", value: "Native 10-bit", detail: "skipped 432 · balanced"),
                 ]),
                 .init(label: "TIMING", rows: [
-                    .init(label: "Decode", value: "8.1", detail: "ms of 8.3", color: WebRTCMediaStreamTheme.warning),
+                    .init(label: "Decode", value: "8.1", detail: "ms of 8.3", color: StreamHUDTheme.warning),
                     .init(label: "Present", value: "69.8", detail: "ms · max 81.3 · jitter 0.57"),
                 ]),
                 .init(label: "AUDIO", rows: [
-                    .init(label: "Format", value: "Stereo (7.1 asked)", detail: "Opus", color: WebRTCMediaStreamTheme.warning),
+                    .init(label: "Format", value: "Stereo (7.1 asked)", detail: "Opus", color: StreamHUDTheme.warning),
                     .init(label: "A/V", value: "+42", detail: "ms est. · audio buffer 30 + device 6 ms · video late"),
                 ]),
                 .init(label: "SESSION", rows: [

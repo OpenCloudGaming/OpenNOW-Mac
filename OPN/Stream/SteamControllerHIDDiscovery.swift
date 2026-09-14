@@ -39,7 +39,7 @@ extension SteamControllerHIDMonitor {
         let isWirelessReceiver = SteamControllerReport.isWirelessReceiver(productID: productID)
         let controllerID = controllerID(of: device, isWirelessReceiver: isWirelessReceiver)
 
-        OpenNOWLog.info(.controller, "Matched device: productID=0x\(String(format: "%04X", productID)) usagePage=0x\(String(format: "%04X", usagePage)) usage=0x\(String(format: "%04X", usage)) controllerID=0x\(String(format: "%016X", controllerID)) wirelessReceiver=\(isWirelessReceiver)")
+        OPNLog.info(.controller, "Matched device: productID=0x\(String(format: "%04X", productID)) usagePage=0x\(String(format: "%04X", usagePage)) usage=0x\(String(format: "%04X", usage)) controllerID=0x\(String(format: "%016X", controllerID)) wirelessReceiver=\(isWirelessReceiver)")
 
         if usagePage == SteamControllerReport.gamepadUsagePage {
             handleGamepadDeviceMatched(device, controllerID: controllerID)
@@ -67,18 +67,18 @@ extension SteamControllerHIDMonitor {
             startHeartbeatIfNeeded()
         }
         publishActiveCount()
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.matched", level: .info, message: "Steam Controller vendor interface matched.", attributes: ["wireless": String(isWirelessReceiver), "active": String(context.isActive)])
+        OPNStreamTelemetry.capture("webrtc.input.steamcontroller.device.matched", level: .info, message: "Steam Controller vendor interface matched.", attributes: ["wireless": String(isWirelessReceiver), "active": String(context.isActive)])
     }
 
     func handleGamepadDeviceMatched(_ device: IOHIDDevice, controllerID: UInt64) {
         if let context = devices.values.first(where: { $0.controllerID == controllerID }) {
             associateGamepadDevice(device, with: context)
-            OpenNOWLog.debug(.controller, "Gamepad interface associated with vendor controllerID=0x\(String(format: "%016X", controllerID))")
+            OPNLog.debug(.controller, "Gamepad interface associated with vendor controllerID=0x\(String(format: "%016X", controllerID))")
         } else {
             pendingGamepadDevices[controllerID] = device
-            OpenNOWLog.debug(.controller, "Gamepad interface pending for controllerID=0x\(String(format: "%016X", controllerID))")
+            OPNLog.debug(.controller, "Gamepad interface pending for controllerID=0x\(String(format: "%016X", controllerID))")
         }
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.matched", level: .info, message: "Steam Controller gamepad interface matched.")
+        OPNStreamTelemetry.capture("webrtc.input.steamcontroller.gamepad.matched", level: .info, message: "Steam Controller gamepad interface matched.")
     }
 
     func openVendorDevice(_ device: IOHIDDevice, context: DeviceContext) {
@@ -162,13 +162,13 @@ extension SteamControllerHIDMonitor {
                 heartbeatTimer = nil
             }
             publishActiveCount()
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.device.removed", level: .info, message: "Steam Controller vendor interface removed.")
+            OPNStreamTelemetry.capture("webrtc.input.steamcontroller.device.removed", level: .info, message: "Steam Controller vendor interface removed.")
             return
         }
 
         if let context = gamepadDeviceContexts.removeValue(forKey: ObjectIdentifier(device)) {
             closeGamepadDevice(for: context)
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.removed", level: .info, message: "Steam Controller gamepad interface removed.")
+            OPNStreamTelemetry.capture("webrtc.input.steamcontroller.gamepad.removed", level: .info, message: "Steam Controller gamepad interface removed.")
             return
         }
 
@@ -176,8 +176,8 @@ extension SteamControllerHIDMonitor {
         let isWirelessReceiver = SteamControllerReport.isWirelessReceiver(productID: productID)
         let controllerID = controllerID(of: device, isWirelessReceiver: isWirelessReceiver)
         if pendingGamepadDevices.removeValue(forKey: controllerID) != nil {
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.gamepad.pending.removed", level: .info, message: "Steam Controller pending gamepad interface removed.")
-            OpenNOWLog.debug(.controller, "Pending gamepad interface removed controllerID=0x\(String(format: "%016X", controllerID))")
+            OPNStreamTelemetry.capture("webrtc.input.steamcontroller.gamepad.pending.removed", level: .info, message: "Steam Controller pending gamepad interface removed.")
+            OPNLog.debug(.controller, "Pending gamepad interface removed controllerID=0x\(String(format: "%016X", controllerID))")
         }
     }
 }

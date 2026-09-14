@@ -163,7 +163,7 @@ enum RecordingFilmstripLoader {
 
     /// Reference counted: several clips can share one recording, and the frames outlive any one of
     /// them but not the editor.
-    static func retain(_ recording: WebRTCStreamRecording) {
+    static func retain(_ recording: StreamRecording) {
         _ = interest.retain(recording.id)
         startBase(recording)
     }
@@ -180,7 +180,7 @@ enum RecordingFilmstripLoader {
 
     // MARK: - Building
 
-    private static func startBase(_ recording: WebRTCStreamRecording) {
+    private static func startBase(_ recording: StreamRecording) {
         guard base[recording.id] == nil, baseBuilders[recording.id] == nil else { return }
         let id = recording.id
         let url = recording.videoURL
@@ -210,7 +210,7 @@ enum RecordingFilmstripLoader {
 
     /// Frames for exactly what the timeline is showing. Bounded and debounced by the caller, and
     /// re-run only when the visible range actually moves.
-    static func refreshWindow(for recording: WebRTCStreamRecording, clipID: UUID, range: ClosedRange<Double>) {
+    static func refreshWindow(for recording: StreamRecording, clipID: UUID, range: ClosedRange<Double>) {
         let id = clipID
         if let existing = window[id], existing.range == range { return }
         windowBuilders[id]?.cancel()
@@ -246,7 +246,7 @@ enum RecordingFilmstripLoader {
 
     // MARK: - Helpers
 
-    private static func decodeSize(for recording: WebRTCStreamRecording, height: CGFloat) -> CGSize {
+    private static func decodeSize(for recording: StreamRecording, height: CGFloat) -> CGSize {
         let aspect = recording.width > 0 && recording.height > 0
             ? CGFloat(recording.width) / CGFloat(recording.height)
             : 16.0 / 9.0
@@ -272,7 +272,7 @@ fileprivate struct RecordingFilmstripGridFrame {
 }
 
 struct RecordingFilmstripView: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     /// The clip this strip belongs to. Two clips of one recording need their own window passes.
     let clipID: UUID
     let startSeconds: Double

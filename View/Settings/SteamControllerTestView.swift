@@ -24,7 +24,7 @@ struct SteamControllerTestView: View {
             )
             SteamControllerModalRule()
             ScrollView {
-                VStack(spacing: OpenNOWDesign.Spacing.xLarge(scale: uiScale)) {
+                VStack(spacing: OPNDesign.Spacing.xLarge(scale: uiScale)) {
                     connectionStatusBar
                     if model.isConnected {
                         controllerDiagram
@@ -34,27 +34,27 @@ struct SteamControllerTestView: View {
                         noControllerMessage
                     }
                 }
-                .padding(.horizontal, OpenNOWDesign.Spacing.railHorizontal(scale: uiScale))
-                .padding(.vertical, OpenNOWDesign.Spacing.xLarge(scale: uiScale))
+                .padding(.horizontal, OPNDesign.Spacing.railHorizontal(scale: uiScale))
+                .padding(.vertical, OPNDesign.Spacing.xLarge(scale: uiScale))
             }
         }
         .frame(minWidth: sheetSize.width, minHeight: sheetSize.height)
-        .background(OpenNOWDesign.Surface.deep)
-        .foregroundStyle(OpenNOWDesign.Text.primary)
+        .background(OPNDesign.Surface.deep)
+        .foregroundStyle(OPNDesign.Text.primary)
         .onExitCommand { dismiss() }
         .onAppear { model.start() }
         .onDisappear { model.stop() }
     }
 
     private var connectionStatusBar: some View {
-        HStack(spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
+        HStack(spacing: OPNDesign.Spacing.section(scale: uiScale)) {
             SteamControllerStatusMarker(
-                color: model.isConnected ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.destructive,
+                color: model.isConnected ? OPNDesign.accent : OPNDesign.Semantic.destructive,
                 uiScale: uiScale
             )
             Text(model.isConnected ? "Connected" : "No controller detected")
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
             if model.isConnected {
                 Spacer()
                 if let battery = model.batteryLevel {
@@ -62,17 +62,17 @@ struct SteamControllerTestView: View {
                         HStack(spacing: 4 * uiScale) {
                             Image(systemName: model.isCharging ? "bolt.fill" : batteryIconName(for: battery))
                                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                                .foregroundStyle(model.isCharging ? OpenNOWDesign.accentInk : batteryColor(for: battery))
+                                .foregroundStyle(model.isCharging ? OPNDesign.accentInk : batteryColor(for: battery))
                             Text("\(Int(battery))%")
                                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                                 .monospacedDigit()
                         }
                     }
                 }
                 Text(model.deviceID)
                     .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.muted)
+                    .foregroundStyle(OPNDesign.Text.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -91,23 +91,23 @@ struct SteamControllerTestView: View {
 
     private func batteryColor(for level: UInt8) -> Color {
         switch level {
-        case 20...: return OpenNOWDesign.accent
-        case 10..<20: return OpenNOWDesign.Semantic.warning
-        default: return OpenNOWDesign.Semantic.destructive
+        case 20...: return OPNDesign.accent
+        case 10..<20: return OPNDesign.Semantic.warning
+        default: return OPNDesign.Semantic.destructive
         }
     }
 
     private var noControllerMessage: some View {
-        VStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+        VStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             Image(systemName: "gamecontroller")
                 .font(.settingsFont(size: 40 * uiScale))
-                .foregroundStyle(OpenNOWDesign.Text.muted.opacity(0.5))
+                .foregroundStyle(OPNDesign.Text.muted.opacity(0.5))
             Text("Connect a Steam Controller to begin testing")
                 .font(.settingsFont(size: 14 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
             Text("Make sure Steam Controller Support is enabled in Experimental Features")
                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 80 * uiScale)
@@ -117,10 +117,10 @@ struct SteamControllerTestView: View {
 
     private var controllerDiagram: some View {
         VStack(spacing: 6 * uiScale) {
-            SteamControllerDiagramView(snapshot: model.snapshot, backgroundColor: OpenNOWDesign.Surface.deep)
+            SteamControllerDiagramView(snapshot: model.snapshot, backgroundColor: OPNDesign.Surface.deep)
             Text("L4 · L5 · R4 · R5 sit on the underside of the grips")
                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
         }
     }
 
@@ -130,27 +130,27 @@ struct SteamControllerTestView: View {
     /// that stays silent can be told apart from a pad whose motors never fire.
     private var rumblePanel: some View {
         SteamControllerSection(title: "RUMBLE", uiScale: uiScale) {
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
-                HStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
+                HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                     rumbleButton("Left Motor", target: .left)
                     rumbleButton("Both", target: .both)
                     rumbleButton("Right Motor", target: .right)
                     Spacer()
                     Text(model.rumbleInFlight == nil ? "Pulses for \(ControllerRumbleTester.pulseMilliseconds) ms" : "Rumbling…")
                         .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                         .monospacedDigit()
                 }
-                HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                     Text("Intensity")
                         .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .frame(width: 60 * uiScale, alignment: .leading)
                     Slider(value: Binding(get: { Double(model.rumbleIntensityPercent) }, set: { model.rumbleIntensityPercent = Int($0.rounded()) }), in: 0...100, step: 5)
-                        .tint(OpenNOWDesign.accent)
+                        .tint(OPNDesign.accent)
                     Text("\(model.rumbleIntensityPercent)%")
                         .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .monospacedDigit()
                         .frame(width: 40 * uiScale, alignment: .trailing)
                 }
@@ -160,7 +160,7 @@ struct SteamControllerTestView: View {
 
     private func rumbleButton(_ title: String, target: SteamControllerTestModel.RumbleTarget) -> some View {
         Button(title) { model.testRumble(target) }
-            .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+            .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
             .disabled(model.rumbleInFlight != nil)
             .opacity(model.rumbleInFlight == target ? 0.6 : 1)
     }
@@ -169,7 +169,7 @@ struct SteamControllerTestView: View {
 
     private var rawValuesPanel: some View {
         SteamControllerSection(title: "RAW INPUT VALUES", uiScale: uiScale) {
-            HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.xLarge(scale: uiScale)) {
+            HStack(alignment: .top, spacing: OPNDesign.Spacing.xLarge(scale: uiScale)) {
                 axesColumn
                 buttonStatesGrid
             }
@@ -177,7 +177,7 @@ struct SteamControllerTestView: View {
     }
 
     private var axesColumn: some View {
-        VStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        VStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             axisBar("LX", value: model.snapshot.leftStickX)
             axisBar("LY", value: model.snapshot.leftStickY)
             axisBar("RX", value: model.snapshot.rightStickX)
@@ -193,15 +193,15 @@ struct SteamControllerTestView: View {
     }
 
     private func axisBar(_ label: String, value: Float, unsigned: Bool = false) -> some View {
-        HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             Text(label)
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .frame(width: 30 * uiScale, alignment: .leading)
             SteamControllerValueBar(value: value, signed: !unsigned, uiScale: uiScale)
             Text(String(format: unsigned ? "%.2f" : "%+.3f", value))
                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .monospacedDigit()
                 .frame(width: 52 * uiScale, alignment: .trailing)
         }
@@ -244,13 +244,13 @@ struct SteamControllerTestView: View {
         HStack(spacing: 6 * uiScale) {
             Text(label)
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(active ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(active ? OPNDesign.accentInk : OPNDesign.Text.tertiary)
                 .frame(width: 30 * uiScale, alignment: .leading)
             // Fixed column: "ON" and "OFF" are different widths, and the UI sans isn't monospaced,
             // so an unconstrained label makes the whole grid twitch as buttons are pressed.
             Text(active ? "ON" : "OFF")
                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(active ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.muted)
+                .foregroundStyle(active ? OPNDesign.accentInk : OPNDesign.Text.muted)
                 .frame(width: 26 * uiScale, alignment: .leading)
         }
     }

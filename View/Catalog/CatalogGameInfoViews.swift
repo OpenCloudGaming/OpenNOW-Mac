@@ -35,14 +35,14 @@ struct CatalogGameInfoOverlay: View {
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.displayScale) private var displayScale
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
-    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+    @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @State private var lightboxIndex: Int?
     @State private var stripAnchor = 0
     @State private var hasEntered = false
     @State private var isCloseHovering = false
 
     private var isMotionReduced: Bool {
-        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+        OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
     }
 
     var body: some View {
@@ -51,14 +51,14 @@ struct CatalogGameInfoOverlay: View {
                 let metrics = CatalogGameInfoMetrics(viewport: proxy.size, scale: uiScale)
                 let images = game.detailImageURLs
                 ZStack(alignment: .topTrailing) {
-                    OpenNOWDesign.Surface.app
+                    OPNDesign.Surface.app
                     ScrollView(.vertical) {
                         VStack(alignment: .leading, spacing: 0) {
                             hero(game: game, metrics: metrics, viewport: proxy.size)
                             columns(game: game, images: images, metrics: metrics)
                                 .padding(.horizontal, metrics.horizontalPadding)
-                                .padding(.top, OpenNOWDesign.Spacing.xxLarge(scale: uiScale))
-                                .padding(.bottom, OpenNOWDesign.Spacing.xxxLarge(scale: uiScale) * 1.5)
+                                .padding(.top, OPNDesign.Spacing.xxLarge(scale: uiScale))
+                                .padding(.bottom, OPNDesign.Spacing.xxxLarge(scale: uiScale) * 1.5)
                         }
                         .frame(width: proxy.size.width, alignment: .topLeading)
                         // Content rises a little as it fades in, so the page reads as arriving over
@@ -83,7 +83,7 @@ struct CatalogGameInfoOverlay: View {
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
-            .background(OpenNOWDesign.Surface.app)
+            .background(OPNDesign.Surface.app)
             .background(CatalogGameInfoKeyMonitor { key in
                 handleKey(key, imageCount: game.detailImageURLs.count)
             })
@@ -113,20 +113,20 @@ struct CatalogGameInfoOverlay: View {
                     .init(color: .clear, location: 0.00),
                     .init(color: .black.opacity(0.34), location: 0.46),
                     .init(color: .black.opacity(0.78), location: 0.78),
-                    .init(color: OpenNOWDesign.Surface.app, location: 1.00)
+                    .init(color: OPNDesign.Surface.app, location: 1.00)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
             heroCaption(game: game, metrics: metrics)
                 .padding(.horizontal, metrics.horizontalPadding)
-                .padding(.bottom, OpenNOWDesign.Spacing.xLarge(scale: uiScale))
+                .padding(.bottom, OPNDesign.Spacing.xLarge(scale: uiScale))
         }
         .frame(width: viewport.width, height: metrics.heroHeight)
     }
 
     private func heroCaption(game: OPNCatalogGameObject, metrics: CatalogGameInfoMetrics) -> some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             CatalogHeroWordmark(
                 logoURL: viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth),
                 title: game.title.isEmpty ? "Selected Game" : game.title,
@@ -135,16 +135,16 @@ struct CatalogGameInfoOverlay: View {
                 boxHeight: metrics.wordmarkHeight
             )
             metadataLine(game: game)
-            FlowLayout(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+            FlowLayout(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 favoriteButton(game: game)
                 ForEach(GameDetailPresentation.capabilityLabels(game: game), id: \.self) { label in
                     Text(label)
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
-                        .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                        .foregroundStyle(OPNDesign.Text.primary)
+                        .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
                         .frame(height: 24 * uiScale)
-                        .background(OpenNOWDesign.Fill.neutral(0.12))
-                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNDesign.Fill.neutral(0.12))
+                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
             }
             .frame(maxWidth: metrics.mainColumnWidth, alignment: .leading)
@@ -168,14 +168,14 @@ struct CatalogGameInfoOverlay: View {
         if !error.isEmpty || !action.isEmpty {
             Text(error.isEmpty ? action : error)
                 .catalogFont(size: 12, weight: .bold)
-                .foregroundStyle(error.isEmpty ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Semantic.destructive)
+                .foregroundStyle(error.isEmpty ? OPNDesign.Text.secondary : OPNDesign.Semantic.destructive)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func metadataLine(game: OPNCatalogGameObject) -> some View {
-        HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             if !game.ratingLabel.isEmpty {
                 Text(game.ratingLabel.uppercased())
             }
@@ -189,22 +189,22 @@ struct CatalogGameInfoOverlay: View {
         }
         .catalogFont(size: 12, weight: .bold)
         .tracking(0.6)
-        .foregroundStyle(OpenNOWDesign.Text.secondary)
+        .foregroundStyle(OPNDesign.Text.secondary)
     }
 
     private var closeButton: some View {
         Button { viewModel.closeGameInfo() } label: {
             Image(systemName: "xmark")
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .frame(width: 34 * uiScale, height: 34 * uiScale)
                 .background(Color.black.opacity(isCloseHovering ? 0.62 : 0.42))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isCloseHovering = $0 }
-        .padding(.trailing, OpenNOWDesign.Spacing.medium(scale: uiScale))
-        .padding(.top, topInset + OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+        .padding(.trailing, OPNDesign.Spacing.medium(scale: uiScale))
+        .padding(.top, topInset + OPNDesign.Spacing.xSmall(scale: uiScale))
         .accessibilityLabel("Close game info")
     }
 
@@ -220,7 +220,7 @@ struct CatalogGameInfoOverlay: View {
                     .frame(width: metrics.sideColumnWidth, alignment: .leading)
             }
         } else {
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxLarge(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxLarge(scale: uiScale)) {
                 mainColumn(game: game, images: images, metrics: metrics)
                 sideColumn(game: game)
             }
@@ -231,18 +231,18 @@ struct CatalogGameInfoOverlay: View {
     private func mainColumn(game: OPNCatalogGameObject, images: [String], metrics: CatalogGameInfoMetrics) -> some View {
         let longDescription = GameDetailPresentation.longDescription(game: game)
         let technologies = GameDetailPresentation.supportedTechnologyLabels(game: game)
-        return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxLarge(scale: uiScale)) {
+        return VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxLarge(scale: uiScale)) {
             CatalogGameInfoSection(label: "ABOUT THIS GAME", uiScale: uiScale) {
-                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+                VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
                     Text(GameDetailPresentation.shortDescription(game: game))
                         .catalogFont(size: 16, weight: .medium)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
                     if !longDescription.isEmpty {
                         Text(longDescription)
                             .catalogFont(size: 14, weight: .medium)
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(OPNDesign.Text.secondary)
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -255,7 +255,7 @@ struct CatalogGameInfoOverlay: View {
             }
             if !technologies.isEmpty {
                 CatalogGameInfoSection(label: "NVIDIA TECHNOLOGY", uiScale: uiScale) {
-                    VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+                    VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                         ForEach(technologies, id: \.self) { technology in
                             CatalogFeatureAvailabilityRow(
                                 title: technology,
@@ -275,7 +275,7 @@ struct CatalogGameInfoOverlay: View {
             // Lazy on purpose: a wide catalog game ships a dozen screenshots and only two or three
             // fit on screen, so the rest never reach the decoder until they scroll in.
             ScrollView(.horizontal) {
-                LazyHStack(spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+                LazyHStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                     ForEach(Array(images.enumerated()), id: \.offset) { index, url in
                         thumbnail(url: url, index: index, width: metrics.thumbnailWidth)
                             .id(index)
@@ -309,11 +309,11 @@ struct CatalogGameInfoOverlay: View {
             CatalogRemoteImage(url: viewModel.optimizedImageURL(url, width: 640), contentMode: .fill, maxPixelSize: 640)
                 .frame(width: width, height: width * 9 / 16)
                 .clipped()
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .frame(width: 22 * uiScale, height: 22 * uiScale)
                         .background(Color.black.opacity(0.55))
                 }
@@ -341,10 +341,10 @@ struct CatalogGameInfoOverlay: View {
             Button(action: action) {
                 Image(systemName: name)
                     .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 30 * uiScale, height: min(64 * uiScale, height))
                     .background(Color.black.opacity(0.72))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
@@ -377,9 +377,9 @@ struct CatalogGameInfoOverlay: View {
 
     private func sideColumn(game: OPNCatalogGameObject) -> some View {
         let descriptors = GameDetailPresentation.ratingDescriptors(game: game)
-        return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxLarge(scale: uiScale)) {
+        return VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxLarge(scale: uiScale)) {
             CatalogGameInfoSection(label: "DETAILS", uiScale: uiScale) {
-                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+                VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                     CatalogGameInfoSpecRow(label: "Publisher", value: game.publisherName, uiScale: uiScale)
                     CatalogGameInfoSpecRow(label: "Developer", value: game.developerName, uiScale: uiScale)
                     CatalogGameInfoSpecRow(label: "Release Date", value: GameDetailPresentation.releaseDateLine(game: game), uiScale: uiScale)
@@ -390,18 +390,18 @@ struct CatalogGameInfoOverlay: View {
                 }
             }
             CatalogGameInfoSection(label: "CONTENT RATING", uiScale: uiScale) {
-                HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+                HStack(alignment: .top, spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
                     if !game.ratingLabel.isEmpty {
                         CatalogRatingBadge(game: game, shortRating: GameDetailPresentation.esrbShortRating(game.ratingLabel))
                     }
-                    VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                    VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                         Text(game.ratingLabel.isEmpty ? "CLOUD GAMING" : game.ratingLabel.uppercased())
                             .catalogFont(size: 13, weight: .bold)
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                         ForEach(descriptors, id: \.self) { descriptor in
                             Text(descriptor)
                                 .catalogFont(size: 12, weight: .medium)
-                                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                .foregroundStyle(OPNDesign.Text.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -426,19 +426,19 @@ private struct CatalogGameInfoMetrics {
     let thumbnailsPerPage: Int
 
     init(viewport: CGSize, scale: CGFloat) {
-        let padding = OpenNOWDesign.clamped(viewport.width * 0.06, minimum: 28, maximum: 96) * scale
+        let padding = OPNDesign.clamped(viewport.width * 0.06, minimum: 28, maximum: 96) * scale
         horizontalPadding = min(padding, viewport.width * 0.14)
-        heroHeight = OpenNOWDesign.clamped(viewport.height * 0.44, minimum: 220, maximum: 560)
+        heroHeight = OPNDesign.clamped(viewport.height * 0.44, minimum: 220, maximum: 560)
         // Held under half the band: the caption still has to seat its metadata and capability rows.
-        wordmarkHeight = min(OpenNOWDesign.clamped(viewport.height * 0.15, minimum: 76, maximum: 150) * scale, heroHeight * 0.44)
-        columnGap = OpenNOWDesign.clamped(viewport.width * 0.035, minimum: 24, maximum: 64) * scale
+        wordmarkHeight = min(OPNDesign.clamped(viewport.height * 0.15, minimum: 76, maximum: 150) * scale, heroHeight * 0.44)
+        columnGap = OPNDesign.clamped(viewport.width * 0.035, minimum: 24, maximum: 64) * scale
         let available = max(280, viewport.width - horizontalPadding * 2)
-        let side = OpenNOWDesign.clamped(available * 0.28, minimum: 240 * scale, maximum: 340 * scale)
+        let side = OPNDesign.clamped(available * 0.28, minimum: 240 * scale, maximum: 340 * scale)
         let fitsTwoColumns = available - side - columnGap >= 420 * scale
         sideColumnWidth = fitsTwoColumns ? side : 0
         mainColumnWidth = fitsTwoColumns ? available - side - columnGap : available
-        thumbnailWidth = OpenNOWDesign.clamped(mainColumnWidth * 0.28, minimum: 168, maximum: 280)
-        thumbnailsPerPage = max(1, Int(mainColumnWidth / (thumbnailWidth + OpenNOWDesign.Spacing.small(scale: scale))))
+        thumbnailWidth = OPNDesign.clamped(mainColumnWidth * 0.28, minimum: 168, maximum: 280)
+        thumbnailsPerPage = max(1, Int(mainColumnWidth / (thumbnailWidth + OPNDesign.Spacing.small(scale: scale))))
     }
 }
 
@@ -454,14 +454,14 @@ private struct CatalogGameInfoSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 Text(label)
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(1.1)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                 Rectangle()
-                    .fill(OpenNOWDesign.Stroke.subtle)
+                    .fill(OPNDesign.Stroke.subtle)
                     .frame(height: 1)
             }
             content
@@ -477,15 +477,15 @@ private struct CatalogGameInfoSpecRow: View {
 
     var body: some View {
         if !value.isEmpty {
-            HStack(alignment: .firstTextBaseline, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+            HStack(alignment: .firstTextBaseline, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 Text(label.uppercased())
                     .catalogFont(size: 10, weight: .bold)
                     .tracking(0.6)
-                    .foregroundStyle(OpenNOWDesign.Text.muted)
+                    .foregroundStyle(OPNDesign.Text.muted)
                     .frame(width: 92 * uiScale, alignment: .leading)
                 Text(value)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -521,21 +521,21 @@ private struct CatalogGameInfoLightbox: View {
                     Spacer(minLength: 0)
                     arrow(name: "chevron.right", delta: 1, label: "Next screenshot")
                 }
-                .padding(.horizontal, OpenNOWDesign.Spacing.large(scale: uiScale))
+                .padding(.horizontal, OPNDesign.Spacing.large(scale: uiScale))
             }
         }
         .overlay(alignment: .topTrailing) {
             Button(action: close) {
                 Image(systemName: "xmark")
                     .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(OpenNOWDesign.Fill.neutral(0.10))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNDesign.Fill.neutral(0.10))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
-            .padding(.trailing, OpenNOWDesign.Spacing.medium(scale: uiScale))
-            .padding(.top, topInset + OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+            .padding(.trailing, OPNDesign.Spacing.medium(scale: uiScale))
+            .padding(.top, topInset + OPNDesign.Spacing.xSmall(scale: uiScale))
             .accessibilityLabel("Close screenshot")
         }
         .overlay(alignment: .bottom) {
@@ -543,12 +543,12 @@ private struct CatalogGameInfoLightbox: View {
                 Text("\(index + 1) / \(images.count)")
                     .catalogFont(size: 12, weight: .bold)
                     .tracking(0.8)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
-                    .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
+                    .foregroundStyle(OPNDesign.Text.secondary)
+                    .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                     .frame(height: 26 * uiScale)
-                    .background(OpenNOWDesign.Fill.neutral(0.08))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
-                    .padding(.bottom, OpenNOWDesign.Spacing.large(scale: uiScale))
+                    .background(OPNDesign.Fill.neutral(0.08))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .padding(.bottom, OPNDesign.Spacing.large(scale: uiScale))
             }
         }
     }
@@ -557,10 +557,10 @@ private struct CatalogGameInfoLightbox: View {
         Button { move(delta) } label: {
             Image(systemName: name)
                 .catalogFont(size: 16, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .frame(width: 44 * uiScale, height: 64 * uiScale)
-                .background(OpenNOWDesign.Fill.neutral(0.10))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNDesign.Fill.neutral(0.10))
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

@@ -34,11 +34,11 @@ struct SettingsCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10 * uiScale) {
                 Rectangle()
-                    .fill(OpenNOWDesign.accent)
+                    .fill(OPNDesign.accent)
                     .frame(width: 4 * uiScale, height: 18 * uiScale)
                 Text(title.uppercased())
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .tracking(1.1)
                 if let badge {
                     SettingsCardTag(text: badge.text, uiScale: uiScale)
@@ -58,13 +58,13 @@ struct SettingsCard<Content: View>: View {
         .background(
             ZStack(alignment: .topLeading) {
                 SettingsVendorLayout.card
-                LinearGradient(colors: [OpenNOWDesign.Fill.neutral(0.035), .clear], startPoint: .top, endPoint: .center)
+                LinearGradient(colors: [OPNDesign.Fill.neutral(0.035), .clear], startPoint: .top, endPoint: .center)
                 Rectangle()
-                    .fill(OpenNOWDesign.accent.opacity(0.10))
+                    .fill(OPNDesign.accent.opacity(0.10))
                     .frame(width: 1)
             }
         )
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
     }
 }
@@ -99,20 +99,20 @@ struct SettingsCollapsibleCard<Content: View>: View {
             Button { isExpanded.toggle() } label: {
                 HStack(spacing: 10 * uiScale) {
                     Rectangle()
-                        .fill(OpenNOWDesign.accent)
+                        .fill(OPNDesign.accent)
                         .frame(width: 4 * uiScale, height: 18 * uiScale)
                     Text(title.uppercased())
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .tracking(1.1)
                     Spacer(minLength: 0)
                     Text(statusSummary)
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(isConfigured ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.muted)
+                        .foregroundStyle(isConfigured ? OPNDesign.accentInk : OPNDesign.Text.muted)
                         .fixedSize()
                     Text(isExpanded ? "\u{25BE}" : "\u{25B8}")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                 }
                 .padding(.horizontal, 18 * uiScale)
                 .padding(.top, 17 * uiScale)
@@ -138,13 +138,13 @@ struct SettingsCollapsibleCard<Content: View>: View {
         .background(
             ZStack(alignment: .topLeading) {
                 SettingsVendorLayout.card
-                LinearGradient(colors: [OpenNOWDesign.Fill.neutral(0.035), .clear], startPoint: .top, endPoint: .center)
+                LinearGradient(colors: [OPNDesign.Fill.neutral(0.035), .clear], startPoint: .top, endPoint: .center)
                 Rectangle()
-                    .fill(OpenNOWDesign.accent.opacity(0.10))
+                    .fill(OPNDesign.accent.opacity(0.10))
                     .frame(width: 1)
             }
         )
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
     }
 }

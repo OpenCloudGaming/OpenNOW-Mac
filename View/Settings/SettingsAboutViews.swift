@@ -6,8 +6,8 @@ struct AboutSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
     @State private var copiedKey = ""
-    @AppStorage(OpenNOWUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OpenNOWUpdatePreferences.defaultAutomaticUpdateChecksEnabled
-    @AppStorage(OpenNOWUpdatePreferences.updateChannelKey) private var updateChannelRawValue = OpenNOWUpdatePreferences.defaultUpdateChannel.rawValue
+    @AppStorage(OPNUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OPNUpdatePreferences.defaultAutomaticUpdateChecksEnabled
+    @AppStorage(OPNUpdatePreferences.updateChannelKey) private var updateChannelRawValue = OPNUpdatePreferences.defaultUpdateChannel.rawValue
     @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
     var body: some View {
@@ -24,18 +24,18 @@ struct AboutSettingsPage: View {
                         HStack(alignment: .center, spacing: 10 * uiScale) {
                             Text(SettingsAppMetadata.displayName)
                                 .font(.settingsFont(size: 25 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Text("UNOFFICIAL CLIENT SHELL")
                                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.onAccent)
+                                .foregroundStyle(OPNDesign.onAccent)
                                 .tracking(0.8)
                                 .padding(.horizontal, 8 * uiScale)
                                 .frame(height: 20 * uiScale)
-                                .background(OpenNOWDesign.accent)
+                                .background(OPNDesign.accent)
                         }
                         Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
                             .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(OPNDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         HStack(spacing: 8 * uiScale) {
                             AboutStatusPill(title: "Stream", value: viewModel.streamProfile.transportMode.label, uiScale: uiScale)
@@ -57,7 +57,7 @@ struct AboutSettingsPage: View {
                 AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey, uiScale: uiScale)
                 SettingsDivider(uiScale: uiScale)
                 SettingsToggleRow(title: "Automatic Update Checks", subtitle: automaticUpdateChecksSubtitle, isOn: automaticUpdateChecksEnabled, uiScale: uiScale) { enabled in
-                    OpenNOWAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
+                    OPNAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
                 }
                 SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(
@@ -67,17 +67,17 @@ struct AboutSettingsPage: View {
                     selectedIndex: updateChannel == .beta ? 1 : 0,
                     uiScale: uiScale
                 ) { index in
-                    updateChannelRawValue = (index == 1 ? OpenNOWUpdateChannel.beta : .stable).rawValue
-                    OpenNOWAppDelegate.requestApplicationUpdateCheck()
+                    updateChannelRawValue = (index == 1 ? OPNUpdateChannel.beta : .stable).rawValue
+                    OPNAppDelegate.requestApplicationUpdateCheck()
                 }
                 SettingsDivider(uiScale: uiScale)
                 HStack(spacing: 10 * uiScale) {
                     SettingsActionButton(title: "CHECK FOR UPDATES", uiScale: uiScale) {
-                        OpenNOWAppDelegate.requestApplicationUpdateCheck()
+                        OPNAppDelegate.requestApplicationUpdateCheck()
                     }
                     Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
             }
 
@@ -92,7 +92,7 @@ struct AboutSettingsPage: View {
                     }
                     Text("Removes cached catalog artwork from disk and memory. Images will download again as needed.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
             }
 
@@ -109,11 +109,11 @@ struct AboutSettingsPage: View {
                         .disabled(viewModel.diagnosticsState.isWorking)
                         Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
                     }
                     Text(viewModel.diagnosticsState.message)
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(viewModel.diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(viewModel.diagnosticsState.isError ? OPNDesign.Semantic.destructive : OPNDesign.Text.secondary)
                 }
             }
         }
@@ -137,12 +137,12 @@ struct AboutSettingsPage: View {
         ProcessInfo.processInfo.operatingSystemVersionString
     }
 
-    private var updateChannel: OpenNOWUpdateChannel {
-        OpenNOWUpdateChannel(rawValue: updateChannelRawValue) ?? OpenNOWUpdatePreferences.defaultUpdateChannel
+    private var updateChannel: OPNUpdateChannel {
+        OPNUpdateChannel(rawValue: updateChannelRawValue) ?? OPNUpdatePreferences.defaultUpdateChannel
     }
 
     private var automaticUpdateChecksSubtitle: String {
-        if OpenNOWUpdatePreferences.updateChecksAreSuspendedForDebugging {
+        if OPNUpdatePreferences.updateChecksAreSuspendedForDebugging {
             return "Paused while running a debug build or attached debugger. Manual checks remain available."
         }
         if automaticUpdateChecksEnabled {
@@ -173,44 +173,44 @@ struct DiagnosticsUploadConfirmationDialog: View {
 
     var body: some View {
         ZStack {
-            OpenNOWDesign.Surface.scrim
+            OPNDesign.Surface.scrim
                 .onTapGesture(perform: cancel)
 
             VStack(alignment: .leading, spacing: 18 * uiScale) {
                 HStack(alignment: .top, spacing: 14 * uiScale) {
                     ZStack {
                         Rectangle()
-                            .fill(OpenNOWDesign.accent.opacity(0.16))
+                            .fill(OPNDesign.accent.opacity(0.16))
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.accentInk)
+                            .foregroundStyle(OPNDesign.accentInk)
                     }
                     .frame(width: 44 * uiScale, height: 44 * uiScale)
-                    .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.42), lineWidth: 1) }
+                    .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
 
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Upload diagnostics logs?")
                             .font(.settingsFont(size: 19 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                         Text("OpenNOW will upload the recent sanitized current-run log to paste.c-net.org and copy a diagnostics summary with the public link.")
                             .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(OPNDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
                 HStack(alignment: .top, spacing: 10 * uiScale) {
                     Rectangle()
-                        .fill(OpenNOWDesign.accent)
+                        .fill(OPNDesign.accent)
                         .frame(width: 4 * uiScale, height: 42 * uiScale)
                     Text("IP addresses and location fields are redacted before upload. Only generate this when preparing support diagnostics.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12 * uiScale)
-                .background(OpenNOWDesign.Fill.neutral(0.045))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNDesign.Fill.neutral(0.045))
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
 
                 HStack(spacing: 10 * uiScale) {
                     Spacer(minLength: 0)
@@ -220,8 +220,8 @@ struct DiagnosticsUploadConfirmationDialog: View {
             }
             .padding(22 * uiScale)
             .frame(width: 430 * uiScale, alignment: .leading)
-            .background(OpenNOWDesign.Surface.overlay)
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNDesign.Surface.overlay)
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
             .shadow(color: .black.opacity(0.62), radius: 34 * uiScale, x: 0, y: 18 * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -244,7 +244,7 @@ struct SettingsDialogButton: View {
         Button(action: action) {
             Text(title)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(tone == .primary ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(tone == .primary ? OPNDesign.onAccent : OPNDesign.Text.secondary)
                 .tracking(0.8)
                 .padding(.horizontal, 14 * uiScale)
                 .frame(minWidth: 104 * uiScale)
@@ -258,15 +258,15 @@ struct SettingsDialogButton: View {
 
     private var backgroundColor: Color {
         switch tone {
-        case .primary: return OpenNOWDesign.accent.opacity(isHovering ? 0.88 : 1)
-        case .secondary: return isHovering ? OpenNOWDesign.Stroke.subtle : OpenNOWDesign.Fill.neutral(0.06)
+        case .primary: return OPNDesign.accent.opacity(isHovering ? 0.88 : 1)
+        case .secondary: return isHovering ? OPNDesign.Stroke.subtle : OPNDesign.Fill.neutral(0.06)
         }
     }
 
     private var strokeColor: Color {
         switch tone {
-        case .primary: return OpenNOWDesign.accent
-        case .secondary: return OpenNOWDesign.Stroke.regular
+        case .primary: return OPNDesign.accent
+        case .secondary: return OPNDesign.Stroke.regular
         }
     }
 }
@@ -314,17 +314,17 @@ struct AboutStatusPill: View {
         HStack(spacing: 6 * uiScale) {
             Text(title.uppercased())
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
                 .tracking(0.8)
             Text(value.isEmpty ? "Unknown" : value)
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(height: 28 * uiScale)
-        .background(OpenNOWDesign.Stroke.subtle)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNDesign.Stroke.subtle)
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -341,24 +341,24 @@ struct AboutDetailRow: View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             Text(label.uppercased())
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
                 .tracking(0.5)
                 .frame(width: 150 * uiScale, alignment: .leading)
             Text(value.isEmpty ? "Unavailable" : value)
                 .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .lineLimit(2)
                 .textSelection(.enabled)
             Spacer(minLength: 0)
             Button { copy(copyValue) } label: {
                 Text(copiedKey == label ? "COPIED" : "COPY")
                     .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                    .foregroundStyle(copyDisabled ? OpenNOWDesign.Text.muted : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(copyDisabled ? OPNDesign.Text.muted : OPNDesign.Text.secondary)
                     .tracking(0.7)
                     .padding(.horizontal, 10 * uiScale)
                     .frame(height: 26 * uiScale)
-                    .background(OpenNOWDesign.Fill.neutral(copyDisabled ? 0.03 : 0.06))
-                    .overlay { Rectangle().stroke(copyDisabled ? OpenNOWDesign.Fill.neutral(0.05) : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNDesign.Fill.neutral(copyDisabled ? 0.03 : 0.06))
+                    .overlay { Rectangle().stroke(copyDisabled ? OPNDesign.Fill.neutral(0.05) : OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .disabled(copyDisabled)

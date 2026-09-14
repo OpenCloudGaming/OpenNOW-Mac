@@ -13,15 +13,15 @@ struct CatalogShowAllGridView: NSViewRepresentable {
     let onPlay: (OPNCatalogGameObject) -> Void
     let onMarkOwned: (OPNCatalogGameObject) -> Void
     let onQueueForPatching: (OPNCatalogGameObject) -> Void
-    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
-    @AppStorage(OpenNOWThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OpenNOWThemePreferences.TileTitleVisibility.onHover.rawValue
+    @AppStorage(OPNHomeLayout.modeKey) private var homeLayoutRawValue = OPNHomeLayout.Mode.classic.rawValue
+    @AppStorage(OPNThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OPNThemePreferences.TileTitleVisibility.onHover.rawValue
 
     var isPosterLayout: Bool {
-        (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+        (OPNHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
     }
 
-    var tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility {
-        OpenNOWThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
+    var tileTitleVisibility: OPNThemePreferences.TileTitleVisibility {
+        OPNThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -88,7 +88,7 @@ struct CatalogShowAllGridView: NSViewRepresentable {
             }
             collectionView.layoutSubtreeIfNeeded()
             let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - renderStart) * 1000)
-            OpenNOWLog.info(.catalog, "Show All grid reloaded items=\(games.count) elapsed=\(elapsedMs)ms")
+            OPNLog.info(.catalog, "Show All grid reloaded items=\(games.count) elapsed=\(elapsedMs)ms")
         } else if selectedIndexChanged || widthChanged {
             // Home animates the detail panel in and out; this grid is an NSCollectionView, whose
             // layout invalidation is instant unless it happens inside an animation group. Without
@@ -184,7 +184,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     var scale: CGFloat = 1.0
     var density: CGFloat = 1.0
     var isPosterLayout = false
-    var tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility = .onHover
+    var tileTitleVisibility: OPNThemePreferences.TileTitleVisibility = .onHover
     nonisolated(unsafe) var frameObserver: AppKitViewFrameObserver?
     private var gameCount = 0
     private var firstIdentity: String = ""
@@ -322,7 +322,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
         isSelected: Bool,
         isQueuedForPatching: Bool,
         scale: CGFloat,
-        tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility,
+        tileTitleVisibility: OPNThemePreferences.TileTitleVisibility,
         onSelect: @escaping () -> Void,
         onPlay: @escaping () -> Void,
         onMarkOwned: @escaping () -> Void,
@@ -364,7 +364,7 @@ struct CatalogShowAllGridTile: View {
     let imageURL: URL?
     let isSelected: Bool
     let isQueuedForPatching: Bool
-    let tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility
+    let tileTitleVisibility: OPNThemePreferences.TileTitleVisibility
     let onSelect: () -> Void
     let onPlay: () -> Void
     let onMarkOwned: () -> Void
@@ -391,7 +391,7 @@ struct CatalogShowAllGridTile: View {
                     .zIndex(2)
             }
             .opnHoverScale(isHovering, factor: CatalogShowAllLayout.tileScaleFactor)
-            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+            .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         }
         // Outside the tracker: the grid is the container whose children need ordering.
         .zIndex(isHovering ? 1 : 0)
@@ -421,11 +421,11 @@ struct CatalogShowAllGridTile: View {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.92) : OPNDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.Fixed.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.Fixed.accent, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -434,7 +434,7 @@ struct CatalogShowAllGridTile: View {
 
     private var tileContent: some View {
         ZStack(alignment: .topLeading) {
-            let showsTitleTray = OpenNOWThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
+            let showsTitleTray = OPNThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
             CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                 .clipped()
             if isHovering || isSelected {
@@ -453,11 +453,11 @@ struct CatalogShowAllGridTile: View {
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                             .catalogFont(size: 12, weight: isSelected ? .medium : .regular)
                             .lineLimit(1)
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                         Spacer(minLength: 0)
                         Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                             .catalogFont(size: 10, weight: .bold)
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(OPNDesign.Text.secondary)
                     }
                     .padding(.horizontal, 16 * uiScale)
                     .frame(height: CatalogShowAllLayout.cardTrayHeight * uiScale)
@@ -468,7 +468,7 @@ struct CatalogShowAllGridTile: View {
         .overlay(alignment: .bottom) {
             if isSelected {
                 Rectangle()
-                    .fill(OpenNOWDesign.Fixed.accent)
+                    .fill(OPNDesign.Fixed.accent)
                     .frame(height: 4)
             }
         }

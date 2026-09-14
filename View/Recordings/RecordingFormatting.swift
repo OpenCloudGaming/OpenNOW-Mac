@@ -35,7 +35,7 @@ enum RecordingFormat {
         return formatter.string(fromByteCount: bytes)
     }
 
-    static func qualityText(_ recording: WebRTCStreamRecording) -> String {
+    static func qualityText(_ recording: StreamRecording) -> String {
         if recording.width >= 3840 || recording.height >= 2160 { return "4K" }
         if recording.width >= 2560 || recording.height >= 1440 { return "1440p" }
         if recording.width >= 1920 || recording.height >= 1080 { return "1080p" }
@@ -43,11 +43,11 @@ enum RecordingFormat {
         return "Auto"
     }
 
-    static func resolutionBadge(_ recording: WebRTCStreamRecording) -> String {
+    static func resolutionBadge(_ recording: StreamRecording) -> String {
         recording.width > 0 && recording.height > 0 ? "\(recording.width)x\(recording.height)" : "AUTO"
     }
 
-    static func bitrateText(_ recording: WebRTCStreamRecording) -> String {
+    static func bitrateText(_ recording: StreamRecording) -> String {
         recording.videoBitrateMbps == 0 ? "Auto" : "\(recording.videoBitrateMbps) Mbps"
     }
 }
@@ -63,14 +63,14 @@ struct RecordingRightsNotice: View {
                 HStack(spacing: 12 * uiScale) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.recordingsFont(size: 22 * uiScale, weight: .bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OPNDesign.Semantic.warning)
                     Text("About Recording GeForce NOW Sessions")
                         .font(.recordingsFont(size: 18 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                 }
                 Text("Some game publishers restrict recording or broadcasting of their titles on cloud gaming services. You are responsible for complying with the terms of service of GeForce NOW, the game publisher, and any applicable store policies when recording sessions.")
                     .font(.recordingsFont(size: 13 * uiScale, weight: .regular))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .lineSpacing(3 * uiScale)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {

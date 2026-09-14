@@ -95,10 +95,10 @@ import Testing
 /// transport scrubs its own counter dump so the durable session file gets redacted text; scrubbing
 /// it again cost a full regex sweep of a line that grows with session length.
 @Test func preRedactedTelemetryKeepsItsTextUnchanged() {
-    let redacted = OpenNOWLog.Message("addr=[redacted-ip] frames=12", isRedacted: true)
+    let redacted = OPNLog.Message("addr=[redacted-ip] frames=12", isRedacted: true)
     #expect(redacted.redacted == "addr=[redacted-ip] frames=12")
 
-    let raw = OpenNOWLog.Message("addr=192.168.1.24 frames=12")
+    let raw = OPNLog.Message("addr=192.168.1.24 frames=12")
     #expect(raw.redacted.contains("[redacted-ip]"))
     #expect(!raw.redacted.contains("192.168.1.24"))
 }
@@ -106,7 +106,7 @@ import Testing
 /// An event that has not been scrubbed must still be scrubbed by the sink — the flag is opt-in and
 /// a caller that forgets it loses redaction, not just speed.
 @Test func telemetryEventsDefaultToBeingScrubbedBySink() {
-    let event = WebRTCMediaTelemetryEvent(name: "nvst.test", level: .info, message: "ip=10.0.0.4")
+    let event = StreamTelemetryEvent(name: "nvst.test", level: .info, message: "ip=10.0.0.4")
     #expect(!event.isRedacted)
 }
 

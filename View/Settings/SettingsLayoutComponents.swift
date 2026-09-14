@@ -157,7 +157,7 @@ struct SettingsSubheading: View {
         Text(title.uppercased())
             .font(.settingsFont(size: 10 * uiScale, weight: .bold))
             .tracking(1.0)
-            .foregroundStyle(OpenNOWDesign.Text.muted)
+            .foregroundStyle(OPNDesign.Text.muted)
     }
 }
 

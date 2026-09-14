@@ -7,13 +7,13 @@ import Foundation
 @testable import OpenNOW
 
 actor StreamRecordingStatusRecorder {
-    private(set) var values: [WebRTCStreamRecordingStatus] = []
+    private(set) var values: [StreamRecordingStatus] = []
 
-    func append(_ status: WebRTCStreamRecordingStatus) {
+    func append(_ status: StreamRecordingStatus) {
         values.append(status)
     }
 
-    func terminalStatus() -> WebRTCStreamRecordingStatus? {
+    func terminalStatus() -> StreamRecordingStatus? {
         values.first { $0.isTerminal }
     }
 }
@@ -92,13 +92,13 @@ enum RecordingTestFixtures {
         return pixelBuffer
     }
 
-    static func makeRecording(title: String, width: Int, height: Int, frames: Int) async throws -> WebRTCStreamRecording {
+    static func makeRecording(title: String, width: Int, height: Int, frames: Int) async throws -> StreamRecording {
         let recorder = WebRTCStreamRecorder()
         let statuses = StreamRecordingStatusRecorder()
         recorder.onStatusChanged = { status in
             Task { await statuses.append(status) }
         }
-        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
+        recorder.start(configuration: StreamRecordingConfiguration(
             title: title,
             applicationID: "100",
             width: width,
@@ -123,7 +123,7 @@ enum RecordingTestFixtures {
                 frameIndex += 1
                 if sawRecording { framesAfterStart += 1 }
             } else {
-                throw WebRTCStreamRecordingTestError.unableToCreatePixelBuffer
+                throw StreamRecordingTestError.unableToCreatePixelBuffer
             }
             if !sawRecording {
                 sawRecording = await statuses.values.contains { status in
@@ -135,18 +135,18 @@ enum RecordingTestFixtures {
             try await Task.sleep(for: .milliseconds(34))
         }
         recorder.stop()
-        var terminalStatus: WebRTCStreamRecordingStatus?
+        var terminalStatus: StreamRecordingStatus?
         for _ in 0..<60 {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
             try await Task.sleep(for: .milliseconds(50))
         }
-        guard case .finished(let recording) = terminalStatus else { throw WebRTCStreamRecordingTestError.recordingFailed(String(describing: terminalStatus)) }
+        guard case .finished(let recording) = terminalStatus else { throw StreamRecordingTestError.recordingFailed(String(describing: terminalStatus)) }
         return recording
     }
 }
 
-enum WebRTCStreamRecordingTestError: LocalizedError {
+enum StreamRecordingTestError: LocalizedError {
     case unableToCreatePixelBuffer
     case recordingFailed(String)
 

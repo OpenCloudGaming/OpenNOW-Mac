@@ -178,7 +178,7 @@ import Testing
 // MARK: - Guarding an edit in progress
 
 @MainActor
-private func makeLibraryModel() -> (RecordingsViewModel, WebRTCStreamRecording, WebRTCStreamRecording) {
+private func makeLibraryModel() -> (RecordingsViewModel, StreamRecording, StreamRecording) {
     let first = makeRecording(title: "First", duration: 30)
     let second = makeRecording(title: "Second", duration: 30)
     let model = RecordingsViewModel()

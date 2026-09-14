@@ -48,7 +48,7 @@ extension NativeNVSTMediaStreamSurface {
             if !nativeNetworkWarningText.isEmpty {
                 Text(nativeNetworkWarningText)
                     .font(.streamFont(size: 11, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.warning)
+                    .foregroundStyle(StreamHUDTheme.warning)
                     .lineLimit(2)
             }
         }

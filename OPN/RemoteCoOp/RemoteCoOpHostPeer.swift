@@ -286,10 +286,10 @@ public actor OPNRemoteCoOpHostPeerController {
         guard participant.connectionState == .connected else { return }
         guard peers[participant.id] == nil else { return }
         let participantID = participant.id
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.start", level: .info, message: "Starting Remote Co-Op host peer.", attributes: ["participantID": participantID.uuidString])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.peer.start", level: .info, message: "Starting Remote Co-Op host peer.", attributes: ["participantID": participantID.uuidString])
         let callbacks = OPNRemoteCoOpHostPeerCallbacks(
             sendSignal: { [signaling] signal in
-                WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.signal.send", level: .info, message: "Sending Remote Co-Op peer signal.", attributes: ["participantID": participantID.uuidString, "kind": signal.kind.rawValue])
+                OPNStreamTelemetry.capture("webrtc.remote_coop.peer.signal.send", level: .info, message: "Sending Remote Co-Op peer signal.", attributes: ["participantID": participantID.uuidString, "kind": signal.kind.rawValue])
                 await signaling.send(.peerSignal(participantID: participantID, signal: signal))
             },
             receiveInput: { [inputScheduler] packet in
@@ -305,11 +305,11 @@ public actor OPNRemoteCoOpHostPeerController {
         appliedQualityPresets[participantID] = preset
         do {
             try await peer.start()
-            WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.started", level: .info, message: "Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
+            OPNStreamTelemetry.capture("webrtc.remote_coop.peer.started", level: .info, message: "Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
             if let sink = peer as? any OPNRemoteCoOpHostVideoSink { videoRelay?.upsert(sink) }
             if let sink = peer as? any OPNRemoteCoOpHostAudioSink { audioRelay?.upsert(sink) }
         } catch {
-            WebRTCMediaTelemetry.capture("webrtc.remote_coop.peer.start.failed", level: .warning, message: error.localizedDescription, attributes: ["participantID": participantID.uuidString])
+            OPNStreamTelemetry.capture("webrtc.remote_coop.peer.start.failed", level: .warning, message: error.localizedDescription, attributes: ["participantID": participantID.uuidString])
             peers[participantID] = nil
             appliedQualityPresets[participantID] = nil
             videoRelay?.remove(participantID: participantID)
@@ -421,7 +421,7 @@ private actor OPNRemoteCoOpHostInputScheduler {
         routedInputCount &+= 1
         guard routedInputCount.isMultiple(of: Self.telemetryInterval) else { return }
         let routedAtNanoseconds = DispatchTime.now().uptimeNanoseconds
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.input.routed", level: .debug, message: "Remote Co-Op guest input routed.", attributes: [
+        OPNStreamTelemetry.capture("webrtc.remote_coop.input.routed", level: .debug, message: "Remote Co-Op guest input routed.", attributes: [
             // Host-local only: the guest's send clock is another machine's uptime.
             "hostRouteMicroseconds": String(Self.microsecondsBetween(receivedAtNanoseconds, routedAtNanoseconds)),
             "latencyMode": latencyMode.rawValue,

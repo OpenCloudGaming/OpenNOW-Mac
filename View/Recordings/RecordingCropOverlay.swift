@@ -37,7 +37,7 @@ struct RecordingCropOverlay: View {
             ZStack(alignment: .topLeading) {
                 // Everything outside the crop, dimmed. Four rectangles rather than an even-odd
                 // path so the crop stays hit-testable underneath.
-                OpenNOWDesign.Surface.scrim
+                OPNDesign.Surface.scrim
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .mask {
                         ZStack(alignment: .topLeading) {
@@ -54,9 +54,9 @@ struct RecordingCropOverlay: View {
                 thirdsGuides(crop: crop)
 
                 Rectangle()
-                    .fill(OpenNOWDesign.Fill.neutral(0.001))
+                    .fill(OPNDesign.Fill.neutral(0.001))
                     .frame(width: crop.width, height: crop.height)
-                    .overlay { Rectangle().stroke(OpenNOWDesign.accent, lineWidth: 1.5) }
+                    .overlay { Rectangle().stroke(OPNDesign.accent, lineWidth: 1.5) }
                     .offset(x: crop.minX, y: crop.minY)
                     .gesture(moveGesture(video: video))
                     .focusable()
@@ -109,7 +109,7 @@ struct RecordingCropOverlay: View {
                 path.addLine(to: CGPoint(x: crop.maxX, y: y))
             }
         }
-        .stroke(OpenNOWDesign.Stroke.strong, lineWidth: 1)
+        .stroke(OPNDesign.Stroke.strong, lineWidth: 1)
         .allowsHitTesting(false)
     }
 
@@ -119,7 +119,7 @@ struct RecordingCropOverlay: View {
             .foregroundStyle(.black.opacity(0.86))
             .padding(.horizontal, 6 * uiScale)
             .frame(height: 18 * uiScale)
-            .background(OpenNOWDesign.accent)
+            .background(OPNDesign.accent)
             .offset(x: crop.minX, y: max(0, crop.minY - 22 * uiScale))
             .allowsHitTesting(false)
     }
@@ -128,7 +128,7 @@ struct RecordingCropOverlay: View {
         let size = 14 * uiScale
         let point = position(of: corner, in: crop)
         return Rectangle()
-            .fill(OpenNOWDesign.accent)
+            .fill(OPNDesign.accent)
             .overlay { Rectangle().stroke(Color.black.opacity(0.45), lineWidth: 1) }
             .frame(width: size, height: size)
             .offset(x: point.x - size / 2, y: point.y - size / 2)

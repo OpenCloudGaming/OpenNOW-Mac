@@ -25,10 +25,10 @@ import Testing
         ("1.0.0-rc.1", "1.0.0", -1),
     ])
     func versionPrecedenceFollowsSemver(sample: (left: String, right: String, expected: Int)) {
-        let result = OpenNOWGitHubUpdater.compareVersion(sample.left, to: sample.right)
+        let result = OPNGitHubUpdater.compareVersion(sample.left, to: sample.right)
         #expect(result.signum() == sample.expected, "\(sample.left) vs \(sample.right) gave \(result)")
         // The mirror catches a fix that only ranks one direction, such as "non-numeric wins".
-        let mirrored = OpenNOWGitHubUpdater.compareVersion(sample.right, to: sample.left)
+        let mirrored = OPNGitHubUpdater.compareVersion(sample.right, to: sample.left)
         #expect(mirrored.signum() == -sample.expected, "\(sample.right) vs \(sample.left) gave \(mirrored)")
     }
 }
@@ -201,7 +201,7 @@ private func releaseJSON(tag: String, prerelease: Bool = false, draft: Bool = fa
 /// Serves the requested `per_page` window of the list, and its newest non-prerelease, non-draft
 /// entry to `releases/latest`, which is the selection GitHub makes server side. Honouring the page
 /// size is what makes a window too small to reach an installable release fail the suite.
-private func withStubbedGitHub(list: [[String: Any]], currentVersion: String = "0.8.0-beta.2", _ body: @escaping @Sendable (OpenNOWGitHubUpdater) async throws -> Void) async throws {
+private func withStubbedGitHub(list: [[String: Any]], currentVersion: String = "0.8.0-beta.2", _ body: @escaping @Sendable (OPNGitHubUpdater) async throws -> Void) async throws {
     let latest = list.first { ($0["prerelease"] as? Bool) != true && ($0["draft"] as? Bool) != true } ?? [:]
     let pages = (0...list.count).map { jsonData(Array(list.prefix($0))) }
     let latestData = jsonData(latest)
@@ -213,7 +213,7 @@ private func withStubbedGitHub(list: [[String: Any]], currentVersion: String = "
         }
         defer { SessionManagerURLProtocol.uninstall(host: gitHubAPIHost) }
 
-        let updater = OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac", currentVersion: currentVersion, session: stubbedGitHubSession())
+        let updater = OPNGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac", currentVersion: currentVersion, session: stubbedGitHubSession())
         try await body(updater)
     }
 }

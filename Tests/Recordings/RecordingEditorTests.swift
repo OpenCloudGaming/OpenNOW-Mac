@@ -107,7 +107,7 @@ private func fittedGeometry(totalDuration: Double = 30, width: CGFloat = 300, pl
 
 // MARK: - Crop presets
 
-private func croppedAspect(_ crop: WebRTCStreamRecordingCrop, sourceAspect: Double) -> Double {
+private func croppedAspect(_ crop: StreamRecordingCrop, sourceAspect: Double) -> Double {
     crop.width * sourceAspect / crop.height
 }
 

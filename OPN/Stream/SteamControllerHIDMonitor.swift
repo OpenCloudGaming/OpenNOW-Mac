@@ -254,7 +254,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         let shouldCapture = !captureRequesters.isEmpty
         guard shouldCapture != isInputCaptureActive else { return }
         isInputCaptureActive = shouldCapture
-        OpenNOWLog.info(.controller, "Input capture \(shouldCapture ? "began" : "ended")")
+        OPNLog.info(.controller, "Input capture \(shouldCapture ? "began" : "ended")")
         if shouldCapture {
             for context in devices.values {
                 configureCapture(for: context)
@@ -273,7 +273,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
                 restoreAfterCapture(for: context)
             }
         }
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.capture", level: .info, message: "Steam Controller input capture changed.", attributes: ["active": String(shouldCapture)])
+        OPNStreamTelemetry.capture("webrtc.input.steamcontroller.capture", level: .info, message: "Steam Controller input capture changed.", attributes: ["active": String(shouldCapture)])
     }
 
     public func requestInputMonitoringPermission() {
@@ -329,7 +329,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         let message = String(data: data, encoding: .utf8) ?? "Unknown tccutil error."
         throw SteamControllerPermissionError.tccutilFailed(exitCode: Int(process.terminationStatus), stderr: message)
     }
-    WebRTCMediaTelemetry.capture(
+    OPNStreamTelemetry.capture(
         "webrtc.input.steamcontroller.input_monitoring.reset",
         level: .info,
         message: "Input Monitoring permissions reset via tccutil.",
@@ -357,7 +357,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         if status == kIOReturnNotPermitted {
             var attributes = baseAttributes
             attributes["remediation"] = "open_experimental_steam_controller_support_reset_permission"
-            WebRTCMediaTelemetry.capture(
+            OPNStreamTelemetry.capture(
                 "webrtc.input.steamcontroller.device.open.permission_denied",
                 level: .warning,
                 message: "Input Monitoring permission denied while opening Steam Controller \(interface) interface. Use Settings → Experimental Features → Steam Controller Support → Reset Permission, then grant access on next launch.",
@@ -366,7 +366,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         } else {
             var attributes = baseAttributes
             attributes["status"] = String(status)
-            WebRTCMediaTelemetry.capture(
+            OPNStreamTelemetry.capture(
                 "webrtc.input.steamcontroller.device.open.failed",
                 level: .warning,
                 message: "Unable to open Steam Controller \(interface) interface.",
@@ -415,15 +415,15 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
             if permissionDenied {
                 scheduleActivationRetryAfterPermissionChange()
             }
-            WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.open.failed", level: .warning, message: permissionDenied ? "Steam Controller support needs the Input Monitoring permission." : "Unable to open Steam Controller HID manager.", attributes: ["status": String(openStatus), "permissionDenied": String(permissionDenied)])
+            OPNStreamTelemetry.capture("webrtc.input.steamcontroller.open.failed", level: .warning, message: permissionDenied ? "Steam Controller support needs the Input Monitoring permission." : "Unable to open Steam Controller HID manager.", attributes: ["status": String(openStatus), "permissionDenied": String(permissionDenied)])
             return
         }
         inputMonitoringPermissionGranted = true
         isMonitorActive = true
         self.manager = manager
         scheduleActivationRetryAfterPermissionChange()
-        OpenNOWLog.info(.controller, "Monitor activated")
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.monitor.enabled", level: .info, message: "Steam Controller support enabled.")
+        OPNLog.info(.controller, "Monitor activated")
+        OPNStreamTelemetry.capture("webrtc.input.steamcontroller.monitor.enabled", level: .info, message: "Steam Controller support enabled.")
     }
 
     private func deactivate() {
@@ -454,7 +454,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         batteryLevels.removeAll()
         batteryCharging.removeAll()
         publishActiveCount()
-        WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.monitor.disabled", level: .info, message: "Steam Controller support disabled.")
+        OPNStreamTelemetry.capture("webrtc.input.steamcontroller.monitor.disabled", level: .info, message: "Steam Controller support disabled.")
     }
 
     private func scheduleActivationRetryAfterPermissionChange() {

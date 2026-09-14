@@ -24,7 +24,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {
-        WebRTCMediaTelemetry.capture("webrtc.native.signaling_state", level: .debug, message: "Signaling state changed.", attributes: ["state": String(stateChanged.rawValue)])
+        OPNStreamTelemetry.capture("webrtc.native.signaling_state", level: .debug, message: "Signaling state changed.", attributes: ["state": String(stateChanged.rawValue)])
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
@@ -34,7 +34,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
     func peerConnectionShouldNegotiate(_ peerConnection: RTCPeerConnection) {}
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceConnectionState) {
-        WebRTCMediaTelemetry.capture("webrtc.native.ice_state", level: .debug, message: "ICE connection state changed.", attributes: ["state": String(newState.rawValue)])
+        OPNStreamTelemetry.capture("webrtc.native.ice_state", level: .debug, message: "ICE connection state changed.", attributes: ["state": String(newState.rawValue)])
         let owner = owner
         Task { @MainActor [weak owner] in
             switch newState {
@@ -53,7 +53,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCIceGatheringState) {
-        WebRTCMediaTelemetry.capture("webrtc.native.ice_gathering_state", level: .debug, message: "ICE gathering state changed.", attributes: ["state": String(newState.rawValue)])
+        OPNStreamTelemetry.capture("webrtc.native.ice_gathering_state", level: .debug, message: "ICE gathering state changed.", attributes: ["state": String(newState.rawValue)])
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) {
@@ -67,7 +67,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
     }
 
     func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) {
-        WebRTCMediaTelemetry.capture("webrtc.native.peer_state", level: .debug, message: "Peer connection state changed.", attributes: ["state": String(newState.rawValue)])
+        OPNStreamTelemetry.capture("webrtc.native.peer_state", level: .debug, message: "Peer connection state changed.", attributes: ["state": String(newState.rawValue)])
         let owner = owner
         Task { @MainActor [weak owner] in
             switch newState {
@@ -89,7 +89,7 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
         guard let track = rtpReceiver.track else { return }
         if track.kind == kRTCMediaStreamTrackKindVideo {
             guard let videoTrack = track as? RTCVideoTrack else { return }
-            WebRTCMediaTelemetry.capture("webrtc.native.remote_video", level: .debug, message: "Remote video receiver added.", attributes: ["trackId": track.trackId])
+            OPNStreamTelemetry.capture("webrtc.native.remote_video", level: .debug, message: "Remote video receiver added.", attributes: ["trackId": track.trackId])
             Task { @MainActor [weak self] in
                 self?.attachRemoteVideoTrack(videoTrack)
             }
@@ -97,14 +97,14 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
             audioTrack.isEnabled = true
             audioTrack.source.volume = owner?.gameVolumeLevel ?? 1.0
             remoteAudioTrack = audioTrack
-            WebRTCMediaTelemetry.capture("webrtc.native.remote_audio", level: .debug, message: "Remote audio track enabled.", attributes: ["trackId": audioTrack.trackId, "volume": String(format: "%.2f", audioTrack.source.volume)])
+            OPNStreamTelemetry.capture("webrtc.native.remote_audio", level: .debug, message: "Remote audio track enabled.", attributes: ["trackId": audioTrack.trackId, "volume": String(format: "%.2f", audioTrack.source.volume)])
         }
     }
 
     func dataChannelDidChangeState(_ dataChannel: RTCDataChannel) {
         let open = dataChannel.readyState == .open
         owner?.handleDataChannelState(label: dataChannel.label, open: open)
-        WebRTCMediaTelemetry.capture("webrtc.native.data_channel", level: .debug, message: "Data channel state changed.", attributes: ["label": dataChannel.label, "state": String(dataChannel.readyState.rawValue), "inputReady": String(owner?.isInputReady == true)])
+        OPNStreamTelemetry.capture("webrtc.native.data_channel", level: .debug, message: "Data channel state changed.", attributes: ["label": dataChannel.label, "state": String(dataChannel.readyState.rawValue), "inputReady": String(owner?.isInputReady == true)])
     }
 
     func dataChannel(_ dataChannel: RTCDataChannel, didReceiveMessageWith buffer: RTCDataBuffer) {
@@ -113,12 +113,12 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
 
     @MainActor private func attachRemoteVideoTrack(_ videoTrack: RTCVideoTrack) {
         guard let owner, let nativeWindow = owner.nativeWindowHandle() else {
-            WebRTCMediaTelemetry.capture("webrtc.native.video_attach.error", level: .warning, message: "Cannot attach remote video because the native view is missing.")
+            OPNStreamTelemetry.capture("webrtc.native.video_attach.error", level: .warning, message: "Cannot attach remote video because the native view is missing.")
             return
         }
         let parentView = Unmanaged<NSView>.fromOpaque(nativeWindow).takeUnretainedValue()
         guard RTCMTLNSVideoView.isMetalAvailable() else {
-            WebRTCMediaTelemetry.capture("webrtc.native.video_attach.error", level: .warning, message: "Cannot attach remote video because Metal rendering is unavailable.")
+            OPNStreamTelemetry.capture("webrtc.native.video_attach.error", level: .warning, message: "Cannot attach remote video because Metal rendering is unavailable.")
             return
         }
 
@@ -141,6 +141,6 @@ final class OPNLibWebRTCSessionImpl: NSObject, RTCPeerConnectionDelegate, RTCDat
         remoteVideoTrack = videoTrack
         remoteVideoView = videoView
         remoteVideoRenderer = videoRenderer
-        WebRTCMediaTelemetry.capture("webrtc.native.video_attach", level: .info, message: "Remote video renderer attached.", attributes: ["renderer": "Metal", "targetFps": String(targetFps)])
+        OPNStreamTelemetry.capture("webrtc.native.video_attach", level: .info, message: "Remote video renderer attached.", attributes: ["renderer": "Metal", "targetFps": String(targetFps)])
     }
 }

@@ -54,10 +54,10 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     @State private var isHovering = false
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.opnTileDensity) private var tileDensity
-    @AppStorage(OpenNOWThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OpenNOWThemePreferences.TileTitleVisibility.onHover.rawValue
+    @AppStorage(OPNThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OPNThemePreferences.TileTitleVisibility.onHover.rawValue
 
-    private var tileTitleVisibility: OpenNOWThemePreferences.TileTitleVisibility {
-        OpenNOWThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
+    private var tileTitleVisibility: OPNThemePreferences.TileTitleVisibility {
+        OPNThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
     }
 
     static func == (lhs: CatalogGameTile, rhs: CatalogGameTile) -> Bool {
@@ -96,7 +96,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                 .zIndex(2)
             }
             .opnHoverScale(isHovering && !isSelectionActive, factor: CatalogVendorLayout.tileScaleFactor)
-            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+            .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         }
         // Kept for the grid, where the tile is placed directly in the stack.
         .zIndex(isHovering ? 1 : 0)
@@ -111,11 +111,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.92) : OpenNOWDesign.Text.primary) : .black.opacity(0.88))
+            .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.92) : OPNDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OpenNOWDesign.Fixed.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OpenNOWDesign.Fixed.accent.opacity(0.55) : OpenNOWDesign.Fill.neutral(0.30)) : OpenNOWDesign.Fixed.accent, lineWidth: 1) }
+            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent)
+            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -154,7 +154,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     private var tileContent: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                let showsTitleTray = OpenNOWThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
+                let showsTitleTray = OPNThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                     .clipped()
@@ -188,11 +188,11 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                             Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                                 .catalogFont(size: 12, weight: isSelected ? .medium : .regular)
                                 .lineLimit(1)
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Spacer(minLength: 0)
                             Image(systemName: isSelected ? "chevron.up" : "chevron.down")
                                 .catalogFont(size: 10, weight: .bold)
-                                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                .foregroundStyle(OPNDesign.Text.secondary)
                         }
                         .padding(.horizontal, 16 * uiScale)
                         .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.cardTrayHeight(scale: uiScale))
@@ -212,7 +212,7 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         .overlay(alignment: .top) {
             if isSelected {
                 Rectangle()
-                    .fill(OpenNOWDesign.Fixed.accent)
+                    .fill(OPNDesign.Fixed.accent)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: 4)
                     .offset(y: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity) - 4)
             }
@@ -232,15 +232,15 @@ struct CatalogGameCardBadge: View {
     var body: some View {
         HStack(spacing: 0) {
             MallRibbonShape()
-                .fill(OpenNOWDesign.Fixed.accent)
+                .fill(OPNDesign.Fixed.accent)
                 .frame(width: 7, height: 24)
             Text(label)
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(height: 24)
-                .background(OpenNOWDesign.Surface.chrome.opacity(0.94))
+                .background(OPNDesign.Surface.chrome.opacity(0.94))
         }
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -261,8 +261,10 @@ struct CatalogGameAccessBadge: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 10)
         .frame(height: 28)
+        // DESIGN.md colour exception: solid-red lock/restriction badge; no token maps a filled red callout.
+        // swiftlint:disable:next design_no_hardcoded_surface_color
         .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Fill.neutral(0.42), lineWidth: 1) }
+        .overlay { Rectangle().stroke(OPNDesign.Fill.neutral(0.42), lineWidth: 1) }
         .shadow(color: .black.opacity(0.44), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: true, vertical: false)
     }
@@ -344,10 +346,10 @@ struct MallRibbonShape: Shape {
 /// its own `gfn-game-tile_moveArrow` keyframes.
 private struct GameTileResumableArrowSweep: View {
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
-    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+    @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
 
     private var isMotionReduced: Bool {
-        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+        OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
     }
 
     private enum Phase: CaseIterable {

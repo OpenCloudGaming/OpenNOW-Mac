@@ -109,10 +109,10 @@ public enum GFNTokenStore {
     }
 
     private static func logKeychainError(_ operation: String, identity: String, error: Error) {
-        OpenNOWLog.warning(.auth, "GFNTokenStore \(operation) failed identity=\(identity) error=\(error.localizedDescription)")
+        OPNLog.warning(.auth, "GFNTokenStore \(operation) failed identity=\(identity) error=\(error.localizedDescription)")
     }
 
     private static func logKeychainStatus(_ operation: String, account: String, status: OSStatus) {
-        OpenNOWLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
+        OPNLog.warning(.auth, "GFNTokenStore \(operation) failed account=\(account) status=\(status)")
     }
 }

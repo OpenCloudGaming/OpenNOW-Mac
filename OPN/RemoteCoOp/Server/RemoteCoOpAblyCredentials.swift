@@ -213,7 +213,7 @@ public enum OPNRemoteCoOpAblyKeyStore {
         // Only "not found" justifies an add; anything else is a real keychain failure and adding on
         // top of it would mask the cause.
         guard update == errSecItemNotFound else {
-            OpenNOWLog.error(.stream, "Remote Co-Op could not update the stored Ably key (\(update))")
+            OPNLog.error(.stream, "Remote Co-Op could not update the stored Ably key (\(update))")
             return
         }
         let addStatus = SecItemAdd([
@@ -224,7 +224,7 @@ public enum OPNRemoteCoOpAblyKeyStore {
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ] as CFDictionary, nil)
         if addStatus != errSecSuccess {
-            OpenNOWLog.error(.stream, "Remote Co-Op could not store the Ably key (\(addStatus))")
+            OPNLog.error(.stream, "Remote Co-Op could not store the Ably key (\(addStatus))")
         }
     }
 }

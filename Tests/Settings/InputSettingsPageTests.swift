@@ -16,7 +16,7 @@ import Testing
 
 @Test func directMouseInputCopyNamesTheShortcutThatActuallyReleasesThePointer() {
     let subtitle = InputSettingsPage.directMouseInputSubtitle
-    #expect(WebRTCMediaStreamCommand.shortcutCommand(keyCode: 35, modifierFlags: .command) == .togglePointerCapture)
+    #expect(StreamCommand.shortcutCommand(keyCode: 35, modifierFlags: .command) == .togglePointerCapture)
     #expect(subtitle.contains("Command-P"))
     #expect(!subtitle.contains("Command-G"), "Command-G is the HUD, not the pointer")
     #expect(!subtitle.contains("Command-Q"), "Command-Q opens the quit menu")

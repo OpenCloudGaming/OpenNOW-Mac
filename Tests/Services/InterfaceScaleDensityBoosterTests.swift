@@ -23,11 +23,11 @@ import Testing
             return
         }
 
-        #expect(!OpenNOWInterfaceScaleDensityView.isDrawingLayer(rootLayer))
+        #expect(!OPNInterfaceScaleDensityView.isDrawingLayer(rootLayer))
 
         var foundDrawingLayer = false
         func scan(_ layer: CALayer) {
-            if OpenNOWInterfaceScaleDensityView.isDrawingLayer(layer) {
+            if OPNInterfaceScaleDensityView.isDrawingLayer(layer) {
                 foundDrawingLayer = true
             }
             layer.sublayers?.forEach(scan)
@@ -50,7 +50,7 @@ import Testing
         hostingView.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
 
-        let densityView = OpenNOWInterfaceScaleDensityView(scale: 1.5)
+        let densityView = OPNInterfaceScaleDensityView(scale: 1.5)
         window.contentView?.addSubview(densityView)
 
         let targetScale: CGFloat = 2.5
@@ -64,7 +64,7 @@ import Testing
 
         var drawingLayerScales: [CGFloat] = []
         func collectScales(_ layer: CALayer) {
-            if OpenNOWInterfaceScaleDensityView.isDrawingLayer(layer) {
+            if OPNInterfaceScaleDensityView.isDrawingLayer(layer) {
                 drawingLayerScales.append(layer.contentsScale)
             }
             layer.sublayers?.forEach(collectScales)

@@ -66,7 +66,7 @@ struct CatalogHeroWordmark: View {
     private var titleText: some View {
         Text(title)
             .catalogFont(size: titlePointSize, weight: .bold)
-            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .foregroundStyle(OPNDesign.Text.primary)
             .lineLimit(titleLineLimit)
             .minimumScaleFactor(0.68)
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -35,7 +35,7 @@ struct ControllerHeroBillboard: View {
         }
         .clipped()
         .background(Color.black.opacity(0.34))
-        .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private func caption(for game: OPNCatalogGameObject) -> some View {
@@ -50,7 +50,7 @@ struct ControllerHeroBillboard: View {
             if showsDescription {
                 Text(heroDescription(game))
                     .catalogFont(size: descriptionPointSize, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .lineLimit(descriptionLineLimit)
                     .frame(maxWidth: descriptionWidth * uiScale, alignment: .leading)
             }
@@ -84,21 +84,21 @@ struct ControllerHeroBillboard: View {
     /// window shape instead of overflowing and being cut off at whatever height the band lands on.
     /// Each maximum below is its own ratio taken at `unscaledHeight` 520, the tallest band
     /// `ControllerLayoutMetrics` can produce, so the clamp guards that ceiling rather than shaping.
-    private var titlePointSize: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.15, minimum: 17, maximum: 78) }
+    private var titlePointSize: CGFloat { OPNDesign.clamped(unscaledHeight * 0.15, minimum: 17, maximum: 78) }
 
-    private var captionSpacing: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.035, minimum: 3, maximum: 18) }
+    private var captionSpacing: CGFloat { OPNDesign.clamped(unscaledHeight * 0.035, minimum: 3, maximum: 18) }
 
-    private var captionVerticalPadding: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.085, minimum: 8, maximum: 44) }
+    private var captionVerticalPadding: CGFloat { OPNDesign.clamped(unscaledHeight * 0.085, minimum: 8, maximum: 44) }
 
     /// Held at the same 1.56:1 ratio to the vertical inset the flat 28 used to give a laptop band -
     /// left flat it inverts on a 5K banner and the text hugs the edge of a 5000pt image.
-    private var captionHorizontalPadding: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.13, minimum: 28, maximum: 68) }
+    private var captionHorizontalPadding: CGFloat { OPNDesign.clamped(unscaledHeight * 0.13, minimum: 28, maximum: 68) }
 
     /// The column has to grow with the type or the larger title only triggers `minimumScaleFactor`
     /// and truncates. This holds roughly 26 characters at full size on every band.
-    private var captionWidth: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 2.3, minimum: 720, maximum: 1200) }
+    private var captionWidth: CGFloat { OPNDesign.clamped(unscaledHeight * 2.3, minimum: 720, maximum: 1200) }
 
-    private var descriptionPointSize: CGFloat { OpenNOWDesign.clamped(unscaledHeight * 0.042, minimum: 13, maximum: 22) }
+    private var descriptionPointSize: CGFloat { OPNDesign.clamped(unscaledHeight * 0.042, minimum: 13, maximum: 22) }
 
     /// A 50-em measure, never wider than the caption column it sits inside.
     private var descriptionWidth: CGFloat { min(descriptionPointSize * 50, captionWidth - captionHorizontalPadding * 2) }
@@ -108,7 +108,7 @@ struct ControllerHeroBillboard: View {
     /// Taller than the title row on purpose - the ink inside a 16:9 logo canvas can be a third of
     /// its height - but held under half the band so the metadata rows keep their share.
     private var logoBandHeight: CGFloat {
-        min(OpenNOWDesign.clamped(unscaledHeight * 0.30, minimum: 56, maximum: 168), unscaledHeight * 0.44)
+        min(OPNDesign.clamped(unscaledHeight * 0.30, minimum: 56, maximum: 168), unscaledHeight * 0.44)
     }
 
     // Rough intrinsic heights of the optional rows, unscaled. Only used to decide what the band can
@@ -164,18 +164,18 @@ struct ControllerGameRail: View {
             HStack(alignment: .firstTextBaseline, spacing: 12 * uiScale) {
                 Text(section.title)
                     .catalogFont(size: isFocused ? 24 : 21, weight: .bold)
-                    .foregroundStyle(isFocused ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.primary)
+                    .foregroundStyle(isFocused ? OPNDesign.Text.primary : OPNDesign.Text.primary)
                 if !section.isPlaceholder {
                     Text("\(section.games.count) games".uppercased())
                         .catalogFont(size: 11, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.82))
+                        .foregroundStyle(OPNDesign.accentInk.opacity(0.82))
                 }
                 Spacer(minLength: 0)
                 if canShowAll, !section.isPlaceholder {
                     Button("SHOW ALL", action: showAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                 }
             }
             .frame(width: layout.contentWidth, alignment: .leading)
@@ -319,7 +319,7 @@ struct ControllerGameTile: View, Equatable {
                         if game.isLaunchPatching {
                             Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
                                 .catalogFont(size: 12, weight: .bold)
-                                .foregroundStyle(OpenNOWDesign.accent)
+                                .foregroundStyle(OPNDesign.accent)
                         }
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                             .catalogFont(size: 16, weight: .bold)
@@ -328,13 +328,13 @@ struct ControllerGameTile: View, Equatable {
                     }
                     Text(subtitle)
                         .catalogFont(size: 11, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .lineLimit(1)
                 }
                 .padding(15 * uiScale)
             }
             .frame(width: tileSize.width, height: tileSize.height)
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .openNowFocusRing(isFocused)
         }
         .buttonStyle(.plain)
@@ -369,11 +369,11 @@ struct ControllerEmbeddedPage<Content: View>: View {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
                     .tracking(1.4)
                 Text(subtitle)
                     .catalogFont(size: 15, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             .frame(width: layout.contentWidth, alignment: .leading)
             .padding(.top, 20 * uiScale)

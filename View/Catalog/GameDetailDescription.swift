@@ -14,7 +14,7 @@ extension GameDetailPanel {
         // Line budget grows with the panel so tall (ultrawide) panels do not leave a dead gap. No
         // reserved height: a `maxHeight` frame here takes the whole proposal and pushes the button
         // a paragraph away from the text it belongs to.
-        let collapsedHeight = OpenNOWDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
+        let collapsedHeight = OPNDesign.clamped(panelHeight * 0.256, minimum: 128, maximum: 210)
         return shortDescription(game: game)
             .lineLimit(max(3, Int(collapsedHeight / 22)))
             .fixedSize(horizontal: false, vertical: true)
@@ -23,7 +23,7 @@ extension GameDetailPanel {
     func shortDescription(game: OPNCatalogGameObject) -> some View {
         Text(GameDetailPresentation.shortDescription(game: game))
             .catalogFont(size: 15, weight: .medium)
-            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .foregroundStyle(OPNDesign.Text.primary)
             .lineSpacing(3)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: 660, alignment: .leading)
@@ -36,11 +36,11 @@ extension GameDetailPanel {
             Text("READ MORE")
                 .catalogFont(size: 12, weight: .bold)
                 .tracking(0.8)
-                .foregroundStyle(isMoreInfoHovering ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
+                .foregroundStyle(isMoreInfoHovering ? .black.opacity(0.88) : OPNDesign.Text.primary)
                 .padding(.horizontal, 13 * uiScale)
                 .frame(height: 34 * uiScale)
-                .background(isMoreInfoHovering ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.10))
-                .overlay { Rectangle().strokeBorder(isMoreInfoHovering ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong, lineWidth: 1) }
+                .background(isMoreInfoHovering ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10))
+                .overlay { Rectangle().strokeBorder(isMoreInfoHovering ? OPNDesign.accent : OPNDesign.Stroke.strong, lineWidth: 1) }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

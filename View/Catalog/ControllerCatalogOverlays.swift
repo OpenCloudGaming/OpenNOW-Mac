@@ -55,24 +55,24 @@ struct ControllerSearchOverlay: View {
         HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .catalogFont(size: 18, weight: .bold)
-                .foregroundStyle(rowIndex == 0 ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(rowIndex == 0 ? OPNDesign.accentInk : OPNDesign.Text.tertiary)
             TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .catalogFont(size: 20, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
             if !viewModel.searchQuery.isEmpty {
                 Button("CLEAR", action: { viewModel.searchQuery = "" })
                     .buttonStyle(.plain)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
             }
         }
         .padding(.horizontal, 18 * uiScale)
         .frame(height: 58 * uiScale)
-        .background(OpenNOWDesign.Fill.neutral(rowIndex == 0 ? 0.12 : 0.075))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(rowIndex == 0 ? 0.12 : 0.075))
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .openNowFocusRing(rowIndex == 0)
     }
 
@@ -109,11 +109,11 @@ struct ControllerSearchOverlay: View {
                     .catalogFont(size: 12, weight: .bold)
                     .tracking(0.6)
             }
-            .foregroundStyle(isFocused ? .black.opacity(0.88) : OpenNOWDesign.Text.secondary)
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.secondary)
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 36 * uiScale)
-            .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.075))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
@@ -136,11 +136,11 @@ struct ControllerSearchOverlay: View {
                     .catalogFont(size: 12, weight: .bold)
                     .tracking(0.6)
             }
-            .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Text.secondary))
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? OPNDesign.accent : OPNDesign.Text.secondary))
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 36 * uiScale)
-            .background(isFocused ? OpenNOWDesign.accent : (isSelected ? OpenNOWDesign.accent.opacity(0.15) : OpenNOWDesign.Fill.neutral(0.075)))
-            .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(isFocused ? OPNDesign.accent : (isSelected ? OPNDesign.accent.opacity(0.15) : OPNDesign.Fill.neutral(0.075)))
+            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
             .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
@@ -160,11 +160,11 @@ struct ControllerSearchOverlay: View {
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.6)
             }
-            .foregroundStyle(isFocused ? .black.opacity(0.88) : OpenNOWDesign.Text.secondary)
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.secondary)
             .padding(.horizontal, 12 * uiScale)
             .frame(height: 36 * uiScale)
-            .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.05))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.05))
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
@@ -241,7 +241,7 @@ struct ControllerSearchPickerOverlay: View {
 
     var body: some View {
         ZStack {
-            OpenNOWDesign.Surface.scrim
+            OPNDesign.Surface.scrim
                 .ignoresSafeArea()
                 .onTapGesture { close() }
 
@@ -260,17 +260,17 @@ struct ControllerSearchPickerOverlay: View {
                                     HStack(spacing: 13 * uiScale) {
                                         Image(systemName: isApplied(option) ? "checkmark.circle.fill" : "circle")
                                             .catalogFont(size: 13, weight: .bold)
-                                            .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                                            .foregroundStyle(isFocused ? .black.opacity(0.86) : OPNDesign.accent)
                                         Text(option.label)
                                             .catalogFont(size: 14, weight: .bold)
-                                            .foregroundStyle(isFocused ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
+                                            .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.primary)
                                             .lineLimit(1)
                                         Spacer(minLength: 0)
                                     }
                                     .padding(.horizontal, 14 * uiScale)
                                     .frame(height: 44 * uiScale)
-                                    .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
-                                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                                    .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
+                                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
                                     .openNowFocusRing(isFocused, onAccentFill: true)
                                 }
                                 .buttonStyle(.plain)
@@ -289,9 +289,9 @@ struct ControllerSearchPickerOverlay: View {
                 }
             }
             .frame(width: min(520 * uiScale, layout.contentWidth), height: panelHeight, alignment: .topLeading)
-            .background(OpenNOWDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .top) { Rectangle().fill(OpenNOWDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 }
@@ -315,7 +315,7 @@ struct ControllerActionMenuOverlay: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            OpenNOWDesign.Surface.scrim.onTapGesture(perform: close)
+            OPNDesign.Surface.scrim.onTapGesture(perform: close)
             VStack(alignment: .leading, spacing: 0) {
                 ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
                     .padding(.horizontal, 22 * uiScale)
@@ -330,18 +330,18 @@ struct ControllerActionMenuOverlay: View {
                                     if item.isRefresh, isRefreshingCatalog {
                                         ProgressView()
                                             .controlSize(.small)
-                                            .tint(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                                            .tint(isFocused ? .black.opacity(0.86) : OPNDesign.accent)
                                             .scaleEffect(0.82)
                                             .frame(width: 28 * uiScale)
                                     } else {
                                         Image(systemName: item.icon)
                                             .catalogFont(size: 15, weight: .bold)
-                                            .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                                            .foregroundStyle(isFocused ? .black.opacity(0.86) : OPNDesign.accent)
                                             .frame(width: 28 * uiScale)
                                     }
                                     Text(item.isRefresh && isRefreshingCatalog ? "Refreshing Catalog" : item.title)
                                         .catalogFont(size: 15, weight: .bold)
-                                        .foregroundStyle(isFocused ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
+                                        .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.primary)
                                         .lineLimit(1)
                                     Spacer(minLength: 0)
                                     // The secondary action: only shown on a focused account row, so
@@ -352,8 +352,8 @@ struct ControllerActionMenuOverlay: View {
                                 }
                                 .padding(.horizontal, 14 * uiScale)
                                 .frame(height: 48 * uiScale)
-                                .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
-                                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                                .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
+                                .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
                                 .openNowFocusRing(isFocused)
                             }
                             .buttonStyle(.plain)
@@ -365,8 +365,8 @@ struct ControllerActionMenuOverlay: View {
                 }
             }
             .frame(maxWidth: 420 * uiScale, maxHeight: .infinity, alignment: .topLeading)
-            .background(OpenNOWDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
+            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
         }
@@ -405,7 +405,7 @@ struct ControllerAccountOptionsOverlay: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            OpenNOWDesign.Surface.scrim.onTapGesture(perform: close)
+            OPNDesign.Surface.scrim.onTapGesture(perform: close)
             VStack(alignment: .leading, spacing: 0) {
                 ControllerOverlayHeader(title: headerTitle, subtitle: headerSubtitle, glyphs: glyphs, close: close)
                     .padding(.horizontal, 22 * uiScale)
@@ -421,8 +421,8 @@ struct ControllerAccountOptionsOverlay: View {
                 .padding(.bottom, 22 * uiScale)
             }
             .frame(maxWidth: 420 * uiScale, maxHeight: .infinity, alignment: .topLeading)
-            .background(OpenNOWDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
+            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
         }
@@ -447,18 +447,18 @@ struct ControllerAccountOptionsOverlay: View {
                     HStack(spacing: 13 * uiScale) {
                         Image(systemName: row.icon)
                             .catalogFont(size: 15, weight: .bold)
-                            .foregroundStyle(isFocused ? .black.opacity(0.86) : (row.isDestructive ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accent))
+                            .foregroundStyle(isFocused ? .black.opacity(0.86) : (row.isDestructive ? OPNDesign.Semantic.destructive : OPNDesign.accent))
                             .frame(width: 28 * uiScale)
                         Text(row.title(accountDisplayName: account.displayName))
                             .catalogFont(size: 15, weight: .bold)
-                            .foregroundStyle(isFocused ? .black.opacity(0.88) : (row.isDestructive ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.Text.primary))
+                            .foregroundStyle(isFocused ? .black.opacity(0.88) : (row.isDestructive ? OPNDesign.Semantic.destructive : OPNDesign.Text.primary))
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 14 * uiScale)
                     .frame(height: 48 * uiScale)
-                    .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
                     .openNowFocusRing(isFocused)
                 }
                 .buttonStyle(.plain)
@@ -472,7 +472,7 @@ struct ControllerAccountOptionsOverlay: View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
             Text(confirmBodyText)
                 .catalogFont(size: 14, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10 * uiScale) {
                 confirmButton(title: "Cancel", index: 0, destructive: false)
@@ -492,11 +492,11 @@ struct ControllerAccountOptionsOverlay: View {
             Text(title.uppercased())
                 .catalogFont(size: 13, weight: .bold)
                 .tracking(0.6)
-                .foregroundStyle(isFocused ? .black.opacity(0.88) : (destructive ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.Text.secondary))
+                .foregroundStyle(isFocused ? .black.opacity(0.88) : (destructive ? OPNDesign.Semantic.destructive : OPNDesign.Text.secondary))
                 .frame(maxWidth: .infinity)
                 .frame(height: 44 * uiScale)
-                .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.075))
-                .overlay { Rectangle().stroke(destructive ? OpenNOWDesign.Semantic.destructive.opacity(0.5) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
+                .overlay { Rectangle().stroke(destructive ? OPNDesign.Semantic.destructive.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
                 .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)

@@ -3,18 +3,18 @@ import AVKit
 import SwiftUI
 
 enum RecordingsLayout {
-    static var sidebar: Color { OpenNOWDesign.Surface.deep }
-    static var surface: Color { OpenNOWDesign.Surface.deep }
-    static var card: Color { OpenNOWDesign.Fill.neutral(0.055) }
-    static var raised: Color { OpenNOWDesign.Fill.neutral(0.085) }
-    static var stroke: Color { OpenNOWDesign.Stroke.subtle }
-    static var strongStroke: Color { OpenNOWDesign.Stroke.strong }
-    static let danger = Color(red: 1, green: 78 / 255, blue: 78 / 255)
+    static var sidebar: Color { OPNDesign.Surface.deep }
+    static var surface: Color { OPNDesign.Surface.deep }
+    static var card: Color { OPNDesign.Fill.neutral(0.055) }
+    static var raised: Color { OPNDesign.Fill.neutral(0.085) }
+    static var stroke: Color { OPNDesign.Stroke.subtle }
+    static var strongStroke: Color { OPNDesign.Stroke.strong }
+    static let danger = OPNDesign.Semantic.destructive
 }
 
 extension Font {
-    static func recordingsFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
-        OpenNOWUIFont.font(size: size, weight: weight)
+    static func recordingsFont(size: CGFloat, weight: OPNUIFont.Weight = .regular) -> Font {
+        OPNUIFont.font(size: size, weight: weight)
     }
 }
 
@@ -32,7 +32,7 @@ struct RecordingsView: View {
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
 
-    private var visibleRecordings: [WebRTCStreamRecording] { model.visibleRecordings }
+    private var visibleRecordings: [StreamRecording] { model.visibleRecordings }
 
     /// Formatting the library summary is the view's job; `RecordingLibraryStats` only counts.
     private var librarySubtitle: String {
@@ -44,7 +44,7 @@ struct RecordingsView: View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 recordingsList
-                    .frame(width: OpenNOWDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
+                    .frame(width: OPNDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
                 playerPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -116,6 +116,8 @@ struct RecordingsView: View {
                                 Button("Edit Recording") { model.startEditing(recording) }
                                 Button("Reveal in Finder") { model.reveal(recording) }
                                 Button("Copy File Path") { model.copyPath(recording) }
+                                // DESIGN.md divider exception: native context-menu separator, rendered by AppKit.
+                                // swiftlint:disable:next design_no_native_divider
                                 Divider()
                                 Button("Delete", role: .destructive) { model.pendingDelete = recording }
                             }
@@ -137,22 +139,22 @@ struct RecordingsView: View {
                     Text("RECORDINGS")
                         .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(1.6)
-                        .foregroundStyle(OpenNOWDesign.accentInk)
+                        .foregroundStyle(OPNDesign.accentInk)
                     Text("Saved Videos")
                         .font(.recordingsFont(size: 25 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text(librarySubtitle)
                         .font(.recordingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .lineLimit(1)
                 }
                 Spacer()
                 Button { model.reload(showMessage: true) } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .frame(width: 40 * uiScale, height: 40 * uiScale)
-                        .background(OpenNOWDesign.Stroke.subtle)
+                        .background(OPNDesign.Stroke.subtle)
                         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
@@ -174,9 +176,9 @@ struct RecordingsView: View {
     private var sortAndFilters: some View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
             HStack(spacing: 10 * uiScale) {
-                OpenNOWDropdownMenu(
+                OPNDropdownMenu(
                     items: RecordingSortOrder.allCases.map { order in
-                        OpenNOWDropdownItem(id: order.id, title: order.title, isSelected: order == model.sortOrder) { model.sortOrder = order }
+                        OPNDropdownItem(id: order.id, title: order.title, isSelected: order == model.sortOrder) { model.sortOrder = order }
                     }
                 ) {
                     HStack(spacing: 8 * uiScale) {
@@ -186,8 +188,8 @@ struct RecordingsView: View {
                             .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                     }
                     .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
-                    .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                    .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
                     .background(RecordingsLayout.card)
                     .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
@@ -197,7 +199,7 @@ struct RecordingsView: View {
 
                 Text("\(visibleRecordings.count) shown")
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             .zIndex(1)
 
@@ -224,7 +226,7 @@ struct RecordingsView: View {
         }
     }
 
-    private func selectedPlayer(recording: WebRTCStreamRecording, player: AVPlayer) -> some View {
+    private func selectedPlayer(recording: StreamRecording, player: AVPlayer) -> some View {
         let isEditing = model.editorViewModel?.primaryRecording.id == recording.id
         return VStack(spacing: 0) {
             pageHeader(recording: recording, editorViewModel: isEditing ? model.editorViewModel : nil)
@@ -271,7 +273,7 @@ struct RecordingsView: View {
 
     /// The editor's header replaces the recording's while an edit is open: same row, different job.
     @ViewBuilder
-    private func pageHeader(recording: WebRTCStreamRecording, editorViewModel: RecordingEditorViewModel?) -> some View {
+    private func pageHeader(recording: StreamRecording, editorViewModel: RecordingEditorViewModel?) -> some View {
         if let editorViewModel {
             RecordingEditorHeaderBar(
                 viewModel: editorViewModel,
@@ -311,10 +313,10 @@ private struct RecordingMetric: View {
             Text(title)
                 .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
                 .tracking(1.0)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
             Text(value)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -333,22 +335,22 @@ private struct RecordingSearchField: View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
+                .foregroundStyle(OPNDesign.accentInk.opacity(0.85))
             TextField("Search title, file, or app ID", text: $text)
                 .textFieldStyle(.plain)
                 .font(.recordingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             if !text.isEmpty {
                 Button { text = "" } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 12 * uiScale)
         .frame(height: 40 * uiScale)
-        .background(OpenNOWDesign.Stroke.subtle)
+        .background(OPNDesign.Stroke.subtle)
         .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
     }
 }
@@ -368,11 +370,11 @@ private struct RecordingFilterChip: View {
                 Text(filter.title)
             }
             .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
-            .foregroundStyle(isActive ? .black.opacity(0.86) : isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
+            .foregroundStyle(isActive ? .black.opacity(0.86) : isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(isHovering ? 0.09 : 0.055))
-            .overlay { Rectangle().stroke(isActive ? OpenNOWDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
+            .background(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.09 : 0.055))
+            .overlay { Rectangle().stroke(isActive ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -380,7 +382,7 @@ private struct RecordingFilterChip: View {
 }
 
 private struct RecordingRow: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     let isSelected: Bool
     let uiScale: CGFloat
     let action: () -> Void
@@ -402,11 +404,11 @@ private struct RecordingRow: View {
                     VStack(alignment: .leading, spacing: 6 * uiScale) {
                         Text(recording.title)
                             .font(.recordingsFont(size: 14 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                             .lineLimit(2)
                         Text(RecordingFormat.relativeDateText(recording.createdAt))
                             .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
                             .lineLimit(1)
                     }
                     Spacer(minLength: 0)
@@ -424,8 +426,8 @@ private struct RecordingRow: View {
             }
             .padding(13 * uiScale)
             .background(background)
-            .overlay(alignment: .leading) { Rectangle().fill(isSelected ? OpenNOWDesign.accent : .clear).frame(width: 3) }
-            .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent.opacity(0.48) : OpenNOWDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
+            .overlay(alignment: .leading) { Rectangle().fill(isSelected ? OPNDesign.accent : .clear).frame(width: 3) }
+            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent.opacity(0.48) : OPNDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -436,13 +438,13 @@ private struct RecordingRow: View {
     }
 
     private var background: some ShapeStyle {
-        if isSelected { return AnyShapeStyle(OpenNOWDesign.accent.opacity(0.105)) }
-        return AnyShapeStyle(OpenNOWDesign.Fill.neutral(isHovering ? 0.075 : 0.04))
+        if isSelected { return AnyShapeStyle(OPNDesign.accent.opacity(0.105)) }
+        return AnyShapeStyle(OPNDesign.Fill.neutral(isHovering ? 0.075 : 0.04))
     }
 }
 
 private struct RecordingThumbnail: View {
-    let recording: WebRTCStreamRecording
+    let recording: StreamRecording
     let isSelected: Bool
     let isHovering: Bool
     let uiScale: CGFloat
@@ -461,7 +463,7 @@ private struct RecordingThumbnail: View {
                     }
             } else {
                 LinearGradient(
-                    colors: [OpenNOWDesign.Fill.neutral(0.13), OpenNOWDesign.Fill.neutral(0.03), OpenNOWDesign.accent.opacity(isSelected ? 0.24 : 0.08)],
+                    colors: [OPNDesign.Fill.neutral(0.13), OPNDesign.Fill.neutral(0.03), OPNDesign.accent.opacity(isSelected ? 0.24 : 0.08)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
@@ -470,7 +472,7 @@ private struct RecordingThumbnail: View {
             }
             Image(systemName: isHovering || isSelected ? "play.fill" : "play.rectangle.fill")
                 .font(.recordingsFont(size: 19 * uiScale, weight: .bold))
-                .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : thumbnail == nil ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.primary)
+                .foregroundStyle(isSelected ? OPNDesign.accentInk : thumbnail == nil ? OPNDesign.Text.secondary : OPNDesign.Text.primary)
                 .shadow(color: .black.opacity(thumbnail == nil ? 0 : 0.60), radius: 7 * uiScale, x: 0, y: 2 * uiScale)
         }
         .frame(width: 76 * uiScale, height: 46 * uiScale)
@@ -480,9 +482,9 @@ private struct RecordingThumbnail: View {
                 .foregroundStyle(.black.opacity(0.86))
                 .padding(.horizontal, 5 * uiScale)
                 .frame(height: 15 * uiScale)
-                .background(OpenNOWDesign.accent)
+                .background(OPNDesign.accent)
         }
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         .task(id: recording.id) {
             thumbnail = await RecordingThumbnailLoader.thumbnail(for: recording)
         }
@@ -522,7 +524,7 @@ private struct RecordingPlayerView: NSViewRepresentable {
 private enum RecordingThumbnailLoader {
     private static let cache = NSCache<NSString, NSImage>()
 
-    static func thumbnail(for recording: WebRTCStreamRecording) async -> NSImage? {
+    static func thumbnail(for recording: StreamRecording) async -> NSImage? {
         let key = recording.id.uuidString as NSString
         if let cached = cache.object(forKey: key) { return cached }
         let image = await generateThumbnail(videoURL: recording.videoURL, durationSeconds: recording.durationSeconds)
@@ -559,11 +561,11 @@ private struct RecordingPill: View {
     var body: some View {
         Text(text)
             .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
-            .foregroundStyle(isActive ? .black.opacity(0.86) : OpenNOWDesign.Text.secondary)
+            .foregroundStyle(isActive ? .black.opacity(0.86) : OPNDesign.Text.secondary)
             .lineLimit(1)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 20 * uiScale)
-            .background(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
-            .overlay { Rectangle().stroke(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle)
+            .overlay { Rectangle().stroke(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

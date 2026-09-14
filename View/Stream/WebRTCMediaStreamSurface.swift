@@ -21,7 +21,7 @@ public struct WebRTCMediaStreamSurface: View {
     let onEnd: WebRTCMediaStreamEndCallback
     let sidebarCapabilities = StreamSidebarCapabilities.webRTC
 
-    @State var path: WebRTCStreamingPath?
+    @State var path: StreamingPath?
     @State var transport: NativeWebRTCTransport?
     @State var hasStarted = false
     @State var isStreamReady = false
@@ -39,7 +39,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State var sessionLimitUpdateTask: Task<Void, Never>?
     @State var startTask: Task<Void, Never>?
     @State var nativeView: NativeWebRTCStreamView?
-    @State var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
+    @State var pendingApplicationQuitCompletion: StreamSessionQuitDecisionHandler?
     @State var runtimeSettings = StreamRuntimeSettings()
     /// Read once when the surface appears, not per HUD frame. Remote Co-Op cannot be hosted on this
     /// transport at all, so this only decides whether the HUD explains that - and it is a
@@ -47,7 +47,7 @@ public struct WebRTCMediaStreamSurface: View {
     /// tick.
     @State var remoteCoOpEnabled = false
     @State var microphoneEnabled = false
-    @State var recordingStatus = WebRTCStreamRecordingStatus.idle
+    @State var recordingStatus = StreamRecordingStatus.idle
     @State var recordingNotificationTask: Task<Void, Never>?
     @State var antiAFKMouseMovementTask: Task<Void, Never>?
     @State var lastAcceptedStreamInputAt = Date()
@@ -66,7 +66,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State var onScreenKeyboardVisible = false
     @State var restorePointerLockOnKeyboardHide = false
     @StateObject var onScreenKeyboard = StreamOnScreenKeyboardModel()
-    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) var uiScale = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OPNInterfacePreferences.uiScaleKey) var uiScale = OPNInterfacePreferences.defaultUIScale
     @State var sessionLimit: StreamSessionSidebarLimit?
 
     public init(configuration: StreamLaunchConfiguration,
@@ -167,27 +167,27 @@ public struct WebRTCMediaStreamSurface: View {
     }
 
     var fpsColor: Color {
-        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestStats.renderFps >= 55 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+        guard let latestStats, latestStats.available else { return StreamHUDTheme.textTertiary }
+        return latestStats.renderFps >= 55 ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
     var latencyColor: Color {
-        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        if latestStats.latencyMs >= 120 { return WebRTCMediaStreamTheme.danger }
-        if latestStats.latencyMs >= 90 { return WebRTCMediaStreamTheme.warning }
-        return WebRTCMediaStreamTheme.accent
+        guard let latestStats, latestStats.available else { return StreamHUDTheme.textTertiary }
+        if latestStats.latencyMs >= 120 { return StreamHUDTheme.danger }
+        if latestStats.latencyMs >= 90 { return StreamHUDTheme.warning }
+        return StreamHUDTheme.accent
     }
 
     var frameLossColor: Color {
-        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        return latestStats.framesDropped == 0 ? WebRTCMediaStreamTheme.accent : WebRTCMediaStreamTheme.warning
+        guard let latestStats, latestStats.available else { return StreamHUDTheme.textTertiary }
+        return latestStats.framesDropped == 0 ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
     var packetLossColor: Color {
-        guard let latestStats, latestStats.available else { return WebRTCMediaStreamTheme.textTertiary }
-        if latestStats.packetLossPercent >= 2 { return WebRTCMediaStreamTheme.danger }
-        if latestStats.packetLossPercent >= 1 { return WebRTCMediaStreamTheme.warning }
-        return WebRTCMediaStreamTheme.accent
+        guard let latestStats, latestStats.available else { return StreamHUDTheme.textTertiary }
+        if latestStats.packetLossPercent >= 2 { return StreamHUDTheme.danger }
+        if latestStats.packetLossPercent >= 1 { return StreamHUDTheme.warning }
+        return StreamHUDTheme.accent
     }
 
     var packetLossTotalText: String {

@@ -60,7 +60,7 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     ///
     /// With Remote Co-Op the map is no longer constant: every connected pad must be announced in
     /// the same u16, host included, and the descriptor and the state packets must agree exactly or
-    /// the seat registers the device and then drops its updates. `NativeWebRTCGamepadTopology`
+    /// the seat registers the device and then drops its updates. `StreamGamepadTopology`
     /// builds that value; this constant is only the one-pad default.
     static let connectedBitmapOffset = 8
     public static let connectedBitmap: UInt16 = 0x0101

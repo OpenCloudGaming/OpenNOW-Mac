@@ -73,7 +73,7 @@ struct RecordingTimelineView: View {
             // it. That put the clips 15pt lower than intended - past the bottom edge, where they
             // were clipped - and the trim handles 25pt above them.
             ZStack(alignment: .topLeading) {
-                Rectangle().fill(OpenNOWDesign.Fill.neutral(0.34))
+                Rectangle().fill(OPNDesign.Fill.neutral(0.34))
                 timelineRuler(layout: layout)
                 ForEach(segmentFrames(layout: layout), id: \.segment.id) { item in
                     timelineClip(item, layout: layout)
@@ -113,7 +113,7 @@ struct RecordingTimelineView: View {
             ))
         }
         .frame(height: trackHeight)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Editor timeline")
         .accessibilityValue(accessibilityValueText)
@@ -140,7 +140,7 @@ struct RecordingTimelineView: View {
         let drawnRange = drawnSourceRange(of: item, drawn: drawn)
         return ZStack(alignment: .leading) {
             Rectangle()
-                .fill(OpenNOWDesign.Fill.neutral(0.30))
+                .fill(OPNDesign.Fill.neutral(0.30))
             if drawn.width > 24 {
                 RecordingFilmstripView(
                     recording: item.segment.recording,
@@ -161,18 +161,18 @@ struct RecordingTimelineView: View {
             }
             // Selection reads from the border; a heavy fill on top of the frames only greened them.
             Rectangle()
-                .fill(isSelected ? OpenNOWDesign.accent.opacity(0.07) : Color.clear)
+                .fill(isSelected ? OPNDesign.accent.opacity(0.07) : Color.clear)
             Rectangle()
-                .stroke(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong, lineWidth: isSelected ? 1.4 : 1)
+                .stroke(isSelected ? OPNDesign.accent : OPNDesign.Stroke.strong, lineWidth: isSelected ? 1.4 : 1)
             HStack(spacing: 8 * uiScale) {
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(item.segment.recording.title)
                         .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .lineLimit(1)
                     Text("\(recordingEditorDurationText(item.segment.startSeconds)) - \(recordingEditorDurationText(item.segment.endSeconds))")
                         .font(.recordingsFont(size: 9 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -182,7 +182,7 @@ struct RecordingTimelineView: View {
                         .foregroundStyle(.black.opacity(0.82))
                         .padding(.horizontal, 5 * uiScale)
                         .frame(height: 15 * uiScale)
-                        .background(OpenNOWDesign.accent)
+                        .background(OPNDesign.accent)
                 }
             }
             .padding(.horizontal, 10 * uiScale)
@@ -236,9 +236,8 @@ struct RecordingTimelineView: View {
 
     private func playhead(layout: RecordingTimelineGeometry) -> some View {
         Rectangle()
-            .fill(OpenNOWDesign.Fill.neutral(0.94))
+            .fill(OPNDesign.Fill.neutral(0.94))
             .frame(width: 2, height: trackHeight + 8 * uiScale)
-            .shadow(color: OpenNOWDesign.accent.opacity(0.95), radius: 7)
             .offset(x: layout.x(forSeconds: playheadSeconds + trimHeadroom.leading), y: -4 * uiScale)
     }
 
@@ -271,9 +270,9 @@ struct RecordingTimelineView: View {
                 .font(.recordingsFont(size: 8 * uiScale, weight: .bold))
                 .foregroundStyle(.black.opacity(0.86))
                 .frame(width: 14 * uiScale, height: 12 * uiScale)
-                .background(isRemovedRange ? RecordingsLayout.danger : OpenNOWDesign.accent)
+                .background(isRemovedRange ? RecordingsLayout.danger : OPNDesign.accent)
             Rectangle()
-                .fill(isRemovedRange ? RecordingsLayout.danger : OpenNOWDesign.accent)
+                .fill(isRemovedRange ? RecordingsLayout.danger : OPNDesign.accent)
                 .frame(width: 2, height: clipHeight - 14 * uiScale)
         }
         .offset(x: x - 7 * uiScale, y: clipTop - 2 * uiScale)
@@ -283,9 +282,8 @@ struct RecordingTimelineView: View {
 
     private func insertionIndicator(x: CGFloat) -> some View {
         Rectangle()
-            .fill(OpenNOWDesign.accent)
+            .fill(OPNDesign.accent)
             .frame(width: 3, height: clipHeight + 8 * uiScale)
-            .shadow(color: OpenNOWDesign.accent.opacity(0.80), radius: 8)
             .offset(x: x - 1.5, y: clipTop - 4 * uiScale)
     }
 
@@ -300,7 +298,7 @@ struct RecordingTimelineView: View {
                     path.addLine(to: CGPoint(x: x, y: rulerHeight))
                 }
             }
-            .stroke(OpenNOWDesign.Stroke.strong, lineWidth: 1)
+            .stroke(OPNDesign.Stroke.strong, lineWidth: 1)
             ForEach(ticks, id: \.self) { seconds in
                 let x = layout.x(forSeconds: seconds)
                 // The last label would otherwise hang off the right edge of the track.
@@ -310,7 +308,7 @@ struct RecordingTimelineView: View {
                     // the reason to be there.
                     Text(step < 1 ? recordingEditorPreciseTimeText(seconds) : recordingEditorDurationText(seconds))
                         .font(.recordingsFont(size: 8 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                         .fixedSize()
                         .offset(x: x + 3 * uiScale, y: 0)
                 }

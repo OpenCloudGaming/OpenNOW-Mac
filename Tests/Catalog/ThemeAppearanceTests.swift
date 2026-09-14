@@ -2,27 +2,27 @@ import Testing
 @testable import OpenNOW
 
 @Test func defaultAppearanceIsDark() {
-    #expect(OpenNOWThemePreferences.Appearance(rawValue: "dark") == .dark)
+    #expect(OPNThemePreferences.Appearance(rawValue: "dark") == .dark)
 }
 
 @Test func anUnknownStoredAppearanceValueFallsBackToDark() {
-    #expect(OpenNOWThemePreferences.Appearance(rawValue: "sepia") ?? .dark == .dark)
-    #expect(OpenNOWThemePreferences.Appearance(rawValue: "") ?? .dark == .dark)
+    #expect(OPNThemePreferences.Appearance(rawValue: "sepia") ?? .dark == .dark)
+    #expect(OPNThemePreferences.Appearance(rawValue: "") ?? .dark == .dark)
 }
 
 /// The picker maps `allCases` by index and the raw values are what a stored preference survives a
 /// rename by, so both the order and the raw values are a storage/UI contract.
 @Test func everyAppearanceNamesItselfAndTheRawValuesAreStable() {
-    let labels = OpenNOWThemePreferences.Appearance.allCases.map(\.label)
+    let labels = OPNThemePreferences.Appearance.allCases.map(\.label)
     #expect(labels.allSatisfy { !$0.isEmpty })
     #expect(Set(labels).count == labels.count)
-    #expect(OpenNOWThemePreferences.Appearance.allCases == [.system, .dark, .light])
-    #expect(OpenNOWThemePreferences.Appearance.allCases.map(\.rawValue) == ["system", "dark", "light"])
+    #expect(OPNThemePreferences.Appearance.allCases == [.system, .dark, .light])
+    #expect(OPNThemePreferences.Appearance.allCases.map(\.rawValue) == ["system", "dark", "light"])
 }
 
 @Test func theAppearanceIsStoredInTheInterfaceNamespace() {
-    #expect(OpenNOWThemePreferences.appearanceKey == "OpenNOW.Interface.Appearance")
-    #expect(OpenNOWThemePreferences.appearanceKey.hasPrefix("OpenNOW.Interface."))
+    #expect(OPNThemePreferences.appearanceKey == "OpenNOW.Interface.Appearance")
+    #expect(OPNThemePreferences.appearanceKey.hasPrefix("OpenNOW.Interface."))
 }
 
 /// Asserts one opaque surface token's three channels against known 0-255 shipping values.
@@ -51,7 +51,7 @@ private func expectTranslucent(
 /// Regression guard: dark mode must not have shifted a single value when Appearance landed. Every
 /// token the dark palette carried before this feature existed is pinned here exactly.
 @Test func theDarkPaletteMatchesTodaysShippingValuesExactly() {
-    let tokens = OpenNOWThemePreferences.darkPaletteTokens
+    let tokens = OPNThemePreferences.darkPaletteTokens
     expectSurface(tokens.surfaceApp, 25, 25, 25)
     expectSurface(tokens.surfaceAppBar, 45, 45, 45)
     expectSurface(tokens.surfacePanel, 28, 28, 28)
@@ -72,13 +72,13 @@ private func expectTranslucent(
 }
 
 @Test func blackOnWhiteIsTheMaximumContrastRatio() {
-    let ratio = OpenNOWThemePreferences.contrastRatio(red: 0, green: 0, blue: 0, againstRed: 1, againstGreen: 1, againstBlue: 1)
+    let ratio = OPNThemePreferences.contrastRatio(red: 0, green: 0, blue: 0, againstRed: 1, againstGreen: 1, againstBlue: 1)
     #expect(ratio == 21)
 }
 
 @Test func contrastRatioIsOrderIndependent() {
-    let forward = OpenNOWThemePreferences.contrastRatio(red: 0.2, green: 0.2, blue: 0.2, againstRed: 0.8, againstGreen: 0.8, againstBlue: 0.8)
-    let backward = OpenNOWThemePreferences.contrastRatio(red: 0.8, green: 0.8, blue: 0.8, againstRed: 0.2, againstGreen: 0.2, againstBlue: 0.2)
+    let forward = OPNThemePreferences.contrastRatio(red: 0.2, green: 0.2, blue: 0.2, againstRed: 0.8, againstGreen: 0.8, againstBlue: 0.8)
+    let backward = OPNThemePreferences.contrastRatio(red: 0.8, green: 0.8, blue: 0.8, againstRed: 0.2, againstGreen: 0.2, againstBlue: 0.2)
     #expect(forward == backward)
 }
 
@@ -97,9 +97,9 @@ private func blended(
 }
 
 @Test func textPrimaryClearsSevenToOneOnAppInBothPalettes() {
-    for tokens in [OpenNOWThemePreferences.darkPaletteTokens, OpenNOWThemePreferences.lightPaletteTokens] {
+    for tokens in [OPNThemePreferences.darkPaletteTokens, OPNThemePreferences.lightPaletteTokens] {
         let blend = blended(foreground: tokens.textPrimary, background: tokens.surfaceApp)
-        let ratio = OpenNOWThemePreferences.contrastRatio(
+        let ratio = OPNThemePreferences.contrastRatio(
             red: blend.red, green: blend.green, blue: blend.blue,
             againstRed: tokens.surfaceApp.red, againstGreen: tokens.surfaceApp.green, againstBlue: tokens.surfaceApp.blue
         )
@@ -108,9 +108,9 @@ private func blended(
 }
 
 @Test func textSecondaryClearsFourPointFiveToOneOnAppInBothPalettes() {
-    for tokens in [OpenNOWThemePreferences.darkPaletteTokens, OpenNOWThemePreferences.lightPaletteTokens] {
+    for tokens in [OPNThemePreferences.darkPaletteTokens, OPNThemePreferences.lightPaletteTokens] {
         let blend = blended(foreground: tokens.textSecondary, background: tokens.surfaceApp)
-        let ratio = OpenNOWThemePreferences.contrastRatio(
+        let ratio = OPNThemePreferences.contrastRatio(
             red: blend.red, green: blend.green, blue: blend.blue,
             againstRed: tokens.surfaceApp.red, againstGreen: tokens.surfaceApp.green, againstBlue: tokens.surfaceApp.blue
         )
@@ -119,9 +119,9 @@ private func blended(
 }
 
 @Test func textMutedClearsThreeToOneOnAppInBothPalettes() {
-    for tokens in [OpenNOWThemePreferences.darkPaletteTokens, OpenNOWThemePreferences.lightPaletteTokens] {
+    for tokens in [OPNThemePreferences.darkPaletteTokens, OPNThemePreferences.lightPaletteTokens] {
         let blend = blended(foreground: tokens.textMuted, background: tokens.surfaceApp)
-        let ratio = OpenNOWThemePreferences.contrastRatio(
+        let ratio = OPNThemePreferences.contrastRatio(
             red: blend.red, green: blend.green, blue: blend.blue,
             againstRed: tokens.surfaceApp.red, againstGreen: tokens.surfaceApp.green, againstBlue: tokens.surfaceApp.blue
         )
@@ -133,9 +133,9 @@ private func blended(
 /// just under the dark palette's own shipping ratio (~1.34), so a stroke actually has to separate
 /// from its surface to pass rather than the floor being tuned to whatever the values happen to be.
 @Test func strokeSubtleIsVisibleAgainstPanelInBothPalettes() {
-    for tokens in [OpenNOWThemePreferences.darkPaletteTokens, OpenNOWThemePreferences.lightPaletteTokens] {
+    for tokens in [OPNThemePreferences.darkPaletteTokens, OPNThemePreferences.lightPaletteTokens] {
         let blend = blended(foreground: tokens.strokeSubtle, background: tokens.surfacePanel)
-        let ratio = OpenNOWThemePreferences.contrastRatio(
+        let ratio = OPNThemePreferences.contrastRatio(
             red: blend.red, green: blend.green, blue: blend.blue,
             againstRed: tokens.surfacePanel.red, againstGreen: tokens.surfacePanel.green, againstBlue: tokens.surfacePanel.blue
         )
@@ -147,11 +147,11 @@ private func blended(
 /// and Light, so reading the scheme back out of the environment would feed the app's own override
 /// in as the system answer and leaving Light would resolve straight back to Light.
 @MainActor @Test func matchSystemResolvesAgainstTheOperatingSystemNotTheForcedWindow() {
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .light, systemColorScheme: .dark)
-    #expect(OpenNOWDesign.isLightAppearance)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .light, systemColorScheme: .dark)
+    #expect(OPNDesign.isLightAppearance)
 
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .dark)
-    #expect(!OpenNOWDesign.isLightAppearance, "Match System stayed light after leaving the light appearance")
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .dark)
+    #expect(!OPNDesign.isLightAppearance, "Match System stayed light after leaving the light appearance")
 
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
 }

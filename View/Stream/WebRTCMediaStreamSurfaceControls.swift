@@ -11,7 +11,7 @@ import SwiftUI
 extension WebRTCMediaStreamSurface {
     func toggleUnifiedHUD() {
         setUnifiedHUDVisible(!unifiedHUDVisible)
-        WebRTCMediaTelemetry.capture("webrtc.ui.hud.toggle", level: .info, message: unifiedHUDVisible ? "Unified HUD shown." : "Unified HUD hidden.", attributes: ["visible": String(unifiedHUDVisible)])
+        OPNStreamTelemetry.capture("webrtc.ui.hud.toggle", level: .info, message: unifiedHUDVisible ? "Unified HUD shown." : "Unified HUD hidden.", attributes: ["visible": String(unifiedHUDVisible)])
     }
 
     /// No Remote Co-Op entries here: this HUD belongs to the WebRTC surface, which can no longer host
@@ -83,15 +83,15 @@ extension WebRTCMediaStreamSurface {
     func toggleRecording() {
         if recordingCanStop {
             transport?.stopRecording()
-            WebRTCMediaTelemetry.capture("webrtc.ui.recording.stop", level: .info, message: "Stream recording stop requested.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("webrtc.ui.recording.stop", level: .info, message: "Stream recording stop requested.", attributes: ["applicationID": configuration.applicationID])
             return
         }
         guard !recordingIsBusy else { return }
         guard let transport else {
-            WebRTCMediaTelemetry.capture("webrtc.ui.recording.start.unavailable", level: .warning, message: "Stream recording start requested before transport was ready.", attributes: ["applicationID": configuration.applicationID])
+            OPNStreamTelemetry.capture("webrtc.ui.recording.start.unavailable", level: .warning, message: "Stream recording start requested before transport was ready.", attributes: ["applicationID": configuration.applicationID])
             return
         }
-        let recordingConfiguration = WebRTCStreamRecordingConfiguration(
+        let recordingConfiguration = StreamRecordingConfiguration(
             title: configuration.title,
             applicationID: configuration.applicationID,
             width: runtimeSettings.resolutionWidth,
@@ -103,7 +103,7 @@ extension WebRTCMediaStreamSurface {
         )
         recordingStatus = .starting
         transport.startRecording(configuration: recordingConfiguration)
-        WebRTCMediaTelemetry.capture("webrtc.ui.recording.start", level: .info, message: "Stream recording start requested.", attributes: ["applicationID": configuration.applicationID, "enhancedVideo": String(recordingConfiguration.enhancedVideoEnabled)])
+        OPNStreamTelemetry.capture("webrtc.ui.recording.start", level: .info, message: "Stream recording start requested.", attributes: ["applicationID": configuration.applicationID, "enhancedVideo": String(recordingConfiguration.enhancedVideoEnabled)])
     }
 
     func recordingElapsedText(_ elapsedSeconds: Double) -> String {
@@ -115,11 +115,11 @@ extension WebRTCMediaStreamSurface {
         HStack(spacing: 12) {
             Text(label)
                 .font(.streamFont(size: 11, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
             Spacer(minLength: 8)
             Text(value)
                 .font(.streamFont(size: 11, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .foregroundStyle(StreamHUDTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -134,7 +134,7 @@ extension WebRTCMediaStreamSurface {
         runtimeSettings.updateVideoEnhancement(mode: mode, sharpness: sharpness, denoise: denoise, targetHeight: targetHeight, pillarboxFillMode: pillarboxFillMode, pillarboxFillDim: pillarboxFillDim, pillarboxFillColor: pillarboxFillColor)
         onVideoEnhancementChange?(runtimeSettings.upscalingMode, runtimeSettings.upscalingSharpness, runtimeSettings.upscalingDenoise)
         transport?.setLocalVideoEnhancement(mode: runtimeSettings.upscalingMode, sharpness: runtimeSettings.upscalingSharpness, denoise: runtimeSettings.upscalingDenoise, targetHeight: runtimeSettings.upscalingTargetHeight, pillarboxFillMode: runtimeSettings.pillarboxFillMode, pillarboxFillDim: runtimeSettings.pillarboxFillDim, pillarboxFillColor: runtimeSettings.pillarboxFillColor)
-        WebRTCMediaTelemetry.capture(
+        OPNStreamTelemetry.capture(
             "webrtc.ui.video_enhancement.update",
             level: .info,
             message: "Video enhancement settings updated.",
@@ -176,7 +176,7 @@ extension WebRTCMediaStreamSurface {
 
     func toggleStatsHUD() {
         statsVisible.toggle()
-        WebRTCMediaTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
+        OPNStreamTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
     }
 
     func pasteClipboardIntoStream() {
@@ -188,7 +188,7 @@ extension WebRTCMediaStreamSurface {
         transport?.sendNow(.text(deviceID: "keyboard", value: text, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
         lastAcceptedStreamInputAt = Date()
         showTransientStreamMessage("Clipboard sent")
-        WebRTCMediaTelemetry.capture("webrtc.ui.clipboard.paste", level: .info, message: "Clipboard text sent to stream.", attributes: ["applicationID": configuration.applicationID, "characters": String(text.count)])
+        OPNStreamTelemetry.capture("webrtc.ui.clipboard.paste", level: .info, message: "Clipboard text sent to stream.", attributes: ["applicationID": configuration.applicationID, "characters": String(text.count)])
     }
 
     func togglePointerLockFromHUD() {
@@ -206,11 +206,11 @@ extension WebRTCMediaStreamSurface {
         HStack {
             Text(label)
                 .font(.streamFont(size: 11, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
             Spacer()
             Text(value)
                 .font(.streamFont(size: 11, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .foregroundStyle(StreamHUDTheme.textPrimary)
         }
     }
 

@@ -4,7 +4,7 @@ import Combine
 import GameController
 import CoreHaptics
 
-public struct NativeWebRTCGamepadTopology: Equatable, Sendable {
+public struct StreamGamepadTopology: Equatable, Sendable {
     public let playerIndices: [Int]
     public let hapticPlayerIndices: [Int]
     public let registrationBitmap: UInt16
@@ -69,10 +69,10 @@ struct NativeWebRTCGamepadSlotMap<Identifier: Hashable> {
 public final class NativeWebRTCGamepadMonitor {
     public var onInputEvent: ((UserInputEvent) -> Void)?
     @Published public private(set) var nativeBatteryLevels: [ControllerBatteryInfo] = []
-    public var onTopologyChanged: ((NativeWebRTCGamepadTopology) -> Void)? {
+    public var onTopologyChanged: ((StreamGamepadTopology) -> Void)? {
         didSet { onTopologyChanged?(topology) }
     }
-    public private(set) var topology = NativeWebRTCGamepadTopology(playerIndices: [])
+    public private(set) var topology = StreamGamepadTopology(playerIndices: [])
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
     nonisolated(unsafe) private var pollState = GamepadPollState()
     private let pollingQueue = DispatchQueue(label: "com.opennow.gamepad-poll", qos: .userInteractive)
@@ -174,7 +174,7 @@ public final class NativeWebRTCGamepadMonitor {
         let key = identities.joined(separator: ",")
         let isNew = loggedControllerIdentities.withLock { seen -> Bool in seen.insert(key).inserted }
         guard isNew else { return }
-        WebRTCMediaTelemetry.capture(
+        OPNStreamTelemetry.capture(
             "webrtc.input.gamepad.identities",
             level: .info,
             message: "GameController identities.",
@@ -206,7 +206,7 @@ public final class NativeWebRTCGamepadMonitor {
             }
         )
         refreshControllerSlots()
-        WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.start", level: .info, message: "Gamepad monitor started.", attributes: ["connected": String(Self.connectedGamepadCount())])
+        OPNStreamTelemetry.capture("webrtc.input.gamepad.monitor.start", level: .info, message: "Gamepad monitor started.", attributes: ["connected": String(Self.connectedGamepadCount())])
     }
 
     public func stop() {
@@ -224,7 +224,7 @@ public final class NativeWebRTCGamepadMonitor {
         }
         stopPollingTimer()
         stopHaptics()
-        WebRTCMediaTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
+        OPNStreamTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
     }
 
     public func playHaptic(_ seatCommand: NativeNVSTHapticCommand) {
@@ -242,20 +242,20 @@ public final class NativeWebRTCGamepadMonitor {
         // a hardware fact, and separating them needs the numbers that actually left the app.
         if seatCommand.lowFrequency > 0 || seatCommand.highFrequency > 0 { hapticCommandsSeen += 1 }
         if (seatCommand.lowFrequency > 0 || seatCommand.highFrequency > 0), hapticCommandsSeen <= 8 || hapticCommandsSeen % 300 == 0 {
-            OpenNOWLog.info(.controller, "Rumble ceiling \(percent)% pad=\(seatCommand.playerIndex) seat=\(seatCommand.lowFrequency)/\(seatCommand.highFrequency) sent=\(command.lowFrequency)/\(command.highFrequency) ms=\(seatCommand.durationMilliseconds)")
+            OPNLog.info(.controller, "Rumble ceiling \(percent)% pad=\(seatCommand.playerIndex) seat=\(seatCommand.lowFrequency)/\(seatCommand.highFrequency) sent=\(command.lowFrequency)/\(command.highFrequency) ms=\(seatCommand.durationMilliseconds)")
         }
         // Steam Controllers hold the low slots (see `refreshControllerSlots`) and have no
         // GameController haptics; their motors are driven through the HID feature report.
         if let deviceID = pollState.steamControllerSlots.first(where: { $0.value == command.playerIndex })?.key {
             if hapticCommandsSeen <= 6 {
-                OpenNOWLog.info(.controller, "Rumble route: Steam Controller \(deviceID.rawValue) for pad \(command.playerIndex)")
+                OPNLog.info(.controller, "Rumble route: Steam Controller \(deviceID.rawValue) for pad \(command.playerIndex)")
             }
             playSteamControllerRumble(deviceID: deviceID, command: command)
             return
         }
         if hapticCommandsSeen <= 6 {
             let slots = pollState.steamControllerSlots.map { "\($0.key.rawValue)=\($0.value)" }.joined(separator: ",")
-            OpenNOWLog.info(.controller, "Rumble route: no Steam Controller in slot \(command.playerIndex) (slots [\(slots)]); trying GameController haptics")
+            OPNLog.info(.controller, "Rumble route: no Steam Controller in slot \(command.playerIndex) (slots [\(slots)]); trying GameController haptics")
         }
         guard let controller = pollState.cachedControllers.first(where: { pollState.controllerSlots[ObjectIdentifier($0)] == command.playerIndex }),
               controller.haptics != nil else { return }
@@ -292,7 +292,7 @@ public final class NativeWebRTCGamepadMonitor {
         steamRumbleStopTasks.removeValue(forKey: deviceID)?.cancel()
         steamRumbleCommandsSent += 1
         if steamRumbleCommandsSent <= 8 || steamRumbleCommandsSent % 200 == 0 {
-            WebRTCMediaTelemetry.capture("input.gamepad.rumble.steam", level: .info, message: "Steam Controller rumble.", attributes: ["device": deviceID.rawValue, "player": String(command.playerIndex), "left": String(command.lowFrequency), "right": String(command.highFrequency), "ms": String(command.durationMilliseconds), "count": String(steamRumbleCommandsSent)])
+            OPNStreamTelemetry.capture("input.gamepad.rumble.steam", level: .info, message: "Steam Controller rumble.", attributes: ["device": deviceID.rawValue, "player": String(command.playerIndex), "left": String(command.lowFrequency), "right": String(command.highFrequency), "ms": String(command.durationMilliseconds), "count": String(steamRumbleCommandsSent)])
         }
         SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: command.lowFrequency, rightAmplitude: command.highFrequency)
         guard command.lowFrequency > 0 || command.highFrequency > 0 else { return }
@@ -359,13 +359,13 @@ public final class NativeWebRTCGamepadMonitor {
             controller.haptics == nil ? nil : newControllerSlots[ObjectIdentifier(controller)]
         }
         let allPlayerIndices = Array(newControllerSlots.values) + Array(newSteamSlots.values)
-        let newTopology = NativeWebRTCGamepadTopology(playerIndices: allPlayerIndices, hapticPlayerIndices: hapticPlayerIndices)
+        let newTopology = StreamGamepadTopology(playerIndices: allPlayerIndices, hapticPlayerIndices: hapticPlayerIndices)
         if topology != newTopology {
             topology = newTopology
             onTopologyChanged?(newTopology)
         }
         let totalSlots = newControllerSlots.count + newSteamSlots.count
-        WebRTCMediaTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
+        OPNStreamTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
     }
 
     private func emitSlotTransitions(previousSteamSlots: [InputDeviceID: Int], previousOccupiedSlots: Set<Int>) {

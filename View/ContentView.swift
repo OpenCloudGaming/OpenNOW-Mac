@@ -13,24 +13,24 @@ struct ContentView: View {
     /// Owns the bootstrap, the startup animation's lifetime, the window title, and the file-open
     /// notification observer that used to be subscribed from inside `body`.
     @StateObject private var root = AppRootViewModel()
-    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) private var uiScale = OpenNOWInterfacePreferences.defaultUIScale
-    @AppStorage(OpenNOWThemePreferences.tileDensityKey) private var tileDensityRawValue = OpenNOWThemePreferences.TileDensity.comfortable.rawValue
-    @AppStorage(OpenNOWThemePreferences.accentColorKey) private var accentColorRawValue = OpenNOWThemePreferences.AccentColor.cloudGreen.rawValue
-    @AppStorage(OpenNOWThemePreferences.appearanceKey) private var appearanceRawValue = OpenNOWThemePreferences.Appearance.dark.rawValue
+    @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScale = OPNInterfacePreferences.defaultUIScale
+    @AppStorage(OPNThemePreferences.tileDensityKey) private var tileDensityRawValue = OPNThemePreferences.TileDensity.comfortable.rawValue
+    @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
+    @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
     /// Read at the true root, above anywhere the app forces `.preferredColorScheme`, so it always
     /// reflects what macOS is actually set to rather than an override further down the tree.
-    @EnvironmentObject private var systemAppearance: OpenNOWSystemAppearance
+    @EnvironmentObject private var systemAppearance: OPNSystemAppearance
 
     private var tileDensity: CGFloat {
-        (OpenNOWThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
+        (OPNThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
     }
 
-    private var accentColorPreset: OpenNOWThemePreferences.AccentColor {
-        OpenNOWThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
+    private var accentColorPreset: OPNThemePreferences.AccentColor {
+        OPNThemePreferences.AccentColor(rawValue: accentColorRawValue) ?? .cloudGreen
     }
 
-    private var appearancePreference: OpenNOWThemePreferences.Appearance {
-        OpenNOWThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
+    private var appearancePreference: OPNThemePreferences.Appearance {
+        OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
     }
 
     /// Bumped on every surface that rebuilds a subtree to invalidate the cached palette statics.
@@ -39,7 +39,7 @@ struct ContentView: View {
     var body: some View {
         // Written here, not from `onChange`: the subtrees keyed on `themeIdentity` rebuild during
         // this same body pass, and an `onChange` would not have run yet when they draw.
-        let _ = OpenNOWDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
+        let _ = OPNDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
         ZStack {
             LoginView(viewModel: viewModel, accounts: accounts) { title in
                 root.setWindowTitle(title)
@@ -49,12 +49,12 @@ struct ContentView: View {
             // Above the catalog and the stream surface, below the startup splash: an update prompt
             // must never cover the launch animation, and must never be covered by a game.
             // Can outlive `CatalogView`'s own accent invalidation (signed out), so it gets its own.
-            OpenNOWUpdateOverlay()
+            OPNUpdateOverlay()
                 .id(themeIdentity)
                 .zIndex(90)
 
             if root.isShowingStartupLoading {
-                OpenNOWStartupLoadingView(duration: root.startupAnimationDuration)
+                StartupLoadingView(duration: root.startupAnimationDuration)
                     .transition(.opacity)
                     .zIndex(100)
             }
@@ -63,7 +63,7 @@ struct ContentView: View {
             // Same curve and duration, scoped to the container holding the overlay rather than to
             // the whole root, so an unrelated LoginView change in the same transaction is not
             // swept into it.
-            .animation(.easeInOut(duration: OpenNOWStartupAnimation.fadeDuration), value: root.isShowingStartupLoading)
+            .animation(.easeInOut(duration: StartupAnimation.fadeDuration), value: root.isShowingStartupLoading)
             // Keep the floor low enough for Split View tiles and forced frames:
             // when macOS sizes the window below the SwiftUI minimum, content
             // pins at that minimum and the trailing edge (header avatar, the
@@ -72,7 +72,7 @@ struct ContentView: View {
             .frame(idealWidth: 1200, idealHeight: 720)
             .ignoresSafeArea()
             .background(WindowTitleConfigurator(title: root.windowTitle))
-            .background(OpenNOWInterfaceScaleDensityBooster(scale: uiScale))
+            .background(OPNInterfaceScaleDensityBooster(scale: uiScale))
             .environment(\.opnUIScale, uiScale)
             .environment(\.opnTileDensity, tileDensity)
             .onDisappear { root.unbind() }

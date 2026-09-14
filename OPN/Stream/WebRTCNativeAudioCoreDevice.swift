@@ -164,7 +164,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
             }
             if restartPlayout { _ = startPlayoutLocked() }
             if restartRecording { _ = startRecordingLocked() }
-            WebRTCMediaTelemetry.capture("webrtc.native.audio.hot_swap", level: .debug, message: "CoreAudio RTC device hot-swapped.", attributes: ["inputDevice": String(inputDevice), "outputDevice": String(outputDevice), "playout": String(isPlaying), "recording": String(isRecording)])
+            OPNStreamTelemetry.capture("webrtc.native.audio.hot_swap", level: .debug, message: "CoreAudio RTC device hot-swapped.", attributes: ["inputDevice": String(inputDevice), "outputDevice": String(outputDevice), "playout": String(isPlaying), "recording": String(isRecording)])
         }
     }
 
@@ -244,7 +244,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         guard initializePlayoutLocked(), let playoutUnit else { return false }
         let status = AudioOutputUnitStart(playoutUnit)
         isPlaying = status == noErr
-        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.playout_start.error", level: .warning, message: "CoreAudio playout start failed.", attributes: ["status": String(status)]) }
+        if status != noErr { OPNStreamTelemetry.capture("webrtc.native.audio.playout_start.error", level: .warning, message: "CoreAudio playout start failed.", attributes: ["status": String(status)]) }
         return isPlaying
     }
 
@@ -252,7 +252,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         guard initializeRecordingLocked(), let recordingUnit else { return false }
         let status = AudioOutputUnitStart(recordingUnit)
         isRecording = status == noErr
-        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.recording_start.error", level: .warning, message: "CoreAudio recording start failed.", attributes: ["status": String(status)]) }
+        if status != noErr { OPNStreamTelemetry.capture("webrtc.native.audio.recording_start.error", level: .warning, message: "CoreAudio recording start failed.", attributes: ["status": String(status)]) }
         return isRecording
     }
 
@@ -277,7 +277,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &disable, UInt32(MemoryLayout<UInt32>.size))
         var device = outputDevice
         var status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.output_device.error", level: .warning, message: "CoreAudio set output device failed.", attributes: ["status": String(status), "device": String(outputDevice)]) }
+        if status != noErr { OPNStreamTelemetry.capture("webrtc.native.audio.output_device.error", level: .warning, message: "CoreAudio set output device failed.", attributes: ["status": String(status), "device": String(outputDevice)]) }
         applyOutputBufferFrameSize(unit: unit, device: outputDevice)
         var format = streamFormat(sampleRate: deviceOutputSampleRate, channels: UInt32(outputNumberOfChannels))
         AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
@@ -285,7 +285,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
         status = AudioUnitInitialize(unit)
         guard status == noErr else {
-            WebRTCMediaTelemetry.capture("webrtc.native.audio.playout_initialize.error", level: .warning, message: "CoreAudio playout initialize failed.", attributes: ["status": String(status)])
+            OPNStreamTelemetry.capture("webrtc.native.audio.playout_initialize.error", level: .warning, message: "CoreAudio playout initialize failed.", attributes: ["status": String(status)])
             disposePlayoutUnitLocked()
             return false
         }
@@ -304,14 +304,14 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, 1, &enable, UInt32(MemoryLayout<UInt32>.size))
         var device = inputDevice
         var status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
-        if status != noErr { WebRTCMediaTelemetry.capture("webrtc.native.audio.input_device.error", level: .warning, message: "CoreAudio set input device failed.", attributes: ["status": String(status), "device": String(inputDevice)]) }
+        if status != noErr { OPNStreamTelemetry.capture("webrtc.native.audio.input_device.error", level: .warning, message: "CoreAudio set input device failed.", attributes: ["status": String(status), "device": String(inputDevice)]) }
         var format = streamFormat(sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
         AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
         var callback = AURenderCallbackStruct(inputProc: coreAudioRecordingCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
         status = AudioUnitInitialize(unit)
         guard status == noErr else {
-            WebRTCMediaTelemetry.capture("webrtc.native.audio.recording_initialize.error", level: .warning, message: "CoreAudio recording initialize failed.", attributes: ["status": String(status)])
+            OPNStreamTelemetry.capture("webrtc.native.audio.recording_initialize.error", level: .warning, message: "CoreAudio recording initialize failed.", attributes: ["status": String(status)])
             disposeRecordingUnitLocked()
             return false
         }
@@ -343,7 +343,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         if AudioObjectGetPropertyData(device, &address, 0, nil, &actualSize, &actual) == noErr, actual > 0 {
             outputIOBufferDuration = Double(actual) / deviceOutputSampleRate
         }
-        WebRTCMediaTelemetry.capture("webrtc.native.audio.output_buffer", level: .info, message: "CoreAudio output buffer frame size applied.", attributes: [
+        OPNStreamTelemetry.capture("webrtc.native.audio.output_buffer", level: .info, message: "CoreAudio output buffer frame size applied.", attributes: [
             "requested": String(requested), "actual": String(actual), "status": String(status),
             "range": hasRange ? "\(Int(range.mMinimum))-\(Int(range.mMaximum))" : "unknown",
             "deviceLatencyMs": String(format: "%.1f", outputLatency * 1000),
@@ -360,7 +360,7 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         var unit: AudioUnit?
         let status = AudioComponentInstanceNew(component, &unit)
         guard status == noErr else {
-            WebRTCMediaTelemetry.capture("webrtc.native.audio.hal_unit.error", level: .warning, message: "CoreAudio HAL unit creation failed.", attributes: ["status": String(status)])
+            OPNStreamTelemetry.capture("webrtc.native.audio.hal_unit.error", level: .warning, message: "CoreAudio HAL unit creation failed.", attributes: ["status": String(status)])
             return nil
         }
         return unit

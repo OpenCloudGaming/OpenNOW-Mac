@@ -25,8 +25,8 @@ struct SettingsRowTitle: View {
         HStack(alignment: .center, spacing: 8 * uiScale) {
             Text(title)
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
-            if isNew { OpenNOWNewTag(uiScale: uiScale) }
+                .foregroundStyle(OPNDesign.Text.primary)
+            if isNew { OPNNewTag(uiScale: uiScale) }
         }
     }
 }
@@ -41,29 +41,29 @@ struct SettingsCardTag: View {
         Text(text)
             .font(.settingsFont(size: 8 * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
-            .foregroundStyle(OpenNOWDesign.accentInk)
+            .foregroundStyle(OPNDesign.accentInk)
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
             .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
-            .background(OpenNOWDesign.accent.opacity(0.12))
+            .background(OPNDesign.accent.opacity(0.12))
             .accessibilityLabel(text.capitalized)
     }
 }
 
 /// Marks a setting added in the current release. Solid accent so it reads at a glance next to
 /// the quieter tinted BETA tag; it disappears once the setting is used or the next release ships.
-struct OpenNOWNewTag: View {
+struct OPNNewTag: View {
     let uiScale: CGFloat
 
     var body: some View {
         Text("NEW")
             .font(.settingsFont(size: 8 * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
-            .foregroundStyle(OpenNOWDesign.onAccent)
+            .foregroundStyle(OPNDesign.onAccent)
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
             .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
-            .background(OpenNOWDesign.accent)
+            .background(OPNDesign.accent)
             .accessibilityLabel("New setting")
     }
 }
@@ -71,7 +71,7 @@ struct OpenNOWNewTag: View {
 /// A small "BETA" tag, for surfaces that are shipped but still settling. One component rather than
 /// three inline `Text`s: it appears on the Settings rail, in the stream HUD and on the Home entry
 /// point, and three copies would drift in colour and casing the way the relay rows already did.
-struct OpenNOWBetaTag: View {
+struct OPNBetaTag: View {
     let uiScale: CGFloat
     /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;
     /// Settings wants the quieter treatment.
@@ -95,12 +95,12 @@ struct OpenNOWBetaTag: View {
     private var leadingPadding: CGFloat { compact ? 4 : 5 }
 
     private var foreground: Color {
-        if prominent { return OpenNOWDesign.onAccent }
-        return OpenNOWDesign.accentInk
+        if prominent { return OPNDesign.onAccent }
+        return OPNDesign.accentInk
     }
 
     private var background: Color {
-        if prominent { return OpenNOWDesign.accent }
-        return OpenNOWDesign.accent.opacity(compact ? 0.16 : 0.20)
+        if prominent { return OPNDesign.accent }
+        return OPNDesign.accent.opacity(compact ? 0.16 : 0.20)
     }
 }

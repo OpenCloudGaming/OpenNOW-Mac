@@ -7,8 +7,8 @@ import Testing
 /// Serialized: every test here drives a real `AVAssetWriter`. Run in parallel they put five
 /// concurrent video encoders on a CI runner with three cores and no hardware encoder, and the
 /// writer inputs then report not-ready for long enough to trip the first-frame watchdog.
-@Suite("WebRTCStreamRecording", .serialized)
-struct WebRTCStreamRecordingTests {
+@Suite("StreamRecording", .serialized)
+struct StreamRecordingTests {
     @Test("recording writes a video file from pixel buffers")
     func recordingWritesVideoFileFromPixelBuffers() async throws {
         let recorder = WebRTCStreamRecorder()
@@ -17,7 +17,7 @@ struct WebRTCStreamRecordingTests {
             Task { await statuses.append(status) }
         }
 
-        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
+        recorder.start(configuration: StreamRecordingConfiguration(
             title: "Live Writer Regression",
             applicationID: "100",
             width: 64,
@@ -52,7 +52,7 @@ struct WebRTCStreamRecordingTests {
         }
         recorder.stop()
 
-        var terminalStatus: WebRTCStreamRecordingStatus?
+        var terminalStatus: StreamRecordingStatus?
         for _ in 0..<40 {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
@@ -63,7 +63,7 @@ struct WebRTCStreamRecordingTests {
             Issue.record("Expected successful recording, got \(String(describing: terminalStatus))")
             return
         }
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
 
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: recording.videoURL.path)
         let fileSize = (fileAttributes[.size] as? NSNumber)?.int64Value ?? 0
@@ -74,7 +74,7 @@ struct WebRTCStreamRecordingTests {
         #expect(recording.durationSeconds > 0)
         #expect(recording.width == 64)
         #expect(recording.height == 64)
-        #expect(recording.videoURL.deletingLastPathComponent().path == WebRTCStreamRecordingLibrary.recordingsDirectory(forGameTitle: "Live Writer Regression").path)
+        #expect(recording.videoURL.deletingLastPathComponent().path == StreamRecordingLibrary.recordingsDirectory(forGameTitle: "Live Writer Regression").path)
     }
 
     @Test("recording fails automatically when the first video frame never arrives")
@@ -85,7 +85,7 @@ struct WebRTCStreamRecordingTests {
             Task { await statuses.append(status) }
         }
 
-        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
+        recorder.start(configuration: StreamRecordingConfiguration(
             title: "Timeout Regression",
             applicationID: "100",
             width: 1280,
@@ -96,7 +96,7 @@ struct WebRTCStreamRecordingTests {
             enhancedVideoEnabled: false
         ))
 
-        var terminalStatus: WebRTCStreamRecordingStatus?
+        var terminalStatus: StreamRecordingStatus?
         for _ in 0..<40 {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
@@ -109,16 +109,16 @@ struct WebRTCStreamRecordingTests {
     @Test("exports a trimmed recording as a new clip")
     func exportsTrimmedRecordingAsNewClip() async throws {
         let recording = try await RecordingTestFixtures.makeRecording(title: "Trim Source Regression", width: 96, height: 64, frames: 18)
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
         let endSeconds = max(0.12, recording.durationSeconds * 0.55)
-        let request = WebRTCStreamRecordingEditRequest(
+        let request = StreamRecordingEditRequest(
             title: "Trimmed Export Regression",
-            segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: endSeconds)],
+            segments: [StreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: endSeconds)],
             exportPreset: .balanced
         )
 
-        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
-        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+        let edited = try await StreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? StreamRecordingLibrary.delete(edited) }
 
         #expect(edited.id != recording.id)
         #expect(edited.title == "Trimmed Export Regression")
@@ -133,16 +133,16 @@ struct WebRTCStreamRecordingTests {
     @Test("exports a trim-only edit without re-encoding it")
     func exportsTrimOnlyEditWithoutReEncoding() async throws {
         let recording = try await RecordingTestFixtures.makeRecording(title: "Passthrough Source Regression", width: 96, height: 64, frames: 18)
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
         let endSeconds = max(0.12, recording.durationSeconds * 0.6)
-        let request = WebRTCStreamRecordingEditRequest(
+        let request = StreamRecordingEditRequest(
             title: "Passthrough Export Regression",
-            segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: endSeconds)],
+            segments: [StreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: endSeconds)],
             exportPreset: .highestQuality
         )
 
-        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
-        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+        let edited = try await StreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? StreamRecordingLibrary.delete(edited) }
 
         #expect(edited.width == recording.width)
         #expect(edited.height == recording.height)
@@ -158,26 +158,26 @@ struct WebRTCStreamRecordingTests {
     /// starting on the wrong keyframe is pinned here directly.
     @Test("passthrough is allowed only for a single segment starting at the head")
     func passthroughRuleRefusesAnythingThatCannotBeACopy() {
-        let recording = WebRTCStreamRecording(
+        let recording = StreamRecording(
             id: UUID(), title: "Rule", applicationID: "com.example.game", createdAt: Date(),
             durationSeconds: 30, width: 1920, height: 1080, videoBitrateMbps: 40, audioBitrateKbps: 160,
             enhancedVideo: false, fileName: "clip.mp4", fileSizeBytes: 1, storageDirectoryPath: NSTemporaryDirectory()
         )
         func request(
-            crop: WebRTCStreamRecordingCrop? = nil,
-            rotation: WebRTCStreamRecordingRotation = .degrees0,
+            crop: StreamRecordingCrop? = nil,
+            rotation: StreamRecordingRotation = .degrees0,
             rate: Double = 1,
-            audio: WebRTCStreamRecordingAudioEdit = .original,
-            preset: WebRTCStreamRecordingExportPreset = .highestQuality
-        ) -> WebRTCStreamRecordingEditRequest {
-            WebRTCStreamRecordingEditRequest(
+            audio: StreamRecordingAudioEdit = .original,
+            preset: StreamRecordingExportPreset = .highestQuality
+        ) -> StreamRecordingEditRequest {
+            StreamRecordingEditRequest(
                 title: "Rule",
-                segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: 30)],
+                segments: [StreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: 30)],
                 crop: crop, rotation: rotation, playbackRate: rate, audio: audio, exportPreset: preset
             )
         }
-        func allowed(_ request: WebRTCStreamRecordingEditRequest, segments: Int = 1, start: Double = 0) -> Bool {
-            WebRTCStreamRecordingLibrary.canPassthrough(request, segmentCount: segments, firstSegmentStartSeconds: start)
+        func allowed(_ request: StreamRecordingEditRequest, segments: Int = 1, start: Double = 0) -> Bool {
+            StreamRecordingLibrary.canPassthrough(request, segmentCount: segments, firstSegmentStartSeconds: start)
         }
 
         #expect(allowed(request()), "a tail trim of one segment is a genuine copy")
@@ -188,11 +188,11 @@ struct WebRTCStreamRecordingTests {
         #expect(allowed(request(), segments: 2) == false, "a second section would begin mid-GOP")
 
         // Anything that changes the pixels or the samples has to be re-encoded.
-        #expect(allowed(request(crop: WebRTCStreamRecordingCrop(x: 0.1, y: 0.1, width: 0.5, height: 0.5))) == false)
+        #expect(allowed(request(crop: StreamRecordingCrop(x: 0.1, y: 0.1, width: 0.5, height: 0.5))) == false)
         #expect(allowed(request(rotation: .degrees90)) == false)
         #expect(allowed(request(rate: 1.5)) == false)
-        #expect(allowed(request(audio: WebRTCStreamRecordingAudioEdit(volume: 0.5))) == false)
-        #expect(allowed(request(audio: WebRTCStreamRecordingAudioEdit(isMuted: true))) == false)
+        #expect(allowed(request(audio: StreamRecordingAudioEdit(volume: 0.5))) == false)
+        #expect(allowed(request(audio: StreamRecordingAudioEdit(isMuted: true))) == false)
         #expect(allowed(request(preset: .balanced)) == false, "the smaller presets exist to re-encode")
         #expect(allowed(request(preset: .compact)) == false)
     }
@@ -202,16 +202,16 @@ struct WebRTCStreamRecordingTests {
     @Test("a head trim is re-encoded rather than copied to the wrong keyframe")
     func headTrimIsReEncodedNotSnappedToAKeyframe() async throws {
         let recording = try await RecordingTestFixtures.makeRecording(title: "Head Trim Regression", width: 96, height: 64, frames: 24)
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
         let start = recording.durationSeconds * 0.4
-        let request = WebRTCStreamRecordingEditRequest(
+        let request = StreamRecordingEditRequest(
             title: "Head Trim Export Regression",
-            segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: start, endSeconds: recording.durationSeconds)],
+            segments: [StreamRecordingEditSegment(recording: recording, startSeconds: start, endSeconds: recording.durationSeconds)],
             exportPreset: .highestQuality
         )
 
-        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
-        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+        let edited = try await StreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? StreamRecordingLibrary.delete(edited) }
 
         let expected = recording.durationSeconds - start
         #expect(edited.durationSeconds > 0)
@@ -221,20 +221,20 @@ struct WebRTCStreamRecordingTests {
     @Test("exports a recording with a middle cut removed")
     func exportsRecordingWithMiddleCutRemoved() async throws {
         let recording = try await RecordingTestFixtures.makeRecording(title: "Cut Source Regression", width: 96, height: 64, frames: 24)
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
         let firstEnd = max(0.1, recording.durationSeconds * 0.28)
         let secondStart = min(recording.durationSeconds - 0.08, recording.durationSeconds * 0.62)
-        let request = WebRTCStreamRecordingEditRequest(
+        let request = StreamRecordingEditRequest(
             title: "Cut Export Regression",
             segments: [
-                WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: firstEnd),
-                WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: secondStart, endSeconds: recording.durationSeconds),
+                StreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: firstEnd),
+                StreamRecordingEditSegment(recording: recording, startSeconds: secondStart, endSeconds: recording.durationSeconds),
             ],
             exportPreset: .balanced
         )
 
-        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
-        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+        let edited = try await StreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? StreamRecordingLibrary.delete(edited) }
 
         #expect(edited.durationSeconds > 0)
         #expect(edited.durationSeconds < recording.durationSeconds)
@@ -246,20 +246,20 @@ struct WebRTCStreamRecordingTests {
         let first = try await RecordingTestFixtures.makeRecording(title: "Join Source A Regression", width: 80, height: 64, frames: 12)
         let second = try await RecordingTestFixtures.makeRecording(title: "Join Source B Regression", width: 80, height: 64, frames: 12)
         defer {
-            try? WebRTCStreamRecordingLibrary.delete(first)
-            try? WebRTCStreamRecordingLibrary.delete(second)
+            try? StreamRecordingLibrary.delete(first)
+            try? StreamRecordingLibrary.delete(second)
         }
-        let request = WebRTCStreamRecordingEditRequest(
+        let request = StreamRecordingEditRequest(
             title: "Joined Export Regression",
             segments: [
-                WebRTCStreamRecordingEditSegment(recording: first, startSeconds: 0, endSeconds: first.durationSeconds),
-                WebRTCStreamRecordingEditSegment(recording: second, startSeconds: 0, endSeconds: second.durationSeconds),
+                StreamRecordingEditSegment(recording: first, startSeconds: 0, endSeconds: first.durationSeconds),
+                StreamRecordingEditSegment(recording: second, startSeconds: 0, endSeconds: second.durationSeconds),
             ],
             exportPreset: .balanced
         )
 
-        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
-        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+        let edited = try await StreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? StreamRecordingLibrary.delete(edited) }
 
         #expect(edited.durationSeconds > first.durationSeconds)
         #expect(edited.durationSeconds > second.durationSeconds)
@@ -269,19 +269,19 @@ struct WebRTCStreamRecordingTests {
     @Test("builds an edited preview composition")
     func buildsEditedPreviewComposition() async throws {
         let recording = try await RecordingTestFixtures.makeRecording(title: "Preview Source Regression", width: 80, height: 64, frames: 18)
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
         let split = max(0.08, recording.durationSeconds * 0.45)
-        let request = WebRTCStreamRecordingEditRequest(
+        let request = StreamRecordingEditRequest(
             title: "Preview Regression",
             segments: [
-                WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: split, endSeconds: recording.durationSeconds),
-                WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: split),
+                StreamRecordingEditSegment(recording: recording, startSeconds: split, endSeconds: recording.durationSeconds),
+                StreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: split),
             ],
             playbackRate: 2,
             exportPreset: .balanced
         )
 
-        let preview = try await WebRTCStreamRecordingLibrary.previewEditedRecording(request)
+        let preview = try await StreamRecordingLibrary.previewEditedRecording(request)
         let assetDuration = try await preview.asset.load(.duration).seconds
 
         #expect(abs(preview.durationSeconds - recording.durationSeconds / 2) < 0.12)
@@ -291,20 +291,20 @@ struct WebRTCStreamRecordingTests {
     @Test("exports crop rotate flip speed and audio edits")
     func exportsTransformAndAudioEdits() async throws {
         let recording = try await RecordingTestFixtures.makeRecording(title: "Transform Source Regression", width: 128, height: 80, frames: 20)
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
-        let request = WebRTCStreamRecordingEditRequest(
+        defer { try? StreamRecordingLibrary.delete(recording) }
+        let request = StreamRecordingEditRequest(
             title: "Transform Export Regression",
-            segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds)],
-            crop: WebRTCStreamRecordingCrop(x: 0.25, y: 0.20, width: 0.50, height: 0.60),
+            segments: [StreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds)],
+            crop: StreamRecordingCrop(x: 0.25, y: 0.20, width: 0.50, height: 0.60),
             rotation: .degrees90,
             isFlippedHorizontally: true,
             playbackRate: 1.5,
-            audio: WebRTCStreamRecordingAudioEdit(volume: 0.65, isMuted: false, fadeInSeconds: 0.05, fadeOutSeconds: 0.05),
+            audio: StreamRecordingAudioEdit(volume: 0.65, isMuted: false, fadeInSeconds: 0.05, fadeOutSeconds: 0.05),
             exportPreset: .compact
         )
 
-        let edited = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
-        defer { try? WebRTCStreamRecordingLibrary.delete(edited) }
+        let edited = try await StreamRecordingLibrary.exportEditedRecording(request)
+        defer { try? StreamRecordingLibrary.delete(edited) }
 
         #expect(edited.width > 0)
         #expect(edited.height > 0)
@@ -316,19 +316,19 @@ struct WebRTCStreamRecordingTests {
     @Test("failed exports clean partial files")
     func failedExportsCleanPartialFiles() async throws {
         let recording = try await RecordingTestFixtures.makeRecording(title: "Cleanup Source Regression", width: 64, height: 64, frames: 10)
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
         let title = "Cleanup Export Regression"
-        let directory = WebRTCStreamRecordingLibrary.recordingsDirectory(forGameTitle: title)
+        let directory = StreamRecordingLibrary.recordingsDirectory(forGameTitle: title)
         try? FileManager.default.removeItem(at: directory)
-        let request = WebRTCStreamRecordingEditRequest(
+        let request = StreamRecordingEditRequest(
             title: title,
-            segments: [WebRTCStreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds + 10)]
+            segments: [StreamRecordingEditSegment(recording: recording, startSeconds: 0, endSeconds: recording.durationSeconds + 10)]
         )
 
         do {
-            _ = try await WebRTCStreamRecordingLibrary.exportEditedRecording(request)
+            _ = try await StreamRecordingLibrary.exportEditedRecording(request)
             Issue.record("Expected invalid time range export to fail")
-        } catch let error as WebRTCStreamRecordingEditorError {
+        } catch let error as StreamRecordingEditorError {
             #expect(error == .invalidTimeRange(recording.videoURL.lastPathComponent))
         }
         let leftovers = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
@@ -344,7 +344,7 @@ struct WebRTCStreamRecordingTests {
             Task { await statuses.append(status) }
         }
 
-        recorder.start(configuration: WebRTCStreamRecordingConfiguration(
+        recorder.start(configuration: StreamRecordingConfiguration(
             title: "Native Frame Regression",
             applicationID: "100",
             width: 64,
@@ -382,7 +382,7 @@ struct WebRTCStreamRecordingTests {
         }
         recorder.stop()
 
-        var terminalStatus: WebRTCStreamRecordingStatus?
+        var terminalStatus: StreamRecordingStatus?
         for _ in 0..<40 {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
@@ -393,7 +393,7 @@ struct WebRTCStreamRecordingTests {
             Issue.record("Expected successful recording, got \(String(describing: terminalStatus))")
             return
         }
-        defer { try? WebRTCStreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(recording) }
 
         #expect(FileManager.default.fileExists(atPath: recording.videoURL.path))
         #expect(recording.fileSizeBytes > 0)

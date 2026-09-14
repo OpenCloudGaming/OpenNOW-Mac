@@ -60,24 +60,24 @@ struct RecordingEditorControl<Label: View>: View {
 
     private var foreground: Color {
         switch tone {
-        case .standard: return OpenNOWDesign.Text.primary
+        case .standard: return OPNDesign.Text.primary
         case .prominent: return .black.opacity(0.86)
-        case .borderless: return isDisabled ? .white.opacity(0.24) : OpenNOWDesign.Text.secondary
+        case .borderless: return isDisabled ? .white.opacity(0.24) : OPNDesign.Text.secondary
         }
     }
 
     private var background: Color {
         switch tone {
-        case .standard: return OpenNOWDesign.Stroke.subtle
-        case .prominent: return OpenNOWDesign.accent
+        case .standard: return OPNDesign.Stroke.subtle
+        case .prominent: return OPNDesign.accent
         case .borderless: return .clear
         }
     }
 
     private var border: Color {
         switch tone {
-        case .standard: return OpenNOWDesign.Stroke.regular
-        case .prominent: return OpenNOWDesign.accent
+        case .standard: return OPNDesign.Stroke.regular
+        case .prominent: return OPNDesign.accent
         case .borderless: return .clear
         }
     }

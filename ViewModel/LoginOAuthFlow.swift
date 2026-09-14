@@ -31,10 +31,10 @@ extension LoginViewModel {
         validationMessage = ""
         successMessage = ""
         let loginProvider = selectedProvider
-        OpenNOWLog.info(.auth, "Beginning OAuth launch provider=\(loginProvider.idpId)")
+        OPNLog.info(.auth, "Beginning OAuth launch provider=\(loginProvider.idpId)")
 
         guard acceptedTerms else {
-            OpenNOWLog.warning(.auth, "OAuth launch blocked because terms were not accepted")
+            OPNLog.warning(.auth, "OAuth launch blocked because terms were not accepted")
             validationMessage = "Accept account terms and local session storage before continuing."
             return
         }
@@ -53,7 +53,7 @@ extension LoginViewModel {
 
             guard success else {
                 self.validationMessage = error.isEmpty ? "\(loginProvider.title) sign-in failed." : Self.signInGuidance(for: error)
-                OpenNOWLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(error)")
+                OPNLog.error(.auth, "OAuth start failed provider=\(loginProvider.idpId) error=\(error)")
                 return
             }
 
@@ -62,7 +62,7 @@ extension LoginViewModel {
                 self.persistSignedInSession(session: session, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
                 self.validationMessage = ""
                 self.successMessage = "\(loginProvider.title) account connected. Client token and session metadata are ready."
-                OpenNOWLog.info(.auth, "OAuth start completed provider=\(loginProvider.idpId)")
+                OPNLog.info(.auth, "OAuth start completed provider=\(loginProvider.idpId)")
             }
         }
     }
@@ -72,10 +72,10 @@ extension LoginViewModel {
         successMessage = ""
         isRequestingDeviceCode = true
         let loginProvider = selectedProvider
-        OpenNOWLog.info(.auth, "Beginning Starfleet device-code OAuth provider=\(loginProvider.idpId)")
+        OPNLog.info(.auth, "Beginning Starfleet device-code OAuth provider=\(loginProvider.idpId)")
 
         guard acceptedTerms else {
-            OpenNOWLog.warning(.auth, "Device-code OAuth blocked because terms were not accepted")
+            OPNLog.warning(.auth, "Device-code OAuth blocked because terms were not accepted")
             validationMessage = "Accept account terms and local session storage before continuing."
             isRequestingDeviceCode = false
             return
@@ -98,7 +98,7 @@ extension LoginViewModel {
 
             guard success else {
                 self.validationMessage = error.isEmpty ? "\(loginProvider.title) device-code sign-in failed." : Self.signInGuidance(for: error)
-                OpenNOWLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(error)")
+                OPNLog.error(.auth, "Device-code OAuth failed provider=\(loginProvider.idpId) error=\(error)")
                 return
             }
 
@@ -109,7 +109,7 @@ extension LoginViewModel {
                 self.successMessage = "\(loginProvider.title) account connected with device code."
                 self.deviceCodeUserCode = ""
                 self.deviceCodeVerificationURI = ""
-                OpenNOWLog.info(.auth, "Device-code OAuth completed provider=\(loginProvider.idpId)")
+                OPNLog.info(.auth, "Device-code OAuth completed provider=\(loginProvider.idpId)")
             }
         }
     }
@@ -120,13 +120,13 @@ extension LoginViewModel {
 
         let device = primaryDevice
         guard !device.pendingOAuthState.isEmpty, !device.pendingOAuthCodeVerifier.isEmpty else {
-            OpenNOWLog.warning(.auth, "OAuth callback ignored because pending state is missing")
+            OPNLog.warning(.auth, "OAuth callback ignored because pending state is missing")
             validationMessage = "Start browser sign-in before completing authorization."
             return
         }
 
         guard let query = Self.callbackQuery(from: callbackText.trimmed) else {
-            OpenNOWLog.warning(.auth, "OAuth callback rejected because callback text could not be parsed")
+            OPNLog.warning(.auth, "OAuth callback rejected because callback text could not be parsed")
             validationMessage = "Paste the full callback URL or authorization query from the browser."
             requestedFocus = .callback
             return
@@ -134,7 +134,7 @@ extension LoginViewModel {
 
         isAuthenticating = true
         defer { isAuthenticating = false }
-        OpenNOWLog.info(.auth, "Completing OAuth callback provider=\(device.pendingOAuthProviderIdpId.isEmpty ? selectedProvider.idpId : device.pendingOAuthProviderIdpId)")
+        OPNLog.info(.auth, "Completing OAuth callback provider=\(device.pendingOAuthProviderIdpId.isEmpty ? selectedProvider.idpId : device.pendingOAuthProviderIdpId)")
 
         do {
             let callback = try await jarvisAuthService.parseCallback(query: query, expectedState: device.pendingOAuthState)
@@ -155,12 +155,12 @@ extension LoginViewModel {
             _ = await jarvisAuthService.finishLogin(success: true)
             let providerTitle = providerOption(idpId: providerIdpId, fallbackName: selectedProvider.title).title
             successMessage = "\(providerTitle) account connected. Client token and session metadata are ready."
-            OpenNOWLog.info(.auth, "OAuth callback completed userId=\(session.userId) provider=\(providerIdpId)")
+            OPNLog.info(.auth, "OAuth callback completed userId=\(session.userId) provider=\(providerIdpId)")
         } catch {
             _ = await jarvisAuthService.finishLogin(success: false)
             validationMessage = Self.userFacingError(error)
             requestedFocus = .callback
-            OpenNOWLog.error(.auth, "OAuth callback failed: \(validationMessage)")
+            OPNLog.error(.auth, "OAuth callback failed: \(validationMessage)")
         }
     }
 
@@ -173,7 +173,7 @@ extension LoginViewModel {
         rememberSession = account.rememberSession
 
         guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
-            OpenNOWLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
+            OPNLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
             validationMessage = "No saved session exists for this account. Sign in again."
             return false
         }
@@ -202,12 +202,12 @@ extension LoginViewModel {
         }
 
         do {
-            OpenNOWLog.info(.auth, "Refreshing saved session account=\(account.email)")
+            OPNLog.info(.auth, "Refreshing saved session account=\(account.email)")
             await jarvisAuthService.setSession(jarvisSession)
             let refreshed = try await jarvisAuthService.refreshSession(force: !jarvisSession.isIdTokenValid)
             persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
             successMessage = "Session refreshed for \(account.displayName)."
-            OpenNOWLog.info(.auth, "Session refreshed account=\(account.email)")
+            OPNLog.info(.auth, "Session refreshed account=\(account.email)")
             return true
         } catch {
             if storedSession.canContinueOffline && !storedSession.isExpired {
@@ -215,18 +215,18 @@ extension LoginViewModel {
                 trySave()
                 refreshSignedOutAccounts()
                 successMessage = "Using saved offline session for \(account.displayName)."
-                OpenNOWLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
+                OPNLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
                 return true
             } else {
                 validationMessage = "Saved session expired. Sign in again."
-                OpenNOWLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
+                OPNLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
                 return false
             }
         }
     }
 
     func signOutAccount(_ account: LoginAccount) async {
-        OpenNOWLog.info(.auth, "Signing out account=\(account.email)")
+        OPNLog.info(.auth, "Signing out account=\(account.email)")
         let wasActive = account.isActive
         let userId = account.userId
         let email = account.email
@@ -254,11 +254,11 @@ extension LoginViewModel {
         // background account would sign out whoever is actually streaming.
         if wasActive { await jarvisAuthService.clearSession() }
         successMessage = "Signed out of \(account.displayName)."
-        OpenNOWLog.info(.auth, "Sign out completed account=\(email)")
+        OPNLog.info(.auth, "Sign out completed account=\(email)")
     }
 
     func signOutCurrentSession() async {
-        OpenNOWLog.info(.auth, "Signing out current session")
+        OPNLog.info(.auth, "Signing out current session")
         guard let activeAccount = accounts.first(where: \.isActive) else {
             // No account is active: nothing to end. Matches the prior behavior, which looped
             // over zero accounts and no-op'd rather than clearing the shared Jarvis session.

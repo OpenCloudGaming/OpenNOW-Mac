@@ -354,8 +354,8 @@ extension NativeWebRTCStreamView {
         return modifiers == .command
     }
 
-    func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
-        WebRTCMediaStreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags)
+    func streamCommand(for event: NSEvent) -> StreamCommand? {
+        StreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags)
     }
 
     func installKeyEquivalentMonitor() {

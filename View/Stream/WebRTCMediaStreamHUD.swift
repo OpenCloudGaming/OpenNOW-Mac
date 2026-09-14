@@ -23,7 +23,7 @@ extension WebRTCMediaStreamSurface {
     var statsHUD: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 0) {
-                statsCompactBox(value: "--", label: "FPS", color: WebRTCMediaStreamTheme.textPrimary)
+                statsCompactBox(value: "--", label: "FPS", color: StreamHUDTheme.textPrimary)
                 statsVerticalDivider
                 statsCompactBox(value: wholeNumber(latestStats?.renderFps), label: "FPS", color: fpsColor)
                 statsVerticalDivider
@@ -36,10 +36,10 @@ extension WebRTCMediaStreamSurface {
             VStack(alignment: .leading, spacing: 5) {
                 statsStandardRow(label: "Frame Loss", value: String(latestStats?.framesDropped ?? 0), detail: "(0 Total)", color: frameLossColor)
                 statsStandardRow(label: "Packet Loss", value: percentage(latestStats?.packetLossPercent), detail: packetLossTotalText, color: packetLossColor)
-                statsStandardRow(label: "Bandwidth Used", value: megabits(latestStats?.inboundBitrateMbps), detail: "Mbps", color: WebRTCMediaStreamTheme.textPrimary)
-                statsStandardRow(label: "Resolution", value: nonEmpty(latestStats?.resolution), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
-                statsStandardRow(label: "Codec", value: nonEmpty(latestStats?.codec), detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
-                statsStandardRow(label: "Server Location", value: "--", detail: nil, color: WebRTCMediaStreamTheme.textPrimary)
+                statsStandardRow(label: "Bandwidth Used", value: megabits(latestStats?.inboundBitrateMbps), detail: "Mbps", color: StreamHUDTheme.textPrimary)
+                statsStandardRow(label: "Resolution", value: nonEmpty(latestStats?.resolution), detail: nil, color: StreamHUDTheme.textPrimary)
+                statsStandardRow(label: "Codec", value: nonEmpty(latestStats?.codec), detail: nil, color: StreamHUDTheme.textPrimary)
+                statsStandardRow(label: "Server Location", value: "--", detail: nil, color: StreamHUDTheme.textPrimary)
             }
         }
         .padding(10)
@@ -47,7 +47,7 @@ extension WebRTCMediaStreamSurface {
         .background(Color.black.opacity(0.90))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(WebRTCMediaStreamTheme.accent)
+                .fill(StreamHUDTheme.accent)
                 .frame(height: 2)
         }
         .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
@@ -60,11 +60,11 @@ extension WebRTCMediaStreamSurface {
 
     var unifiedHUD: some View {
         GeometryReader { proxy in
-            let dockWidth = WebRTCMediaStreamTheme.dockWidth(for: proxy.size.width)
+            let dockWidth = StreamHUDTheme.dockWidth(for: proxy.size.width)
             VStack(alignment: .leading, spacing: 0) {
                 hudDockHeader
                 Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
+                    .fill(StreamHUDTheme.divider)
                     .frame(height: 1)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 14) {
@@ -84,20 +84,20 @@ extension WebRTCMediaStreamSurface {
                     .padding(.vertical, 14)
                 }
                 Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
+                    .fill(StreamHUDTheme.divider)
                     .frame(height: 1)
                 hudShortcutFooter
             }
             .frame(width: dockWidth, height: proxy.size.height, alignment: .topLeading)
-            .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
+            .background(StreamHUDTheme.panel.opacity(0.985))
             .overlay(alignment: .trailing) {
                 Rectangle()
-                    .fill(WebRTCMediaStreamTheme.divider)
+                    .fill(StreamHUDTheme.divider)
                     .frame(width: 1)
             }
             .overlay(alignment: .top) {
                 Rectangle()
-                    .fill(WebRTCMediaStreamTheme.accent)
+                    .fill(StreamHUDTheme.accent)
                     .frame(height: 2)
             }
             .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
@@ -118,7 +118,7 @@ extension WebRTCMediaStreamSurface {
             Text(label)
                 .font(.streamFont(size: 9, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .foregroundStyle(StreamHUDTheme.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.white.opacity(0.055))
@@ -141,7 +141,7 @@ extension WebRTCMediaStreamSurface {
         HStack(spacing: 6) {
             Text(label)
                 .font(.streamFont(size: 10, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .foregroundStyle(StreamHUDTheme.textSecondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
             Text(value)
@@ -151,7 +151,7 @@ extension WebRTCMediaStreamSurface {
             if let detail {
                 Text(detail)
                     .font(.streamFont(size: 10, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
                     .lineLimit(1)
             }
         }
@@ -164,10 +164,10 @@ extension WebRTCMediaStreamSurface {
                     Text("GFN")
                         .font(.streamFont(size: 11, weight: .bold))
                         .tracking(1.4)
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                        .foregroundStyle(StreamHUDTheme.accent)
                     Text("HUD")
                         .font(.streamFont(size: 20, weight: .bold))
-                        .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                        .foregroundStyle(StreamHUDTheme.textPrimary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -185,14 +185,14 @@ extension WebRTCMediaStreamSurface {
 
             Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
                 .font(.streamFont(size: 13, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                .foregroundStyle(StreamHUDTheme.textSecondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
         .padding(.horizontal, 22)
         .padding(.top, 16)
         .padding(.bottom, 14)
-        .background(WebRTCMediaStreamTheme.appBar)
+        .background(StreamHUDTheme.appBar)
     }
 
     var hudStatusPanel: some View {
@@ -229,9 +229,9 @@ extension WebRTCMediaStreamSurface {
                     Text("FREE SESSION ENDS IN")
                         .font(.streamFont(size: 12, weight: .bold))
                         .tracking(2.2)
-                        .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                        .foregroundStyle(StreamHUDTheme.accent)
                     Text(sessionLimitCountdownText(at: context.date))
-                        .font(.system(size: 74, weight: .black, design: .monospaced))
+                        .font(.streamFont(size: 74, weight: .black).monospacedDigit())
                         .foregroundStyle(.white)
                         .contentTransition(.numericText())
                     Text("Save progress now. GeForce NOW may close this session when the timer reaches zero.")
@@ -242,8 +242,8 @@ extension WebRTCMediaStreamSurface {
                 }
                 .padding(.horizontal, 34)
                 .padding(.vertical, 28)
-                .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(WebRTCMediaStreamTheme.accent.opacity(0.42), lineWidth: 1))
+                .background(.black.opacity(0.76))
+                .overlay { Rectangle().strokeBorder(StreamHUDTheme.accent.opacity(0.42), lineWidth: 1) }
                 .shadow(color: .black.opacity(0.64), radius: 30, x: 0, y: 18)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 .transition(.opacity)
@@ -258,11 +258,11 @@ extension WebRTCMediaStreamSurface {
             HStack(spacing: 6) {
                 Image(systemName: "clock")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(WebRTCMediaStreamTheme.accent)
+                    .foregroundStyle(StreamHUDTheme.accent)
                 Text(Date(), style: .time)
                     .font(.streamFont(size: 11, weight: .bold))
                     .monospacedDigit()
-                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
                     .lineLimit(1)
             }
             .accessibilityElement(children: .ignore)
@@ -270,7 +270,7 @@ extension WebRTCMediaStreamSurface {
             Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
                 .font(.streamFont(size: 10, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
                 .lineLimit(1)
         }
         .padding(.horizontal, 18)
@@ -380,7 +380,7 @@ extension WebRTCMediaStreamSurface {
             if !networkWarningText.isEmpty {
                 Text(networkWarningText)
                     .font(.streamFont(size: 11, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.warning)
+                    .foregroundStyle(StreamHUDTheme.warning)
                     .lineLimit(2)
             }
         }
@@ -401,10 +401,10 @@ extension WebRTCMediaStreamSurface {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Not available on this transport")
                     .font(.streamFont(size: 14, weight: .bold))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
                 Text("Remote Co-Op needs the Native NVST transport, which is where the host can share decoded frames without paying for them twice. Switch in Settings > Streaming and relaunch.")
                     .font(.streamFont(size: 12, weight: .medium))
-                    .foregroundStyle(WebRTCMediaStreamTheme.textSecondary)
+                    .foregroundStyle(StreamHUDTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -432,7 +432,7 @@ extension WebRTCMediaStreamSurface {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(microphoneEnabled ? .black.opacity(0.72) : .white.opacity(0.58))
                 .frame(width: 28, height: 28)
-                .background(microphoneEnabled ? WebRTCMediaStreamTheme.accent.opacity(0.42) : .black.opacity(0.26), in: Circle())
+                .background(microphoneEnabled ? StreamHUDTheme.accent.opacity(0.42) : .black.opacity(0.26), in: Circle())
                 .overlay(Circle().stroke(.white.opacity(runtimeSettings.microphoneMode == "disabled" ? 0.05 : 0.11), lineWidth: 1))
                 .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
         }
@@ -444,12 +444,12 @@ extension WebRTCMediaStreamSurface {
 
     var transientStreamMessageOverlay: some View {
         Text(transientStreamMessage)
-            .font(.system(size: 12, weight: .black, design: .rounded))
+            .font(.streamFont(size: 12, weight: .black))
             .foregroundStyle(.white.opacity(0.94))
             .padding(.horizontal, 14)
             .frame(height: 34)
-            .background(.black.opacity(0.68), in: Capsule())
-            .overlay(Capsule().stroke(WebRTCMediaStreamTheme.accent.opacity(0.36), lineWidth: 1))
+            .background(.black.opacity(0.68))
+            .overlay { Rectangle().strokeBorder(StreamHUDTheme.accent.opacity(0.36), lineWidth: 1) }
             .shadow(color: .black.opacity(0.36), radius: 18, x: 0, y: 8)
             .padding(.bottom, 34)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)

@@ -32,27 +32,27 @@ extension CatalogViewModel {
     func openGameShortcut(_ shortcut: GFNGameShortcut) {
         configureCatalogService()
         let title = shortcut.lookupTitle.isEmpty ? shortcut.displayName : shortcut.lookupTitle
-        OpenNOWLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
+        OPNLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
         setActionMessage("Opening \(title.isEmpty ? "GeForce NOW shortcut" : title)...")
         if let game = matchingGame(for: shortcut, in: allKnownGames) {
-            OpenNOWLog.info(.shortcut, "Resolved shortcut from loaded catalog: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
+            OPNLog.info(.shortcut, "Resolved shortcut from loaded catalog: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: variantIndex(for: shortcut, in: game))
             return
         }
         if Int(shortcut.cmsId) != nil {
-            OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; fetching CMS metadata cmsId=\(shortcut.cmsId)")
+            OPNLog.info(.shortcut, "Shortcut not found in loaded catalog; fetching CMS metadata cmsId=\(shortcut.cmsId)")
             gameService.fetchGameObjectByCMSId(shortcut.cmsId) { [weak self] success, game, error in
                 guard let self else { return }
                 if success, let game {
-                    OpenNOWLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
+                    OPNLog.info(.shortcut, "Resolved shortcut from CMS metadata: gameId=\(game.id) uuid=\(game.uuid) title=\(game.title)")
                     self.selectGame(game)
                     self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
                     return
                 }
-                OpenNOWLog.warning(.shortcut, "Shortcut CMS metadata lookup failed: \(error)")
+                OPNLog.warning(.shortcut, "Shortcut CMS metadata lookup failed: \(error)")
                 if let game = Self.launchGame(from: shortcut, title: title) {
-                    OpenNOWLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+                    OPNLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
                     self.selectGame(game)
                     self.launch(game: game, variantIndex: 0)
                 } else {
@@ -62,7 +62,7 @@ extension CatalogViewModel {
             return
         }
         if let game = Self.launchGame(from: shortcut, title: title) {
-            OpenNOWLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
+            OPNLog.info(.shortcut, "Launching shortcut directly from cmsId=\(shortcut.cmsId) title=\(game.title)")
             selectGame(game)
             launch(game: game, variantIndex: 0)
             return
@@ -71,24 +71,24 @@ extension CatalogViewModel {
     }
 
     func resolveShortcutByBrowsing(_ shortcut: GFNGameShortcut, title: String) {
-        OpenNOWLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
+        OPNLog.info(.shortcut, "Shortcut not found in loaded catalog; browsing with query=\(title)")
         let deliveryGate = CatalogDeliveryGate()
         gameService.browseCatalogObject(searchQuery: title, sortId: "relevance", filterIds: [], fetchCount: 24) { [weak self] success, result, error in
             guard let self else { return }
             guard deliveryGate.claimFirstDelivery() else { return }
             guard success else {
-                OpenNOWLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
+                OPNLog.error(.shortcut, "Shortcut catalog browse failed: \(error)")
                 self.reportLaunchFailure(error.isEmpty ? "Unable to resolve this GeForce NOW shortcut." : error)
                 return
             }
             let games = result.games
-            OpenNOWLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
+            OPNLog.info(.shortcut, "Shortcut catalog browse returned \(games.count) game(s)")
             guard let game = self.matchingGame(for: shortcut, in: games) ?? games.first else {
-                OpenNOWLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
+                OPNLog.error(.shortcut, "Shortcut catalog browse returned no matching games")
                 self.reportLaunchFailure("No matching GeForce NOW catalog game was found for this shortcut.")
                 return
             }
-            OpenNOWLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
+            OPNLog.info(.shortcut, "Resolved shortcut from browse: gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title)")
             self.catalogGames = games
             self.selectGame(game)
             self.launch(game: game, variantIndex: self.variantIndex(for: shortcut, in: game))
@@ -113,7 +113,7 @@ extension CatalogViewModel {
     }
 
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
-        OpenNOWLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
+        OPNLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
         pendingLaunchGame = game
         pendingLaunchVariantIndex = variantIndex ?? Self.preferredVariantIndex(for: game)
         activeLaunchSession = nil
@@ -180,17 +180,17 @@ extension CatalogViewModel {
             guard let self else { return }
             self.launchMessage = ""
             guard success, let plan else {
-                OpenNOWLog.error(.launch, "Launch plan failed: \(message)")
+                OPNLog.error(.launch, "Launch plan failed: \(message)")
                 self.clearLaunchFlow()
                 self.reportLaunchFailure(message.isEmpty ? "Unable to prepare GeForce NOW launch." : message)
                 return
             }
             switch plan {
             case .ready(let configuration):
-                OpenNOWLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
+                OPNLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
                 self.startPreparedStream(Self.mediaConfiguration(from: configuration, membershipTier: self.account.membershipTier), message: message)
             case .activeSession(let active, let resume, let replacement):
-                OpenNOWLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
+                OPNLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
                 let activeTitle = self.title(forActiveSession: active)
                 self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, streamingBaseUrl: active.streamingBaseUrl, title: activeTitle)
                 self.activeSessionResumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: self.account.membershipTier)
@@ -363,7 +363,7 @@ extension CatalogViewModel {
         guard progress.isReady else { return }
         if !didNotifySessionReady {
             didNotifySessionReady = true
-            OpenNOWSessionReadyAction.sessionDidBecomeReady(title: progress.title)
+            OPNSessionReadyAction.sessionDidBecomeReady(title: progress.title)
         }
         if let presence = activeDiscordPresence {
             discordPresence.update(.streaming(presence))
@@ -378,7 +378,7 @@ extension CatalogViewModel {
 
     func presentRequiredStreamAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
         guard URL(string: ad.mediaUrl) != nil else {
-            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
+            throw OPNStreamSessionError.sessionAllocationFailed("Required ad media URL is invalid.")
         }
         activeStreamAdContinuation?.resume(throwing: CancellationError())
         activeStreamAdContinuation = nil
@@ -414,7 +414,7 @@ extension CatalogViewModel {
         guard let continuation = activeStreamAdContinuation else { return }
         activeStreamAdContinuation = nil
         activeStreamAdPlayback = nil
-        continuation.resume(throwing: OpenNOWStreamSessionError.sessionAllocationFailed(message.isEmpty ? "Required ad playback failed." : message))
+        continuation.resume(throwing: OPNStreamSessionError.sessionAllocationFailed(message.isEmpty ? "Required ad playback failed." : message))
     }
 
     func cancelActiveStreamAdPlayback() {
@@ -439,7 +439,7 @@ extension CatalogViewModel {
         isActiveStreamLaunchOverlayVisible = true
         didNotifySessionReady = false
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
-        OpenNOWSessionReadyAction.prepareAuthorizationIfNeeded()
+        OPNSessionReadyAction.prepareAuthorizationIfNeeded()
         activeStreamConfiguration = configuration
         clearLaunchFlow()
     }

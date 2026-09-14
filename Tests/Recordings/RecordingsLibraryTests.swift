@@ -15,8 +15,8 @@ private func makeRecording(
     enhanced: Bool = false,
     bytes: Int64 = 100_000_000,
     fileName: String = "clip.mp4"
-) -> WebRTCStreamRecording {
-    WebRTCStreamRecording(
+) -> StreamRecording {
+    StreamRecording(
         id: UUID(),
         title: title,
         applicationID: application,

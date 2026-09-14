@@ -46,10 +46,10 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     private let accessory: Accessory
 
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
-    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+    @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
 
     private var isMotionReduced: Bool {
-        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+        OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
     }
 
     init(title: String,
@@ -72,7 +72,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         self.accessory = accessory()
     }
 
-    private func hPad(compact: Bool) -> CGFloat { compact ? 22 : OpenNOWDesign.Spacing.pageHorizontal }
+    private func hPad(compact: Bool) -> CGFloat { compact ? 22 : OPNDesign.Spacing.pageHorizontal }
 
     var body: some View {
         GeometryReader { proxy in
@@ -85,7 +85,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                 VStack(spacing: 0) {
                     titleRow(compact: compact)
-                        .padding(.top, (compact ? OpenNOWDesign.Spacing.large : OpenNOWDesign.Spacing.xLarge) + windowTopInset)
+                        .padding(.top, (compact ? OPNDesign.Spacing.large : OPNDesign.Spacing.xLarge) + windowTopInset)
                         .padding(.leading, hPad)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -96,16 +96,16 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
                     if let cancelAction {
                         Button("Cancel", action: cancelAction)
-                            .buttonStyle(OpenNOWModalSecondaryButtonStyle())
+                            .buttonStyle(OPNModalSecondaryButtonStyle())
                             .accessibilityLabel("Cancel stream launch")
-                            .padding(.top, OpenNOWDesign.Spacing.small)
+                            .padding(.top, OPNDesign.Spacing.small)
                     }
 
                     Spacer(minLength: 0)
 
                     footerBand(compact: compact)
                         .padding(.horizontal, hPad)
-                        .padding(.bottom, compact ? OpenNOWDesign.Spacing.large : OpenNOWDesign.Spacing.xLarge)
+                        .padding(.bottom, compact ? OPNDesign.Spacing.large : OPNDesign.Spacing.xLarge)
                 }
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -114,7 +114,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
             // surface it hands off to, so a shared black keeps the two surfaces seamless.
             .background(Color.black)
             .overlay(alignment: .top) {
-                Rectangle().fill(OpenNOWDesign.accent).frame(height: 2)
+                Rectangle().fill(OPNDesign.accent).frame(height: 2)
             }
         }
     }
@@ -122,7 +122,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     private func titleRow(compact: Bool) -> some View {
         Text(title)
             .font(.catalogText(size: compact ? 24 : 32, weight: .bold))
-            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .foregroundStyle(OPNDesign.Text.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.72)
     }
@@ -154,16 +154,16 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         ZStack {
             LinearGradient(
                 stops: [
-                    .init(color: WebRTCMediaStreamTheme.scrim, location: 0),
-                    .init(color: WebRTCMediaStreamTheme.scrim.opacity(0), location: 0.22)
+                    .init(color: StreamHUDTheme.scrim, location: 0),
+                    .init(color: StreamHUDTheme.scrim.opacity(0), location: 0.22)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
             LinearGradient(
                 stops: [
-                    .init(color: WebRTCMediaStreamTheme.scrim.opacity(0), location: 0.66),
-                    .init(color: WebRTCMediaStreamTheme.scrim, location: 1.0)
+                    .init(color: StreamHUDTheme.scrim.opacity(0), location: 0.66),
+                    .init(color: StreamHUDTheme.scrim, location: 1.0)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -214,13 +214,13 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
     // MARK: - Footer band
 
     private func footerBand(compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall) {
             eyebrowText
                 .font(.catalogText(size: 11, weight: .bold))
                 .tracking(1.4)
                 .lineLimit(1)
 
-            HStack(spacing: OpenNOWDesign.Spacing.xxSmall) {
+            HStack(spacing: OPNDesign.Spacing.xxSmall) {
                 ForEach(StreamLaunchStep.allCases, id: \.rawValue) { step in
                     railSegment(step: step, compact: compact)
                 }
@@ -245,8 +245,8 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
         if let stageOverride { phrases.append(stageOverride) } else if accessoryPresented { phrases.append(plateWord) }
         if let queued { phrases.append("Position \(queued)") }
         let trailing = phrases.joined(separator: " · ")
-        return Text(trailing.isEmpty ? counter : counter + " · ").foregroundStyle(OpenNOWDesign.Text.tertiary)
-            + Text(trailing.uppercased()).foregroundStyle(WebRTCMediaStreamTheme.accentSoft)
+        return Text(trailing.isEmpty ? counter : counter + " · ").foregroundStyle(OPNDesign.Text.tertiary)
+            + Text(trailing.uppercased()).foregroundStyle(StreamHUDTheme.accentSoft)
     }
 
     // MARK: - Step rail
@@ -266,21 +266,21 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
     private func railSegment(step: StreamLaunchStep, compact: Bool) -> some View {
         let segState = state(for: step.rawValue)
-        return VStack(spacing: OpenNOWDesign.Spacing.xxSmall) {
+        return VStack(spacing: OPNDesign.Spacing.xxSmall) {
             Group {
                 switch segState {
                 case .passed:
-                    Rectangle().fill(OpenNOWDesign.accent.opacity(0.72))
+                    Rectangle().fill(OPNDesign.accent.opacity(0.72))
                 case .current:
-                    Rectangle().fill(OpenNOWDesign.accent)
-                        .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.strong, lineWidth: 1) }
+                    Rectangle().fill(OPNDesign.accent)
+                        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.strong, lineWidth: 1) }
                 case .pending:
-                    Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1)
+                    Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1)
                 }
             }
             .frame(height: compact ? 6 : 8)
             .scaleEffect(y: segState == .current ? 1.0 : (segState == .passed ? 0.78 : 0.42), anchor: .bottom)
-            .opnMotion(OpenNOWDesign.Motion.toggle, value: stepIndex)
+            .opnMotion(OPNDesign.Motion.toggle, value: stepIndex)
 
             if !compact {
                 Text(step.title.uppercased())
@@ -288,7 +288,7 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                     .tracking(0.7)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .foregroundStyle(segState == .current ? WebRTCMediaStreamTheme.accentSoft : (segState == .passed ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.Text.muted))
+                    .foregroundStyle(segState == .current ? StreamHUDTheme.accentSoft : (segState == .passed ? OPNDesign.Text.tertiary : OPNDesign.Text.muted))
             }
         }
         .frame(maxWidth: .infinity)
@@ -309,17 +309,17 @@ private struct StreamLaunchStagePlate: View {
 
     var body: some View {
         ZStack {
-            Rectangle().fill(OpenNOWDesign.Surface.chrome.opacity(0.55))
-            Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1)
+            Rectangle().fill(OPNDesign.Surface.chrome.opacity(0.55))
+            Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
             cornerBrackets
             if !reduceMotion { sweep }
             Text(stageWord.uppercased())
                 .font(.catalogText(size: isLarge ? 22 : 16, weight: .bold))
                 .tracking(isLarge ? 4 : 2.6)
-                .foregroundStyle(WebRTCMediaStreamTheme.accentSoft)
+                .foregroundStyle(StreamHUDTheme.accentSoft)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .padding(.horizontal, OpenNOWDesign.Spacing.xLarge)
+                .padding(.horizontal, OPNDesign.Spacing.xLarge)
         }
         .frame(width: width, height: height)
     }
@@ -327,22 +327,22 @@ private struct StreamLaunchStagePlate: View {
     private var cornerBrackets: some View {
         ForEach(BracketCorner.allCases, id: \.self) { corner in
             BracketShape(corner: corner, armLength: armLength)
-                .stroke(OpenNOWDesign.accent, lineWidth: 2)
+                .stroke(OPNDesign.accent, lineWidth: 2)
         }
     }
 
     /// One 2.4s pass leading-to-trailing, matching the old signal's cycle length. Travel runs with the
     /// rail's direction so the plate reads as the same progress the footer is measuring.
     private var sweep: some View {
-        TimelineView(.animation(minimumInterval: OpenNOWDesign.Motion.heroFrameInterval, paused: false)) { timeline in
+        TimelineView(.animation(minimumInterval: OPNDesign.Motion.heroFrameInterval, paused: false)) { timeline in
             let cycle = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.4) / 2.4
             let edgeFade = min(cycle, 1 - cycle) / 0.08
             let travel = cycle * (width + 64) - 32
             ZStack {
                 Rectangle()
-                    .fill(OpenNOWDesign.accent)
+                    .fill(OPNDesign.accent)
                     .frame(width: 1.5)
-                LinearGradient(colors: [.clear, OpenNOWDesign.accent.opacity(0.22), .clear], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(colors: [.clear, OPNDesign.accent.opacity(0.22), .clear], startPoint: .leading, endPoint: .trailing)
                     .frame(width: isLarge ? 72 : 48)
             }
             .opacity(min(1, edgeFade))

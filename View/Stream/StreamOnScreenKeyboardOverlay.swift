@@ -12,7 +12,7 @@ struct StreamOnScreenKeyboardOverlay: View {
         let atTop = controller.state.position == .top
         VStack(spacing: 0) {
             headerStrip
-            Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(height: 1)
+            Rectangle().fill(StreamHUDTheme.divider).frame(height: 1)
             VStack(spacing: keySpacing) {
                 ForEach(0..<StreamOSKLayout.rowCount, id: \.self) { row in
                     keyRow(row)
@@ -23,9 +23,9 @@ struct StreamOnScreenKeyboardOverlay: View {
             bottomBar
             hintFooter
         }
-        .background(WebRTCMediaStreamTheme.panel.opacity(0.985))
-        .overlay(alignment: .top) { Rectangle().fill(WebRTCMediaStreamTheme.accent).frame(height: 2) }
-        .overlay(Rectangle().stroke(WebRTCMediaStreamTheme.divider, lineWidth: 1))
+        .background(StreamHUDTheme.panel.opacity(0.985))
+        .overlay(alignment: .top) { Rectangle().fill(StreamHUDTheme.accent).frame(height: 2) }
+        .overlay(Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1))
         .shadow(color: .black.opacity(0.58), radius: 28, y: atTop ? -14 : 14)
         .padding(atTop ? .top : .bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: atTop ? .top : .bottom)
@@ -36,11 +36,11 @@ struct StreamOnScreenKeyboardOverlay: View {
             Text("KEYBOARD")
                 .font(.streamFont(size: 10, weight: .bold))
                 .tracking(1.1)
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-            Rectangle().fill(WebRTCMediaStreamTheme.divider).frame(width: 1, height: 14)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
+            Rectangle().fill(StreamHUDTheme.divider).frame(width: 1, height: 14)
             Text(controller.state.echo.isEmpty ? " " : controller.state.echo)
                 .font(.streamFont(size: 12, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .foregroundStyle(StreamHUDTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.head)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -54,7 +54,7 @@ struct StreamOnScreenKeyboardOverlay: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(WebRTCMediaStreamTheme.appBar)
+        .background(StreamHUDTheme.appBar)
     }
 
     private func statusBadge(_ title: String) -> some View {
@@ -64,7 +64,7 @@ struct StreamOnScreenKeyboardOverlay: View {
             .foregroundStyle(.black.opacity(0.86))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(WebRTCMediaStreamTheme.accent)
+            .background(StreamHUDTheme.accent)
     }
 
     private func keyRow(_ row: Int) -> some View {
@@ -154,28 +154,28 @@ struct StreamOnScreenKeyboardOverlay: View {
 
     private func foregroundColor(isLatchedModifier: Bool, isPadCursor: Bool) -> Color {
         if isLatchedModifier { return .black.opacity(0.86) }
-        return WebRTCMediaStreamTheme.textPrimary
+        return StreamHUDTheme.textPrimary
     }
 
     private func backgroundColor(isLatchedModifier: Bool, isLeftPadCursor: Bool, isRightPadCursor: Bool) -> Color {
-        if isLatchedModifier { return WebRTCMediaStreamTheme.accent }
-        if isLeftPadCursor { return WebRTCMediaStreamTheme.accentSoft.opacity(0.28) }
-        if isRightPadCursor { return WebRTCMediaStreamTheme.accent.opacity(0.28) }
+        if isLatchedModifier { return StreamHUDTheme.accent }
+        if isLeftPadCursor { return StreamHUDTheme.accentSoft.opacity(0.28) }
+        if isRightPadCursor { return StreamHUDTheme.accent.opacity(0.28) }
         return Color.white.opacity(0.075)
     }
 
     private func strokeColor(isGridCursor: Bool, isLeftPadCursor: Bool, isRightPadCursor: Bool) -> Color {
-        if isGridCursor { return WebRTCMediaStreamTheme.textPrimary }
-        if isLeftPadCursor { return WebRTCMediaStreamTheme.accentSoft }
-        if isRightPadCursor { return WebRTCMediaStreamTheme.accent }
-        return WebRTCMediaStreamTheme.divider
+        if isGridCursor { return StreamHUDTheme.textPrimary }
+        if isLeftPadCursor { return StreamHUDTheme.accentSoft }
+        if isRightPadCursor { return StreamHUDTheme.accent }
+        return StreamHUDTheme.divider
     }
 
     private var hintFooter: some View {
         Text("A TYPE   B ⌫   X SPACE   Y SHIFT   ⏎ ENTER   PADS AIM · CLICK / L2·R2 TYPE   STEAM+X CLOSE")
             .font(.streamFont(size: 9, weight: .bold))
             .tracking(0.8)
-            .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+            .foregroundStyle(StreamHUDTheme.textTertiary)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             .padding(.horizontal, 14)

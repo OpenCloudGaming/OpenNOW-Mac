@@ -5,10 +5,11 @@
 # style linter — every stylistic rule stays disabled so the diff noise stays zero.
 #
 # Layering and size rules have no baseline and apply to every file. The `design_*` rules ship with
-# one: .swiftlint-baseline.json records the surfaces that predate them (stream HUD legacy pills,
+# one: `.swiftlint-baseline.json` records the surfaces that predate them (stream HUD legacy pills,
 # the startup splash glow, the recordings pickers, the guest window), so new and edited code is
 # held to DESIGN.md without a 100-line annotation diff across files nobody is touching. Anything
-# not in that file fails. CI runs:
+# not in that file fails. The baseline is currently empty: every pre-rule surface has been
+# redesigned to spec, so the ledger is a gate rather than a backlog. CI runs:
 #
 #   swiftlint lint --strict --baseline .swiftlint-baseline.json App GFN Model OPN View ViewModel Tests
 
@@ -151,13 +152,13 @@ custom_rules:
       - comment.mark
       - comment.url
       - string
-    message: "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OpenNOWDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow)."
+    message: "DESIGN.md Don't: native Menu and segmented/menu pickers render rounded system chrome. Use OPNDropdownMenu, or a square chip row (SteamControllerOptionPicker / SettingsOptionRow)."
     severity: error
 
   design_no_system_font_design:
     name: "System rounded or monospaced font"
     included: ".*/View/.*\\.swift"
-    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Stream/StreamHUDComponents)\\.swift"
+    excluded: ".*/View/(OPNDesign|OPNDesignAccent|Stream/StreamHUDComponents)\\.swift"
     regex: 'design:\s*\.(rounded|monospaced|serif)'
     excluded_match_kinds:
       - comment
@@ -172,7 +173,7 @@ custom_rules:
   design_no_raw_semantic_color:
     name: "Raw semantic colour"
     included: ".*/View/.*\\.swift"
-    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Stream/StreamHUDComponents|Components/OpenNOWButtons)\\.swift"
+    excluded: ".*/View/(OPNDesign|OPNDesignAccent|Stream/StreamHUDComponents|Components/OPNButtons)\\.swift"
     regex: 'Color\.(orange|yellow|purple|pink|brown|mint|teal|indigo|cyan)(?![\w(])|(?<![\w.])\.(orange|yellow|purple|pink|brown|mint|teal|indigo|cyan)(?![\w(])'
     excluded_match_kinds:
       - comment
@@ -181,7 +182,7 @@ custom_rules:
       - comment.mark
       - comment.url
       - string
-    message: "DESIGN.md Colors: warning and destructive states come from OpenNOWDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour."
+    message: "DESIGN.md Colors: warning and destructive states come from OPNDesign.Semantic / WebRTCMediaStreamTheme, not from a system colour."
     severity: error
 
   design_no_accent_glow_shadow:
@@ -215,7 +216,7 @@ custom_rules:
   design_no_black_on_accent:
     name: "Black on an accent fill"
     included: ".*/View/.*\\.swift"
-    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Login/LoginStyles|Login/LoginComponents|Stream/.*|Catalog/CatalogMediaViews|Catalog/CatalogHeroImageViews)\\.swift"
+    excluded: ".*/View/(OPNDesign|OPNDesignAccent|Login/LoginStyles|Login/LoginComponents|Stream/.*|Catalog/CatalogMediaViews|Catalog/CatalogHeroImageViews)\\.swift"
     regex: '\?\s*\.black\s*:|foregroundStyle\(\.black\)'
     excluded_match_kinds:
       - comment
@@ -224,12 +225,12 @@ custom_rules:
       - comment.mark
       - comment.url
       - string
-    message: "DESIGN.md Colors: a label on an accent fill uses OpenNOWDesign.onAccent, which follows whichever accent is under it. Plain .black only reads on the bright accent, so it breaks on a light page."
+    message: "DESIGN.md Colors: a label on an accent fill uses OPNDesign.onAccent, which follows whichever accent is under it. Plain .black only reads on the bright accent, so it breaks on a light page."
 
   design_no_hardcoded_surface_color:
     name: "Hardcoded colour channels"
     included: ".*/View/.*\\.swift"
-    excluded: ".*/View/(OpenNOWDesign|OpenNOWDesignAccent|Settings/SettingsView|Stream/StreamHUDComponents|Login/LoginStyles)\\.swift"
+    excluded: ".*/View/(OPNDesign|OPNDesignAccent|Settings/SettingsView|Stream/StreamHUDComponents|Login/LoginStyles)\\.swift"
     regex: 'Color\(\s*(red|white|hue):'
     excluded_match_kinds:
       - comment
@@ -238,5 +239,5 @@ custom_rules:
       - comment.mark
       - comment.url
       - string
-    message: "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OpenNOWDesign / WebRTCMediaStreamTheme."
+    message: "DESIGN.md Don't: no hex or channel literals outside the token files. Add or reuse a token in OPNDesign / WebRTCMediaStreamTheme."
     severity: error

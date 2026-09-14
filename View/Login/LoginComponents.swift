@@ -3,7 +3,7 @@ import SwiftUI
 
 struct LoginBackdrop: View {
     var body: some View {
-        OpenNOWDesign.Surface.app
+        OPNDesign.Surface.app
         .ignoresSafeArea()
     }
 }
@@ -47,7 +47,7 @@ struct VendorResourceImage: View {
             return cachedImage
         }
 
-        for subdirectory in ["OpenNOW", "Resources/OpenNOW", nil] as [String?] {
+        for subdirectory in ["OPN", "Resources/OPN", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
                 imageCache.setObject(image, forKey: cacheKey)
@@ -108,7 +108,7 @@ struct VendorSplashLoadingView: View {
                                 .frame(width: isCompact ? 188 : 260, height: 4)
                             Text(message)
                                 .font(.uiSans(size: 13, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.72))
+                                .foregroundStyle(OPNDesign.Fixed.ink(0.72))
                         }
                     }
 
@@ -116,7 +116,7 @@ struct VendorSplashLoadingView: View {
                         Button(action: onCancel) {
                             Text("CANCEL")
                                 .font(.uiSans(size: 13, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Fixed.ink(0.96))
+                                .foregroundStyle(OPNDesign.Fixed.ink(0.96))
                                 .tracking(0.3)
                         }
                         .buttonStyle(VendorSplashCancelButtonStyle())
@@ -135,10 +135,10 @@ struct VendorSplashLoadingView: View {
 private struct VendorSplashCancelButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.horizontal, OpenNOWDesign.Spacing.medium)
+            .padding(.horizontal, OPNDesign.Spacing.medium)
             .frame(height: 34)
-            .background(configuration.isPressed ? OpenNOWDesign.Fixed.ink(0.14) : OpenNOWDesign.Fixed.ink(0.10))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Fixed.ink(0.14), lineWidth: 1) }
+            .background(configuration.isPressed ? OPNDesign.Fixed.ink(0.14) : OPNDesign.Fixed.ink(0.10))
+            .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 
@@ -148,16 +148,16 @@ struct VendorIndeterminateProgressBar: View {
             let width = proxy.size.width
             let indicatorWidth = max(width * 0.34, 72)
 
-            TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.ambientFrameInterval)) { timeline in
+            TimelineView(.periodic(from: .now, by: OPNDesign.Motion.ambientFrameInterval)) { timeline in
                 let cycleDuration = 1.15
                 let progress = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
                 let phase = -0.36 + (1.40 * progress)
 
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(OpenNOWDesign.Fixed.ink(0.22))
+                        .fill(OPNDesign.Fixed.ink(0.22))
                     Rectangle()
-                        .fill(OpenNOWDesign.Fixed.accent)
+                        .fill(OPNDesign.Fixed.accent)
                         .frame(width: indicatorWidth)
                         .offset(x: phase * width)
                 }
@@ -169,10 +169,10 @@ struct VendorIndeterminateProgressBar: View {
 
 struct GFNHeroArtwork: View {
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
-    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+    @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
 
     private var isMotionReduced: Bool {
-        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+        OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
     }
 
     var body: some View {
@@ -180,7 +180,7 @@ struct GFNHeroArtwork: View {
             if isMotionReduced {
                 artwork(proxy: proxy, motionTime: 0, isAnimated: false)
             } else {
-                TimelineView(.periodic(from: .now, by: OpenNOWDesign.Motion.ambientFrameInterval)) { timeline in
+                TimelineView(.periodic(from: .now, by: OPNDesign.Motion.ambientFrameInterval)) { timeline in
                     artwork(proxy: proxy, motionTime: timeline.date.timeIntervalSinceReferenceDate, isAnimated: true)
                 }
             }
@@ -196,6 +196,8 @@ struct GFNHeroArtwork: View {
 
         return ZStack {
             RadialGradient(
+                // DESIGN.md colour exception: login-wall marketing gradient stop.
+                // swiftlint:disable:next design_no_hardcoded_surface_color
                 colors: [Color(red: 0.286, green: 0.286, blue: 0.286), .black],
                 center: UnitPoint(x: 0.65, y: 0.25),
                 startRadius: 0,
@@ -350,6 +352,6 @@ struct AccountAvatar: View {
             .frame(width: size, height: size)
             // DESIGN.md radius exception: the login vendor icon button, at size * 0.32.
             // swiftlint:disable:next design_no_corner_radius
-            .background(OpenNOWDesign.Fixed.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
+            .background(OPNDesign.Fixed.accent, in: RoundedRectangle(cornerRadius: size * 0.32, style: .continuous))
     }
 }

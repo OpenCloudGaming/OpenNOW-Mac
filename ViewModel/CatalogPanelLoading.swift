@@ -60,7 +60,7 @@ extension CatalogViewModel {
         if !attachment.marquee { loadMarqueePanels() }
         if !attachment.main { loadMainPanels() }
         if !attachment.isEmpty {
-            OpenNOWLog.info(.catalog, "Adopted launch panel prefetch marquee=\(attachment.marquee) main=\(attachment.main)")
+            OPNLog.info(.catalog, "Adopted launch panel prefetch marquee=\(attachment.marquee) main=\(attachment.main)")
         }
     }
 
@@ -103,7 +103,7 @@ extension CatalogViewModel {
             self.isLoadingMarquee = false
             if success {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
-                OpenNOWLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
+                OPNLog.info(.catalog, "Marquee panels loaded elapsed=\(elapsedMs)ms sections=\(panels.flatMap(\.sections).count)")
                 self.applyMarqueePanels(panels)
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.isLoadingPanels = false
@@ -121,7 +121,7 @@ extension CatalogViewModel {
             if success {
                 let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - panelStartTime) * 1000)
                 let gameCount = panels.flatMap(\.sections).flatMap(\.games).count
-                OpenNOWLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
+                OPNLog.info(.catalog, "Main panels loaded elapsed=\(elapsedMs)ms games=\(gameCount)")
                 self.applyMainPanels(panels)
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.isLoadingPanels = false
@@ -182,7 +182,7 @@ extension CatalogViewModel {
             self?.handleLaunchPrefetchEvent(event)
         }
         guard !attachment.library else {
-            OpenNOWLog.info(.catalog, "Adopted launch library prefetch")
+            OPNLog.info(.catalog, "Adopted launch library prefetch")
             return
         }
         fetchLibraryFromNetwork()
@@ -212,7 +212,7 @@ extension CatalogViewModel {
             self?.handleLaunchPrefetchEvent(event)
         }
         guard !attachment.favorites else {
-            OpenNOWLog.info(.catalog, "Adopted launch favorites prefetch")
+            OPNLog.info(.catalog, "Adopted launch favorites prefetch")
             return
         }
         fetchFavoritesFromNetwork()

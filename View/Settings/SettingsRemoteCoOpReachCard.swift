@@ -22,7 +22,7 @@ extension RemoteCoOpSettingsPage {
                     }
                     Text("Answers two questions about where your guests will be and configures what that implies. Start here if you are not sure which of the below you need.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -47,7 +47,7 @@ extension RemoteCoOpSettingsPage {
                     reachGlossary(term: "Hosted Signaling", meaning: "Covers the case a tunnel cannot: this Mac itself unreachable, on carrier-grade NAT or a cafe network. Both sides connect outward to a channel instead - but only to let a guest join. It does not carry video; a guest whose network blocks a direct connection still needs a relay. Optional, and only used by a guest whose invite needs it.")
                 }
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -59,17 +59,17 @@ extension RemoteCoOpSettingsPage {
                         VStack(alignment: .leading, spacing: 4 * uiScale) {
                             Text(route.situation)
                                 .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Text(route.requirement)
                                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8 * uiScale)
                         Text(route.status)
                             .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                             .tracking(0.6)
-                            .foregroundStyle(route.isReady ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(route.isReady ? OPNDesign.accentInk : OPNDesign.Text.tertiary)
                             .fixedSize()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,7 +102,7 @@ extension RemoteCoOpSettingsPage {
             Text(term.uppercased())
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                 .tracking(0.8)
-                .foregroundStyle(OpenNOWDesign.accentInk)
+                .foregroundStyle(OPNDesign.accentInk)
             Text(meaning)
                 .fixedSize(horizontal: false, vertical: true)
         }

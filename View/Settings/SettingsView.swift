@@ -3,16 +3,16 @@ import CryptoKit
 import SwiftUI
 
 enum SettingsVendorLayout {
-    static var surface: Color { OpenNOWDesign.Surface.deep }
-    static var sidebar: Color { OpenNOWDesign.Surface.field }
-    static var card: Color { OpenNOWDesign.Surface.panel }
-    static var cardRaised: Color { OpenNOWDesign.Surface.panelRaised }
-    static var row: Color { OpenNOWDesign.Fill.neutral(0.045) }
+    static var surface: Color { OPNDesign.Surface.deep }
+    static var sidebar: Color { OPNDesign.Surface.field }
+    static var card: Color { OPNDesign.Surface.panel }
+    static var cardRaised: Color { OPNDesign.Surface.panelRaised }
+    static var row: Color { OPNDesign.Fill.neutral(0.045) }
 }
 
 extension Font {
-    static func settingsFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
-        OpenNOWUIFont.font(size: size, weight: weight)
+    static func settingsFont(size: CGFloat, weight: OPNUIFont.Weight = .regular) -> Font {
+        OPNUIFont.font(size: size, weight: weight)
     }
 }
 
@@ -123,7 +123,7 @@ struct SettingsView: View {
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
     @StateObject private var focus = ControllerSettingsFocusModel()
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var windowWidth: CGFloat = 0
 
     private static let tabBarFocusID = "settings-tabs"
@@ -241,7 +241,7 @@ struct SettingsSurfaceBackground: View {
     var body: some View {
         ZStack {
             SettingsVendorLayout.surface
-            LinearGradient(colors: [OpenNOWDesign.accent.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .center)
+            LinearGradient(colors: [OPNDesign.accent.opacity(0.035), .clear], startPoint: .topLeading, endPoint: .center)
             LinearGradient(colors: [.black.opacity(0.22), .clear, .black.opacity(0.18)], startPoint: .leading, endPoint: .trailing)
         }
     }
@@ -301,7 +301,7 @@ struct SettingsTabBar: View {
         .background(SettingsVendorLayout.sidebar)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)
         }
     }
@@ -397,14 +397,14 @@ struct SettingsTabItem: View {
                 Image(systemName: icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
+                    .foregroundStyle(isSelected ? OPNDesign.accentInk : (isHovering ? OPNDesign.Text.secondary : OPNDesign.Text.tertiary))
                     .frame(width: 15 * uiScale, height: 15 * uiScale)
                 Text(title)
                     .font(.settingsFont(size: 12.5 * uiScale, weight: isSelected ? .bold : .medium))
-                    .foregroundStyle(isSelected ? OpenNOWDesign.Text.primary : (isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary))
+                    .foregroundStyle(isSelected ? OPNDesign.Text.primary : (isHovering ? OPNDesign.Text.primary : OPNDesign.Text.tertiary))
                     .lineLimit(1)
                     .fixedSize()
-                if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale * 0.85, compact: true) }
+                if showsBetaTag { OPNBetaTag(uiScale: uiScale * 0.85, compact: true) }
             }
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 34 * uiScale)
@@ -420,11 +420,11 @@ struct SettingsTabItem: View {
     @ViewBuilder private var background: some View {
         if isSelected {
             shape
-                .fill(OpenNOWDesign.accent.opacity(0.14))
-                .overlay(shape.strokeBorder(OpenNOWDesign.accent.opacity(0.34), lineWidth: 1))
+                .fill(OPNDesign.accent.opacity(0.14))
+                .overlay(shape.strokeBorder(OPNDesign.accent.opacity(0.34), lineWidth: 1))
                 .matchedGeometryEffect(id: "settings-tab-pill", in: pill)
         } else if isHovering {
-            shape.fill(OpenNOWDesign.Stroke.subtle)
+            shape.fill(OPNDesign.Stroke.subtle)
         }
     }
 }
@@ -436,7 +436,7 @@ struct SettingsContent: View {
     var focusedID: String?
 
     @Environment(\.controllerFocusActive) private var isPadFocusActive
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var contentWidth: CGFloat = 0
     /// True for the frames a search jump needs every card present. See `SettingsStack`.
     @State private var isJumping = false
@@ -616,14 +616,14 @@ struct SettingsHeader: View {
                 VStack(alignment: .leading, spacing: 8 * uiScale) {
                     Text(title.uppercased())
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accentInk)
+                        .foregroundStyle(OPNDesign.accentInk)
                         .tracking(1.5)
                     Text(title)
                         .font(.settingsFont(size: 34 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text(subtitle)
                         .font(.settingsFont(size: 14 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
                 Spacer(minLength: 24 * uiScale)
             }

@@ -3,7 +3,7 @@ import Testing
 @testable import OpenNOW
 
 @MainActor @Suite(.serialized) struct SessionReadyActionTests {
-    private let key = OpenNOWSessionReadyAction.modeKey
+    private let key = OPNSessionReadyAction.modeKey
 
     private func withPreservedMode(_ body: () -> Void) {
         let existing = UserDefaults.standard.object(forKey: key)
@@ -22,16 +22,16 @@ import Testing
     @Test func unsetModeDefaultsToNotification() {
         withPreservedMode {
             UserDefaults.standard.removeObject(forKey: key)
-            #expect(OpenNOWSessionReadyAction.mode == .notification)
-            #expect(!OpenNOWSessionReadyAction.isFullScreenRequestedWhenReady)
+            #expect(OPNSessionReadyAction.mode == .notification)
+            #expect(!OPNSessionReadyAction.isFullScreenRequestedWhenReady)
         }
     }
 
     @Test func onlyFullScreenModeRequestsAFullScreenStream() {
         withPreservedMode {
-            for mode in OpenNOWSessionReadyAction.Mode.allCases {
-                OpenNOWSessionReadyAction.mode = mode
-                #expect(OpenNOWSessionReadyAction.isFullScreenRequestedWhenReady == (mode == .fullScreen))
+            for mode in OPNSessionReadyAction.Mode.allCases {
+                OPNSessionReadyAction.mode = mode
+                #expect(OPNSessionReadyAction.isFullScreenRequestedWhenReady == (mode == .fullScreen))
             }
         }
     }
@@ -39,7 +39,7 @@ import Testing
     @Test func unknownStoredModeFallsBackToNotification() {
         withPreservedMode {
             UserDefaults.standard.set("bring-to-front-and-full-screen", forKey: key)
-            #expect(OpenNOWSessionReadyAction.mode == .notification)
+            #expect(OPNSessionReadyAction.mode == .notification)
         }
     }
 }

@@ -34,12 +34,12 @@ struct SystemSettingsPage: View {
                 HStack(alignment: .center, spacing: 10 * uiScale) {
                     Text(systemSummaryTitle)
                         .font(.settingsFont(size: 22 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     SystemHealthChip(title: systemHealthTitle, positive: systemHealthPositive, uiScale: uiScale)
                 }
                 Text(systemSummaryDetail)
                     .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8 * uiScale) {
                     AboutStatusPill(title: "Display", value: displaySummary, uiScale: uiScale)
@@ -80,10 +80,10 @@ struct SystemSettingsPage: View {
                     VStack(alignment: .leading, spacing: 4 * uiScale) {
                         Text("Identifiers and endpoint paths are masked by default.")
                             .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                         Text("Reveal only when collecting support information locally.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
                     }
                     Spacer()
                     SettingsRevealButton(revealed: revealSensitive, uiScale: uiScale) { revealSensitive.toggle() }
@@ -160,10 +160,10 @@ struct SystemHealthChip: View {
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                 .tracking(0.8)
         }
-        .foregroundStyle(OpenNOWDesign.onAccent)
+        .foregroundStyle(OPNDesign.onAccent)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 20 * uiScale)
-        .background(positive ? OpenNOWDesign.accent : OpenNOWDesign.Semantic.warning)
+        .background(positive ? OPNDesign.accent : OPNDesign.Semantic.warning)
         .accessibilityLabel(Text(title.capitalized))
     }
 }
@@ -178,28 +178,28 @@ struct SystemCapabilityRow: View {
     var body: some View {
         HStack(spacing: 12 * uiScale) {
             Rectangle()
-                .fill(positive ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong)
+                .fill(positive ? OPNDesign.accent : OPNDesign.Stroke.strong)
                 .frame(width: 4 * uiScale, height: 42 * uiScale)
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text(title)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                 Text(subtitle)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             Spacer(minLength: 0)
             Text(value.uppercased())
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(positive ? OPNDesign.accentInk : OPNDesign.Text.tertiary)
                 .tracking(0.8)
                 .padding(.horizontal, 10 * uiScale)
                 .frame(height: 28 * uiScale)
-                .background(OpenNOWDesign.Fill.neutral(positive ? 0.07 : 0.04))
-                .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.38) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNDesign.Fill.neutral(positive ? 0.07 : 0.04))
+                .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.38) : OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
         .padding(12 * uiScale)
-        .background(OpenNOWDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(0.045))
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

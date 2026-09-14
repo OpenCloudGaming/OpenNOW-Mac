@@ -55,7 +55,7 @@ extension NativeNVSTHostViewModel {
         cursorPolicyIndex = policy.rawValue
         OPNStreamPreferences.saveCursorPolicyIndex(policy.rawValue)
         nativeView?.cursorPolicy = policy
-        WebRTCMediaTelemetry.capture("nvst.ui.cursor.policy", level: .info, message: "Native NVST cursor policy changed.", attributes: ["applicationID": configuration.applicationID, "policy": policy.label])
+        OPNStreamTelemetry.capture("nvst.ui.cursor.policy", level: .info, message: "Native NVST cursor policy changed.", attributes: ["applicationID": configuration.applicationID, "policy": policy.label])
     }
 
     /// Auto → Local → Stream → Auto, one step per click or pad activate.

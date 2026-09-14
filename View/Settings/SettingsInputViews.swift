@@ -5,7 +5,7 @@ import SwiftUI
 struct InputSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var model = InterfaceSettingsViewModel()
     @State private var inputMonitoringGranted = InputSettingsPage.isInputMonitoringGranted
 
@@ -61,20 +61,20 @@ struct InputSettingsPage: View {
         HStack(spacing: 12 * uiScale) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.uiSans(size: 14 * uiScale))
-                .foregroundStyle(OpenNOWDesign.Semantic.warning)
+                .foregroundStyle(OPNDesign.Semantic.warning)
             VStack(alignment: .leading, spacing: 2 * uiScale) {
                 Text("Input Monitoring Permission Required")
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                 Text("Grant permission in System Settings → Privacy & Security → Input Monitoring, or streams keep using the accelerated pointer.")
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             Spacer()
             Button("Grant Permission") {
                 SteamControllerHIDMonitor.shared.requestInputMonitoringPermission()
             }
-            .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+            .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
         }
     }
 
@@ -82,15 +82,15 @@ struct InputSettingsPage: View {
         SettingsCard(title: "Controller Mode", uiScale: uiScale) {
             HStack(alignment: .center, spacing: 18 * uiScale) {
                 Rectangle()
-                    .fill(controllerModeEnabled ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.strong)
+                    .fill(controllerModeEnabled ? OPNDesign.accent : OPNDesign.Stroke.strong)
                     .frame(width: 4 * uiScale, height: 58 * uiScale)
                 VStack(alignment: .leading, spacing: 6 * uiScale) {
                     Text(controllerModeEnabled ? "Controller mode is active" : "Desktop catalog mode is active")
                         .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text("Controller mode replaces the catalog with a TV-style interface built for gamepads, while keeping keyboard and pointer fallback available.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12 * uiScale)
@@ -118,17 +118,17 @@ struct InputSettingsPage: View {
             HStack(alignment: .center, spacing: 12 * uiScale) {
                 Image(systemName: isAnyControllerConnected ? "gamecontroller.fill" : "keyboard")
                     .font(.settingsFont(size: 18 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(OpenNOWDesign.accent.opacity(0.12))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
+                    .background(OPNDesign.accent.opacity(0.12))
+                    .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text(isAnyControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text(isAnyControllerConnected ? "Hints use symbols exposed by the connected game controller whenever the system provides them." : "Connect a controller to switch hints from keyboard keys to controller button glyphs automatically.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
@@ -146,7 +146,7 @@ extension InputSettingsPage {
     /// What the preference actually governs: whether a click on the video may take the pointer, and
     /// whether an absolute cursor is held inside the window. Following the seat into mouselook is
     /// deliberately not gated on it (`NativeWebRTCStreamView.allowsRelativeCapture`), and the
-    /// release shortcut is Command-P (`WebRTCMediaStreamCommand.togglePointerCapture`, keyCode 35).
+    /// release shortcut is Command-P (`StreamCommand.togglePointerCapture`, keyCode 35).
     nonisolated static let directMouseInputSubtitle = "Let a click on the video take the pointer for relative aiming, and keep an absolute game cursor inside the stream window. Command-P gives the pointer back. Games that hide their own cursor still switch to relative aiming with this off."
 
     static let sections: [SettingsSection] = [

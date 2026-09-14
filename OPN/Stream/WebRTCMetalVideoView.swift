@@ -471,7 +471,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         let enhancedOK = enhancementRenderer.renderFrame(frame, to: metalView, settings: settings, result: result)
         if !enhancedOK, enhancement.fillMode.needsCustomRenderPath, result.fallbackReason != lastLoggedFallbackReason {
             lastLoggedFallbackReason = result.fallbackReason
-            OpenNOWLog.info(.stream, "Pillarbox custom path FELL BACK: \(result.fallbackReason)")
+            OPNLog.info(.stream, "Pillarbox custom path FELL BACK: \(result.fallbackReason)")
         }
         if enhancedOK {
             applyEnhancementSuccess(result, drawSerial: drawSerial, targetFrameTimeMs: settings.targetFrameTimeMs, diagnostics: &diagnostics)

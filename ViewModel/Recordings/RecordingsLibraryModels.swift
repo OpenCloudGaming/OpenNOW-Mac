@@ -12,9 +12,9 @@ struct RecordingLibraryStats {
     let count: Int
     let totalDurationSeconds: Double
     let totalBytes: Int64
-    let newest: WebRTCStreamRecording?
+    let newest: StreamRecording?
 
-    init(recordings: [WebRTCStreamRecording]) {
+    init(recordings: [StreamRecording]) {
         count = recordings.count
         totalDurationSeconds = recordings.reduce(0) { $0 + $1.durationSeconds }
         totalBytes = recordings.reduce(0) { $0 + $1.fileSizeBytes }
@@ -42,8 +42,8 @@ enum RecordingSortOrder: String, CaseIterable, Identifiable {
     }
 }
 
-extension Array where Element == WebRTCStreamRecording {
-    func sorted(using order: RecordingSortOrder) -> [WebRTCStreamRecording] {
+extension Array where Element == StreamRecording {
+    func sorted(using order: RecordingSortOrder) -> [StreamRecording] {
         switch order {
         case .newest: return sorted { $0.createdAt > $1.createdAt }
         case .oldest: return sorted { $0.createdAt < $1.createdAt }
@@ -83,7 +83,7 @@ enum RecordingFilter: String, CaseIterable, Identifiable {
         }
     }
 
-    func matches(_ recording: WebRTCStreamRecording) -> Bool {
+    func matches(_ recording: StreamRecording) -> Bool {
         switch self {
         case .fourK: return recording.width >= 3840 || recording.height >= 2160
         case .qhd: return recording.width >= 2560 || recording.height >= 1440

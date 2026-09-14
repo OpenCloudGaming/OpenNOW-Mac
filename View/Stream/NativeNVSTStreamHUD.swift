@@ -43,11 +43,11 @@ extension NativeNVSTMediaStreamSurface {
         HStack(spacing: 12) {
             Text(label)
                 .font(.streamFont(size: 11, weight: .medium))
-                .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
+                .foregroundStyle(StreamHUDTheme.textTertiary)
             Spacer(minLength: 8)
             Text(value)
                 .font(.streamFont(size: 11, weight: .bold))
-                .foregroundStyle(WebRTCMediaStreamTheme.textPrimary)
+                .foregroundStyle(StreamHUDTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }

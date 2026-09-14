@@ -41,10 +41,10 @@ struct RecordingEditorView: View {
         .padding(.bottom, 0)
         // The fill runs past the content into the window's bottom inset. Without this the drawer
         // stopped short of the frame and the page backdrop showed through in the corners.
-        .background(OpenNOWDesign.Surface.deep.ignoresSafeArea(edges: .bottom))
+        .background(OPNDesign.Surface.deep.ignoresSafeArea(edges: .bottom))
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(isControllerFocused ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
+                .fill(isControllerFocused ? OPNDesign.accent : OPNDesign.Stroke.subtle)
                 .frame(height: isControllerFocused ? 2 : 1)
         }
         .onChange(of: viewModel.previewSignature) { _, _ in onPreviewChanged() }
@@ -95,7 +95,7 @@ struct RecordingEditorView: View {
             if let window = viewModel.timelineWindowDescription {
                 Text(window)
                     .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.80))
+                    .foregroundStyle(OPNDesign.accentInk.opacity(0.80))
                     .fixedSize()
                     .padding(.trailing, 2 * uiScale)
             }
@@ -140,13 +140,13 @@ struct RecordingEditorView: View {
         HStack(spacing: 4 * uiScale) {
             Text(recordingEditorPreciseTimeText(playheadSeconds))
                 .font(.recordingsFont(size: 13 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             Text("/")
                 .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
             Text(recordingEditorPreciseTimeText(previewDurationSeconds))
                 .font(.recordingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
         }
         .monospacedDigit()
         .fixedSize()

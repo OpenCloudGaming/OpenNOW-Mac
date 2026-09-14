@@ -5,7 +5,7 @@ APP_PATH="${1:?Usage: $0 <path/to/OpenNOW.app> [output.dmg]}"
 OUTPUT_DMG="${2:-OpenNOW.dmg}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SETTINGS="${SCRIPT_DIR}/dmgbuild-settings.py"
-BACKGROUND_PNG="${SCRIPT_DIR}/../Resources/OpenNOW/dmg-background.png"
+BACKGROUND_PNG="${SCRIPT_DIR}/../Resources/OPN/dmg-background.png"
 VOLNAME="OpenNOW"
 
 if ! command -v dmgbuild >/dev/null 2>&1; then

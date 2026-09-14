@@ -100,7 +100,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var lastAcceptedStreamInputAt = Date()
     @Published var transientStreamMessage = ""
     var transientStreamMessageTask: Task<Void, Never>?
-    @Published var pendingApplicationQuitCompletion: WebRTCMediaStreamQuitDecisionHandler?
+    @Published var pendingApplicationQuitCompletion: StreamSessionQuitDecisionHandler?
     var streamingPerformanceActivity: (any NSObjectProtocol)?
     @Published var sessionLimit: StreamSessionSidebarLimit?
     @Published var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
@@ -136,7 +136,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     )
     /// The pads physically attached to this Mac. Guest slots are merged with these before the seat
     /// is told the topology, so a guest joining never un-announces the host's own controller.
-    var localGamepadTopology = NativeWebRTCGamepadTopology(playerIndices: [])
+    var localGamepadTopology = StreamGamepadTopology(playerIndices: [])
     /// What the seat was last told is connected. Diffed on every announce so a pad leaving the set
     /// gets a neutral state before it stops being announced.
     var lastAnnouncedGamepadIndices: Set<Int> = []
@@ -177,7 +177,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var showingControllerMapping = false
     @Published var hudFocusID: String?
     var hudGamepadTracker = StreamHUDGamepadTracker()
-    @Published var recordingStatus = WebRTCStreamRecordingStatus.idle
+    @Published var recordingStatus = StreamRecordingStatus.idle
     var recordingStatusResetTask: Task<Void, Never>?
     /// The settings the session actually started with, kept because the recording configuration is
     /// built from them (bitrates, fps, resolution) long after `prepareLaunch` returns.
@@ -232,9 +232,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
             }
         }
         configureInput(for: nativeView)
-        WebRTCMediaStreamLifecycle.activate(
+        StreamSessionLifecycle.activate(
             configuration.id,
-            // Both handlers land in `WebRTCMediaStreamLifecycle`'s static dictionaries, so both
+            // Both handlers land in `StreamSessionLifecycle`'s static dictionaries, so both
             // capture weakly: as a struct these closures held a value copy and retained nothing, but
             // this class owns the Metal surface, the transport and five unbounded tasks.
             //
@@ -300,7 +300,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         // session's counter timeline mid-investigation; the diagnostic file is the durable copy.
         let diagnosticLog = NvstDiagnosticLog()
         if let logURL = diagnosticLog.url {
-            WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info,
+            OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info,
                                          message: "NVST diagnostic log at \(logURL.path)")
         }
         let transport: any NativeNVSTTransport = NvstBifrostFreeTransport(
@@ -327,7 +327,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 // telemetry path was scrubbed, which put anything secret-shaped in a log the user
                 // is invited to share.
                 let sanitized = OPNSentry.sanitizedLogMessage(message)
-                WebRTCMediaTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
+                OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
                 diagnosticLog.append(sanitized)
             },
             remoteCoOpVideoRelay: remoteCoOpVideoRelay,
@@ -403,7 +403,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
                     await MainActor.run {
                         microphoneEnabled = false
                         microphoneDesiredEnabled = false
-                        WebRTCMediaTelemetry.capture("nvst.microphone.initialization.failed", level: .error, message: Self.message(for: error), attributes: ["applicationID": configuration.applicationID])
+                        OPNStreamTelemetry.capture("nvst.microphone.initialization.failed", level: .error, message: Self.message(for: error), attributes: ["applicationID": configuration.applicationID])
                     }
                 }
                 let shouldPresentStream = await MainActor.run {
@@ -456,7 +456,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
                                        targetHeight: launchProfile.upscalingTargetHeight)
         nativeView.setPresentationMode(launchProfile.presentationMode)
         onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
-        WebRTCMediaTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
+        OPNStreamTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
         nativeConnectedAt = Date()
         scheduleAutopilotEndIfRequested()
         scheduleAutopilotScriptIfRequested()
@@ -486,7 +486,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         endStreamingPerformanceMode()
         var metadata = ["applicationID": configuration.applicationID, "transport": "nvst"]
         metadata.merge(diagnostics) { current, _ in current }
-        if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
+        if let sessionError = error as? OPNStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
             metadata.merge(conflict.reportMetadata) { current, _ in current }
         }
         finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: metadata))

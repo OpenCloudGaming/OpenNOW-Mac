@@ -10,7 +10,7 @@ extension NativeWebRTCStreamView {
         disableAbsoluteCursorConfinement()
         guard !isAbsoluteCursorConfined else { return }
         guard cursorAssociationHandler(false) == .success else {
-            WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock.failed", level: .error, message: "macOS rejected relative pointer capture.", attributes: ["locked": "false"])
+            OPNStreamTelemetry.capture("webrtc.input.pointer_lock.failed", level: .error, message: "macOS rejected relative pointer capture.", attributes: ["locked": "false"])
             return
         }
         cursorAssociationGeneration &+= 1
@@ -32,7 +32,7 @@ extension NativeWebRTCStreamView {
         cursorAssociationGeneration &+= 1
         let releaseGeneration = cursorAssociationGeneration
         if associationResult != .success {
-            WebRTCMediaTelemetry.capture("webrtc.input.pointer_unlock.failed", level: .error, message: "macOS rejected relative pointer release.", attributes: ["locked": "true"])
+            OPNStreamTelemetry.capture("webrtc.input.pointer_unlock.failed", level: .error, message: "macOS rejected relative pointer release.", attributes: ["locked": "true"])
             retryCursorAssociation(generation: releaseGeneration)
         }
         isPointerLocked = false
@@ -90,7 +90,7 @@ extension NativeWebRTCStreamView {
         installPointerLockMonitor()
         installAbsoluteCursorGlobalMonitor()
         installPointerLockNotifications()
-        WebRTCMediaTelemetry.capture("webrtc.input.absolute_cursor_confined", level: .info, message: "Absolute stream cursor confined to the window.", attributes: ["confined": "true"])
+        OPNStreamTelemetry.capture("webrtc.input.absolute_cursor_confined", level: .info, message: "Absolute stream cursor confined to the window.", attributes: ["confined": "true"])
     }
 
     func disableAbsoluteCursorConfinement() {
@@ -98,7 +98,7 @@ extension NativeWebRTCStreamView {
         isAbsoluteCursorConfined = false
         removeAbsoluteCursorGlobalMonitor()
         if !isPointerLocked { removePointerLockMonitor() }
-        WebRTCMediaTelemetry.capture("webrtc.input.absolute_cursor_confined", level: .info, message: "Absolute stream cursor confinement released.", attributes: ["confined": "false"])
+        OPNStreamTelemetry.capture("webrtc.input.absolute_cursor_confined", level: .info, message: "Absolute stream cursor confinement released.", attributes: ["confined": "false"])
     }
 
     func retryCursorAssociation(generation: UInt, delay: TimeInterval = 0.01) {
@@ -126,7 +126,7 @@ extension NativeWebRTCStreamView {
     func notifyPointerLockChanged(_ locked: Bool) {
         onPointerLockChanged?(locked)
         onMouseInputModeChanged?(effectiveMouseMode)
-        WebRTCMediaTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
+        OPNStreamTelemetry.capture("webrtc.input.pointer_lock", level: .info, message: locked ? "Pointer lock enabled." : "Pointer lock disabled.", attributes: ["locked": String(locked)])
     }
 
     /// The player's own capture toggle: Cmd+P and the HUD tile. Distinct from `setPointerLocked`,

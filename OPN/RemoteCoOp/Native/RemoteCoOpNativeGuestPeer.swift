@@ -113,7 +113,7 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
             self.peerConnection = peerConnection
         }
         startStatsPolling()
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.guest_peer.started", level: .info, message: "Native Remote Co-Op guest peer created.", attributes: ["participantID": participantID.uuidString])
+        OPNStreamTelemetry.capture("webrtc.remote_coop.guest_peer.started", level: .info, message: "Native Remote Co-Op guest peer created.", attributes: ["participantID": participantID.uuidString])
     }
 
     /// Drops silently before the channel opens: approval is what opens the peer, so early packets have
@@ -193,7 +193,7 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
         guard !stateLock.withLock({ isClosed }) else { return }
         guard let track = transceiver.receiver.track else { return }
         track.isEnabled = true
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.guest_peer.track", level: .info, message: "Native Remote Co-Op guest received a track.", attributes: [
+        OPNStreamTelemetry.capture("webrtc.remote_coop.guest_peer.track", level: .info, message: "Native Remote Co-Op guest received a track.", attributes: [
             "participantID": participantID.uuidString,
             "kind": track.kind
         ])
@@ -291,7 +291,7 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
             return true
         }
         guard shouldReport else { return }
-        OpenNOWLog.warning(.stream, "Remote Co-Op guest peer lost its connection: \(reason)")
+        OPNLog.warning(.stream, "Remote Co-Op guest peer lost its connection: \(reason)")
         onConnectionFailed?(reason)
     }
 
@@ -376,7 +376,7 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
         }
         onStats?(stats)
         guard shouldLog else { return }
-        WebRTCMediaTelemetry.capture("webrtc.remote_coop.guest.inbound", level: .info, message: "Native Remote Co-Op guest inbound video.", attributes: attributes)
+        OPNStreamTelemetry.capture("webrtc.remote_coop.guest.inbound", level: .info, message: "Native Remote Co-Op guest inbound video.", attributes: attributes)
     }
 
     private func decodeMsPerFrame(inbound: RTCStatistics, framesDecoded: Int) -> Double {
