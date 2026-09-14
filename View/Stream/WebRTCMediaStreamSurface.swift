@@ -112,6 +112,9 @@ public struct WebRTCMediaStreamSurface: View {
                 }
             }
             hudChrome
+                .opnMotion(OPNDesign.Motion.panel, value: statsVisible)
+                .opnMotion(OPNDesign.Motion.panel, value: unifiedHUDVisible)
+                .opnMotion(OPNDesign.Motion.panel, value: quitMenuVisible)
                 .opnInterfaceScale(uiScale)
         }
         .background(Color.black)

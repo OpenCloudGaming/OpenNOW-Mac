@@ -136,20 +136,29 @@ struct NativeNVSTMediaStreamSurface: View {
 
     @ViewBuilder var nativeWindowOverlay: some View {
         ZStack(alignment: .topLeading) {
-            if model.nativeStatsVisible && !model.streamControlsVisible { nativeStatsHUD.allowsHitTesting(false) }
+            if model.nativeStatsVisible && !model.streamControlsVisible {
+                nativeStatsHUD.allowsHitTesting(false)
+                    .opnTransition(.move(edge: .top).combined(with: .opacity))
+            }
+            // Presentation is decided here rather than nested inside one `if` so the tap-catcher
+            // and the dock carry separate transitions: a conditional ancestor animates as one
+            // block, and the invisible catcher would slide in with the drawer.
             if model.unifiedHUDVisible {
-                ZStack {
-                    Color.black.opacity(0.001)
-                        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-                        .onTapGesture {}
-                    nativeUnifiedHUD
-                }
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
+                    .onTapGesture {}
+                    .opnTransition(.opacity)
+                nativeUnifiedHUD
+                    .opnTransition(.move(edge: .leading).combined(with: .opacity))
             }
             if model.onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: model.onScreenKeyboard) }
             if model.streamControlsVisible { nativeStreamControlsOverlay }
             if !model.networkPathAvailable && !model.streamControlsVisible { nativeNetworkRecoveryOverlay }
             if !model.transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay.allowsHitTesting(false) }
         }
+        .opnMotion(OPNDesign.Motion.panel, value: model.nativeStatsVisible)
+        .opnMotion(OPNDesign.Motion.panel, value: model.unifiedHUDVisible)
+        .opnMotion(OPNDesign.Motion.panel, value: model.streamControlsVisible)
         .opnInterfaceScale(uiScale)
     }
 

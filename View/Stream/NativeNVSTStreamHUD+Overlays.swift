@@ -45,73 +45,79 @@ extension NativeNVSTMediaStreamSurface {
             Rectangle()
                 .fill(.black.opacity(0.54))
                 .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("STREAM PAUSED")
-                        .font(.streamFont(size: 10, weight: .bold))
-                        .tracking(1.1)
-                        .foregroundStyle(StreamHUDTheme.accent)
-                    Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
-                        .font(.streamFont(size: 20, weight: .bold))
-                        .foregroundStyle(StreamHUDTheme.textPrimary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .padding(.horizontal, 22)
-                .padding(.top, 16)
-                .padding(.bottom, 14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(StreamHUDTheme.appBar)
-                Rectangle()
-                    .fill(StreamHUDTheme.divider)
-                    .frame(height: 1)
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
-                        .font(.streamFont(size: 12, weight: .medium))
-                        .foregroundStyle(StreamHUDTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
-                        StreamQuitMenuButton(
-                            title: "Resume",
-                            isPrimary: true,
-                            isFocused: model.streamControlsFocusIndex == 0,
-                            isDisabled: model.isEnding,
-                            action: model.dismissStreamControls
-                        )
-                        .keyboardShortcut(.cancelAction)
-                        StreamQuitMenuButton(
-                            title: "Pause Stream",
-                            isPrimary: false,
-                            isFocused: model.streamControlsFocusIndex == 1,
-                            isDisabled: model.isEnding,
-                            action: model.pauseFromStreamControls
-                        )
-                        StreamQuitMenuButton(
-                            title: model.isEnding ? "Quitting..." : (model.pendingApplicationQuitCompletion == nil ? "End Stream" : "Quit OpenNOW"),
-                            isPrimary: false,
-                            isFocused: model.streamControlsFocusIndex == 2,
-                            isDisabled: model.isEnding,
-                            action: model.endFromStreamControls
-                        )
-                    }
-                    Text("\(StreamCommand.shortcutGuide)   Esc Resume")
-                        .font(.streamFont(size: 11, weight: .medium).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.36))
-                }
-                .padding(18)
-            }
-            .frame(width: 440)
-            .background(StreamHUDTheme.panel.opacity(0.985))
-            .overlay {
-                Rectangle()
-                    .stroke(StreamHUDTheme.accent.opacity(0.28), lineWidth: 1)
-            }
-            .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(StreamHUDTheme.accent)
-                    .frame(height: 2)
-            }
-            .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
+                .opnTransition(.opacity)
+            nativeStreamControlsPanel
+                .opnTransition(.move(edge: .bottom).combined(with: .opacity))
         }
+    }
+
+    var nativeStreamControlsPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("STREAM PAUSED")
+                    .font(.streamFont(size: 10, weight: .bold))
+                    .tracking(1.1)
+                    .foregroundStyle(StreamHUDTheme.accent)
+                Text(configuration.title.isEmpty ? "GeForce NOW" : configuration.title)
+                    .font(.streamFont(size: 20, weight: .bold))
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 16)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(StreamHUDTheme.appBar)
+            Rectangle()
+                .fill(StreamHUDTheme.divider)
+                .frame(height: 1)
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Dismiss this overlay to resume input, pause the session, or quit the stream. Remote input is paused while this menu is open.")
+                    .font(.streamFont(size: 12, weight: .medium))
+                    .foregroundStyle(StreamHUDTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    StreamQuitMenuButton(
+                        title: "Resume",
+                        isPrimary: true,
+                        isFocused: model.streamControlsFocusIndex == 0,
+                        isDisabled: model.isEnding,
+                        action: model.dismissStreamControls
+                    )
+                    .keyboardShortcut(.cancelAction)
+                    StreamQuitMenuButton(
+                        title: "Pause Stream",
+                        isPrimary: false,
+                        isFocused: model.streamControlsFocusIndex == 1,
+                        isDisabled: model.isEnding,
+                        action: model.pauseFromStreamControls
+                    )
+                    StreamQuitMenuButton(
+                        title: model.isEnding ? "Quitting..." : (model.pendingApplicationQuitCompletion == nil ? "End Stream" : "Quit OpenNOW"),
+                        isPrimary: false,
+                        isFocused: model.streamControlsFocusIndex == 2,
+                        isDisabled: model.isEnding,
+                        action: model.endFromStreamControls
+                    )
+                }
+                Text("\(StreamCommand.shortcutGuide)   Esc Resume")
+                    .font(.streamFont(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.36))
+            }
+            .padding(18)
+        }
+        .frame(width: 440)
+        .background(StreamHUDTheme.panel.opacity(0.985))
+        .overlay {
+            Rectangle()
+                .stroke(StreamHUDTheme.accent.opacity(0.28), lineWidth: 1)
+        }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(StreamHUDTheme.accent)
+                .frame(height: 2)
+        }
+        .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
     }
 }

@@ -12,7 +12,10 @@ extension WebRTCMediaStreamSurface {
     var hudChrome: some View {
         if !isStreamReady { launchOverlay }
         if isStreamReady && !quitMenuVisible { microphoneToggleOverlay }
-        if statsVisible { statsHUD }
+        if statsVisible {
+            statsHUD
+                .opnTransition(.move(edge: .top).combined(with: .opacity))
+        }
         if unifiedHUDVisible { unifiedHUD }
         if onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: onScreenKeyboard) }
         if isStreamReady { sessionLimitCountdownOverlay }
@@ -58,7 +61,19 @@ extension WebRTCMediaStreamSurface {
         .allowsHitTesting(false)
     }
 
+    /// Presentation is decided here rather than by an `if` at the call site so the scrim and the
+    /// dock carry separate transitions: a conditional ancestor animates as one block, and the
+    /// dimming would slide in with the drawer.
     var unifiedHUD: some View {
+        ZStack {
+            Color.white.opacity(0.055)
+                .opnTransition(.opacity)
+            unifiedDock
+                .opnTransition(.move(edge: .leading).combined(with: .opacity))
+        }
+    }
+
+    var unifiedDock: some View {
         GeometryReader { proxy in
             let dockWidth = StreamHUDTheme.dockWidth(for: proxy.size.width)
             VStack(alignment: .leading, spacing: 0) {
@@ -104,7 +119,6 @@ extension WebRTCMediaStreamSurface {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white.opacity(0.055))
     }
 
     func statsCompactBox(value: String, label: String, color: Color) -> some View {
