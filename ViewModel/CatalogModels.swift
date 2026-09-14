@@ -6,6 +6,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
         case library
         case favorites
         case panel
+        case jumpBackIn
     }
 
     let id: String
@@ -153,6 +154,112 @@ struct CatalogPlaytimeStatistics: Codable, Equatable {
             return .empty
         }
         return statistics
+    }
+
+    func save(accountIdentifier: String) {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        OPNAppPreferenceStorage.standard.set(data, forKey: Self.storageKey(accountIdentifier: accountIdentifier))
+    }
+
+    private static func storageKey(accountIdentifier: String) -> String {
+        "\(storagePrefix).\(accountIdentifier)"
+    }
+}
+
+struct CatalogRecentlyPlayedGame: Codable, Equatable {
+    let title: String
+    let appId: String
+    let store: String
+    let playedAt: Date
+}
+
+/// The games this account played most recently, newest first, for the home page's Jump Back In
+/// rail: the vendor's server-side last-played history folded together with local session ends.
+struct CatalogRecentlyPlayed: Codable, Equatable {
+    private static let storagePrefix = "OpenNOW.Catalog.RecentlyPlayed"
+
+    static let empty = CatalogRecentlyPlayed()
+
+    /// The rail never grows past this; older games fall off the end.
+    static let maximumGameCount = 12
+
+    private(set) var games: [CatalogRecentlyPlayedGame] = []
+
+    mutating func record(title: String, appId: String, store: String, playedAt: Date) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAppId = appId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty || !trimmedAppId.isEmpty else { return }
+        merge([CatalogRecentlyPlayedGame(
+            title: trimmedTitle,
+            appId: trimmedAppId,
+            store: store.trimmingCharacters(in: .whitespacesAndNewlines),
+            playedAt: playedAt
+        )])
+    }
+
+    /// Folds new entries in; a game already present keeps whichever timestamp is newer, so a
+    /// session that just ended locally beats the vendor's last sync. Newest first, capped.
+    mutating func merge(_ entries: [CatalogRecentlyPlayedGame]) {
+        for entry in entries {
+            if let index = games.firstIndex(where: { Self.matches($0, entry) }) {
+                if games[index].playedAt < entry.playedAt { games[index] = entry }
+            } else {
+                games.append(entry)
+            }
+        }
+        games.sort { $0.playedAt > $1.playedAt }
+        if games.count > Self.maximumGameCount {
+            games.removeLast(games.count - Self.maximumGameCount)
+        }
+    }
+
+    /// A replayed game moves to the front rather than appearing twice. The app id wins when both
+    /// sides have one, because titles can outlive the ids the store assigned them.
+    private static func matches(_ existing: CatalogRecentlyPlayedGame, _ entry: CatalogRecentlyPlayedGame) -> Bool {
+        if !existing.appId.isEmpty, !entry.appId.isEmpty { return existing.appId == entry.appId }
+        return !existing.title.isEmpty && existing.title.caseInsensitiveCompare(entry.title) == .orderedSame
+    }
+
+    /// The vendor sends last-played as a full ISO timestamp with or without an offset, or as a bare
+    /// date. Parse all three, or nothing.
+    static func playedDate(from raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let date = Self.offsetTimestampFormatter.date(from: trimmed) { return date }
+        if let date = Self.bareTimestampFormatter.date(from: trimmed) { return date }
+        return Self.dayFormatter.date(from: trimmed)
+    }
+
+    // ISO8601DateFormatter is not Sendable, but this instance only ever parses; formatter parsing
+    // is documented thread-safe since macOS 10.9, so a shared read-only instance cannot race.
+    private nonisolated(unsafe) static let offsetTimestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let bareTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter
+    }()
+
+    static func load(accountIdentifier: String) -> CatalogRecentlyPlayed {
+        guard let data = OPNAppPreferenceStorage.standard.data(forKey: storageKey(accountIdentifier: accountIdentifier)),
+              let recentlyPlayed = try? JSONDecoder().decode(CatalogRecentlyPlayed.self, from: data) else {
+            return .empty
+        }
+        return recentlyPlayed
     }
 
     func save(accountIdentifier: String) {

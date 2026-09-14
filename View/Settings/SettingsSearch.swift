@@ -106,6 +106,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Tile Titles", .theme, "tiles", keywords: ["name", "label", "caption", "hover", "always", "never", "art"]),
         SettingsSearchEntry("Reduce Motion", .theme, "motion", keywords: ["animation", "still", "accessibility", "hover", "zoom", "parallax", "reduce"]),
         SettingsSearchEntry("Home Layout", .theme, "home-layout", keywords: ["poster", "box art", "classic", "portrait", "tiles", "carousel", "hero", "banner", "grid", "theme"]),
+        SettingsSearchEntry("Jump Back In", .theme, "home-layout", keywords: ["recent", "recently played", "continue", "history", "last played", "rail", "row"]),
     ]
 
     private static let generalEntries: [SettingsSearchEntry] = [

@@ -56,7 +56,9 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var patchStatusSecondaryText = ""
     public var librarySelected = false
     public var inLibrary = false
-}
+    /// When the account last played this variant, straight from the vendor's library sync. A raw
+    /// ISO string (or a bare date) because the vendor sends both shapes; empty when it never has.
+    public var libraryLastPlayedDate = ""}
 
 public struct OPNStoreAccountSyncingInfo: Equatable, Sendable {
     public var totalNumberOfSyncedGfnGames = 0
@@ -152,6 +154,9 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var displaysOwnRatingDuringGameplay = false
     public var isFavorited = false
     public var isInLibrary = false
+    /// The newest `libraryLastPlayedDate` across the variants — when the account last played this
+    /// title, per the vendor's own library sync. Empty when it never has.
+    public var lastPlayedDate = ""
     public var isPatching = false
     public var isFreeToPlay = false
     public var patchStatusPrimaryText = ""

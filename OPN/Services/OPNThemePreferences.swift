@@ -119,6 +119,7 @@ enum OPNThemePreferences {
     static let isMotionReducedKey = "OpenNOW.Interface.ReduceMotion"
     static let accentColorKey = "OpenNOW.Interface.Accent"
     static let appearanceKey = "OpenNOW.Interface.Appearance"
+    static let isJumpBackInEnabledKey = "OpenNOW.Interface.JumpBackIn"
 
     /// Non-SwiftUI/AppKit access point: whatever the stored raw value is, an unknown one falls
     /// back to the shipping default rather than surfacing as an optional everywhere it is read.
@@ -138,6 +139,16 @@ enum OPNThemePreferences {
             return Appearance(rawValue: rawValue) ?? .dark
         }
         set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: appearanceKey) }
+    }
+
+    /// Whether the home page draws the Jump Back In rail above My Favorites. Shipping default is
+    /// on, so presence is checked before `bool`, which reports false for a key never written.
+    static var isJumpBackInEnabled: Bool {
+        get {
+            guard OPNAppPreferenceStorage.standard.object(forKey: isJumpBackInEnabledKey) != nil else { return true }
+            return OPNAppPreferenceStorage.standard.bool(forKey: isJumpBackInEnabledKey)
+        }
+        set { OPNAppPreferenceStorage.standard.set(newValue, forKey: isJumpBackInEnabledKey) }
     }
 
     /// WCAG relative luminance of an sRGB colour, 0 (black) to 1 (white). Pure so the presets can

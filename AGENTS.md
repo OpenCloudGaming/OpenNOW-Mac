@@ -102,6 +102,5 @@ breaks the umbrella header rather than merely shrinking the checkout.
 - **Zero Warnings:** Code must pass the strictest linter and compiler settings cleanly.
 
 # Commit Standards
-- Commit all completed work before considering a task done.
-- Push completed commits to the current branch's remote tracking branch on `origin` after committing.
-- Prefix every message with a conventional tag: `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`.
+- Do not commit or push automatically. Leave completed work in the working tree unstaged so it can be reviewed with `git diff`; commit and push only when the user explicitly asks.
+- When the user does ask for a commit, prefix every message with a conventional tag: `fix:`, `feat:`, `chore:`, `docs:`, `refactor:`, `test:`, or `style:`.

@@ -588,7 +588,7 @@ struct SettingsContent: View {
         case .remoteCoOp:
             RemoteCoOpSettingsPage(viewModel: viewModel, uiScale: uiScale)
         case .theme:
-            ThemeSettingsPage(uiScale: uiScale)
+            ThemeSettingsPage(viewModel: viewModel, uiScale: uiScale)
         case .general:
             GeneralSettingsGroup(viewModel: viewModel)
         case .labs:

@@ -18,6 +18,7 @@ enum OPNNewSettings {
         case reduceMotion
         case accentColor
         case appearance
+        case jumpBackIn
 
         /// The marketing version the row shipped in.
         nonisolated var introducedIn: String {
@@ -25,6 +26,7 @@ enum OPNNewSettings {
             case .surroundSound, .sessionReadyAction: "0.6.0"
             case .steamBigPictureMode: "0.8.0"
             case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance: "0.9.0"
+            case .jumpBackIn: "1.0.0"
             }
         }
     }

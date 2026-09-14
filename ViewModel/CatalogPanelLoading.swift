@@ -86,6 +86,7 @@ extension CatalogViewModel {
         case .games(.library, let games):
             isLoadingLibrary = false
             libraryGames = games
+            applyServerRecentlyPlayed(from: games)
             schedulePatchingPollIfNeeded()
         case .gamesFailed(.library, _):
             fetchLibraryFromNetwork()
@@ -194,6 +195,7 @@ extension CatalogViewModel {
             self.isLoadingLibrary = false
             if success {
                 self.libraryGames = games
+                self.applyServerRecentlyPlayed(from: games)
                 self.schedulePatchingPollIfNeeded()
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.libraryGames = []
@@ -254,6 +256,25 @@ extension CatalogViewModel {
         }
         favoriteGames = uniqueGames
         favoriteGameIdentities = identities
+    }
+
+    /// Folds the vendor's server-side last-played history into the Jump Back In store, so the rail
+    /// covers games played on any GeForce NOW surface, not only on this Mac.
+    func applyServerRecentlyPlayed(from games: [OPNCatalogGameObject]) {
+        let entries = games.compactMap { game -> CatalogRecentlyPlayedGame? in
+            guard let playedAt = CatalogRecentlyPlayed.playedDate(from: game.lastPlayedDate) else { return nil }
+            return CatalogRecentlyPlayedGame(
+                title: game.title,
+                appId: Self.identity(for: game),
+                store: "",
+                playedAt: playedAt
+            )
+        }
+        guard !entries.isEmpty else { return }
+        var recentlyPlayed = self.recentlyPlayed
+        recentlyPlayed.merge(entries)
+        self.recentlyPlayed = recentlyPlayed
+        recentlyPlayed.save(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: session))
     }
 
     func loadAccount() {

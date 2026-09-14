@@ -340,6 +340,17 @@ extension CatalogViewModel {
             let session = CatalogPreviousGameSession(configuration: finishedConfiguration, success: success, message: message, report: report)
             previousGameSession = session
             session.save()
+            if success {
+                var recentlyPlayed = self.recentlyPlayed
+                recentlyPlayed.record(
+                    title: session.title,
+                    appId: finishedConfiguration.applicationID,
+                    store: finishedConfiguration.selectedStore,
+                    playedAt: session.endedAt
+                )
+                self.recentlyPlayed = recentlyPlayed
+                recentlyPlayed.save(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: self.session))
+            }
             if let report, report.durationSeconds > 0 {
                 var statistics = playtimeStatistics
                 statistics.record(title: session.title, durationSeconds: report.durationSeconds, endedAt: session.endedAt)

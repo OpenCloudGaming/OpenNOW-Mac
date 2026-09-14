@@ -7,19 +7,7 @@ import Foundation
 /// browse, panel load or action message. On the Show All page that made it flash and vanish.
 @Suite @MainActor struct CatalogLaunchErrorBannerTests {
     private func makeModel() -> CatalogViewModel {
-        let account = LoginAccount(email: "a@b.c", displayName: "A", providerIdpId: "idp", providerName: "p")
-        let session = LoginSession(
-            accountEmail: "a@b.c",
-            authMethod: "test",
-            accessToken: "t",
-            clientToken: "c",
-            idToken: "i",
-            refreshToken: "r",
-            deviceId: "d",
-            expiresAt: Date().addingTimeInterval(3600),
-            clientTokenExpiresAt: Date().addingTimeInterval(3600)
-        )
-        return CatalogViewModel(account: account, session: session, onRefreshAuth: { true })
+        makeCatalogViewModelForTesting()
     }
 
     @Test func launchFailureSurvivesATransientMessageClear() {

@@ -164,6 +164,7 @@ extension OPNGameService {
             variant.patchStatusSecondaryText = patchText.secondary
         }
         variant.librarySelected = safeBool(library["selected"])
+        variant.libraryLastPlayedDate = safeString(library["lastPlayedDate"]) ?? ""
         if variant.librarySelected || Self.libraryStatusIsOwned(libraryStatus) { variant.inLibrary = true }
     }
 
@@ -173,6 +174,8 @@ extension OPNGameService {
         var firstNumericVariant = ""
         for variant in game.variants {
             if variant.inLibrary { game.isInLibrary = true }
+            // String max is safe: every vendor timestamp shape starts YYYY-MM-DD.
+            if variant.libraryLastPlayedDate > game.lastPlayedDate { game.lastPlayedDate = variant.libraryLastPlayedDate }
             if variant.isPatching { game.isPatching = true }
             if game.patchStatusPrimaryText.isEmpty { game.patchStatusPrimaryText = variant.patchStatusPrimaryText }
             if game.patchStatusSecondaryText.isEmpty { game.patchStatusSecondaryText = variant.patchStatusSecondaryText }

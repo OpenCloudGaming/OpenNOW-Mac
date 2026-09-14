@@ -59,7 +59,7 @@ extension CatalogViewModel {
             seededFilterIds = [OPNGameService.libraryCatalogFilterId]
         case .favorites:
             seededFilterIds = [OPNGameService.favoritesCatalogFilterId]
-        case .catalog, .panel:
+        case .catalog, .panel, .jumpBackIn:
             seededFilterIds = section.seeMoreFilterIds
         }
         selectedShowAllSection = section

@@ -124,7 +124,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .recording: return "Recording"
         case .network: return "Network"
         case .remoteCoOp: return "Remote Co-Op"
-        case .theme: return "Theme"
+        case .theme: return "Look"
         case .general: return "General"
         case .labs: return "Labs"
         }
@@ -139,7 +139,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .recording: return "What Command-R writes to disk, and where to find it afterwards."
         case .network: return "Server location, stream transport, and proxy routing."
         case .remoteCoOp: return "Invite a friend into your session from a browser."
-        case .theme: return "How OpenNOW looks: interface scale, and the layout the home page draws its games in."
+        case .theme: return "How OpenNOW looks: interface scale, accent, and the rails the home page draws its games in."
         case .general: return "Alerts, game launch, Discord, updates, privacy, and what this Mac can do."
         case .labs: return "Features on trial. Off by default, and liable to change or vanish."
         }
@@ -284,6 +284,14 @@ final class CatalogViewModel {
     var microphoneTestAutoStop: Task<Void, Never>?
     var previousGameSession = CatalogPreviousGameSession.load()
     var playtimeStatistics = CatalogPlaytimeStatistics.empty
+    var recentlyPlayed = CatalogRecentlyPlayed.empty {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
+    /// The Jump Back In rail is a Look choice, so it lives with the other interface preferences
+    /// and the home page rebuilds its rails when it flips.
+    var isJumpBackInEnabled = OPNThemePreferences.isJumpBackInEnabled {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     var favoriteGameIdentities: Set<String> = []
     var favoriteGames: [OPNCatalogGameObject] = [] {
@@ -357,6 +365,7 @@ final class CatalogViewModel {
         hasStarted = true
         let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
+        recentlyPlayed = CatalogRecentlyPlayed.load(accountIdentifier: playtimeAccountIdentifier)
     }
 
     private func scheduleSearchDebounce() {
@@ -413,58 +422,6 @@ final class CatalogViewModel {
         let games = Self.dedupedByTitleGrouping(marqueeGames.filter(Self.hasMarqueeHeroArtwork))
         cachedHeroRotationGames = games
         return games
-    }
-
-    var catalogSections: [CatalogSectionModel] {
-        _ = (mainPanels, catalogGames, libraryGames, favoriteGames, searchQuery, selectedFilterIds)
-        if let cachedCatalogSections { return cachedCatalogSections }
-        var sections: [CatalogSectionModel] = []
-        var seenTitles = Set<String>()
-        var seenIds = Set<String>()
-        let remoteFavoriteGames = favoriteGames
-        if !isBrowseMode, !remoteFavoriteGames.isEmpty {
-            sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: remoteFavoriteGames, kind: .favorites))
-            seenTitles.insert("My Favorites")
-            seenIds.insert("remote-favorites")
-        } else if !isBrowseMode, isLoadingFavorites {
-            sections.append(CatalogSectionModel(id: "remote-favorites", title: "My Favorites", games: [], kind: .favorites, isPlaceholder: true))
-            seenTitles.insert("My Favorites")
-            seenIds.insert("remote-favorites")
-        }
-        for panel in mainPanels {
-            for section in panel.sections where !section.games.isEmpty {
-                let title = section.title.isEmpty ? panel.title : section.title
-                let resolvedTitle = title.isEmpty ? "Featured Games" : title
-                guard !seenTitles.contains(resolvedTitle) else { continue }
-                let sectionId = section.sectionIdentity(fallbackPanelId: panel.id)
-                guard !seenIds.contains(sectionId) else { continue }
-                seenTitles.insert(resolvedTitle)
-                seenIds.insert(sectionId)
-                sections.append(CatalogSectionModel(
-                    id: sectionId,
-                    title: resolvedTitle,
-                    games: games(for: section, title: resolvedTitle, sectionId: sectionId),
-                    kind: .panel,
-                    tiles: section.tiles,
-                    seeMoreFilterIds: section.seeMoreFilterIds,
-                    seeMoreSortId: section.seeMoreSortId,
-                    seeMoreTitle: section.seeMoreTitle
-                ))
-            }
-        }
-        if isBrowseMode, !catalogGames.isEmpty {
-            sections.insert(CatalogSectionModel(id: "catalog-results", title: "Search Results", games: catalogGames, kind: .catalog), at: 0)
-        }
-        if !isBrowseMode, !libraryGames.isEmpty {
-            let insertionIndex = sections.isEmpty ? 0 : min(sections.count, 1)
-            sections.insert(CatalogSectionModel(id: "my-library", title: "My Library", games: libraryGames, kind: .library), at: insertionIndex)
-        } else if !isBrowseMode, isLoadingLibrary {
-            let insertionIndex = sections.isEmpty ? 0 : min(sections.count, 1)
-            sections.insert(CatalogSectionModel(id: "my-library", title: "My Library", games: [], kind: .library, isPlaceholder: true), at: insertionIndex)
-        }
-        let result = Array(sections.prefix(10))
-        cachedCatalogSections = result
-        return result
     }
 
     var isBrowseMode: Bool {

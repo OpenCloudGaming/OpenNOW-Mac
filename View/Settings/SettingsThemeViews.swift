@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ThemeSettingsPage: View {
+    let viewModel: CatalogViewModel
     let uiScale: CGFloat
     @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScaleStorage = OPNInterfacePreferences.defaultUIScale
     @AppStorage(OPNHomeLayout.modeKey) private var homeLayoutRawValue = OPNHomeLayout.Mode.classic.rawValue
@@ -9,6 +10,7 @@ struct ThemeSettingsPage: View {
     @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isMotionReduced = false
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
+    @AppStorage(OPNThemePreferences.isJumpBackInEnabledKey) private var isJumpBackInStorage = true
 
     private var selectedAppearanceIndex: Int {
         let appearance = OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
@@ -85,6 +87,12 @@ struct ThemeSettingsPage: View {
                 SettingsOptionRow(title: "Home Layout", subtitle: "How the keyboard-and-mouse home page is laid out. Classic keeps today's featured banner and wide landscape tiles. Poster switches to rows of tall, portrait box-art tiles. Controller mode is unaffected.", options: OPNHomeLayout.Mode.allCases.map(\.label), selectedIndex: selectedHomeLayoutIndex, isNew: OPNNewSettings.isNew(.homeLayout), uiScale: uiScale) { index in
                     OPNNewSettings.acknowledge(.homeLayout)
                     homeLayoutRawValue = OPNHomeLayout.Mode.allCases[index].rawValue
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsToggleRow(title: "Jump Back In", subtitle: "Show the games you played most recently in a rail at the top of the home page, above My Favorites.", isOn: isJumpBackInStorage, isNew: OPNNewSettings.isNew(.jumpBackIn), uiScale: uiScale) { newValue in
+                    OPNNewSettings.acknowledge(.jumpBackIn)
+                    isJumpBackInStorage = newValue
+                    viewModel.isJumpBackInEnabled = newValue
                 }
             }
             .settingsSection("home-layout")

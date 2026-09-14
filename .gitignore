@@ -117,3 +117,6 @@ scripts/nvst-experiment.sh
 # NVST protocol reverse-engineering notes: investigation logs, disassembly findings, byte-level
 # wire-format observations. Kept locally for reference, not published in the tracked tree.
 docs/NVST/*
+
+# Local tooling state (Serena MCP code-navigation config)
+.serena/

@@ -244,6 +244,7 @@ public final class OPNCatalogGameObject: NSObject {
     public var displaysOwnRatingDuringGameplay: Bool
     public var isFavorited: Bool
     public var isInLibrary: Bool
+    public var lastPlayedDate: String
     public var isPatching: Bool
     public var isFreeToPlay: Bool
     public var patchStatusPrimaryText: String
@@ -297,6 +298,7 @@ public final class OPNCatalogGameObject: NSObject {
         displaysOwnRatingDuringGameplay = game.displaysOwnRatingDuringGameplay
         isFavorited = game.isFavorited
         isInLibrary = game.isInLibrary
+        lastPlayedDate = game.lastPlayedDate
         isPatching = game.isPatching
         isFreeToPlay = game.isFreeToPlay
         patchStatusPrimaryText = game.patchStatusPrimaryText
@@ -349,6 +351,7 @@ public final class OPNCatalogGameObject: NSObject {
         game.displaysOwnRatingDuringGameplay = displaysOwnRatingDuringGameplay
         game.isFavorited = isFavorited
         game.isInLibrary = isInLibrary
+        game.lastPlayedDate = lastPlayedDate
         game.isPatching = isPatching
         game.isFreeToPlay = isFreeToPlay
         game.patchStatusPrimaryText = patchStatusPrimaryText
