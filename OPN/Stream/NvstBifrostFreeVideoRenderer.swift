@@ -126,7 +126,7 @@ public final class NvstBifrostFreeVideoRenderer {
         /// handler ends in AppKit layout, which must never sit on the decode thread's critical path.
         private func announceDecodedSize(_ size: CGSize, buffer: CVPixelBuffer) {
             let coded = CGSize(width: CVPixelBufferGetWidth(buffer), height: CVPixelBufferGetHeight(buffer))
-            OpenNOWLog.info(.stream, "NVST decoded size \(Int(size.width))x\(Int(size.height)) coded \(Int(coded.width))x\(Int(coded.height))")
+            OPNLog.info(.stream, "NVST decoded size \(Int(size.width))x\(Int(size.height)) coded \(Int(coded.width))x\(Int(coded.height))")
             lock.lock()
             let owner = owner
             lock.unlock()

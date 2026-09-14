@@ -8,7 +8,7 @@ import Testing
 /// read as "clicks stopped working in the stream" at any UI scale other than 1.
 @MainActor
 @Test func magnifiedSurfaceMarkerNeverTakesAMouseEvent() {
-    let marker = OpenNOWMagnifiedSurfaceMarkerView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+    let marker = OPNMagnifiedSurfaceMarkerView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
 
     #expect(marker.hitTest(NSPoint(x: 100, y: 50)) == nil)
     #expect(marker.hitTest(NSPoint(x: 0, y: 0)) == nil)

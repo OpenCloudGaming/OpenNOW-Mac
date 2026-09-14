@@ -151,7 +151,7 @@ struct RecordingWaveformView: View {
                 let x = CGFloat(index) * barWidth
                 path.addRect(CGRect(x: x, y: midY - height / 2, width: max(0.5, barWidth - 0.5), height: height))
             }
-            context.fill(path, with: .color(OpenNOWDesign.accent.opacity(0.55)))
+            context.fill(path, with: .color(OPNDesign.accent.opacity(0.55)))
         }
         .frame(width: size.width, height: size.height)
         .allowsHitTesting(false)

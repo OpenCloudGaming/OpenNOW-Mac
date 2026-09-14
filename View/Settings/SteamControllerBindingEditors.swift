@@ -15,12 +15,12 @@ extension SteamControllerMappingView {
             if case .gamepadChord(let combo) = target { return combo }
             return SteamControllerGripCombo()
         }()
-        return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
+        return VStack(alignment: .leading, spacing: OPNDesign.Spacing.section(scale: uiScale)) {
             Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(combo.isEmpty ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.accentInk)
-            let columns = [GridItem(.adaptive(minimum: 64 * uiScale), spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale))]
-            LazyVGrid(columns: columns, alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                .foregroundStyle(combo.isEmpty ? OPNDesign.Text.tertiary : OPNDesign.accentInk)
+            let columns = [GridItem(.adaptive(minimum: 64 * uiScale), spacing: OPNDesign.Spacing.xSmall(scale: uiScale))]
+            LazyVGrid(columns: columns, alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 ForEach(SteamControllerGripComboTarget.all) { chip in
                     SteamControllerChip(
                         label: chip.label,
@@ -120,7 +120,7 @@ extension SteamControllerMappingView {
             ? [.joystickPassthrough, .mouse, .scrollWheel, .disabled]
             : [.mouse, .scrollWheel, .disabled]
 
-        return VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
+        return VStack(alignment: .leading, spacing: OPNDesign.Spacing.section(scale: uiScale)) {
             SteamControllerEyebrow(text: "BEHAVIOR", uiScale: uiScale)
             SteamControllerOptionPicker(
                 options: availableModes.map { (value: $0, label: $0.label) },
@@ -134,19 +134,19 @@ extension SteamControllerMappingView {
                 HStack {
                     Text("Sensitivity")
                         .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                     Spacer()
                     Text(String(format: "%.0f%%", binding.wrappedValue.sensitivity * 100))
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accentInk)
+                        .foregroundStyle(OPNDesign.accentInk)
                         .monospacedDigit()
                 }
                 Slider(value: binding.sensitivity, in: 0.1...4.0)
-                    .tint(OpenNOWDesign.accent)
+                    .tint(OPNDesign.accent)
                 HStack {
                     Text("Invert Y-Axis")
                         .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                     Spacer()
                     Toggle(isOn: binding.invertY, uiScale: uiScale)
                 }

@@ -5,8 +5,8 @@ import SwiftUI
 struct WhatsNewCard: View {
     let uiScale: CGFloat
 
-    @ObservedObject private var history = OpenNOWReleaseHistoryStore.shared
-    @ObservedObject private var presentation = OpenNOWUpdatePresentation.shared
+    @ObservedObject private var history = OPNReleaseHistoryStore.shared
+    @ObservedObject private var presentation = OPNUpdatePresentation.shared
     @State private var expandedVersionIDs: Set<String> = []
     @State private var hasExpandedNewestRelease = false
     @Environment(\.openURL) private var openURL
@@ -48,7 +48,7 @@ struct WhatsNewCard: View {
         }
     }
 
-    private func releaseList(_ entries: [OpenNOWReleaseHistoryStore.Entry]) -> some View {
+    private func releaseList(_ entries: [OPNReleaseHistoryStore.Entry]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                 if index > 0 {
@@ -66,7 +66,7 @@ struct WhatsNewCard: View {
         }
     }
 
-    private func releaseRow(_ entry: OpenNOWReleaseHistoryStore.Entry) -> some View {
+    private func releaseRow(_ entry: OPNReleaseHistoryStore.Entry) -> some View {
         let isExpanded = expandedVersionIDs.contains(entry.id)
 
         return VStack(alignment: .leading, spacing: 12 * uiScale) {
@@ -76,11 +76,11 @@ struct WhatsNewCard: View {
                 HStack(spacing: 10 * uiScale) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                         .frame(width: 12 * uiScale)
                     Text(entry.version.isEmpty ? entry.summary.tagName : entry.version)
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     if entry.version == SettingsAppMetadata.version {
                         WhatsNewBadge(title: "INSTALLED", tone: .neutral, uiScale: uiScale)
                     }
@@ -89,13 +89,13 @@ struct WhatsNewCard: View {
                     }
                     Spacer(minLength: 8 * uiScale)
                     if let publishedAt = entry.publishedAt {
-                        Text(OpenNOWUpdateFormat.releaseDate(publishedAt))
+                        Text(OPNUpdateFormat.releaseDate(publishedAt))
                             .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.muted)
+                            .foregroundStyle(OPNDesign.Text.muted)
                     }
                     Text("\(entry.notes.entryCount)")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                         .frame(minWidth: 18 * uiScale, alignment: .trailing)
                 }
                 .contentShape(Rectangle())
@@ -103,27 +103,27 @@ struct WhatsNewCard: View {
             .buttonStyle(.opnPressable)
 
             if isExpanded {
-                OpenNOWReleaseNotesView(notes: entry.notes, metrics: .settings, entryLimit: 5, uiScale: uiScale)
+                OPNReleaseNotesView(notes: entry.notes, metrics: .settings, entryLimit: 5, uiScale: uiScale)
                     .padding(.leading, 22 * uiScale)
             }
         }
     }
 
-    private func availableStrip(_ release: OpenNOWGitHubRelease) -> some View {
+    private func availableStrip(_ release: OPNGitHubRelease) -> some View {
         HStack(spacing: 10 * uiScale) {
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(width: 4 * uiScale, height: 32 * uiScale)
             VStack(alignment: .leading, spacing: 3 * uiScale) {
                 HStack(spacing: 8 * uiScale) {
                     Text(release.version)
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     WhatsNewBadge(title: "AVAILABLE", tone: .accent, uiScale: uiScale)
                 }
                 Text(availableSubtitle(release))
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             Spacer(minLength: 10 * uiScale)
             SettingsActionButton(title: "VIEW UPDATE", uiScale: uiScale) {
@@ -133,10 +133,10 @@ struct WhatsNewCard: View {
         .padding(.vertical, 2 * uiScale)
     }
 
-    private func availableSubtitle(_ release: OpenNOWGitHubRelease) -> String {
+    private func availableSubtitle(_ release: OPNGitHubRelease) -> String {
         var parts = ["You're on \(SettingsAppMetadata.version)"]
         if release.assetByteCount > 0 {
-            parts.append(OpenNOWUpdateFormat.byteCount(release.assetByteCount))
+            parts.append(OPNUpdateFormat.byteCount(release.assetByteCount))
         }
         return parts.joined(separator: " · ")
     }
@@ -144,7 +144,7 @@ struct WhatsNewCard: View {
     private func statusText(_ text: String) -> some View {
         Text(text)
             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+            .foregroundStyle(OPNDesign.Text.tertiary)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -158,7 +158,7 @@ struct WhatsNewCard: View {
     }
 
     /// A release page URL is `…/releases/tag/v0.2.0`; the index is everything up to `/releases`.
-    private func releasesIndexURL(from entries: [OpenNOWReleaseHistoryStore.Entry]) -> URL? {
+    private func releasesIndexURL(from entries: [OPNReleaseHistoryStore.Entry]) -> URL? {
         for entry in entries {
             guard let range = entry.releaseURL.range(of: "/releases/") else { continue }
             return URL(string: String(entry.releaseURL[entry.releaseURL.startIndex..<range.lowerBound]) + "/releases")
@@ -180,13 +180,13 @@ private struct WhatsNewBadge: View {
     var body: some View {
         Text(title)
             .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-            .foregroundStyle(tone == .accent ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.secondary)
+            .foregroundStyle(tone == .accent ? OPNDesign.onAccent : OPNDesign.Text.secondary)
             .tracking(0.8)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 18 * uiScale)
-            .background(tone == .accent ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle)
+            .background(tone == .accent ? OPNDesign.accent : OPNDesign.Stroke.subtle)
             .overlay {
-                Rectangle().stroke(tone == .accent ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1)
+                Rectangle().stroke(tone == .accent ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
             }
     }
 }

@@ -178,14 +178,14 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
         let openStatus = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openStatus == kIOReturnSuccess else {
             cancel(manager)
-            OpenNOWLog.warning(.controller, "Raw mouse HID manager open failed status=\(openStatus)")
+            OPNLog.warning(.controller, "Raw mouse HID manager open failed status=\(openStatus)")
             return .failed(openStatus == kIOReturnNotPermitted ? .permissionDenied : .managerOpenFailed)
         }
         os_unfair_lock_lock(&lock)
         activeManager = manager
         resetPendingCountsLocked()
         os_unfair_lock_unlock(&lock)
-        OpenNOWLog.info(.controller, "Raw mouse capture started")
+        OPNLog.info(.controller, "Raw mouse capture started")
         return .started
     }
 
@@ -200,7 +200,7 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
         os_unfair_lock_unlock(&lock)
         IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         cancel(manager)
-        OpenNOWLog.info(.controller, "Raw mouse capture stopped")
+        OPNLog.info(.controller, "Raw mouse capture stopped")
     }
 
     /// Which pointing devices contribute raw counts. Everything excluded here still moves the
@@ -297,7 +297,7 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
         let firstSighting = deviceAcceptance.updateValue(accepted, forKey: ObjectIdentifier(device)) == nil
         os_unfair_lock_unlock(&lock)
         if firstSighting {
-            OpenNOWLog.info(.controller, "Raw mouse device vendor=0x\(String(format: "%04X", vendorID)) product=0x\(String(format: "%04X", productID)) builtIn=\(isBuiltIn) accepted=\(accepted)")
+            OPNLog.info(.controller, "Raw mouse device vendor=0x\(String(format: "%04X", vendorID)) product=0x\(String(format: "%04X", productID)) builtIn=\(isBuiltIn) accepted=\(accepted)")
         }
         return accepted
     }

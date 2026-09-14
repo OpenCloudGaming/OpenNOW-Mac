@@ -66,11 +66,11 @@ struct RecordingRightsNotice: View {
                         .foregroundStyle(.orange)
                     Text("About Recording GeForce NOW Sessions")
                         .font(.recordingsFont(size: 18 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                 }
                 Text("Some game publishers restrict recording or broadcasting of their titles on cloud gaming services. You are responsible for complying with the terms of service of GeForce NOW, the game publisher, and any applicable store policies when recording sessions.")
                     .font(.recordingsFont(size: 13 * uiScale, weight: .regular))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .lineSpacing(3 * uiScale)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {

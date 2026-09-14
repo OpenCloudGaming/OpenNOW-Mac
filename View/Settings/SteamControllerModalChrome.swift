@@ -26,7 +26,7 @@ enum SteamControllerSheetMetrics {
 struct SteamControllerModalTopBar: View {
     var body: some View {
         Rectangle()
-            .fill(OpenNOWDesign.accent)
+            .fill(OPNDesign.accent)
             .frame(height: 2)
             .frame(maxWidth: .infinity)
     }
@@ -36,7 +36,7 @@ struct SteamControllerModalTopBar: View {
 struct SteamControllerModalRule: View {
     var body: some View {
         Rectangle()
-            .fill(OpenNOWDesign.Stroke.subtle)
+            .fill(OPNDesign.Stroke.subtle)
             .frame(height: 1)
             .frame(maxWidth: .infinity)
     }
@@ -50,23 +50,23 @@ struct SteamControllerModalHeader: View {
     let onClose: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: OpenNOWDesign.Spacing.small(scale: uiScale)) {
+        HStack(alignment: .top, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(eyebrow)
                     .font(.settingsFont(size: 10 * uiScale, weight: .bold))
                     .tracking(1.1)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
                 Text(title)
                     .font(.settingsFont(size: 20 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
             }
-            Spacer(minLength: OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-            OpenNOWModalCloseButton(uiScale: uiScale, action: onClose)
+            Spacer(minLength: OPNDesign.Spacing.xSmall(scale: uiScale))
+            OPNModalCloseButton(uiScale: uiScale, action: onClose)
         }
-        .padding(.horizontal, OpenNOWDesign.Spacing.card(scale: uiScale))
-        .padding(.vertical, OpenNOWDesign.Spacing.medium(scale: uiScale))
+        .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+        .padding(.vertical, OPNDesign.Spacing.medium(scale: uiScale))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OpenNOWDesign.Surface.appBar)
+        .background(OPNDesign.Surface.appBar)
     }
 }
 
@@ -79,7 +79,7 @@ struct SteamControllerEyebrow: View {
         Text(text)
             .font(.settingsFont(size: 10 * uiScale, weight: .bold))
             .tracking(1.1)
-            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+            .foregroundStyle(OPNDesign.Text.tertiary)
     }
 }
 
@@ -111,7 +111,7 @@ struct SteamControllerChip: View {
                     .lineLimit(1)
             }
             .foregroundStyle(foreground)
-            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
+            .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: alignment)
             .frame(height: height * uiScale)
             .background(background)
@@ -120,24 +120,24 @@ struct SteamControllerChip: View {
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .opacity(isEnabled ? 1 : 0.46)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var foreground: Color {
-        if isSelected { return OpenNOWDesign.onAccent }
-        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
+        if isSelected { return OPNDesign.onAccent }
+        return isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary
     }
 
     private var background: Color {
-        if isSelected { return OpenNOWDesign.accent }
-        if isHovering { return OpenNOWDesign.Stroke.regular }
-        return OpenNOWDesign.Fill.neutral(0.075)
+        if isSelected { return OPNDesign.accent }
+        if isHovering { return OPNDesign.Stroke.regular }
+        return OPNDesign.Fill.neutral(0.075)
     }
 
     private var stroke: Color {
-        isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle
+        isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle
     }
 }
 
@@ -152,7 +152,7 @@ struct SteamControllerOptionPicker<Value: Hashable>: View {
     let onSelect: (Value) -> Void
 
     var body: some View {
-        SettingsFlowLayout(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        SettingsFlowLayout(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             ForEach(options.indices, id: \.self) { index in
                 let option = options[index]
                 SteamControllerChip(
@@ -183,19 +183,19 @@ struct SteamControllerValueBar: View {
             let clamped = CGFloat(max(-1, min(1, value)))
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(OpenNOWDesign.Fill.neutral(0.075))
+                    .fill(OPNDesign.Fill.neutral(0.075))
                 if signed {
                     Rectangle()
-                        .fill(OpenNOWDesign.Stroke.regular)
+                        .fill(OPNDesign.Stroke.regular)
                         .frame(width: 1)
                         .offset(x: width / 2)
                     Rectangle()
-                        .fill(OpenNOWDesign.accent)
+                        .fill(OPNDesign.accent)
                         .frame(width: width * abs(clamped) / 2)
                         .offset(x: clamped >= 0 ? width / 2 : width / 2 - width * abs(clamped) / 2)
                 } else {
                     Rectangle()
-                        .fill(OpenNOWDesign.accent)
+                        .fill(OPNDesign.accent)
                         .frame(width: width * max(0, clamped))
                 }
             }
@@ -224,10 +224,10 @@ struct SteamControllerBadge<Content: View>: View {
 
     var body: some View {
         content
-            .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+            .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
             .frame(height: 20 * uiScale)
-            .background(OpenNOWDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNDesign.Fill.neutral(0.055))
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -238,13 +238,13 @@ struct SteamControllerSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.contentVertical(scale: uiScale)) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.contentVertical(scale: uiScale)) {
             SteamControllerEyebrow(text: title, uiScale: uiScale)
             content
         }
-        .padding(OpenNOWDesign.Spacing.card(scale: uiScale))
+        .padding(OPNDesign.Spacing.card(scale: uiScale))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OpenNOWDesign.Fill.neutral(0.055))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(0.055))
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

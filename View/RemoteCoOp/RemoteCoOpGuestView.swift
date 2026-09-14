@@ -17,7 +17,7 @@ struct RemoteCoOpGuestView: View {
 
     var body: some View {
         ZStack {
-            OpenNOWDesign.Surface.deep.ignoresSafeArea()
+            OPNDesign.Surface.deep.ignoresSafeArea()
             // Gated on the phase as well as the track. A track can arrive before approval - a host
             // bug did exactly that - and rendering it put the game on screen underneath the
             // "waiting for approval" overlay, which is the one thing that overlay promises is not
@@ -106,11 +106,11 @@ struct RemoteCoOpGuestView: View {
             if viewModel.videoTrack == nil {
                 statusPanel(systemImage: "antenna.radiowaves.left.and.right")
             } else {
-                VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+                VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                     // No status pill once the video is up. "Watching <title>" restated what the guest
                     // is already looking at, and the controls next to it are the only part of this
                     // row that does anything.
-                    HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                    HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                         leaveButton
                         statsToggle
                         qualityMenu
@@ -125,15 +125,15 @@ struct RemoteCoOpGuestView: View {
                         Text([viewModel.connectedHostName, stats.overlayText].compactMap { $0 }.joined(separator: "  ·  "))
                             .catalogFont(size: 11 * uiScale, weight: .medium)
                             .monospacedDigit()
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
-                            .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
-                            .padding(.vertical, OpenNOWDesign.Spacing.xxSmall(scale: uiScale))
-                            .background(OpenNOWDesign.Surface.scrim)
+                            .foregroundStyle(OPNDesign.Text.primary)
+                            .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
+                            .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
+                            .background(OPNDesign.Surface.scrim)
                             .clipShape(Capsule())
                     }
                     Spacer()
                 }
-                .padding(OpenNOWDesign.Spacing.medium(scale: uiScale))
+                .padding(OPNDesign.Spacing.medium(scale: uiScale))
             }
         case .failed(let reason):
             failurePanel(reason: reason)
@@ -141,22 +141,22 @@ struct RemoteCoOpGuestView: View {
     }
 
     private var hostBrowser: some View {
-        VStack(spacing: OpenNOWDesign.Spacing.large(scale: uiScale)) {
+        VStack(spacing: OPNDesign.Spacing.large(scale: uiScale)) {
             Image(systemName: "gamecontroller")
                 .font(.system(size: 40 * uiScale))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
             Text("Join Remote Co-Op")
                 .catalogFont(size: 22 * uiScale, weight: .semibold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             Text(viewModel.statusText)
                 .catalogFont(size: 13 * uiScale)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
             if viewModel.hosts.isEmpty {
                 ProgressView()
                     .controlSize(.small)
-                    .padding(.top, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
+                    .padding(.top, OPNDesign.Spacing.xSmall(scale: uiScale))
             } else {
-                VStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                VStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                     ForEach(viewModel.hosts) { host in
                         Button {
                             viewModel.join(host)
@@ -167,16 +167,16 @@ struct RemoteCoOpGuestView: View {
                                     .catalogFont(size: 14 * uiScale, weight: .medium)
                                 Spacer()
                                 Image(systemName: "chevron.right")
-                                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                    .foregroundStyle(OPNDesign.Text.tertiary)
                             }
-                            .padding(.horizontal, OpenNOWDesign.Spacing.medium(scale: uiScale))
-                            .padding(.vertical, OpenNOWDesign.Spacing.small(scale: uiScale))
+                            .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
+                            .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
                             .frame(maxWidth: 360 * uiScale)
-                            .background(OpenNOWDesign.Surface.panelRaised)
+                            .background(OPNDesign.Surface.panelRaised)
                             .overlay { Rectangle().stroke(.white.opacity(0.12), lineWidth: 1) }
                         }
                         .buttonStyle(.opnPressable(scale: 0.98))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     }
                 }
             }
@@ -190,14 +190,14 @@ struct RemoteCoOpGuestView: View {
     @ViewBuilder
     private var recentAddressList: some View {
         if !viewModel.recentAddresses.isEmpty {
-            VStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+            VStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                 Text("Recent")
                     .catalogFont(size: 11 * uiScale, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                 ForEach(viewModel.recentAddresses, id: \.self) { address in
-                    HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+                    HStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                         Button { viewModel.joinRecentAddress(address) } label: {
-                            HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+                            HStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                                 Image(systemName: "clock.arrow.circlepath")
                                 Text(address)
                                     .lineLimit(1)
@@ -205,17 +205,17 @@ struct RemoteCoOpGuestView: View {
                                 Spacer(minLength: 0)
                             }
                             .catalogFont(size: 12 * uiScale, weight: .medium)
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
-                            .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
+                            .foregroundStyle(OPNDesign.Text.secondary)
+                            .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                             .frame(width: 260 * uiScale, height: 26 * uiScale, alignment: .leading)
-                            .background(OpenNOWDesign.Surface.panelRaised)
+                            .background(OPNDesign.Surface.panelRaised)
                             .overlay { Rectangle().stroke(.white.opacity(0.10), lineWidth: 1) }
                         }
                         .buttonStyle(.opnPressable(scale: 0.98))
                         Button { viewModel.forgetRecentAddress(address) } label: {
                             Image(systemName: "xmark")
                                 .catalogFont(size: 10 * uiScale, weight: .bold)
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                                 .frame(width: 20 * uiScale, height: 26 * uiScale)
                         }
                         .buttonStyle(.opnPressable(scale: 0.9))
@@ -230,54 +230,54 @@ struct RemoteCoOpGuestView: View {
     /// reachable over Tailscale or any other tunnel is invisible to it while being perfectly
     /// connectable - this is where that address goes.
     private var manualAddressField: some View {
-        VStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+        VStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
             Text("Or connect by address or invite link")
                 .catalogFont(size: 12 * uiScale, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
-            HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+                .foregroundStyle(OPNDesign.Text.tertiary)
+            HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 TextField("100.101.102.103 or https://…", text: $viewModel.manualAddress)
                     .textFieldStyle(.plain)
                     .catalogFont(size: 13 * uiScale)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
-                    .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                    .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                     .frame(width: 260 * uiScale, height: 28 * uiScale)
-                    .background(OpenNOWDesign.Surface.panelRaised)
+                    .background(OPNDesign.Surface.panelRaised)
                     .overlay { Rectangle().stroke(.white.opacity(0.16), lineWidth: 1) }
                     .onSubmit { viewModel.joinManualAddress() }
                 Button("Join") { viewModel.joinManualAddress() }
-                    .buttonStyle(OpenNOWCompactButtonStyle(role: .primary, uiScale: uiScale))
+                    .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: uiScale))
                     .disabled(viewModel.manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             Text("A Tailscale address or MagicDNS name works here, as does the invite link the host copied — use the link if they are behind a tunnel. Bonjour only reaches your local network.")
                 .catalogFont(size: 11 * uiScale)
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340 * uiScale)
         }
-        .padding(.top, OpenNOWDesign.Spacing.medium(scale: uiScale))
+        .padding(.top, OPNDesign.Spacing.medium(scale: uiScale))
     }
 
     private func statusPanel(systemImage: String) -> some View {
-        VStack(spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+        VStack(spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
             Image(systemName: systemImage)
                 .font(.system(size: 32 * uiScale))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
             Text(viewModel.statusText)
                 .catalogFont(size: 15 * uiScale, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             if viewModel.phase == .waitingForApproval, waitingElapsed > 0 {
                 Text(waitingElapsed < 60 ? "\(waitingElapsed)s" : "\(waitingElapsed / 60)m \(waitingElapsed % 60)s")
                     .catalogFont(size: 12 * uiScale, weight: .medium)
                     .monospacedDigit()
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             ProgressView()
                 .controlSize(.small)
             Button("Cancel") { viewModel.leave() }
-                .buttonStyle(OpenNOWCompactButtonStyle(role: .destructive, uiScale: uiScale))
+                .buttonStyle(OPNCompactButtonStyle(role: .destructive, uiScale: uiScale))
         }
-        .padding(OpenNOWDesign.Spacing.xLarge(scale: uiScale))
-        .background(OpenNOWDesign.Surface.panel)
+        .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
+        .background(OPNDesign.Surface.panel)
         .clipShape(RoundedRectangle(cornerRadius: 14 * uiScale, style: .continuous))
     }
 
@@ -290,10 +290,10 @@ struct RemoteCoOpGuestView: View {
                 Text("Leave")
             }
             .catalogFont(size: 11 * uiScale, weight: .medium)
-            .foregroundStyle(OpenNOWDesign.Text.primary)
-            .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
-            .padding(.vertical, OpenNOWDesign.Spacing.xxSmall(scale: uiScale))
-            .background(OpenNOWDesign.Surface.scrim)
+            .foregroundStyle(OPNDesign.Text.primary)
+            .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
+            .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
+            .background(OPNDesign.Surface.scrim)
             .clipShape(Capsule())
         }
         .buttonStyle(.opnPressable(scale: 0.95))
@@ -309,9 +309,9 @@ struct RemoteCoOpGuestView: View {
         } label: {
             Image(systemName: viewModel.statsVisible ? "speedometer" : "gauge.with.dots.needle.33percent")
                 .font(.system(size: 12 * uiScale))
-                .foregroundStyle(viewModel.statsVisible ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary)
-                .padding(OpenNOWDesign.Spacing.xxSmall(scale: uiScale))
-                .background(OpenNOWDesign.Surface.scrim)
+                .foregroundStyle(viewModel.statsVisible ? OPNDesign.Text.primary : OPNDesign.Text.tertiary)
+                .padding(OPNDesign.Spacing.xxSmall(scale: uiScale))
+                .background(OPNDesign.Surface.scrim)
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
@@ -334,15 +334,15 @@ struct RemoteCoOpGuestView: View {
                     Button(preset.label) { viewModel.requestQualityPreset(preset) }
                 }
             } label: {
-                HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+                HStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
                     Image(systemName: "slider.horizontal.3")
                     Text(viewModel.participant?.guestRequestedQualityPreset?.label ?? "Quality")
                 }
                 .catalogFont(size: 11 * uiScale, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
-                .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
-                .padding(.vertical, OpenNOWDesign.Spacing.xxSmall(scale: uiScale))
-                .background(OpenNOWDesign.Surface.scrim)
+                .foregroundStyle(OPNDesign.Text.primary)
+                .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
+                .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
+                .background(OPNDesign.Surface.scrim)
                 .clipShape(Capsule())
             }
             .menuStyle(.borderlessButton)
@@ -361,36 +361,36 @@ struct RemoteCoOpGuestView: View {
     /// cannot use a keyboard: the wire packet carries pad state, and the seat has no second keyboard
     /// to route keystrokes to.
     private var controllerMissingNotice: some View {
-        HStack(spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             Image(systemName: "gamecontroller")
             Text("No controller detected — connect one to play. Guests cannot use a keyboard or mouse.")
                 .catalogFont(size: 11 * uiScale, weight: .medium)
         }
-        .foregroundStyle(OpenNOWDesign.Text.primary)
-        .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
-        .padding(.vertical, OpenNOWDesign.Spacing.xxSmall(scale: uiScale))
-        .background(OpenNOWDesign.Semantic.destructive.opacity(0.75))
+        .foregroundStyle(OPNDesign.Text.primary)
+        .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
+        .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
+        .background(OPNDesign.Semantic.destructive.opacity(0.75))
         .clipShape(Capsule())
     }
 
     private func failurePanel(reason: String) -> some View {
-        VStack(spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+        VStack(spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 32 * uiScale))
-                .foregroundStyle(OpenNOWDesign.Semantic.destructive)
+                .foregroundStyle(OPNDesign.Semantic.destructive)
             Text("Couldn't join")
                 .catalogFont(size: 17 * uiScale, weight: .semibold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             Text(reason)
                 .catalogFont(size: 13 * uiScale)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380 * uiScale)
             Button("Back") { viewModel.leave() }
-                .buttonStyle(OpenNOWCompactButtonStyle(role: .primary, uiScale: uiScale))
+                .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: uiScale))
         }
-        .padding(OpenNOWDesign.Spacing.xLarge(scale: uiScale))
-        .background(OpenNOWDesign.Surface.panel)
+        .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
+        .background(OPNDesign.Surface.panel)
         .overlay { Rectangle().stroke(.white.opacity(0.14), lineWidth: 1) }
     }
 }

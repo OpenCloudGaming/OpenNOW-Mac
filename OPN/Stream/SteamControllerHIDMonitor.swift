@@ -254,7 +254,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         let shouldCapture = !captureRequesters.isEmpty
         guard shouldCapture != isInputCaptureActive else { return }
         isInputCaptureActive = shouldCapture
-        OpenNOWLog.info(.controller, "Input capture \(shouldCapture ? "began" : "ended")")
+        OPNLog.info(.controller, "Input capture \(shouldCapture ? "began" : "ended")")
         if shouldCapture {
             for context in devices.values {
                 configureCapture(for: context)
@@ -422,7 +422,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         isMonitorActive = true
         self.manager = manager
         scheduleActivationRetryAfterPermissionChange()
-        OpenNOWLog.info(.controller, "Monitor activated")
+        OPNLog.info(.controller, "Monitor activated")
         WebRTCMediaTelemetry.capture("webrtc.input.steamcontroller.monitor.enabled", level: .info, message: "Steam Controller support enabled.")
     }
 

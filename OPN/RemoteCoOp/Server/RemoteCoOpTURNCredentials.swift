@@ -542,7 +542,7 @@ public enum OPNRemoteCoOpTURNKeyStore {
         // Only "not found" justifies an add; anything else is a real keychain failure and adding on
         // top of it would mask the cause.
         guard update == errSecItemNotFound else {
-            OpenNOWLog.error(.stream, "Remote Co-Op could not update the stored \(account) (\(update))")
+            OPNLog.error(.stream, "Remote Co-Op could not update the stored \(account) (\(update))")
             return
         }
         let addStatus = SecItemAdd([
@@ -553,7 +553,7 @@ public enum OPNRemoteCoOpTURNKeyStore {
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ] as CFDictionary, nil)
         if addStatus != errSecSuccess {
-            OpenNOWLog.error(.stream, "Remote Co-Op could not store the \(account) (\(addStatus))")
+            OPNLog.error(.stream, "Remote Co-Op could not store the \(account) (\(addStatus))")
         }
     }
 }

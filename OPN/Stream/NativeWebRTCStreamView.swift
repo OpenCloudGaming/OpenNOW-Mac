@@ -531,7 +531,7 @@ public final class NativeWebRTCStreamView: NSView {
     /// libwebrtc session to pull them from. Also called on attach so settings chosen before the
     /// stream starts apply.
     private func pushBifrostFreeVideoSettings() {
-        OpenNOWLog.info(.stream, "Video enhancement pushed mode=\(upscalingMode) target=\(upscalingTargetHeight) pillarbox=\(pillarboxFillMode.label) dim=\(pillarboxFillDim) renderer=\(nvstBifrostFreeRenderer != nil)")
+        OPNLog.info(.stream, "Video enhancement pushed mode=\(upscalingMode) target=\(upscalingTargetHeight) pillarbox=\(pillarboxFillMode.label) dim=\(pillarboxFillDim) renderer=\(nvstBifrostFreeRenderer != nil)")
         nvstBifrostFreeRenderer?.setVideoEnhancement(mode: upscalingMode,
                                                      sharpness: upscalingSharpness,
                                                      denoise: upscalingDenoise,

@@ -18,8 +18,8 @@ struct AudioSettingsPage: View {
         SettingsCard(title: "Output", uiScale: uiScale) {
             SettingsSliderRow(title: "Game Volume", valueText: percentText(viewModel.streamProfile.gameVolume), value: viewModel.streamProfile.gameVolume, range: 0...1, step: 0.01, uiScale: uiScale, action: viewModel.setGameVolume)
             SettingsDivider(uiScale: uiScale)
-            SettingsOptionRow(title: "Surround Sound", subtitle: viewModel.surroundModeSubtitle, options: OPNStreamPreferences.surroundModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.surroundModeIndex, isNew: OpenNOWNewSettings.isNew(.surroundSound), uiScale: uiScale) { index in
-                OpenNOWNewSettings.acknowledge(.surroundSound)
+            SettingsOptionRow(title: "Surround Sound", subtitle: viewModel.surroundModeSubtitle, options: OPNStreamPreferences.surroundModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.surroundModeIndex, isNew: OPNNewSettings.isNew(.surroundSound), uiScale: uiScale) { index in
+                OPNNewSettings.acknowledge(.surroundSound)
                 viewModel.setSurroundModeIndex(index)
             }
         }

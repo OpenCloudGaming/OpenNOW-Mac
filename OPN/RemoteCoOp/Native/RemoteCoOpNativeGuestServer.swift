@@ -125,7 +125,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         // restarted server would bind a real listener and advertise over Bonjour while turning away
         // every guest that found it, which reads as a broken host rather than a stopped one.
         guard !lock.withLock({ isClosed }) else {
-            OpenNOWLog.warning(.stream, "Remote Co-Op native guest server cannot restart after close; make a new one")
+            OPNLog.warning(.stream, "Remote Co-Op native guest server cannot restart after close; make a new one")
             return
         }
         listen(on: Self.defaultPort)

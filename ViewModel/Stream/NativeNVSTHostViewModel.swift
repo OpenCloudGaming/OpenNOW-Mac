@@ -486,7 +486,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         endStreamingPerformanceMode()
         var metadata = ["applicationID": configuration.applicationID, "transport": "nvst"]
         metadata.merge(diagnostics) { current, _ in current }
-        if let sessionError = error as? OpenNOWStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
+        if let sessionError = error as? OPNStreamSessionError, case .activeSessionConflict(let conflict) = sessionError {
             metadata.merge(conflict.reportMetadata) { current, _ in current }
         }
         finishOnce(report: StreamReport(title: configuration.title, success: false, reason: .failed, message: message, durationSeconds: 0, metadata: metadata))

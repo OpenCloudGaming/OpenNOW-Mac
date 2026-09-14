@@ -8,7 +8,7 @@ struct LabsSettingsPage: View {
     static let sections: [SettingsSection] = [SettingsSection("labs", "Labs")]
 
     var body: some View {
-        if OpenNOWLabs.hasFlags {
+        if OPNLabs.hasFlags {
             flagList
         } else {
             LabsEmptyState(uiScale: uiScale)
@@ -20,9 +20,9 @@ struct LabsSettingsPage: View {
             SettingsCard(title: "In Flight", badge: .experimental, uiScale: uiScale) {
                 Text("Each of these is off by default and may change, misbehave or disappear. Turning one on is a request to be surprised.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
-                ForEach(OpenNOWLabs.flags) { flag in
+                ForEach(OPNLabs.flags) { flag in
                     SettingsDivider(uiScale: uiScale)
                     LabsFlagRow(flag: flag, uiScale: uiScale)
                 }
@@ -33,7 +33,7 @@ struct LabsSettingsPage: View {
 }
 
 struct LabsFlagRow: View {
-    let flag: OpenNOWLabsFlag
+    let flag: OPNLabsFlag
     let uiScale: CGFloat
 
     @State private var isEnabled = false
@@ -46,9 +46,9 @@ struct LabsFlagRow: View {
             uiScale: uiScale
         ) { enabled in
             isEnabled = enabled
-            OpenNOWLabs.setEnabled(flag, enabled)
+            OPNLabs.setEnabled(flag, enabled)
         }
-        .onAppear { isEnabled = OpenNOWLabs.isEnabled(flag) }
+        .onAppear { isEnabled = OPNLabs.isEnabled(flag) }
     }
 }
 
@@ -63,10 +63,10 @@ struct LabsEmptyState: View {
             VStack(spacing: 10 * uiScale) {
                 Text("Nothing in flight")
                     .font(.settingsFont(size: 22 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                 Text("New experimental features land here first, behind a switch, before they ship to everyone. Look in now and then to try one early.")
                     .font(.settingsFont(size: 14 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 420 * uiScale)
@@ -81,14 +81,14 @@ struct LabsEmptyState: View {
     private var illustration: some View {
         ZStack {
             Circle()
-                .fill(OpenNOWDesign.accent.opacity(0.10))
+                .fill(OPNDesign.accent.opacity(0.10))
                 .frame(width: 132 * uiScale, height: 132 * uiScale)
             Circle()
-                .stroke(OpenNOWDesign.accent.opacity(0.22), lineWidth: 1)
+                .stroke(OPNDesign.accent.opacity(0.22), lineWidth: 1)
                 .frame(width: 132 * uiScale, height: 132 * uiScale)
             Image(systemName: "flask.fill")
                 .font(.settingsFont(size: 48 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.85))
+                .foregroundStyle(OPNDesign.accentInk.opacity(0.85))
             bubbles
         }
         .accessibilityHidden(true)
@@ -97,7 +97,7 @@ struct LabsEmptyState: View {
     private var bubbles: some View {
         ForEach(Array(Self.bubbleLayout.enumerated()), id: \.offset) { _, bubble in
             Circle()
-                .fill(OpenNOWDesign.accent.opacity(bubble.opacity))
+                .fill(OPNDesign.accent.opacity(bubble.opacity))
                 .frame(width: bubble.size * uiScale, height: bubble.size * uiScale)
                 .offset(x: bubble.x * uiScale, y: bubble.y * uiScale)
         }

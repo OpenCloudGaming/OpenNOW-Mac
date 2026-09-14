@@ -8,7 +8,7 @@ struct SettingsDivider: View {
 
     var body: some View {
         Rectangle()
-            .fill(OpenNOWDesign.Stroke.subtle)
+            .fill(OPNDesign.Stroke.subtle)
             .frame(height: 1)
             .padding(.vertical, 14 * uiScale)
     }
@@ -23,11 +23,11 @@ struct SettingsInfoRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 16 * uiScale) {
             Text(label.uppercased())
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
                 .frame(width: 150 * uiScale, alignment: .leading)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
@@ -82,7 +82,7 @@ struct SettingsOptionRow: View {
             SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(subtitle)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -103,12 +103,12 @@ struct SettingsOptionRow: View {
                             }
                             Text(options[index])
                                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                                .foregroundStyle(index == selectedIndex ? OpenNOWDesign.onAccent : (optionEnabled ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted))
+                                .foregroundStyle(index == selectedIndex ? OPNDesign.onAccent : (optionEnabled ? OPNDesign.Text.secondary : OPNDesign.Text.muted))
                         }
                         .padding(.horizontal, 12 * uiScale)
                         .frame(height: 32 * uiScale)
-                        .background(index == selectedIndex ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(optionEnabled ? 0.07 : 0.035))
-                        .overlay { Rectangle().stroke(index == selectedIndex ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                        .background(index == selectedIndex ? OPNDesign.accent : OPNDesign.Fill.neutral(optionEnabled ? 0.07 : 0.035))
+                        .overlay { Rectangle().stroke(index == selectedIndex ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)
@@ -122,13 +122,13 @@ struct SettingsOptionRow: View {
         if isSelected {
             Image(systemName: "checkmark")
                 .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.onAccent)
+                .foregroundStyle(OPNDesign.onAccent)
                 .frame(width: 12 * uiScale, height: 12 * uiScale)
         } else {
             Rectangle()
                 .fill(color)
                 .frame(width: 12 * uiScale, height: 12 * uiScale)
-                .overlay { Rectangle().stroke(OpenNOWDesign.Fill.neutral(0.3), lineWidth: 1) }
+                .overlay { Rectangle().stroke(OPNDesign.Fill.neutral(0.3), lineWidth: 1) }
         }
     }
 
@@ -156,7 +156,7 @@ struct Toggle: View {
     let uiScale: CGFloat
     @State private var isHovering = false
 
-    private var onColor: Color { isInert ? OpenNOWDesign.Fill.neutral(0.3) : OpenNOWDesign.accent }
+    private var onColor: Color { isInert ? OPNDesign.Fill.neutral(0.3) : OPNDesign.accent }
 
     private var trackWidth: CGFloat { 34 * uiScale }
     private var trackHeight: CGFloat { 18 * uiScale }
@@ -167,10 +167,10 @@ struct Toggle: View {
         Button { isOn.toggle() } label: {
             ZStack(alignment: isOn ? .trailing : .leading) {
                 Rectangle()
-                    .fill(isOn ? onColor : (isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle))
-                    .overlay { Rectangle().stroke(isOn ? onColor : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .fill(isOn ? onColor : (isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle))
+                    .overlay { Rectangle().stroke(isOn ? onColor : OPNDesign.Stroke.regular, lineWidth: 1) }
                 Rectangle()
-                    .fill(isOn ? Color.black.opacity(0.85) : OpenNOWDesign.Fill.neutral(0.72))
+                    .fill(isOn ? Color.black.opacity(0.85) : OPNDesign.Fill.neutral(0.72))
                     .frame(width: knobSize, height: knobSize)
                     .padding(knobInset)
             }
@@ -178,8 +178,8 @@ struct Toggle: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.toggle, value: isOn)
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.toggle, value: isOn)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(isOn ? (isInert ? "On, not in effect" : "On") : "Off")
     }
@@ -216,7 +216,7 @@ struct SettingsToggleRow: View {
                 if showsSubtitle {
                     Text(subtitle)
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -263,21 +263,21 @@ private struct SettingsFieldRow<Field: View>: View {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 Text(title)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                 Text(subtitle)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .settingsLabelColumn(uiScale: uiScale)
             field(Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
                 .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 36 * uiScale)
-                .background(OpenNOWDesign.Surface.field)
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNDesign.Surface.field)
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .focused($isFieldFocused)
                 .onAppear { draft = text }
                 .onChange(of: text) { _, value in
@@ -370,7 +370,7 @@ struct SettingsSliderRow: View {
             SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
             Text(valueText)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accentInk)
+                .foregroundStyle(OPNDesign.accentInk)
         }
     }
 
@@ -385,10 +385,10 @@ struct SettingsSliderRow: View {
     private var slider: some View {
         Slider(value: Binding(get: { value }, set: { action($0) }), in: range, step: step)
             .frame(height: 20 * uiScale)
-            .tint(OpenNOWDesign.accent)
+            .tint(OPNDesign.accent)
             .background(alignment: .center) {
-                guard OpenNOWDesign.isLightAppearance else { return AnyView(EmptyView()) }
-                return AnyView(Rectangle().fill(OpenNOWDesign.Fill.neutral(0.30)).frame(height: 4 * uiScale))
+                guard OPNDesign.isLightAppearance else { return AnyView(EmptyView()) }
+                return AnyView(Rectangle().fill(OPNDesign.Fill.neutral(0.30)).frame(height: 4 * uiScale))
             }
     }
 }
@@ -422,29 +422,29 @@ struct SettingsActionButton: View {
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .controllerFocusable(focusIdentity, activate: { guard isEnabled else { return }; action() })
     }
 
     private var backgroundColor: Color {
-        guard isEnabled else { return OpenNOWDesign.Fill.neutral(0.045) }
+        guard isEnabled else { return OPNDesign.Fill.neutral(0.045) }
         switch tone {
-        case .primary: return OpenNOWDesign.accent.opacity(isHovering ? 0.88 : 1)
-        case .secondary: return OpenNOWDesign.accent.opacity(isHovering ? 0.22 : 0.14)
+        case .primary: return OPNDesign.accent.opacity(isHovering ? 0.88 : 1)
+        case .secondary: return OPNDesign.accent.opacity(isHovering ? 0.22 : 0.14)
         }
     }
 
     private var foregroundColor: Color {
-        guard isEnabled else { return OpenNOWDesign.Text.muted }
+        guard isEnabled else { return OPNDesign.Text.muted }
         switch tone {
-        case .primary: return OpenNOWDesign.onAccent
-        case .secondary: return OpenNOWDesign.accentInk
+        case .primary: return OPNDesign.onAccent
+        case .secondary: return OPNDesign.accentInk
         }
     }
 
     private var strokeColor: Color {
-        guard isEnabled else { return OpenNOWDesign.Stroke.subtle }
-        return tone == .primary ? OpenNOWDesign.accent : OpenNOWDesign.accent.opacity(0.34)
+        guard isEnabled else { return OPNDesign.Stroke.subtle }
+        return tone == .primary ? OPNDesign.accent : OPNDesign.accent.opacity(0.34)
     }
 }
 
@@ -458,19 +458,19 @@ struct SettingsStatusPill: View {
         VStack(alignment: .trailing, spacing: 3 * uiScale) {
             Text(title.uppercased())
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
                 .tracking(0.8)
             Text(value.isEmpty ? "-" : value)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(positive ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(positive ? OPNDesign.accentInk : OPNDesign.Text.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(minWidth: 94 * uiScale, alignment: .trailing)
         .frame(height: 40 * uiScale)
-        .background(OpenNOWDesign.Fill.neutral(positive ? 0.055 : 0.035))
-        .overlay { Rectangle().stroke(positive ? OpenNOWDesign.accent.opacity(0.24) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(positive ? 0.055 : 0.035))
+        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.24) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -482,15 +482,15 @@ struct SettingsMessageView: View {
     var body: some View {
         HStack(spacing: 10 * uiScale) {
             Image(systemName: systemImage)
-                .foregroundStyle(OpenNOWDesign.accentInk)
+                .foregroundStyle(OPNDesign.accentInk)
             Text(message)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
             Spacer()
         }
         .padding(12 * uiScale)
-        .background(OpenNOWDesign.Fill.neutral(0.07))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(0.07))
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 

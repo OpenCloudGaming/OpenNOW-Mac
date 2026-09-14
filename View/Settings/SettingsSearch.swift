@@ -187,13 +187,13 @@ struct SettingsSearchField: View {
         HStack(spacing: 8 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                .foregroundStyle(isFocused ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.muted)
+                .foregroundStyle(isFocused ? OPNDesign.Text.secondary : OPNDesign.Text.muted)
             // The placeholder is drawn rather than handed to the field: a prompt takes its colour
             // from the system appearance, which is not the palette this page is painted in.
             TextField("", text: $query)
                 .textFieldStyle(.plain)
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .focused($isFocused)
                 .onSubmit { isFocused = false }
                 .overlay(alignment: .leading) {
@@ -201,7 +201,7 @@ struct SettingsSearchField: View {
                     return AnyView(
                         Text("Search settings")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.muted)
+                            .foregroundStyle(OPNDesign.Text.muted)
                             .allowsHitTesting(false)
                     )
                 }
@@ -209,7 +209,7 @@ struct SettingsSearchField: View {
                 Button { query = "" } label: {
                     Image(systemName: "xmark")
                         .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -218,9 +218,9 @@ struct SettingsSearchField: View {
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(height: 30 * uiScale)
-        .background(OpenNOWDesign.Stroke.subtle)
+        .background(OPNDesign.Stroke.subtle)
         .overlay {
-            Rectangle().strokeBorder(isFocused ? OpenNOWDesign.accent.opacity(0.44) : OpenNOWDesign.Stroke.regular, lineWidth: 1)
+            Rectangle().strokeBorder(isFocused ? OPNDesign.accent.opacity(0.44) : OPNDesign.Stroke.regular, lineWidth: 1)
         }
     }
 }
@@ -238,7 +238,7 @@ struct SettingsSearchResults: View {
             if results.isEmpty {
                 Text("No setting matches \u{201C}\(query)\u{201D}.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14 * uiScale)
                     .padding(.vertical, 10 * uiScale)
@@ -263,20 +263,20 @@ struct SettingsSearchResultRow: View {
             VStack(alignment: .leading, spacing: 3 * uiScale) {
                 Text(entry.title)
                     .font(.settingsFont(size: 12.5 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Fill.neutral(isHovering ? 1 : 0.88))
+                    .foregroundStyle(OPNDesign.Fill.neutral(isHovering ? 1 : 0.88))
                     .lineLimit(1)
                 Text(SettingsSearchIndex.location(of: entry))
                     .font(.settingsFont(size: 10.5 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .lineLimit(1)
             }
             .padding(.horizontal, 14 * uiScale)
             .padding(.vertical, 8 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isHovering ? OpenNOWDesign.Fill.neutral(0.06) : .clear)
+            .background(isHovering ? OPNDesign.Fill.neutral(0.06) : .clear)
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(isHovering ? OpenNOWDesign.accent : .clear)
+                    .fill(isHovering ? OPNDesign.accent : .clear)
                     .frame(width: 3 * uiScale)
             }
             .contentShape(Rectangle())

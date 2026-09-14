@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Resources/OpenNOW/logo.png" alt="OpenNOW" width="140">
+<img src="Resources/OPN/logo.png" alt="OpenNOW" width="140">
 
 # OpenNOW
 
@@ -199,13 +199,13 @@ swift test --scratch-path .build/shared
 
 **Layout**
 
-- `Model` - persisted SwiftData models, DTOs, stream value types, Twitch realtime models, and catalog value objects
-- `OpenNOWApp.swift` - macOS app entry point
+- `Model` - persisted SwiftData models, DTOs, stream value types, and catalog value objects
+- `OPNApp.swift` - macOS app entry point
 - `App` - application delegate and app-lifecycle wiring
 - `Resources` - bundled images, fonts, and store icon assets
 - `View` - SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
 - `ViewModel` - observable UI state for login, catalog, controller catalog, and recordings
-- `OPN` - authentication, catalog/session services, native WebRTC, telemetry, Twitch, preferences, logging, and app infrastructure
+- `OPN` - authentication, catalog/session services, native WebRTC, telemetry, preferences, logging, and app infrastructure
 - `GFN` - protocol-specific GeForce NOW clients and wire types (CloudMatch, GDN, Jarvis, LCARS, NesAuth, NetworkTest, NVST, Starfleet, UDS)
 - `RemoteCoOp` - Remote Co-Op operator notes; the guest page itself ships in `Resources/RemoteCoOp/browser`
 - `Tests` - root SwiftPM test target covering the package-exposed production logic
@@ -218,7 +218,7 @@ The root `Package.swift` exposes a testable `OpenNOW` library target over non-ap
 
 ```sh
 swift test --scratch-path .build/shared --filter WebRTCStreamRecording
-swift test --scratch-path .build/shared --filter OpenNOWGameServicesTests
+swift test --scratch-path .build/shared --filter GameServicesTests
 ```
 
 Avoid package-local build directories during normal development. Use the root package and shared scratch path so generated SwiftPM state stays in one place and large binary artifacts such as `sentry-cocoa` are not duplicated.

@@ -1,0 +1,272 @@
+import AppKit
+
+@MainActor
+final class OPNAppDelegate: NSObject, NSApplicationDelegate {
+    private static let microphoneShortcutKeyCode: UInt16 = 46
+    private static let recordingShortcutKeyCode: UInt16 = 15
+    private static let antiAFKShortcutKeyCode: UInt16 = 40
+    private static let initialUpdateCheckDelaySeconds: TimeInterval = 5
+
+    private let githubUpdater = OPNGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")
+    private var applicationUpdateCheckTimer: Timer?
+    private var updateCheckTask: Task<Void, Never>?
+    private var updateInstallTask: Task<Void, Never>?
+    private var deferredUpdateRelease: OPNGitHubRelease?
+    private var streamEndUpdateObserver: NSObjectProtocol?
+    private var streamShortcutMonitor: Any?
+    private var isCompletingUserApprovedTermination = false
+
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        OPNLog.info(.shortcut, "application(openFile:) received: \(filename)")
+        postOpenedFile(URL(fileURLWithPath: filename))
+        return true
+    }
+
+    func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        OPNLog.info(.app, "application(openFiles:) received \(filenames.count) file(s)")
+        for filename in filenames {
+            postOpenedFile(URL(fileURLWithPath: filename))
+        }
+        sender.reply(toOpenOrPrint: .success)
+    }
+
+    /// The only hook that runs before SwiftUI's window exists. `applicationDidFinishLaunching` is far
+    /// too late for this: the window is already on screen by then.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        WindowFitting.installEarlyFitting()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything can log: installed from the stream view's `onAppear`, every line captured
+        // ahead of the first stream took the sinkless path and went to `NSLog` only — out of the
+        // unified log's category, out of Sentry, and out of the diagnostics file the user uploads.
+        WebRTCMediaTelemetry.configure(sink: OPNWebRTCMediaTelemetrySink())
+        OPNLog.info(.app, "NSApplication did finish launching")
+        installStreamShortcutMonitor()
+        bindUpdatePresentation()
+        startApplicationUpdateChecks()
+        SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        OPNLog.info(.app, "NSApplication will terminate")
+        removeStreamShortcutMonitor()
+        stopApplicationUpdateChecks()
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        OPNLog.info(.app, "Application will terminate after last window closes")
+        return true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if isCompletingUserApprovedTermination {
+            OPNLog.info(.app, "Completing user-approved application termination")
+            return .terminateNow
+        }
+        guard WebRTCMediaStreamLifecycle.hasActiveStream else {
+            OPNLog.info(.app, "Application termination allowed with no active stream")
+            return .terminateNow
+        }
+        OPNLog.warning(.app, "Application termination requested while a stream is active")
+        guard WebRTCMediaStreamLifecycle.requestApplicationQuitDecision(completion: { [weak self, sender] shouldTerminateApplication in
+            if shouldTerminateApplication {
+                self?.isCompletingUserApprovedTermination = true
+                OPNLog.info(.app, "User approved application termination with active stream")
+            } else {
+                OPNLog.info(.app, "User cancelled application termination with active stream")
+            }
+            sender.reply(toApplicationShouldTerminate: shouldTerminateApplication)
+        }) else {
+            OPNLog.warning(.app, "Active stream quit decision unavailable; allowing termination")
+            return .terminateNow
+        }
+        return .terminateLater
+    }
+
+    private func postOpenedFile(_ url: URL) {
+        Task { @MainActor in
+            OPNFileOpenCoordinator.shared.enqueue(url)
+        }
+    }
+
+    private func installStreamShortcutMonitor() {
+        guard streamShortcutMonitor == nil else { return }
+        streamShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard NSApplication.shared.isActive, WebRTCMediaStreamLifecycle.hasActiveStream else { return event }
+            guard let command = Self.streamCommand(for: event) else { return event }
+            guard WebRTCMediaStreamLifecycle.sendCommand(command) else { return event }
+            return nil
+        }
+    }
+
+    private func removeStreamShortcutMonitor() {
+        guard let streamShortcutMonitor else { return }
+        NSEvent.removeMonitor(streamShortcutMonitor)
+        self.streamShortcutMonitor = nil
+    }
+
+    private static func streamCommand(for event: NSEvent) -> WebRTCMediaStreamCommand? {
+        guard let command = WebRTCMediaStreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags) else { return nil }
+        switch command {
+        case .toggleMicrophone, .toggleRecording, .toggleAntiAFK:
+            return command
+        default: return nil
+        }
+    }
+
+    static func requestApplicationUpdateCheck() {
+        (NSApp.delegate as? OPNAppDelegate)?.checkForApplicationUpdates()
+    }
+
+    static func setAutomaticApplicationUpdateChecksEnabled(_ enabled: Bool) {
+        OPNUpdatePreferences.automaticUpdateChecksEnabled = enabled
+        (NSApp.delegate as? OPNAppDelegate)?.refreshApplicationUpdateCheckSchedule()
+    }
+
+    private func startApplicationUpdateChecks() {
+        guard OPNUpdatePreferences.automaticUpdateChecksCanBeScheduled else { return }
+        guard applicationUpdateCheckTimer == nil else { return }
+        applicationUpdateCheckTimer = Timer.scheduledTimer(timeInterval: 60 * 60, target: self, selector: #selector(applicationUpdateCheckTimerFired(_:)), userInfo: nil, repeats: true)
+        // Delay the first check so it doesn't contend with the launch-time
+        // catalog and login fetches; subsequent checks stay on the hourly timer.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.initialUpdateCheckDelaySeconds))
+            self?.checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
+        }
+    }
+
+    @objc private func applicationUpdateCheckTimerFired(_ timer: Timer) {
+        checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
+    }
+
+    /// The modal and the What's New card drive the same updater instance the delegate owns, so the
+    /// install action behaves identically wherever it is triggered from.
+    private func bindUpdatePresentation() {
+        OPNReleaseHistoryStore.shared.attach(githubUpdater)
+        let presentation = OPNUpdatePresentation.shared
+        presentation.installHandler = { [weak self] release in
+            self?.installUpdate(release)
+        }
+        presentation.remindHandler = {
+            OPNUpdatePreferences.remindTomorrow()
+        }
+    }
+
+    private func stopApplicationUpdateChecks() {
+        stopAutomaticApplicationUpdateChecks(cancelActiveCheck: true)
+        updateInstallTask?.cancel()
+        updateInstallTask = nil
+        deferredUpdateRelease = nil
+        removeStreamEndUpdateObserver()
+    }
+
+    private func stopAutomaticApplicationUpdateChecks(cancelActiveCheck: Bool) {
+        applicationUpdateCheckTimer?.invalidate()
+        applicationUpdateCheckTimer = nil
+        if cancelActiveCheck {
+            updateCheckTask?.cancel()
+            updateCheckTask = nil
+        }
+    }
+
+    private func refreshApplicationUpdateCheckSchedule() {
+        guard OPNUpdatePreferences.automaticUpdateChecksCanBeScheduled else {
+            stopAutomaticApplicationUpdateChecks(cancelActiveCheck: true)
+            return
+        }
+        startApplicationUpdateChecks()
+    }
+
+    private func checkForApplicationUpdates() {
+        checkForApplicationUpdates(showingCurrentStatus: true, automatic: false)
+    }
+
+    private func checkForApplicationUpdates(showingCurrentStatus: Bool, automatic: Bool) {
+        if !automatic {
+            OPNUpdatePreferences.clearReminder()
+        }
+        if automatic, !OPNUpdatePreferences.shouldRunAutomaticUpdateCheck() { return }
+        guard updateCheckTask == nil, updateInstallTask == nil else { return }
+        updateCheckTask = Task { @MainActor in
+            defer { updateCheckTask = nil }
+            do {
+                let release = try await githubUpdater.checkForUpdate(channel: OPNUpdatePreferences.updateChannel)
+                guard let release else {
+                    if showingCurrentStatus {
+                        OPNUpdatePresentation.shared.present(.upToDate(version: githubUpdater.currentVersion))
+                    }
+                    return
+                }
+                presentUpdate(for: release, automatic: automatic)
+            } catch is CancellationError {
+                guard showingCurrentStatus else { return }
+                OPNUpdatePresentation.shared.present(.checkFailed(message: "The update check was interrupted."))
+            } catch {
+                guard showingCurrentStatus else { return }
+                OPNUpdatePresentation.shared.present(.checkFailed(message: error.localizedDescription))
+            }
+        }
+    }
+
+    /// An automatic check that lands mid-session would drop a modal over the game, so it waits for
+    /// the stream to end. A check the user asked for is shown immediately either way.
+    private func presentUpdate(for release: OPNGitHubRelease, automatic: Bool) {
+        guard !(automatic && WebRTCMediaStreamLifecycle.hasActiveStream) else {
+            OPNLog.info(.app, "Deferring update prompt for \(release.version) until the active stream ends")
+            deferredUpdateRelease = release
+            observeStreamEndForDeferredUpdate()
+            return
+        }
+        updateInstallTask?.cancel()
+        OPNUpdatePresentation.shared.present(.available(release))
+    }
+
+    private func observeStreamEndForDeferredUpdate() {
+        guard streamEndUpdateObserver == nil else { return }
+        streamEndUpdateObserver = NotificationCenter.default.addObserver(
+            forName: WebRTCMediaStreamLifecycle.activeStreamDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                (NSApp.delegate as? OPNAppDelegate)?.presentDeferredUpdateIfStreamEnded()
+            }
+        }
+    }
+
+    private func presentDeferredUpdateIfStreamEnded() {
+        guard !WebRTCMediaStreamLifecycle.hasActiveStream, let release = deferredUpdateRelease else { return }
+        deferredUpdateRelease = nil
+        removeStreamEndUpdateObserver()
+        OPNUpdatePresentation.shared.present(.available(release))
+    }
+
+    private func removeStreamEndUpdateObserver() {
+        guard let streamEndUpdateObserver else { return }
+        NotificationCenter.default.removeObserver(streamEndUpdateObserver)
+        self.streamEndUpdateObserver = nil
+    }
+
+    private func installUpdate(_ release: OPNGitHubRelease) {
+        guard updateInstallTask == nil else { return }
+        updateInstallTask = Task { @MainActor in
+            defer { updateInstallTask = nil }
+            do {
+                let launchedInstaller = try await githubUpdater.installRelease(release) { progress in
+                    Task { @MainActor in
+                        OPNUpdatePresentation.shared.reportDownloadProgress(progress)
+                    }
+                }
+                guard launchedInstaller else {
+                    OPNUpdatePresentation.shared.reportInstallFailure("OpenNOW could not launch the update installer.")
+                    return
+                }
+                NSApp.terminate(self)
+            } catch is CancellationError {
+            } catch {
+                OPNUpdatePresentation.shared.reportInstallFailure(error.localizedDescription.isEmpty ? "OpenNOW could not install the downloaded update." : error.localizedDescription)
+            }
+        }
+    }
+}

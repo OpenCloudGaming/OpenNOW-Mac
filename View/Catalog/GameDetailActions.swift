@@ -24,10 +24,10 @@ extension GameDetailPanel {
             Button { showsActionsMenu.toggle() } label: {
                 Image(systemName: "ellipsis")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 40 * uiScale, height: 40 * uiScale)
-                    .background(OpenNOWDesign.Fill.neutral(0.08))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNDesign.Fill.neutral(0.08))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .overlay {
@@ -57,37 +57,37 @@ extension GameDetailPanel {
     }
 
     func detailActionsMenuPanel(game: OPNCatalogGameObject) -> some View {
-        var items: [OpenNOWDropdownItem] = []
+        var items: [OPNDropdownItem] = []
         if game.variants.count > 1 {
-            items.append(OpenNOWDropdownItem(id: "changeStore", title: "Change game store") {
+            items.append(OPNDropdownItem(id: "changeStore", title: "Change game store") {
                 showsActionsMenu = false
                 viewModel.changeSelectedGameStore()
             })
         }
-        items.append(OpenNOWDropdownItem(id: "share", title: "Share") {
+        items.append(OPNDropdownItem(id: "share", title: "Share") {
             showsActionsMenu = false
             viewModel.shareSelectedGame()
         })
-        items.append(OpenNOWDropdownItem(id: "addShortcut", title: "Add shortcut") {
+        items.append(OPNDropdownItem(id: "addShortcut", title: "Add shortcut") {
             showsActionsMenu = false
             viewModel.addShortcutForSelectedGame()
         })
         if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
-            items.append(OpenNOWDropdownItem(id: "unmarkOwned", title: "Unmark as owned") {
+            items.append(OPNDropdownItem(id: "unmarkOwned", title: "Unmark as owned") {
                 showsActionsMenu = false
                 viewModel.removeSelectedVariantOwned()
             })
         } else if selectedVariant != nil {
-            items.append(OpenNOWDropdownItem(id: "markOwned", title: "Mark as owned") {
+            items.append(OPNDropdownItem(id: "markOwned", title: "Mark as owned") {
                 showsActionsMenu = false
                 viewModel.markSelectedVariantOwned()
             })
         }
-        items.append(OpenNOWDropdownItem(id: "visitStore", title: "Visit game store") {
+        items.append(OPNDropdownItem(id: "visitStore", title: "Visit game store") {
             showsActionsMenu = false
             viewModel.openStoreForSelectedVariant()
         })
-        return OpenNOWDropdownPanel(items: items)
+        return OPNDropdownPanel(items: items)
     }
 
     func variantStatusRow(game: OPNCatalogGameObject) -> some View {
@@ -103,11 +103,11 @@ extension GameDetailPanel {
                         Text(option.title)
                             .catalogFont(size: 12, weight: .bold)
                     }
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .frame(height: 28 * uiScale)
                     .padding(.horizontal, 10 * uiScale)
-                    .background(OpenNOWDesign.Fill.neutral(0.10))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNDesign.Fill.neutral(0.10))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Change game store, currently \(option.title)")
@@ -115,11 +115,11 @@ extension GameDetailPanel {
             // The state reads as a state, not as a second button: a dot and a word, no box.
             HStack(spacing: 6) {
                 Circle()
-                    .fill(hasAccess ? OpenNOWDesign.accent : OpenNOWDesign.Text.muted)
+                    .fill(hasAccess ? OPNDesign.accent : OPNDesign.Text.muted)
                     .frame(width: 6, height: 6)
                 Text(hasAccess ? "Ready" : "Not Owned")
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(hasAccess ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(hasAccess ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
             }
             .frame(height: 28 * uiScale)
             Spacer(minLength: 0)
@@ -134,12 +134,12 @@ extension GameDetailPanel {
         VStack(alignment: .leading, spacing: 3) {
             Text(accessBody(game: game))
                 .catalogFont(size: 13, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if showsStoreConfigurationHint(game: game) {
                 Text("Configure stores from Connections.")
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
         }
         .frame(maxWidth: 520 * uiScale, alignment: .leading)

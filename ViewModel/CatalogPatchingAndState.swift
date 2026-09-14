@@ -88,7 +88,7 @@ extension CatalogViewModel {
         }
         for error in [libraryResult.error, targetedResult.error] where !error.isEmpty {
             if refreshAuthIfNeeded(error: error) { return }
-            OpenNOWLog.warning(.catalog, "App patch status poll failed: \(error)")
+            OPNLog.warning(.catalog, "App patch status poll failed: \(error)")
         }
     }
 

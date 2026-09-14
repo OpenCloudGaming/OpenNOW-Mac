@@ -18,11 +18,11 @@ struct ControllerOverlayHeader: View {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
                 Text(title.uppercased())
                     .catalogFont(size: 27, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
                 Text(subtitle)
                     .catalogFont(size: 14, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)
@@ -30,15 +30,15 @@ struct ControllerOverlayHeader: View {
                 ControllerGlyphPill(glyph: glyphs.back)
                 Text("BACK")
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
             Button(action: close) {
                 Image(systemName: "xmark")
                     .catalogFont(size: 16, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .frame(width: 38 * uiScale, height: 38 * uiScale)
-                    .background(OpenNOWDesign.Fill.neutral(0.08))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNDesign.Fill.neutral(0.08))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
         }
@@ -54,7 +54,7 @@ struct ControllerOverlaySectionTitle: View {
         Text(title.uppercased())
             .catalogFont(size: 12, weight: .bold)
             .tracking(1.1)
-            .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.86))
+            .foregroundStyle(OPNDesign.accentInk.opacity(0.86))
     }
 }
 
@@ -68,11 +68,11 @@ struct ControllerMetadataPill: View {
         Text(text.uppercased())
             .catalogFont(size: 11, weight: .bold)
             .tracking(0.7)
-            .foregroundStyle(highlighted ? .black.opacity(0.88) : OpenNOWDesign.Text.secondary)
+            .foregroundStyle(highlighted ? .black.opacity(0.88) : OPNDesign.Text.secondary)
             .padding(.horizontal, 10 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(highlighted ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.075))
-            .overlay { Rectangle().stroke(highlighted ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .background(highlighted ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
+            .overlay { Rectangle().stroke(highlighted ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -106,7 +106,7 @@ struct ControllerHintBar: View {
             Spacer(minLength: 0)
             Text(glyphs.usesControllerGlyphs ? "Controller mode" : "Keyboard fallback")
                 .catalogFont(size: 11, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
                 .tracking(0.8)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -114,7 +114,7 @@ struct ControllerHintBar: View {
         .frame(width: layout.contentWidth, alignment: .leading)
         .frame(height: 46 * uiScale)
         .background(Color.black.opacity(0.36))
-        .overlay(alignment: .top) { Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(height: 1) }
+        .overlay(alignment: .top) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1) }
     }
 }
 
@@ -135,7 +135,7 @@ struct ControllerHintItem: View {
             }
             Text(title)
                 .catalogFont(size: 10, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .tracking(0.5)
         }
     }
@@ -189,12 +189,12 @@ struct ControllerGlyphPill: View {
                     .lineLimit(1)
             }
         }
-        .foregroundStyle(OpenNOWDesign.accentInk)
+        .foregroundStyle(OPNDesign.accentInk)
         .padding(.horizontal, (compact ? 6 : 7) * uiScale)
         .frame(minWidth: (compact ? 25 : 0) * uiScale)
         .frame(height: 22 * uiScale)
-        .background(OpenNOWDesign.accent.opacity(0.12))
-        .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
+        .background(OPNDesign.accent.opacity(0.12))
+        .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel(glyph.accessibilityLabel)
     }
 
@@ -218,11 +218,11 @@ struct ControllerKeyboardMovePill: View {
             Image(systemName: glyphs.right.symbolName)
         }
         .catalogFont(size: 11, weight: .bold)
-        .foregroundStyle(OpenNOWDesign.accentInk)
+        .foregroundStyle(OPNDesign.accentInk)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 22 * uiScale)
-        .background(OpenNOWDesign.accent.opacity(0.12))
-        .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
+        .background(OPNDesign.accent.opacity(0.12))
+        .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel("Arrow keys")
     }
 }
@@ -233,7 +233,7 @@ struct ControllerCatalogBackground: View {
 
     var body: some View {
         ZStack {
-            OpenNOWDesign.Surface.app.ignoresSafeArea()
+            OPNDesign.Surface.app.ignoresSafeArea()
             if let game {
                 CatalogRemoteImage(url: viewModel.optimizedImageURL(game.bestDetailImageURL, width: 1280), contentMode: .fill, maxPixelSize: 1280)
                     .ignoresSafeArea()

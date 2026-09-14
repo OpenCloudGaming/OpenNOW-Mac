@@ -42,24 +42,24 @@ struct SteamControllerSettingsPage: View {
                 }
                 Text("Ceiling for every rumble the game sends, on every controller. Games scale only some of their effects with their own vibration setting; this scales all of them. Also on the stream HUD (⌘G) under Controllers.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
 
                 SettingsDivider(uiScale: uiScale)
                 HStack {
                     VStack(alignment: .leading, spacing: 5 * uiScale) {
                         Text("Test Rumble")
                             .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                         Text(rumbleTestMessage ?? "Pulse the motors of every connected controller — Steam Controllers and GameController pads — at the intensity above, the way a game's rumble reaches them during a stream.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
                     }
                     Spacer()
                     Button("Rumble All") {
                         let result = ControllerRumbleTester.pulseAllControllers()
                         rumbleTestMessage = result.summary
                     }
-                    .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+                    .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
                 }
             }
 
@@ -78,15 +78,15 @@ struct SteamControllerSettingsPage: View {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: hidMonitor.inputMonitoringPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.uiSans(size: 14 * uiScale))
-                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.warning)
+                            .foregroundStyle(hidMonitor.inputMonitoringPermissionGranted ? OPNDesign.accentInk : OPNDesign.Semantic.warning)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(hidMonitor.inputMonitoringPermissionGranted ? "Input Monitoring Permission Granted" : "Input Monitoring Permission Required")
                                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Text(hidMonitor.inputMonitoringPermissionGranted ? "Steam Controller HID access is enabled" : "Grant permission in System Settings → Privacy & Security → Input Monitoring")
                                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                         }
 
                         Spacer()
@@ -96,12 +96,12 @@ struct SteamControllerSettingsPage: View {
                                 Button("Grant Permission") {
                                     hidMonitor.requestInputMonitoringPermission()
                                 }
-                                .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+                                .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
 
                                 Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
                                     resetInputMonitoringPermission()
                                 }
-                                .buttonStyle(OpenNOWCompactButtonStyle(role: .destructive, uiScale: uiScale))
+                                .buttonStyle(OPNCompactButtonStyle(role: .destructive, uiScale: uiScale))
                                 .disabled(permissionResetInFlight)
                                 .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches OpenNOW.")
                             }
@@ -109,7 +109,7 @@ struct SteamControllerSettingsPage: View {
                             Button(permissionResetInFlight ? "Resetting…" : "Reset Permission") {
                                 resetInputMonitoringPermission()
                             }
-                            .buttonStyle(OpenNOWCompactButtonStyle(role: .destructive, uiScale: uiScale))
+                            .buttonStyle(OPNCompactButtonStyle(role: .destructive, uiScale: uiScale))
                             .disabled(permissionResetInFlight)
                             .help("Clears the stale Input Monitoring entry for this app via tccutil, then quits and relaunches OpenNOW.")
                         }
@@ -119,15 +119,15 @@ struct SteamControllerSettingsPage: View {
                     HStack(spacing: 12 * uiScale) {
                         Image(systemName: accessibilityPermissionGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                             .font(.uiSans(size: 14 * uiScale))
-                            .foregroundStyle(accessibilityPermissionGranted ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.warning)
+                            .foregroundStyle(accessibilityPermissionGranted ? OPNDesign.accentInk : OPNDesign.Semantic.warning)
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(accessibilityPermissionGranted ? "Accessibility Permission Granted" : "Accessibility Permission Required")
                                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Text(accessibilityPermissionGranted ? "Holding the Steam button lets the right pad move the real macOS cursor mid-stream." : "Without it, holding the Steam button and moving a pad does nothing during a stream. Grant permission in System Settings → Privacy & Security → Accessibility.")
                                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                         }
 
                         Spacer()
@@ -136,7 +136,7 @@ struct SteamControllerSettingsPage: View {
                             Button("Grant Permission") {
                                 SteamControllerLocalCursorInjector.requestAccessibilityPermission()
                             }
-                            .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+                            .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
                         }
                     }
                     .onAppear { accessibilityPermissionGranted = SteamControllerLocalCursorInjector.hasAccessibilityPermission }
@@ -150,24 +150,24 @@ struct SteamControllerSettingsPage: View {
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text("Monitor Status")
                                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                             HStack(spacing: 6 * uiScale) {
                                 Circle()
-                                    .fill(hidMonitor.isMonitorActive ? OpenNOWDesign.accent : .red)
+                                    .fill(hidMonitor.isMonitorActive ? OPNDesign.accent : .red)
                                     .frame(width: 8 * uiScale, height: 8 * uiScale)
                                 Text(hidMonitor.isMonitorActive ? "Active" : "Inactive")
                                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                                    .foregroundStyle(OPNDesign.Text.primary)
                             }
                         }
 
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text("Controllers Connected")
                                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                             Text("\(SteamControllerHIDMonitor.connectedControllerCount)")
                                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                         }
 
                         Spacer()
@@ -179,16 +179,16 @@ struct SteamControllerSettingsPage: View {
                         VStack(alignment: .leading, spacing: 5 * uiScale) {
                             Text("Test Controller")
                                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Text("Open a visual tester to verify button presses, stick positions, and trigger values.")
                                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                         }
                         Spacer()
                         Button("Open Tester") {
                             showingControllerTest = true
                         }
-                        .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+                        .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
                     }
 
                     SettingsDivider(uiScale: uiScale)
@@ -196,16 +196,16 @@ struct SteamControllerSettingsPage: View {
                         VStack(alignment: .leading, spacing: 5 * uiScale) {
                             Text("Controller Mapping")
                                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                             Text(mappingStore.activeProfile.map { "Profile \"\($0.name)\" is applied to streams." } ?? "Bind every button, pad, and stick to a keyboard key, mouse action, or gamepad combo.")
                                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                         }
                         Spacer()
                         Button("Open Mapping") {
                             showingControllerMapping = true
                         }
-                        .buttonStyle(OpenNOWCompactButtonStyle(uiScale: uiScale))
+                        .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
                     }
                 }
             }

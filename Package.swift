@@ -49,7 +49,7 @@ let package = Package(
                 "release-please-config.json",
                 "OpenNOW-Info.plist",
                 "OpenNOW.entitlements",
-                "OpenNOWApp.swift",
+                "OPNApp.swift",
                 "OpenNOW.xcodeproj",
                 "RemoteCoOp",
                 "Resources",

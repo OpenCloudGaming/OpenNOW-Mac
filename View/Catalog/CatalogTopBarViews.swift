@@ -14,7 +14,7 @@ struct CatalogTopBar: View {
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.openWindow) private var openWindow
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
 
     /// The collapsed button and the expanded field are one element to SwiftUI, so the trip between
     /// the trailing icon row and the centre of the bar is a single interpolated frame change
@@ -45,7 +45,7 @@ struct CatalogTopBar: View {
                         .accessibilityLabel(showsMainMenu ? "Close main menu" : "Open main menu")
                         Text(mainPageTitle)
                             .catalogFont(size: 17, weight: .medium)
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                             .frame(height: 40 * uiScale, alignment: .center)
                     }
                     .background(sideClusterWidthReader)
@@ -65,7 +65,7 @@ struct CatalogTopBar: View {
                     // is a single page, so a subtitle there only repeats the title on the left.
                     Text(viewModel.selectedSettingsGroup.title)
                         .catalogFont(size: 15, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .tracking(1.1)
                         .frame(width: centeredWidth(for: proxy.size.width))
                 }
@@ -120,7 +120,7 @@ struct CatalogTopBar: View {
                                     .overlay(alignment: .topTrailing) {
                                         // No horizontal offset: the plate is 44pt and the next
                                         // button is 4pt away, so anything pushed right overhangs it.
-                                        OpenNOWBetaTag(uiScale: 0.75, prominent: true)
+                                        OPNBetaTag(uiScale: 0.75, prominent: true)
                                             .offset(y: 3 * uiScale)
                                     }
                             }
@@ -139,18 +139,18 @@ struct CatalogTopBar: View {
                                 VStack(alignment: .leading, spacing: 1 * uiScale) {
                                     Text(viewModel.account.displayName)
                                         .catalogFont(size: 15, weight: .medium)
-                                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                                        .foregroundStyle(OPNDesign.Text.primary)
                                         .lineLimit(1)
                                     Text(viewModel.subscriptionStatus.membershipTier)
                                         .catalogFont(size: 12, weight: .medium)
-                                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                        .foregroundStyle(OPNDesign.Text.secondary)
                                 }
                             }
                             Image(systemName: "chevron.down")
                                 .catalogFont(size: 10, weight: .bold)
-                                .foregroundStyle(OpenNOWDesign.Text.primary)
+                                .foregroundStyle(OPNDesign.Text.primary)
                                 .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
-                                .opnMotion(OpenNOWDesign.Motion.toggle, value: showsAccountMenu)
+                                .opnMotion(OPNDesign.Motion.toggle, value: showsAccountMenu)
                         }
                     }
                     .buttonStyle(.opnPressable(scale: 0.97))
@@ -227,11 +227,11 @@ struct CatalogTopBar: View {
         HStack(spacing: 14 * uiScale) {
             Image(systemName: "magnifyingglass")
                 .catalogFont(size: 18, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
             TextField("Search", text: $viewModel.searchQuery)
                 .textFieldStyle(.plain)
                 .catalogFont(size: 16, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
                 .focused($isSearchFieldFocused)
                 .onSubmit { viewModel.browseCatalog() }
                 .onChange(of: viewModel.searchQuery) { _, newValue in
@@ -249,13 +249,13 @@ struct CatalogTopBar: View {
                 Image(systemName: hasActiveSearchQuery ? "xmark.circle.fill" : "xmark")
             }
             .buttonStyle(.plain)
-            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+            .foregroundStyle(OPNDesign.Text.tertiary)
             .accessibilityLabel(hasActiveSearchQuery ? "Clear search" : "Close search")
         }
         .padding(.horizontal, 18 * uiScale)
         .frame(height: 46 * uiScale)
-        .background(OpenNOWDesign.Surface.field)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Surface.field)
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .onExitCommand { setSearchExpanded(false) }
     }
 }
@@ -291,7 +291,7 @@ struct CatalogAccountAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1))
+        .overlay(Circle().stroke(OPNDesign.Stroke.regular, lineWidth: 1))
     }
 
     private var fallbackAvatar: some View {
@@ -312,7 +312,7 @@ private struct CatalogTopBarPlate: ViewModifier {
             .background(isActive ? Color.black.opacity(0.22) : Color.clear)
             .overlay(alignment: .bottom) {
                 Rectangle()
-                    .fill(isActive ? OpenNOWDesign.accent : Color.clear)
+                    .fill(isActive ? OPNDesign.accent : Color.clear)
                     .frame(height: 3)
             }
             .contentShape(Rectangle())
@@ -327,10 +327,10 @@ struct CatalogTopBarIconLabel: View {
     var body: some View {
         Image(systemName: systemName)
             .catalogFont(size: 17, weight: .medium)
-            .foregroundStyle(isHovering ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.primary)
+            .foregroundStyle(isHovering ? OPNDesign.accentInk : OPNDesign.Text.primary)
             .modifier(CatalogTopBarPlate(isActive: isHovering))
             .onHover { isHovering = $0 }
-            .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+            .opnMotion(OPNDesign.Motion.hover, value: isHovering)
     }
 }
 
@@ -344,7 +344,7 @@ struct CatalogHamburgerLabel: View {
             VStack(spacing: 4 * uiScale) {
                 ForEach(0..<3, id: \.self) { index in
                     Rectangle()
-                        .fill((isOpen || isHovering) ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.84))
+                        .fill((isOpen || isHovering) ? OPNDesign.accent : OPNDesign.Fill.neutral(0.84))
                         .frame(width: (index == 1 ? 20 : 23) * uiScale, height: 2)
                         // Folds into a close cross while the drawer is open, so the button says
                         // what the click will do instead of only recolouring.
@@ -356,8 +356,8 @@ struct CatalogHamburgerLabel: View {
         }
         .modifier(CatalogTopBarPlate(isActive: isOpen || isHovering))
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
-        .opnMotion(OpenNOWDesign.Motion.toggle, value: isOpen)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.toggle, value: isOpen)
         .accessibilityLabel("Main menu")
     }
 

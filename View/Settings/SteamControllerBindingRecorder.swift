@@ -34,7 +34,7 @@ struct SteamControllerBindingRecorder: View {
             .background(background)
             .overlay {
                 Rectangle().stroke(
-                    isRecording ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.subtle,
+                    isRecording ? OPNDesign.accent : OPNDesign.Stroke.subtle,
                     lineWidth: isRecording ? 2 : 1
                 )
             }
@@ -42,18 +42,18 @@ struct SteamControllerBindingRecorder: View {
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .onDisappear { stopMonitoring() }
     }
 
     private var foreground: Color {
-        if isRecording { return OpenNOWDesign.accentInk }
-        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
+        if isRecording { return OPNDesign.accentInk }
+        return isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary
     }
 
     private var background: Color {
-        if isRecording { return OpenNOWDesign.accent.opacity(0.12) }
-        return isHovering ? OpenNOWDesign.Stroke.regular : Color.white.opacity(0.075)
+        if isRecording { return OPNDesign.accent.opacity(0.12) }
+        return isHovering ? OPNDesign.Stroke.regular : Color.white.opacity(0.075)
     }
 
     private func startRecording() {

@@ -118,22 +118,22 @@ public enum OPNTelemetryRecorder {
     public static func record(_ event: OPNTelemetryEvent, commonData: OPNTelemetryCommonData = OPNTelemetryCommonData()) -> Bool {
         guard OPNSentry.isTelemetryEnabled() else { return false }
         let attributes = sentryAttributes(event: event, commonData: commonData)
-        _ = OPNSentry.recordCounterMetric(key: "opennow.telemetry.events.count", value: 1, attributes: attributes)
+        _ = OPNSentry.recordCounterMetric(key: "opn.telemetry.events.count", value: 1, attributes: attributes)
         OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Telemetry", message: logMessage(event: event, commonData: commonData)))
         return true
     }
 
     static func sentryAttributes(event: OPNTelemetryEvent, commonData: OPNTelemetryCommonData) -> [String: Any] {
         var attributes: [String: Any] = [
-            "opennow.event": event.name.rawValue,
-            "opennow.privacy_level": event.privacyLevel.rawValue,
-            "opennow.personalization": event.personalization.rawValue,
+            "opn.event": event.name.rawValue,
+            "opn.privacy_level": event.privacyLevel.rawValue,
+            "opn.personalization": event.personalization.rawValue,
         ]
         for (key, value) in commonData.dictionary {
-            attributes["opennow.common.\(key)"] = sanitizedTelemetryValue(key: key, value: value)
+            attributes["opn.common.\(key)"] = sanitizedTelemetryValue(key: key, value: value)
         }
         for (key, value) in event.parameters where !key.isEmpty {
-            attributes["opennow.parameter.\(OPNSentry.sanitizedLogMessage(key))"] = sanitizedTelemetryValue(key: key, value: value)
+            attributes["opn.parameter.\(OPNSentry.sanitizedLogMessage(key))"] = sanitizedTelemetryValue(key: key, value: value)
         }
         return attributes.filter { !$0.key.isEmpty }
     }

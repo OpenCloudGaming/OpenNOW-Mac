@@ -106,18 +106,18 @@ struct SessionProxySettingsPage: View {
                     if !settings.isEnabled {
                         Text(savedSettings.isEnabled ? "Proxy still active until saved." : "Proxy off. Requests connect directly.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(OPNDesign.Text.secondary)
                     }
                     if !passwordSaveFailure.isEmpty {
                         Text(passwordSaveFailure)
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OpenNOWDesign.Semantic.warning)
+                            .foregroundStyle(OPNDesign.Semantic.warning)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if !testMessage.isEmpty {
                         Text(testMessage)
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(testSucceeded ? OpenNOWDesign.accentInk : OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(testSucceeded ? OPNDesign.accentInk : OPNDesign.Text.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)

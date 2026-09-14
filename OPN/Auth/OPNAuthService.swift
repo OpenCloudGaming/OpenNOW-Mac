@@ -101,7 +101,7 @@ public final class OPNAuthService: @unchecked Sendable {
         }
 
         let pkce = generatePKCEState()
-        let deviceId = generateOpenNOWDeviceId()
+        let deviceId = generateOPNDeviceId()
         let redirectUri = "http://localhost:\(port)"
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
         let locale = OPNLocale.currentGFNLocale()
@@ -129,7 +129,7 @@ public final class OPNAuthService: @unchecked Sendable {
                         self.telemetry.recordBreadcrumb("Jarvis OAuth browser opened", attributes: ["provider_idp_id": selectedProviderIdpId])
                         // NVIDIA answers a malformed authorization request with an opaque
                         // SCHEMA_VIOLATION page, so the request that produced it has to be in the log.
-                        OpenNOWLog.info(.auth, "OAuth authorize locale=\(locale) redirect=\(redirectUri) idp=\(selectedProviderIdpId) rawLocale=\(Locale.current.identifier)")
+                        OPNLog.info(.auth, "OAuth authorize locale=\(locale) redirect=\(redirectUri) idp=\(selectedProviderIdpId) rawLocale=\(Locale.current.identifier)")
                         NSWorkspace.shared.open(loginRequest.url)
                     }
                 }
@@ -170,7 +170,7 @@ public final class OPNAuthService: @unchecked Sendable {
 
     public func startStarfleetDeviceCodeLogin(providerIdpId: String = OPNAuthService.defaultIdpId, challengeHandler: @escaping OPNDeviceCodeChallengeCallback, completion: @escaping OPNAuthCallback) {
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
-        let deviceId = generateOpenNOWDeviceId()
+        let deviceId = generateOPNDeviceId()
         let displayName = Host.current().localizedName ?? "OpenNOW Mac"
         Task { [weak self] in
             guard let self else { return }

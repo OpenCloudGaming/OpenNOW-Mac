@@ -44,16 +44,16 @@ import SwiftUI
 struct SkeletonBlock: View {
     var cornerRadius: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
-    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+    @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @State private var isHoldingShimmerClock = false
 
     private var isMotionReduced: Bool {
-        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+        OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
     }
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(OpenNOWDesign.Fill.neutral(0.06))
+            .fill(OPNDesign.Fill.neutral(0.06))
             .overlay {
                 if !isMotionReduced {
                     GeometryReader { geo in
@@ -63,7 +63,7 @@ struct SkeletonBlock: View {
                         LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0),
-                                .init(color: OpenNOWDesign.Fill.neutral(0.14), location: 0.5),
+                                .init(color: OPNDesign.Fill.neutral(0.14), location: 0.5),
                                 .init(color: .clear, location: 1),
                             ],
                             startPoint: .leading,
@@ -127,7 +127,7 @@ struct CatalogRailSkeletonView: View {
                 if let title {
                     Text(title)
                         .catalogFont(size: 20, weight: .medium)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .accessibilityAddTraits(.isHeader)
                 } else {
                     SkeletonBlock(cornerRadius: 4)

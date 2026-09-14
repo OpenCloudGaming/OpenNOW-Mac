@@ -10,7 +10,7 @@ extension LoginViewModel {
     func persistSignedInSession(session: JarvisSession, userInfo: JarvisUserInfo?, authMethod: String) {
         guard let modelContext else {
             validationMessage = "SwiftData context is unavailable."
-            OpenNOWLog.error(.auth, "Cannot persist signed-in session because SwiftData context is unavailable")
+            OPNLog.error(.auth, "Cannot persist signed-in session because SwiftData context is unavailable")
             return
         }
 
@@ -59,7 +59,7 @@ extension LoginViewModel {
         trySave()
         cancelReauthentication()
         refreshSignedOutAccounts()
-        OpenNOWLog.info(.auth, "Persisted signed-in session account=\(normalizedEmail) provider=\(providerIdpId) canContinueOffline=\(rememberSession)")
+        OPNLog.info(.auth, "Persisted signed-in session account=\(normalizedEmail) provider=\(providerIdpId) canContinueOffline=\(rememberSession)")
     }
 
     /// Applies what this sign-in says about the account itself.

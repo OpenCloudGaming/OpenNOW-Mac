@@ -28,19 +28,19 @@ This repository (`OpenCloudGaming/openNOW-Mac`) is the canonical OpenNOW source.
 Identity anchors (verify these survive any bulk rename or merge):
 
 - `OpenNOW.xcodeproj/project.pbxproj`: Release `PRODUCT_BUNDLE_IDENTIFIER = "io.github.opencloudgaming.opennow"`, Debug `= "io.github.opencloudgaming.opennow.dev"`, tests `= "io.github.opencloudgaming.opennow.tests"`, Debug `PRODUCT_NAME = "OpenNOW Dev"`.
-- URL scheme `opennow`; UserDefaults domain `io.github.opencloudgaming.opennow`; keychain services `OpenNOW.GFN` / `OpenNOW.Twitch`; telemetry key prefix `opennow.*`.
-- `App/OpenNOWAppDelegate.swift`: updater is `OpenNOWGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")`.
+- URL scheme `opennow`; UserDefaults domain `io.github.opencloudgaming.opennow`; keychain service `OpenNOW.GFN`; telemetry key prefix `opn.*`.
+- `App/OPNAppDelegate.swift`: updater is `OPNGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")`.
 - RemoteCoOp: hosted in-app by `OPNRemoteCoOpEmbeddedServer` on port 32188. No daemon, no service unit, no environment variables. The guest page ships in `Resources/RemoteCoOp/browser`.
 
-`App/` is a `PBXFileSystemSynchronizedRootGroup` in the Xcode project — new files under it are picked up automatically, no pbxproj edit needed. `OpenNOWApp.swift` contains only the `@main` App struct; update preferences live in `OPN/Services/OpenNOWUpdatePreferences.swift` and the `NSApplicationDelegate` in `App/OpenNOWAppDelegate.swift`.
+`App/` is a `PBXFileSystemSynchronizedRootGroup` in the Xcode project — new files under it are picked up automatically, no pbxproj edit needed. `OPNApp.swift` contains only the `@main` App struct; update preferences live in `OPN/Services/OPNUpdatePreferences.swift` and the `NSApplicationDelegate` in `App/OPNAppDelegate.swift`.
 
 # UI Scaling & Design System
 
 The app has a `uiScale` system and design tokens defined in `DESIGN.md`. Any new or imported UI code (new views, modified modifiers, new constants) must follow it:
 
-- **Thread `uiScale` through every view**: add `@Environment(\.opnUIScale) private var uiScale` and scale all hardcoded dimensions — frames, paddings, spacings, corner radii, offsets — with `* uiScale` or the layout helpers (`CatalogVendorLayout.*(scale:)`, `CatalogShowAllLayout`, `OpenNOWDesign.Spacing.*(scale:)`).
+- **Thread `uiScale` through every view**: add `@Environment(\.opnUIScale) private var uiScale` and scale all hardcoded dimensions — frames, paddings, spacings, corner radii, offsets — with `* uiScale` or the layout helpers (`CatalogVendorLayout.*(scale:)`, `CatalogShowAllLayout`, `OPNDesign.Spacing.*(scale:)`).
 - **Scale consistently within one geometric expression.** Every constant contributing to the same size must scale identically. Mixing scaled and unscaled values only breaks at `uiScale != 1` and looks correct at 1.0 — e.g. `wideTileWidth(scale:) - 32 * uiScale` combined with an unscaled `.padding(.horizontal, 16)` left the tile tray background narrower than the tile (and its full-width selection bar) at any scale above 1.0.
-- **Use project fonts and colors**: `.openNOWUI(size:weight:)` (uiScale-aware in catalog code) instead of `.font(.system(...))`, and `OpenNOWDesign` colors/surfaces instead of hardcoded `Color(red:green:blue:)` unless matching an existing intentional value.
+- **Use project fonts and colors**: `.opnUI(size:weight:)` (uiScale-aware in catalog code) instead of `.font(.system(...))`, and `OPNDesign` colors/surfaces instead of hardcoded `Color(red:green:blue:)` unless matching an existing intentional value.
 - **New components** must follow `DESIGN.md` component patterns; update `DESIGN.md` when a change introduces a genuinely new pattern.
 - **Verify visually at a non-default UI scale** (e.g. 1.25 and 1.5 via Settings) for every touched view — layout bugs from inconsistent scaling are invisible at 1.0.
 

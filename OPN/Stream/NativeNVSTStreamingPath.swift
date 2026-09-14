@@ -11,7 +11,7 @@ public protocol NativeNVSTSessionProvider: Sendable {
     func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict?
 }
 
-extension OpenNOWStreamSessionCoordinator: NativeNVSTSessionProvider {}
+extension OPNStreamSessionCoordinator: NativeNVSTSessionProvider {}
 
 public extension NativeNVSTSessionProvider {
     func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
@@ -230,7 +230,7 @@ public actor NativeNVSTStreamingPath {
                     excludingSessionID: allocation.session.id,
                     applicationID: configuration.applicationID
                 ) {
-                    throw OpenNOWStreamSessionError.activeSessionConflict(conflict)
+                    throw OPNStreamSessionError.activeSessionConflict(conflict)
                 }
                 throw error
             }

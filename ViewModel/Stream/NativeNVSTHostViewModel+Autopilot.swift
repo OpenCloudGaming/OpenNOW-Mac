@@ -18,7 +18,7 @@ extension NativeNVSTHostViewModel {
     func scheduleAutopilotEndIfRequested() {
         guard let raw = ProcessInfo.processInfo.environment["OPN_NVST_AUTOPILOT_SECONDS"],
               let seconds = Double(raw), seconds > 0 else { return }
-        OpenNOWLog.info(.stream, "Autopilot: ending the stream in \(Int(seconds)) s and quitting")
+        OPNLog.info(.stream, "Autopilot: ending the stream in \(Int(seconds)) s and quitting")
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
             guard let self, !self.didEnd else { return }
@@ -42,7 +42,7 @@ extension NativeNVSTHostViewModel {
             let parts = step.split(separator: ":", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
             guard parts.count == 2, let delay = Double(parts[0]) else { continue }
             let action = parts[1]
-            OpenNOWLog.info(.stream, "Autopilot: \(action) at +\(Int(delay)) s")
+            OPNLog.info(.stream, "Autopilot: \(action) at +\(Int(delay)) s")
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
                 guard let self, !self.didEnd else { return }
@@ -57,7 +57,7 @@ extension NativeNVSTHostViewModel {
     /// runs — launcher windows do not sit still between sessions, so a blind script cannot.
     func startAutopilotCommandFileIfRequested() {
         guard let path = ProcessInfo.processInfo.environment["OPN_NVST_AUTOPILOT_COMMAND_FILE"], !path.isEmpty else { return }
-        OpenNOWLog.info(.stream, "Autopilot: following commands in \(path)")
+        OPNLog.info(.stream, "Autopilot: following commands in \(path)")
         Task { [weak self] in
             var consumed = 0
             while let self, !self.didEnd {
@@ -66,7 +66,7 @@ extension NativeNVSTHostViewModel {
                 let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map { $0.trimmingCharacters(in: .whitespaces) }
                 guard lines.count > consumed else { continue }
                 for line in lines[consumed...] where !line.isEmpty {
-                    OpenNOWLog.info(.stream, "Autopilot: command \(line)")
+                    OPNLog.info(.stream, "Autopilot: command \(line)")
                     if line == "end" {
                         _ = await self.finish(reason: .userRequested, message: "Autopilot run complete.")
                         try? await Task.sleep(for: .seconds(3))
@@ -89,7 +89,7 @@ extension NativeNVSTHostViewModel {
         guard environment["OPN_NVST_AUTOPILOT_SECONDS"] != nil || environment["OPN_NVST_AUTOPILOT_COMMAND_FILE"] != nil else { return }
         NSApp.activate(ignoringOtherApps: true)
         nativeView?.window?.makeKeyAndOrderFront(nil)
-        OpenNOWLog.info(.stream, "Autopilot: requested activation (active=\(NSApp.isActive))")
+        OPNLog.info(.stream, "Autopilot: requested activation (active=\(NSApp.isActive))")
     }
 
     func performAutopilotAction(_ action: String) async {
@@ -102,7 +102,7 @@ extension NativeNVSTHostViewModel {
             return
         }
         guard let dispatcher = inputDispatcher else {
-            OpenNOWLog.warning(.stream, "Autopilot: no input dispatcher for \(action)")
+            OPNLog.warning(.stream, "Autopilot: no input dispatcher for \(action)")
             return
         }
         if action.hasPrefix("key"), let code = UInt16(action.dropFirst(3)) {
@@ -123,10 +123,10 @@ extension NativeNVSTHostViewModel {
             // negotiates again. The only way to exercise that path without pulling a cable.
             guard let path else { return }
             let recovered = await attemptInPlaceReconnect(path: path, reason: "autopilot")
-            OpenNOWLog.info(.stream, "Autopilot: reconnect \(recovered ? "succeeded" : "failed")")
+            OPNLog.info(.stream, "Autopilot: reconnect \(recovered ? "succeeded" : "failed")")
             return
         }
-        OpenNOWLog.warning(.stream, "Autopilot: unknown action \(action)")
+        OPNLog.warning(.stream, "Autopilot: unknown action \(action)")
     }
 
     private static let autopilotPadButtons: [String: GamepadButtons] = [
@@ -151,7 +151,7 @@ extension NativeNVSTHostViewModel {
     /// device pressed first) need a pad press before the keyboard-driven harness can measure rumble.
     private func performAutopilotPad(_ name: String, dispatcher: NativeNVSTInputDispatcher) async {
         guard let buttons = Self.autopilotPadButtons[name.lowercased()] else {
-            OpenNOWLog.warning(.stream, "Autopilot: unknown pad button \(name)")
+            OPNLog.warning(.stream, "Autopilot: unknown pad button \(name)")
             return
         }
         func state(_ pressed: GamepadButtons) -> UserInputEvent {
@@ -160,7 +160,7 @@ extension NativeNVSTHostViewModel {
         dispatcher.enqueue(state(buttons))
         try? await Task.sleep(for: .milliseconds(120))
         dispatcher.enqueue(state([]))
-        OpenNOWLog.info(.stream, "Autopilot: tapped pad button \(name)")
+        OPNLog.info(.stream, "Autopilot: tapped pad button \(name)")
     }
 
     /// `osnap` renders offscreen, `rsnap` reads the next drawable back, `snap` writes the decoded frame.
@@ -174,18 +174,18 @@ extension NativeNVSTHostViewModel {
         if action.hasPrefix("osnap") {
             let target = url(prefix: 5, fallback: "offscreen")
             if let size = nativeView?.nvstBifrostFreeRenderer?.writeOffscreenRenderSnapshot(to: target) {
-                OpenNOWLog.info(.stream, "Autopilot: offscreen render \(Int(size.width))x\(Int(size.height)) -> \(target.path)")
+                OPNLog.info(.stream, "Autopilot: offscreen render \(Int(size.width))x\(Int(size.height)) -> \(target.path)")
             } else {
-                OpenNOWLog.warning(.stream, "Autopilot: offscreen render failed -> \(target.path)")
+                OPNLog.warning(.stream, "Autopilot: offscreen render failed -> \(target.path)")
             }
         } else if action.hasPrefix("rsnap") {
             nativeView?.nvstBifrostFreeRenderer?.requestRenderSnapshot(to: url(prefix: 5, fallback: "render"))
         } else {
             let target = url(prefix: 4, fallback: "frame")
             if let size = nativeView?.nvstBifrostFreeRenderer?.writeLatestFrameJPEG(to: target) {
-                OpenNOWLog.info(.stream, "Autopilot: snapshot \(Int(size.width))x\(Int(size.height)) -> \(target.path)")
+                OPNLog.info(.stream, "Autopilot: snapshot \(Int(size.width))x\(Int(size.height)) -> \(target.path)")
             } else {
-                OpenNOWLog.warning(.stream, "Autopilot: snapshot failed (no frame yet?) -> \(target.path)")
+                OPNLog.warning(.stream, "Autopilot: snapshot failed (no frame yet?) -> \(target.path)")
             }
         }
     }
@@ -198,7 +198,7 @@ extension NativeNVSTHostViewModel {
         dispatcher.enqueue(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: code, scanCode: code, isPressed: true, timestamp: autopilotTimestamp())))
         try? await Task.sleep(for: .milliseconds(90))
         dispatcher.enqueue(.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: code, scanCode: code, isPressed: false, timestamp: autopilotTimestamp())))
-        OpenNOWLog.info(.stream, "Autopilot: pressed key \(code)")
+        OPNLog.info(.stream, "Autopilot: pressed key \(code)")
     }
 
     private func performAutopilotClick(_ action: String, dispatcher: NativeNVSTInputDispatcher) async {
@@ -222,6 +222,6 @@ extension NativeNVSTHostViewModel {
         dispatcher.enqueue(.mouse(.button(deviceID: "mouse", button: .left, isPressed: true, timestamp: autopilotTimestamp())))
         try? await Task.sleep(for: .milliseconds(90))
         dispatcher.enqueue(.mouse(.button(deviceID: "mouse", button: .left, isPressed: false, timestamp: autopilotTimestamp())))
-        OpenNOWLog.info(.stream, "Autopilot: clicked \(coordinates[0]),\(coordinates[1])")
+        OPNLog.info(.stream, "Autopilot: clicked \(coordinates[0]),\(coordinates[1])")
     }
 }

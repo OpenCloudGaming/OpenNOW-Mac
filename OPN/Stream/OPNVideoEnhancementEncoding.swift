@@ -164,7 +164,7 @@ extension OPNVideoEnhancementRenderer {
         if fillModeNow != lastLoggedFillMode || contentNow != lastLoggedContentRect {
             lastLoggedFillMode = fillModeNow
             lastLoggedContentRect = contentNow
-            OpenNOWLog.info(.stream, "Pillarbox fill mode=\(fillModeNow.label) content=[\(String(format: "%.4f", contentNow.left)), \(String(format: "%.4f", contentNow.right))] source=\(primaryTexture.width)x\(primaryTexture.height)")
+            OPNLog.info(.stream, "Pillarbox fill mode=\(fillModeNow.label) content=[\(String(format: "%.4f", contentNow.left)), \(String(format: "%.4f", contentNow.right))] source=\(primaryTexture.width)x\(primaryTexture.height)")
         }
         let uniforms = Self.pillarboxUniforms(
             mode: OPNPillarboxFillMode.from(settings.pillarboxFillMode),

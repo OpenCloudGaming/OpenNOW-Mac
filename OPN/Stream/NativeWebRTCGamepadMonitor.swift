@@ -242,20 +242,20 @@ public final class NativeWebRTCGamepadMonitor {
         // a hardware fact, and separating them needs the numbers that actually left the app.
         if seatCommand.lowFrequency > 0 || seatCommand.highFrequency > 0 { hapticCommandsSeen += 1 }
         if (seatCommand.lowFrequency > 0 || seatCommand.highFrequency > 0), hapticCommandsSeen <= 8 || hapticCommandsSeen % 300 == 0 {
-            OpenNOWLog.info(.controller, "Rumble ceiling \(percent)% pad=\(seatCommand.playerIndex) seat=\(seatCommand.lowFrequency)/\(seatCommand.highFrequency) sent=\(command.lowFrequency)/\(command.highFrequency) ms=\(seatCommand.durationMilliseconds)")
+            OPNLog.info(.controller, "Rumble ceiling \(percent)% pad=\(seatCommand.playerIndex) seat=\(seatCommand.lowFrequency)/\(seatCommand.highFrequency) sent=\(command.lowFrequency)/\(command.highFrequency) ms=\(seatCommand.durationMilliseconds)")
         }
         // Steam Controllers hold the low slots (see `refreshControllerSlots`) and have no
         // GameController haptics; their motors are driven through the HID feature report.
         if let deviceID = pollState.steamControllerSlots.first(where: { $0.value == command.playerIndex })?.key {
             if hapticCommandsSeen <= 6 {
-                OpenNOWLog.info(.controller, "Rumble route: Steam Controller \(deviceID.rawValue) for pad \(command.playerIndex)")
+                OPNLog.info(.controller, "Rumble route: Steam Controller \(deviceID.rawValue) for pad \(command.playerIndex)")
             }
             playSteamControllerRumble(deviceID: deviceID, command: command)
             return
         }
         if hapticCommandsSeen <= 6 {
             let slots = pollState.steamControllerSlots.map { "\($0.key.rawValue)=\($0.value)" }.joined(separator: ",")
-            OpenNOWLog.info(.controller, "Rumble route: no Steam Controller in slot \(command.playerIndex) (slots [\(slots)]); trying GameController haptics")
+            OPNLog.info(.controller, "Rumble route: no Steam Controller in slot \(command.playerIndex) (slots [\(slots)]); trying GameController haptics")
         }
         guard let controller = pollState.cachedControllers.first(where: { pollState.controllerSlots[ObjectIdentifier($0)] == command.playerIndex }),
               controller.haptics != nil else { return }

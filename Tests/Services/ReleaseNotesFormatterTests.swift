@@ -26,7 +26,7 @@ import Testing
     """
 
     @Test func parsesReleasePleaseSections() {
-        let notes = OpenNOWReleaseNotesFormatter.parse(releasePleaseBody)
+        let notes = OPNReleaseNotesFormatter.parse(releasePleaseBody)
 
         #expect(notes.sections.count == 2)
         #expect(notes.sections[0].title == "Features")
@@ -37,14 +37,14 @@ import Testing
     }
 
     @Test func liftsVersionHeadingIntoCompareURL() {
-        let notes = OpenNOWReleaseNotesFormatter.parse(releasePleaseBody)
+        let notes = OPNReleaseNotesFormatter.parse(releasePleaseBody)
 
         #expect(notes.compareURL?.absoluteString == "https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.1.0...v0.2.0")
         #expect(notes.sections.allSatisfy { !$0.title.contains("0.2.0") })
     }
 
     @Test func stripsCommitLinkIntoShortSHA() {
-        let notes = OpenNOWReleaseNotesFormatter.parse(releasePleaseBody)
+        let notes = OPNReleaseNotesFormatter.parse(releasePleaseBody)
         let entry = notes.sections[0].entries[0]
 
         #expect(entry.text == "Add desktop mode action on controller mode ui")
@@ -54,7 +54,7 @@ import Testing
     }
 
     @Test func stripsBothIssueAndCommitLinks() {
-        let notes = OpenNOWReleaseNotesFormatter.parse(releasePleaseBody)
+        let notes = OPNReleaseNotesFormatter.parse(releasePleaseBody)
         let entry = notes.sections[0].entries[1]
 
         #expect(entry.text == "Add discord rich presence")
@@ -64,7 +64,7 @@ import Testing
     }
 
     @Test func keepsBoldScopePrefixUntouched() {
-        let notes = OpenNOWReleaseNotesFormatter.parse(releasePleaseBody)
+        let notes = OPNReleaseNotesFormatter.parse(releasePleaseBody)
         let entry = notes.sections[1].entries[0]
 
         #expect(entry.text == "**ci:** install dmgbuild and sign release with real entitlements")
@@ -72,7 +72,7 @@ import Testing
     }
 
     @Test func parsesGeneratedNotesAttribution() {
-        let notes = OpenNOWReleaseNotesFormatter.parse(generatedBody)
+        let notes = OPNReleaseNotesFormatter.parse(generatedBody)
         let entry = notes.sections[0].entries[0]
 
         #expect(entry.text == "Fix pillarbox geometry")
@@ -82,7 +82,7 @@ import Testing
     }
 
     @Test func keepsUnrecognisedProseInsteadOfDroppingIt() {
-        let notes = OpenNOWReleaseNotesFormatter.parse("This build needs a full reinstall.\n\nSorry about that.")
+        let notes = OPNReleaseNotesFormatter.parse("This build needs a full reinstall.\n\nSorry about that.")
 
         #expect(notes.sections.isEmpty)
         #expect(notes.paragraphs == ["This build needs a full reinstall.", "Sorry about that."])
@@ -90,7 +90,7 @@ import Testing
     }
 
     @Test func groupsBulletsWithoutHeadingUnderFallbackSection() {
-        let notes = OpenNOWReleaseNotesFormatter.parse("- first thing\n- second thing")
+        let notes = OPNReleaseNotesFormatter.parse("- first thing\n- second thing")
 
         #expect(notes.sections.count == 1)
         #expect(notes.sections[0].title == "Changes")
@@ -99,18 +99,18 @@ import Testing
     }
 
     @Test func joinsWrappedBulletContinuationLines() {
-        let notes = OpenNOWReleaseNotesFormatter.parse("### Features\n\n* add a very long entry\n  that wrapped across lines")
+        let notes = OPNReleaseNotesFormatter.parse("### Features\n\n* add a very long entry\n  that wrapped across lines")
 
         #expect(notes.sections[0].entries[0].text == "Add a very long entry that wrapped across lines")
     }
 
     @Test func emptyBodyProducesEmptyNotes() {
-        #expect(OpenNOWReleaseNotesFormatter.parse("").isEmpty)
-        #expect(OpenNOWReleaseNotesFormatter.parse("\n\n   \n").isEmpty)
+        #expect(OPNReleaseNotesFormatter.parse("").isEmpty)
+        #expect(OPNReleaseNotesFormatter.parse("\n\n   \n").isEmpty)
     }
 
     @Test func attributedTextFallsBackToPlainOnBrokenMarkdown() {
-        let attributed = OpenNOWReleaseNotesFormatter.attributedText("plain **bold** text")
+        let attributed = OPNReleaseNotesFormatter.attributedText("plain **bold** text")
 
         #expect(String(attributed.characters) == "plain bold text")
     }

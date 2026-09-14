@@ -160,7 +160,7 @@ extension OPNGameService {
         getServerVpcId(token: token, providerStreamingBaseUrl: providerStreamingBaseUrl) { resolved in
             guard resolved != optimistic else { return }
             Task { @MainActor in
-                OpenNOWLog.warning(.catalog, "Catalog vpcId changed optimistic=\(optimistic) resolved=\(resolved)")
+                OPNLog.warning(.catalog, "Catalog vpcId changed optimistic=\(optimistic) resolved=\(resolved)")
             }
         }
     }

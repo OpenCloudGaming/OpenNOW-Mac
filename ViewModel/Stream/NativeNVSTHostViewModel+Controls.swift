@@ -480,7 +480,7 @@ extension NativeNVSTHostViewModel {
     }
 
     /// The window owns the transition: nothing here touches the style mask, collection behaviour,
-    /// aspect ratio or frame - `OpenNOWWindowFitting` grants `.fullScreenPrimary` before the window
+    /// aspect ratio or frame - `WindowFitting` grants `.fullScreenPrimary` before the window
     /// is first painted, which is the only point the window server takes it reliably.
     /// A second toggle mid-animation cancels AppKit's entry, so transitions are refused, not queued.
     func toggleNativeFullScreen() {
@@ -496,7 +496,7 @@ extension NativeNVSTHostViewModel {
     /// The window is only reachable once the view is in a hierarchy and the aspect coordinator has
     /// settled the first frame, so the transition waits a beat and retries until both are true.
     func enterNativeFullScreenWhenSessionReady() {
-        guard OpenNOWSessionReadyAction.isFullScreenRequestedWhenReady else { return }
+        guard OPNSessionReadyAction.isFullScreenRequestedWhenReady else { return }
         sessionReadyFullScreenTask?.cancel()
         sessionReadyFullScreenTask = Task { @MainActor [weak self] in
             for _ in 0..<Self.sessionReadyFullScreenAttemptLimit {

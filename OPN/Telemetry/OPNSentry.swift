@@ -160,7 +160,7 @@ final class OPNSentry {
     public static func formattedLogMessage(level: String, area: String, message: String) -> String {
         let resolvedLevel = level.isEmpty ? "info" : level.lowercased()
         let resolvedArea = area.isEmpty ? "General" : area
-        return "[OpenNOW][\(resolvedLevel)][\(resolvedArea)] \(message)"
+        return "[OPN][\(resolvedLevel)][\(resolvedArea)] \(message)"
     }
 
     public static func logDebugMessage(_ message: String) {

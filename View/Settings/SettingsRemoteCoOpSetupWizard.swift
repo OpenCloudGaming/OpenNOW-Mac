@@ -81,20 +81,20 @@ struct RemoteCoOpSetupWizard: View {
                 HStack(spacing: 8 * uiScale) {
                     Text("Remote Co-Op Setup")
                         .font(.settingsFont(size: 19 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Spacer(minLength: 0)
                     Text("STEP \(stepIndex + 1) OF \(steps.count)")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
                         .tracking(0.6)
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                 }
                 Text("Nothing here is permanent - every setting it touches stays editable afterwards from the cards below.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Rectangle().fill(OpenNOWDesign.Stroke.regular).frame(height: 1)
+            Rectangle().fill(OPNDesign.Stroke.regular).frame(height: 1)
 
             Group {
                 switch currentStep {
@@ -107,13 +107,13 @@ struct RemoteCoOpSetupWizard: View {
             }
             .frame(maxWidth: .infinity, minHeight: 260 * uiScale, alignment: .topLeading)
 
-            Rectangle().fill(OpenNOWDesign.Stroke.regular).frame(height: 1)
+            Rectangle().fill(OPNDesign.Stroke.regular).frame(height: 1)
 
             HStack(spacing: 10 * uiScale) {
                 if tailscaleDetected {
                     Text("Tailscale detected on this Mac")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accentInk)
+                        .foregroundStyle(OPNDesign.accentInk)
                 }
                 Spacer(minLength: 0)
                 SettingsDialogButton(title: "CLOSE", tone: .secondary, uiScale: uiScale, action: dismiss)
@@ -141,7 +141,7 @@ struct RemoteCoOpSetupWizard: View {
         .padding(24 * uiScale)
         .frame(width: 580 * uiScale, alignment: .leading)
         .background(Color(red: 24 / 255, green: 24 / 255, blue: 24 / 255))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         .onAppear {
             reachabilityChoice = hasTunnel ? .tunnel : (hasHostedSignaling ? .hostedSignaling : .tunnel)
         }
@@ -205,20 +205,20 @@ struct RemoteCoOpSetupWizard: View {
                 HStack(spacing: 7 * uiScale) {
                     Text("\u{2713}")
                         .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.onAccent)
+                        .foregroundStyle(OPNDesign.onAccent)
                         .frame(width: 18 * uiScale, height: 18 * uiScale)
-                        .background(OpenNOWDesign.accent)
+                        .background(OPNDesign.accent)
                     Text(advice.headline)
                         .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                 }
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     ForEach(Array(advice.reasons.enumerated()), id: \.offset) { _, reason in
                         HStack(alignment: .top, spacing: 7 * uiScale) {
                             Text("\u{2022}")
-                                .foregroundStyle(OpenNOWDesign.Text.muted)
+                                .foregroundStyle(OPNDesign.Text.muted)
                             Text(reason)
-                                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                .foregroundStyle(OPNDesign.Text.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
@@ -228,30 +228,30 @@ struct RemoteCoOpSetupWizard: View {
                 if applied {
                     Text("Transport set to \(advice.transportMode.label).")
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accentInk)
+                        .foregroundStyle(OPNDesign.accentInk)
                 } else if outstanding.isEmpty {
                     Text(advice.needsNothing
                          ? "Nothing else to do - press Apply to set the transport mode."
                          : "Everything this needs is already configured - press Apply to set the transport mode.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.accentInk)
+                        .foregroundStyle(OPNDesign.accentInk)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Still to finish")
                             .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(OPNDesign.Text.secondary)
                         ForEach(Array(outstanding.enumerated()), id: \.offset) { _, todo in
                             Text("\u{2022} " + todo)
                                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                .foregroundStyle(OPNDesign.Text.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     .padding(11 * uiScale)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OpenNOWDesign.Fill.neutral(0.04))
-                    .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(OPNDesign.Fill.neutral(0.04))
+                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
                 }
             }
             .padding(.top, 4 * uiScale)
@@ -283,7 +283,7 @@ struct RemoteCoOpSetupWizard: View {
     func stepHeading(_ title: String) -> some View {
         Text(title)
             .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .foregroundStyle(OPNDesign.Text.primary)
     }
 
     func choiceCard(title: String, detail: String, isSelected: Bool, select: @escaping () -> Void) -> some View {
@@ -291,16 +291,16 @@ struct RemoteCoOpSetupWizard: View {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text(title)
                     .font(.settingsFont(size: 13 * uiScale, weight: .bold))
-                    .foregroundStyle(isSelected ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(isSelected ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
                 Text(detail)
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(10 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? OpenNOWDesign.Fill.neutral(0.07) : OpenNOWDesign.Fill.neutral(0.025))
-            .overlay { Rectangle().stroke(isSelected ? OpenNOWDesign.accent.opacity(0.5) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(isSelected ? OPNDesign.Fill.neutral(0.07) : OPNDesign.Fill.neutral(0.025))
+            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
         .buttonStyle(.plain)
     }
@@ -313,34 +313,34 @@ struct RemoteCoOpSetupWizard: View {
             HStack(spacing: 7 * uiScale) {
                 Text("\(number)")
                     .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.onAccent)
+                    .foregroundStyle(OPNDesign.onAccent)
                     .frame(width: 18 * uiScale, height: 18 * uiScale)
-                    .background(OpenNOWDesign.accent)
+                    .background(OPNDesign.accent)
                 Text(title)
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
             }
             ForEach(Array(options.enumerated()), id: \.offset) { index, option in
                 Button { select(index) } label: {
                     HStack(alignment: .top, spacing: 10 * uiScale) {
                         Rectangle()
-                            .fill(option.2 ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular)
+                            .fill(option.2 ? OPNDesign.accent : OPNDesign.Stroke.regular)
                             .frame(width: 3 * uiScale)
                         VStack(alignment: .leading, spacing: 2 * uiScale) {
                             Text(option.0)
                                 .font(.settingsFont(size: 13 * uiScale, weight: .bold))
-                                .foregroundStyle(option.2 ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
+                                .foregroundStyle(option.2 ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
                             Text(option.1)
                                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                                .foregroundStyle(OPNDesign.Text.tertiary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(9 * uiScale)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(option.2 ? OpenNOWDesign.Fill.neutral(0.07) : OpenNOWDesign.Fill.neutral(0.025))
-                    .overlay { Rectangle().stroke(option.2 ? OpenNOWDesign.accent.opacity(0.5) : OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(option.2 ? OPNDesign.Fill.neutral(0.07) : OPNDesign.Fill.neutral(0.025))
+                    .overlay { Rectangle().stroke(option.2 ? OPNDesign.accent.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
             }

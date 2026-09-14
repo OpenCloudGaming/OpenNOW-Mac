@@ -181,7 +181,7 @@ public enum OPNSessionProxyStore {
             return
         }
         guard writeKeychainPassword(legacyPassword) else {
-            OpenNOWLog.warning(.auth, "Session proxy password could not be moved into the keychain; it stays in the preferences for now")
+            OPNLog.warning(.auth, "Session proxy password could not be moved into the keychain; it stays in the preferences for now")
             return
         }
         storage.removeObject(forKey: legacyPlaintextPasswordKey)
@@ -206,7 +206,7 @@ public enum OPNSessionProxyStore {
         ] as CFDictionary, &item)
         guard status != errSecItemNotFound else { return nil }
         guard status == errSecSuccess, let data = item as? Data else {
-            OpenNOWLog.warning(.auth, "Session proxy password could not be read from the keychain (\(status))")
+            OPNLog.warning(.auth, "Session proxy password could not be read from the keychain (\(status))")
             return nil
         }
         return String(data: data, encoding: .utf8)
@@ -245,7 +245,7 @@ public enum OPNSessionProxyStore {
     }
 
     private static func logKeychainFailure(_ operation: String, status: OSStatus) {
-        OpenNOWLog.warning(.auth, "Session proxy password keychain \(operation) failed (\(status))")
+        OPNLog.warning(.auth, "Session proxy password keychain \(operation) failed (\(status))")
     }
 
     public static func configuration() -> OPNSessionProxyConfiguration? {

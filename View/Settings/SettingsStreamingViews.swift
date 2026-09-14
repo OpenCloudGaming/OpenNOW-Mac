@@ -17,10 +17,10 @@ struct ServerLocationSettingsPage: View {
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("Cloudmatch Region")
                         .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text("Automatic chooses the best measured OpenNOW route.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
                 Spacer(minLength: 12 * uiScale)
                 SettingsActionButton(title: viewModel.isRefreshingSettingsRegions ? "PINGING" : "REFRESH", minimumWidth: 104 * uiScale, uiScale: uiScale) { viewModel.refreshSettingsRegions() }
@@ -57,13 +57,13 @@ struct UnavailableRegionPrompt: View {
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text("Selected Region Unavailable")
                         .font(.settingsFont(size: 13 * uiScale, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text("CloudMatch no longer advertises the selected route. Keep it for one more launch attempt, or switch to Automatic.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                     Text(regionUrl)
                         .font(.system(size: 11 * uiScale, weight: .medium, design: .monospaced))
-                        .foregroundStyle(OpenNOWDesign.Text.muted)
+                        .foregroundStyle(OPNDesign.Text.muted)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }

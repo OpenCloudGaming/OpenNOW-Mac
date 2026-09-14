@@ -3,7 +3,7 @@ import Testing
 @testable import OpenNOW
 
 @Suite(.serialized) struct UpdatePreferencesChannelTests {
-    private let key = OpenNOWUpdatePreferences.updateChannelKey
+    private let key = OPNUpdatePreferences.updateChannelKey
 
     private func withPreservedChannel(_ body: () -> Void) {
         let defaults = OPNAppPreferenceStorage.standard
@@ -21,25 +21,25 @@ import Testing
     @Test func unsetChannelDefaultsToStable() {
         withPreservedChannel {
             OPNAppPreferenceStorage.standard.removeObject(forKey: key)
-            #expect(OpenNOWUpdatePreferences.updateChannel == .stable)
+            #expect(OPNUpdatePreferences.updateChannel == .stable)
         }
     }
 
     @Test func channelRoundTripsThroughStorage() {
         withPreservedChannel {
-            OpenNOWUpdatePreferences.updateChannel = .beta
-            #expect(OpenNOWUpdatePreferences.updateChannel == .beta)
+            OPNUpdatePreferences.updateChannel = .beta
+            #expect(OPNUpdatePreferences.updateChannel == .beta)
             #expect(OPNAppPreferenceStorage.standard.string(forKey: key) == "beta")
 
-            OpenNOWUpdatePreferences.updateChannel = .stable
-            #expect(OpenNOWUpdatePreferences.updateChannel == .stable)
+            OPNUpdatePreferences.updateChannel = .stable
+            #expect(OPNUpdatePreferences.updateChannel == .stable)
         }
     }
 
     @Test func invalidStoredValueFallsBackToStable() {
         withPreservedChannel {
             OPNAppPreferenceStorage.standard.set("nightly", forKey: key)
-            #expect(OpenNOWUpdatePreferences.updateChannel == .stable)
+            #expect(OPNUpdatePreferences.updateChannel == .stable)
         }
     }
 }

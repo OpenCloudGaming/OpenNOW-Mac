@@ -17,22 +17,22 @@ struct SignInModal: View {
     @State private var isProviderMenuPresented = false
 
     private var panelWidth: CGFloat {
-        max(min(520, availableSize.width - OpenNOWDesign.Spacing.pageHorizontal * 2), 280)
+        max(min(520, availableSize.width - OPNDesign.Spacing.pageHorizontal * 2), 280)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(height: 2)
                 .frame(maxWidth: .infinity)
 
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium) {
                 HStack(alignment: .top) {
                     Text(modalTitle)
                         .font(.uiSans(size: 20, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
-                    Spacer(minLength: OpenNOWDesign.Spacing.small)
+                        .foregroundStyle(OPNDesign.Text.primary)
+                    Spacer(minLength: OPNDesign.Spacing.small)
                     ModalCloseButton(action: onClose)
                 }
 
@@ -43,16 +43,16 @@ struct SignInModal: View {
                     ScrollView(.vertical) { modalTabContent }
                 }
             }
-            .padding(OpenNOWDesign.Spacing.xLarge)
+            .padding(OPNDesign.Spacing.xLarge)
         }
         // Height stays intrinsic up to the window's. Without the cap a ScrollView child reports its
         // full content height as its ideal size, so ViewThatFits picks it and the modal then paints
         // past the window edge — the cut-off QR. At the cap the modal stops resizing and the
         // content scrolls instead.
         .frame(width: panelWidth)
-        .frame(maxHeight: max(availableSize.height - OpenNOWDesign.Spacing.pageHorizontal * 2, 320))
-        .background(OpenNOWDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+        .frame(maxHeight: max(availableSize.height - OPNDesign.Spacing.pageHorizontal * 2, 320))
+        .background(OPNDesign.Surface.panel)
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
         .onExitCommand(perform: onClose)
         .onAppear {
@@ -95,20 +95,20 @@ struct SignInModal: View {
                         viewModel.launchDeviceCodeThroughTermsGate()
                     }
                 } label: {
-                    HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
+                    HStack(spacing: OPNDesign.Spacing.xSmall) {
                         Image(systemName: tab == .qrCode ? "qrcode" : "globe")
                             .font(.uiSans(size: 11, weight: .bold))
                         Text(tab.rawValue.uppercased())
                             .font(.uiSans(size: 11, weight: .bold))
                             .tracking(0.8)
                     }
-                    .foregroundStyle(isSelected ? OpenNOWDesign.onAccent : OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(isSelected ? OPNDesign.onAccent : OPNDesign.Text.secondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 32)
-                    .background(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.06))
+                    .background(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06))
                     .overlay {
                         Rectangle()
-                            .stroke(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1)
+                            .stroke(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
                     }
                     .contentShape(Rectangle())
                 }
@@ -119,7 +119,7 @@ struct SignInModal: View {
     }
 
     private var modalTabContent: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium) {
             if let banner = signInRequestBanner {
                 requestBannerView(banner)
             }
@@ -138,31 +138,31 @@ struct SignInModal: View {
     }
 
     private func requestBannerView(_ banner: (label: String, message: String)) -> some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xxSmall) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxSmall) {
             Text(banner.label)
                 .font(.uiSans(size: 11, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.accentInk)
+                .foregroundStyle(OPNDesign.accentInk)
                 .tracking(0.8)
             Text(banner.message)
                 .font(.uiSans(size: 13, weight: .regular))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             if viewModel.canCancelReauthentication {
                 Button("Keep using the current account", action: onClose)
                     .buttonStyle(.plain)
                     .font(.uiSans(size: 12, weight: .bold))
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
             }
         }
-        .padding(OpenNOWDesign.Spacing.small)
+        .padding(OPNDesign.Spacing.small)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OpenNOWDesign.Stroke.subtle)
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNDesign.Stroke.subtle)
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 
     private var qrCodeContent: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium) {
             serviceProviderHeader
 
             providerDropdown {
@@ -171,27 +171,27 @@ struct SignInModal: View {
             }
 
             if !viewModel.deviceCodeUserCode.isEmpty {
-                VStack(spacing: OpenNOWDesign.Spacing.small) {
+                VStack(spacing: OPNDesign.Spacing.small) {
                     DeviceCodeQRView(payload: viewModel.deviceCodeVerificationURI)
                         .frame(width: 156, height: 156)
 
                     VStack(spacing: 4) {
                         Text("SCAN WITH PHONE OR ENTER CODE")
                             .font(.uiSans(size: 11, weight: .bold))
-                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
                             .tracking(0.8)
 
                         Text(viewModel.deviceCodeUserCode)
                             .font(.uiSans(size: 24, weight: .bold))
                             .monospacedDigit()
                             .tracking(2.0)
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
 
                         if let url = URL(string: viewModel.deviceCodeVerificationURI) {
                             Link(destination: url) {
                                 Text(viewModel.deviceCodeVerificationURI)
                                     .font(.uiSans(size: 11, weight: .regular))
-                                    .foregroundStyle(OpenNOWDesign.accentInk)
+                                    .foregroundStyle(OPNDesign.accentInk)
                                     .lineLimit(2)
                                     .multilineTextAlignment(.center)
                             }
@@ -207,7 +207,7 @@ struct SignInModal: View {
                             Text("GET NEW CODE")
                         }
                         .font(.uiSans(size: 11, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .tracking(0.6)
                     }
                     .buttonStyle(.plain)
@@ -239,7 +239,7 @@ struct SignInModal: View {
     }
 
     private var browserContent: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.medium) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium) {
             serviceProviderHeader
 
             providerDropdown()
@@ -247,7 +247,7 @@ struct SignInModal: View {
             if viewModel.isLoadingProviders {
                 Text("Loading provider list...")
                     .font(.uiSans(size: 12, weight: .regular))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
             }
 
             Button {
@@ -270,19 +270,19 @@ struct SignInModal: View {
     private var statusMessageView: some View {
         Text(viewModel.validationMessage.isEmpty ? viewModel.successMessage : viewModel.validationMessage)
             .font(.uiSans(size: 13, weight: .regular))
-            .foregroundStyle(viewModel.validationMessage.isEmpty ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.warning)
+            .foregroundStyle(viewModel.validationMessage.isEmpty ? OPNDesign.accentInk : OPNDesign.Semantic.warning)
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     private var savedAccountsSection: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall) {
             Text("SAVED ACCOUNTS")
                 .font(.uiSans(size: 11, weight: .bold))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .tracking(0.8)
 
-            VStack(spacing: OpenNOWDesign.Spacing.xSmall) {
+            VStack(spacing: OPNDesign.Spacing.xSmall) {
                 ForEach(accounts) { account in
                     SavedAccountCard(
                         account: account,
@@ -302,18 +302,18 @@ struct SignInModal: View {
                 HStack(spacing: 8) {
                     Text(viewModel.selectedProvider.title)
                         .font(.uiSans(size: 13, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .lineLimit(1)
                     Spacer()
                     Image(systemName: isProviderMenuPresented ? "chevron.up" : "chevron.down")
                         .font(.uiSans(size: 10, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                 }
-                .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
+                .padding(.horizontal, OPNDesign.Spacing.controlRow)
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
-                .background(OpenNOWDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNDesign.Fill.neutral(0.08))
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -321,9 +321,9 @@ struct SignInModal: View {
             .accessibilityLabel("Service provider, \(viewModel.selectedProvider.title)")
 
             if isProviderMenuPresented {
-                OpenNOWDropdownPanel(
+                OPNDropdownPanel(
                     items: viewModel.providers.map { provider in
-                        OpenNOWDropdownItem(
+                        OPNDropdownItem(
                             id: provider.id,
                             title: provider.title,
                             isSelected: provider.id == viewModel.selectedProvider.id
@@ -334,7 +334,7 @@ struct SignInModal: View {
                         }
                     }
                 )
-                .padding(.top, OpenNOWDesign.Spacing.xxSmall)
+                .padding(.top, OPNDesign.Spacing.xxSmall)
             }
         }
     }
@@ -342,7 +342,7 @@ struct SignInModal: View {
     private var serviceProviderHeader: some View {
         Text("SERVICE PROVIDER")
             .font(.uiSans(size: 11, weight: .bold))
-            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+            .foregroundStyle(OPNDesign.Text.tertiary)
             .tracking(0.8)
     }
 }
@@ -359,31 +359,31 @@ private struct SavedAccountCard: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: OpenNOWDesign.Spacing.small) {
+            HStack(spacing: OPNDesign.Spacing.small) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(account.displayName.isEmpty ? account.email : account.displayName)
                         .font(.uiSans(size: 14, weight: .bold))
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .lineLimit(1)
                     Text(account.email)
                         .font(.uiSans(size: 11, weight: .regular))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .lineLimit(1)
                 }
 
-                Spacer(minLength: OpenNOWDesign.Spacing.small)
+                Spacer(minLength: OPNDesign.Spacing.small)
 
                 Text(needsSignIn ? "SIGN IN AGAIN" : "CONTINUE")
                     .font(.uiSans(size: 11, weight: .bold))
                     .tracking(0.8)
-                    .foregroundStyle(needsSignIn ? OpenNOWDesign.Text.secondary : OpenNOWDesign.accentInk)
+                    .foregroundStyle(needsSignIn ? OPNDesign.Text.secondary : OPNDesign.accentInk)
             }
-            .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
+            .padding(.horizontal, OPNDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .background(isHovering ? OpenNOWDesign.Stroke.regular : OpenNOWDesign.Stroke.subtle)
+            .background(isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle)
             .overlay {
                 Rectangle()
-                    .stroke(isHovering ? OpenNOWDesign.Stroke.strong : OpenNOWDesign.Stroke.regular, lineWidth: 1)
+                    .stroke(isHovering ? OPNDesign.Stroke.strong : OPNDesign.Stroke.regular, lineWidth: 1)
             }
             .contentShape(Rectangle())
         }
@@ -402,9 +402,9 @@ private struct ModalCloseButton: View {
         Button(action: action) {
             Image(systemName: "xmark")
                 .font(.uiSans(size: 11, weight: .bold))
-                .foregroundStyle(isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary)
+                .foregroundStyle(isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
                 .frame(width: 28, height: 28)
-                .background(isHovering ? OpenNOWDesign.Stroke.subtle : Color.clear)
+                .background(isHovering ? OPNDesign.Stroke.subtle : Color.clear)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

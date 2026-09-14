@@ -261,7 +261,7 @@ extension NativeNVSTMediaStreamSurface {
                 ]),
             ]
         )
-        .padding([.top, .trailing], OpenNOWDesign.Spacing.small)
+        .padding([.top, .trailing], OPNDesign.Spacing.small)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         .allowsHitTesting(false)
     }

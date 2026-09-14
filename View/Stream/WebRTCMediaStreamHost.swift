@@ -10,7 +10,7 @@ struct WebRTCMediaStreamView: View {
     let onProgress: WebRTCMediaStreamProgressHandler?
     let onRequiredSessionAd: (@Sendable (StreamSessionAdPresentation) async throws -> Int)?
     let onEnd: WebRTCMediaStreamCompletion
-    private let coordinator: OpenNOWStreamSessionCoordinator
+    private let coordinator: OPNStreamSessionCoordinator
 
     init(configuration: StreamLaunchConfiguration,
          onProgress: WebRTCMediaStreamProgressHandler?,
@@ -20,7 +20,7 @@ struct WebRTCMediaStreamView: View {
         self.onProgress = onProgress
         self.onRequiredSessionAd = onRequiredSessionAd
         self.onEnd = onEnd
-        coordinator = OpenNOWStreamSessionCoordinator(
+        coordinator = OPNStreamSessionCoordinator(
             adPresenter: InlineStreamSessionAdPresenter(handler: onRequiredSessionAd),
             progressHandler: { progress in
                 Task { @MainActor in onProgress?(progress) }
@@ -78,7 +78,7 @@ struct NativeNVSTMediaStreamSurface: View {
     /// the lifetime the fifty-two `@State` properties it replaced already had - the session must
     /// not outlive this view, and must not be rebuilt while it is on screen.
     @StateObject var model: NativeNVSTHostViewModel
-    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) var uiScale = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OPNInterfacePreferences.uiScaleKey) var uiScale = OPNInterfacePreferences.defaultUIScale
 
     init(
         configuration: StreamLaunchConfiguration,
@@ -231,7 +231,7 @@ private struct InlineStreamSessionAdPresenter: StreamSessionAdPresenter {
 
     func playRequiredSessionAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
         guard let handler else {
-            throw OpenNOWStreamSessionError.sessionAllocationFailed("Required ad playback is not available.")
+            throw OPNStreamSessionError.sessionAllocationFailed("Required ad playback is not available.")
         }
         return try await handler(ad)
     }

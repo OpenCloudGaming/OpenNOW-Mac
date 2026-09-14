@@ -42,7 +42,7 @@ extension RemoteCoOpSetupWizard {
             case .vpnAlreadyRunning:
                 Text("Transport will be set to Direct - a VPN or tailnet route already reaches this Mac, so STUN would only reveal your public address for nothing.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -60,12 +60,12 @@ extension RemoteCoOpSetupWizard {
             )
             Text(RemoteCoOpSettingsPage.tunnelExampleCommands)
                 .font(.system(size: 11 * uiScale, design: .monospaced))
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .textSelection(.enabled)
                 .padding(10 * uiScale)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(OpenNOWDesign.Fill.neutral(0.05))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNDesign.Fill.neutral(0.05))
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
         .padding(.top, 2 * uiScale)
     }
@@ -83,7 +83,7 @@ extension RemoteCoOpSetupWizard {
             if !viewModel.remoteCoOpAblyKeyMessage.isEmpty {
                 Text(viewModel.remoteCoOpAblyKeyMessage)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OpenNOWDesign.accentInk : OpenNOWDesign.Semantic.destructive)
+                    .foregroundStyle(viewModel.remoteCoOpAblyKey.isUsable ? OPNDesign.accentInk : OPNDesign.Semantic.destructive)
             }
             if viewModel.remoteCoOpAblyKey.isUsable {
                 SettingsTextFieldRow(
@@ -117,13 +117,13 @@ extension RemoteCoOpSetupWizard {
             case .none:
                 Text("Pick a provider above to continue - the relay is what carries video when a guest's network refuses a direct connection.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             case .cloudflare:
                 VStack(alignment: .leading, spacing: 8 * uiScale) {
                     Text(relayCredentials.canRelay ? "Cloudflare relay configured." : "Free tier: 1,000 GB a month. The guided setup handles the Cloudflare side in three steps.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     SettingsActionButton(title: relayCredentials.canRelay ? "RUN SETUP AGAIN" : "GUIDED SETUP", uiScale: uiScale) {
                         openRelaySetup()
@@ -165,7 +165,7 @@ extension RemoteCoOpSetupWizard {
             )
             Text("ExpressTURN gives 1,000 GB a month with no card.")
                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.muted)
+                .foregroundStyle(OPNDesign.Text.muted)
         }
     }
 

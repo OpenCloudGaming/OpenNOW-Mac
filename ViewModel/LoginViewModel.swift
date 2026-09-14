@@ -94,12 +94,12 @@ final class LoginViewModel: ObservableObject {
     }
 
     func bootstrap() {
-        OpenNOWLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
+        OPNLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
         ensureDeviceRegistration()
         prefillLastAccount()
         refreshLoginProviders()
         acceptedTerms = OPNAppPreferenceStorage.standard.bool(forKey: Self.termsAcceptedKey)
-        OpenNOWLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
+        OPNLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
     private static let termsAcceptedKey = "OpenNOW.Login.GFNTermsAccepted"
@@ -176,7 +176,7 @@ final class LoginViewModel: ObservableObject {
         deviceCodeUserCode = ""
         deviceCodeVerificationURI = ""
         validationMessage = "Sign-in cancelled. Choose GET IN to try again."
-        OpenNOWLog.info(.auth, "User cancelled pending sign-in")
+        OPNLog.info(.auth, "User cancelled pending sign-in")
     }
 
     func completeOAuthWithCallbackText() {
@@ -189,24 +189,24 @@ final class LoginViewModel: ObservableObject {
     }
 
     func handleOpenedFile(_ url: URL) {
-        OpenNOWLog.info(.shortcut, "LoginViewModel received opened file: \(url.path)")
+        OPNLog.info(.shortcut, "LoginViewModel received opened file: \(url.path)")
         guard GFNGameShortcut.isShortcutFile(url) else {
-            OpenNOWLog.info(.shortcut, "Ignoring unsupported opened file: \(url.pathExtension)")
+            OPNLog.info(.shortcut, "Ignoring unsupported opened file: \(url.pathExtension)")
             return
         }
         do {
             pendingGameShortcut = try GFNGameShortcut(fileURL: url)
             if let shortcut = pendingGameShortcut {
-                OpenNOWLog.info(.shortcut, "Parsed game shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(shortcut.lookupTitle)")
+                OPNLog.info(.shortcut, "Parsed game shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(shortcut.lookupTitle)")
             }
             if activeSession == nil {
-                OpenNOWLog.info(.shortcut, "Shortcut parsed but no active session is available")
+                OPNLog.info(.shortcut, "Shortcut parsed but no active session is available")
                 validationMessage = "Sign in to launch \(pendingGameShortcut?.lookupTitle.isEmpty == false ? pendingGameShortcut?.lookupTitle ?? "this game" : "this game") from its shortcut."
             } else {
-                OpenNOWLog.info(.shortcut, "Shortcut queued for active catalog session")
+                OPNLog.info(.shortcut, "Shortcut queued for active catalog session")
             }
         } catch {
-            OpenNOWLog.error(.shortcut, "Failed to parse game shortcut: \(error.localizedDescription)")
+            OPNLog.error(.shortcut, "Failed to parse game shortcut: \(error.localizedDescription)")
             validationMessage = error.localizedDescription
         }
     }
@@ -249,7 +249,7 @@ final class LoginViewModel: ObservableObject {
         successMessage = ""
         validationMessage = "\(account.displayName) is signed out. Sign in again to switch to it."
         signInRequest = .reauthenticate(email: account.email)
-        OpenNOWLog.info(.auth, "Account switch needs re-authentication account=\(account.email)")
+        OPNLog.info(.auth, "Account switch needs re-authentication account=\(account.email)")
     }
 
     /// The login wall's saved-account row. A restorable account is restored; one whose tokens are
@@ -274,7 +274,7 @@ final class LoginViewModel: ObservableObject {
         // Keep a switch banner pointed at the account actually being signed in. Do not invent one
         // when nothing is signed in — there would be no account to return to and nothing to cancel.
         if signInRequest != nil { signInRequest = .reauthenticate(email: account.email) }
-        OpenNOWLog.info(.auth, "Signing in again account=\(account.email) provider=\(account.providerIdpId)")
+        OPNLog.info(.auth, "Signing in again account=\(account.email) provider=\(account.providerIdpId)")
         launchOAuthThroughTermsGate()
     }
 
@@ -287,7 +287,7 @@ final class LoginViewModel: ObservableObject {
         successMessage = ""
         validationMessage = ""
         signInRequest = .addAccount
-        OpenNOWLog.info(.auth, "Add-account sign-in requested accounts=\(accounts.count)")
+        OPNLog.info(.auth, "Add-account sign-in requested accounts=\(accounts.count)")
     }
 
     func cancelReauthentication() {
@@ -358,7 +358,7 @@ final class LoginViewModel: ObservableObject {
         modelContext.insert(device)
         devices = [device]
         trySave()
-        OpenNOWLog.info(.auth, "Created login device registration deviceId=\(device.deviceId)")
+        OPNLog.info(.auth, "Created login device registration deviceId=\(device.deviceId)")
     }
 
     private func prefillLastAccount() {
@@ -376,7 +376,7 @@ final class LoginViewModel: ObservableObject {
             guard let self else { return }
             self.isLoadingProviders = false
             guard success else {
-                OpenNOWLog.warning(.auth, "Provider discovery failed: \(error)")
+                OPNLog.warning(.auth, "Provider discovery failed: \(error)")
                 return
             }
             self.applyProviderInfo(info)
@@ -444,7 +444,7 @@ final class LoginViewModel: ObservableObject {
             try modelContext?.save()
         } catch {
             validationMessage = error.localizedDescription
-            OpenNOWLog.error(.app, "SwiftData save failed: \(error.localizedDescription)")
+            OPNLog.error(.app, "SwiftData save failed: \(error.localizedDescription)")
         }
     }
 

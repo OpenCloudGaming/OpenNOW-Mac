@@ -7,20 +7,20 @@ are always plain rectangles.
 
 Token sources of truth:
 
-- App shell: `View/OpenNOWDesign.swift` (`OpenNOWDesign`), `View/Login/LoginStyles.swift`
+- App shell: `View/OPNDesign.swift` (`OPNDesign`), `View/Login/LoginStyles.swift`
 - Stream HUD: `OPN/Stream/WebRTCMediaStreamSurface.swift` (`WebRTCMediaStreamTheme`)
-- Typography: `View/Design/OpenNOWUIFont.swift` (`OpenNOWUIFont`)
+- Typography: `View/Design/OPNUIFont.swift` (`OPNUIFont`)
 
 ## Colors
 
 ### Brand
 
-- **Accent** (#75E61A): NVIDIA green, `OpenNOWDesign.accent` /
+- **Accent** (#75E61A): NVIDIA green, `OPNDesign.accent` /
   `WebRTCMediaStreamTheme.accent`. Primary actions, active states, focus rings, section
   eyebrows, top edge bars. Never used for large backgrounds.
-- **Destructive** (#FF8980): `OpenNOWDesign.Semantic.destructive`. Destructive menu
+- **Destructive** (#FF8980): `OPNDesign.Semantic.destructive`. Destructive menu
   roles, end-stream actions, error accents.
-- **Favorite** (#FF4D94): `OpenNOWDesign.Semantic.favorite`. The favorite toggle only.
+- **Favorite** (#FF4D94): `OPNDesign.Semantic.favorite`. The favorite toggle only.
   Deliberately not the accent: beside an accent-filled Play button, an accent-filled heart
   reads as a second primary action rather than a state you can switch off.
 - **Accent Soft** (#ABFF5C): `WebRTCMediaStreamTheme.accentSoft`. Status text on the
@@ -28,7 +28,7 @@ Token sources of truth:
 
 ### Surfaces
 
-- **App Background** (#191919): `OpenNOWDesign.Surface.app`. Root window background.
+- **App Background** (#191919): `OPNDesign.Surface.app`. Root window background.
 - **App Bar** (#2D2D2D): `Surface.appBar` / `WebRTCMediaStreamTheme.appBar`. Header bands
   on docks, dialogs, and panels.
 - **Panel** (#1C1C1C app, #171717 stream): `Surface.panel` / `WebRTCMediaStreamTheme.panel`.
@@ -69,7 +69,7 @@ Token sources of truth:
 ### Semantic
 
 - **Warning** (#FF9500, system orange): `WebRTCMediaStreamTheme.warning` on the stream HUD,
-  `OpenNOWDesign.Semantic.warning` on the app shell. Low battery, unsaved edits, degraded
+  `OPNDesign.Semantic.warning` on the app shell. Low battery, unsaved edits, degraded
   states, validation messages. The same condition uses the same colour on both surfaces.
 - **Danger** (#FF0000, system red): `WebRTCMediaStreamTheme.danger`. Live badges and
   destructive-state indicators. Destructive dialog actions still use the standard
@@ -78,8 +78,8 @@ Token sources of truth:
 ## Typography
 
 Typeface is **Hanken Grotesk** (SIL Open Font License 1.1) in three weights, bundled as
-WOFF2 and loaded through `OpenNOWUIFont` (falls back to the system font at the matching
-weight if the bundle resource is unavailable). SwiftUI accessor: `.openNOWUI(size:weight:)`;
+WOFF2 and loaded through `OPNUIFont` (falls back to the system font at the matching
+weight if the bundle resource is unavailable). SwiftUI accessor: `.opnUI(size:weight:)`;
 per-surface helpers wrap it (`catalogFont`, `streamFont`, `settingsFont`, `recordingsFont`,
 `LoginStyles.uiSans`). The bundled static instances are Regular (400), Medium (500), and
 Bold (700); see `Resources/Fonts/OFL.txt` for the license.
@@ -111,7 +111,7 @@ transient message pills). Do not use them in new code.
 
 ## Spacing
 
-### App Shell (`OpenNOWDesign.Spacing`)
+### App Shell (`OPNDesign.Spacing`)
 
 **Scale** — 4pt-grid values for generic layout spacing. Each exists as an unscaled
 static let and a `scale:`-parameterized function; use the function on surfaces that
@@ -153,14 +153,14 @@ interface scale. Chrome measures it with `WindowTopInsetReader` and never scales
 All point sizes in this document are pre-scale (100 %) values. A user-adjustable
 interface scale multiplies every size on the chrome surfaces it wraps.
 
-- **Token**: `OpenNOWInterfacePreferences.uiScale` (`OpenNOW.Interface.UIScale`),
+- **Token**: `OPNInterfacePreferences.uiScale` (`OpenNOW.Interface.UIScale`),
   Double in 0.75–2.0, default 1.0. Always read/write through `clampedUIScale(_:)`.
-- **Mechanism**: `.opnInterfaceScale(_:)` (`View/OpenNOWDesign.swift`) lays
+- **Mechanism**: `.opnInterfaceScale(_:)` (`View/OPNDesign.swift`) lays
   content out in a reduced logical space, then applies `scaleEffect` so chrome reflows
   larger instead of cropping. Never apply plain `scaleEffect` to chrome without the
   compensating frame, and never scale the video surface itself.
 - **Text fidelity**: `scaleEffect` alone rasterizes text at display density and upscales
-  the bitmap (progressively blurrier as scale grows). `OpenNOWInterfaceScaleDensityBooster`
+  the bitmap (progressively blurrier as scale grows). `OPNInterfaceScaleDensityBooster`
   (mounted once at the `ContentView` root) keeps every non-Metal window layer's
   `contentsScale` pinned at `uiScale × window.backingScaleFactor` via a run-loop observer,
   forcing SwiftUI to re-render text and vector content at zoom density. It skips
@@ -179,7 +179,7 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 
 - **Default**: 0 — panels, docks, dialogs, buttons, fields, and cards are plain
   `Rectangle`s with 1px strokes. No `RoundedRectangle`, no `Capsule`.
-- **Avatar**: 14 (`OpenNOWDesign.Radius.avatar`).
+- **Avatar**: 14 (`OPNDesign.Radius.avatar`).
 - **Exceptions**: circular mic toggle and status dots on the stream surface, login vendor
   icon buttons (`size * 0.32`), and the controller diagram artwork
   (`SteamControllerDiagramView`), which traces physical hardware — round face buttons, pill
@@ -195,7 +195,7 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   16 horizontal padding, square corners. Pressed: accent @ 0.76.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
   13–14pt bold text, square corners.
-- **Compact Row Action** (`OpenNOWCompactButtonStyle`): settings/inline row
+- **Compact Row Action** (`OPNCompactButtonStyle`): settings/inline row
   actions. Height 28, Hanken Grotesk 12pt bold, 14 horizontal padding, square corners.
   Primary: accent background (0.78 pressed), black text, accent stroke. Destructive:
   #000000 @ 0.35 background (0.5 pressed), white text, red @ 0.85 stroke. Takes
@@ -247,12 +247,12 @@ Full-width rectangular button, height 38, Hanken Grotesk 12pt bold (tracking 0.4
   Divider stroke.
 - **Focused**: accent stroke at 2px. **Disabled**: opacity 0.46.
 
-### Dropdown Menu (`OpenNOWDropdownMenu`)
+### Dropdown Menu (`OPNDropdownMenu`)
 
 Square dropdown replacing native `Menu` for every app-shell dropdown: game detail
 "⋮" actions, catalog sort and filter groups, recordings sort. Built from
-`OpenNOWDropdownPanel` + `OpenNOWDropdownRow`
-(`View/Components/OpenNOWDropdown.swift`). Panel: Panel Raised background, 1px
+`OPNDropdownPanel` + `OPNDropdownRow`
+(`View/Components/OPNDropdown.swift`). Panel: Panel Raised background, 1px
 Stroke Regular, 4 (Menu Panel Vertical) padding, minimum width 208 (expands to the
 trigger's width when the trigger is wider), leading-aligned to the trigger and
 anchored 4pt below it, no shadow. `visibleItemCount` caps the panel at that many
@@ -265,7 +265,7 @@ Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
 checkmark. Dismisses on outside click, Escape, or selection, and closes when the
 underlying item set changes.
 
-The sign-in modal's provider picker renders `OpenNOWDropdownPanel` inline instead
+The sign-in modal's provider picker renders `OPNDropdownPanel` inline instead
 (expanding below the trigger, uncapped), because an overlay panel inside the
 modal's nested scroll containers loses sibling z-order and paints behind the tab
 content. The modal itself is height-capped to the window and owns the only
@@ -331,9 +331,9 @@ Regular. Hover: #FFFFFF @ 0.16 fill, 1px Stroke Strong. Selected: 2px accent
 stroke, accent checkmark trailing, and the `.isSelected` accessibility trait.
 Square corners.
 
-### Release Notes List (`OpenNOWReleaseNotesView`)
+### Release Notes List (`OPNReleaseNotesView`)
 
-Shared renderer for parsed GitHub release notes (`View/Components/OpenNOWReleaseNotes.swift`),
+Shared renderer for parsed GitHub release notes (`View/Components/OPNReleaseNotes.swift`),
 used by the Update Modal and the What's New card. Section header is an eyebrow (10pt bold,
 tracking 1.1, Text Tertiary) with a trailing entry count in Text Muted; the settings density
 prefixes it with a 3×12 accent bar. Entries are a 3×3 accent square marker (top-aligned to the
@@ -344,7 +344,7 @@ spacing. Commit SHA, pull request, and author render as trailing chips: 9–10pt
 entries behind an accent `+N MORE` action (10pt bold, tracking 0.7); the modal passes nil and
 scrolls instead. Inline markdown (bold, links) is resolved at parse time; links tint accent.
 
-### Update Modal (`OpenNOWUpdateModal`)
+### Update Modal (`OPNUpdateModal`)
 
 Centered dialog over the Scrim following the modal spec, mounted at the app root so it reaches
 the catalog, login wall, and stream surface alike. Up to 560 wide, shrinking to the window minus
@@ -355,7 +355,7 @@ Secondary subtitle (installed version · release date · download size), and the
 close control. 1px Divider, then an 18-padded body: the Release Notes List inside a ScrollView
 capped at min(340, half the window height), or a 12pt medium message for the status variants.
 1px Divider, then a footer (18 horizontal, 12 vertical) with the accent VIEW ON GITHUB text
-action leading and LATER (`OpenNOWModalSecondaryButtonStyle`, height 36 — defers the
+action leading and LATER (`OPNModalSecondaryButtonStyle`, height 36 — defers the
 prompt for a day) plus
 INSTALL AND RELAUNCH (`VendorGetInButtonStyle`) trailing.
 
@@ -395,10 +395,10 @@ below it. Use it instead of a second `SettingsCard` when the blocks belong to on
 card each would read as separate objects and spend a header of height saying so. The folded system
 report is the reference case.
 
-### Settings Labs (`LabsSettingsPage`, `OpenNOWLabs`)
+### Settings Labs (`LabsSettingsPage`, `OPNLabs`)
 
 Features on trial live on their own destination, always drawn so people can learn where to look.
-With `OpenNOWLabs.flags` empty the page is its own empty state: a 132 accent-ringed flask with three
+With `OPNLabs.flags` empty the page is its own empty state: a 132 accent-ringed flask with three
 bubbles at its neck over "Nothing in flight", centred in the pane. That state names itself, so
 `isEmptyStatePage` drops the page header and the scroll view for it - two titles would compete.
 Each flag names itself, says what it turns on and when it went on trial, and stores itself under
@@ -423,7 +423,7 @@ tracking 0.7, accent @ 0.78 on accent @ 0.12. Scope is the card. A destination i
 `SettingsTabBar.betaGroups` wears the tag in the rail instead, and only when every card on it is
 beta - one unsettled card in a settled tab is a card badge, not a destination tag.
 
-### Tags (`OpenNOWBetaTag`, `OpenNOWNewTag`)
+### Tags (`OPNBetaTag`, `OPNNewTag`)
 
 Two annotations ride inside another control's title and must not outweigh it: 8pt bold, tracking
 0.7, 4pt leading / 3.3pt trailing / 2pt vertical padding, square corners. The trailing padding is
@@ -432,7 +432,7 @@ even 4/4 leaves the label sitting left of centre in its box. Tracking scales wit
 the padding it is subtracted from. **BETA** is accent text on a 12 % accent
 tint (compact) for shipped-but-rough features. **NEW** is black text on solid accent for a setting
 added in the current release; rows opt in with `isNew:` and declare their release in
-`OpenNOWNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
+`OPNNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
 
 ### What's New Card (Settings → About)
 
@@ -534,7 +534,7 @@ Below it, the step rail is five equal `Rectangle` segments
 full accent with a 1px Stroke Strong border, pending is a Stroke Subtle outline only —
 the same fill/scale values as the startup rail's filled/unfilled/head cells. Below each
 segment at full width only, an 8pt caption repeats that step's title. Cancel
-(`OpenNOWModalSecondaryButtonStyle`, unchanged shared object) sits trailing on the eyebrow
+(`OPNModalSecondaryButtonStyle`, unchanged shared object) sits trailing on the eyebrow
 row, its 36pt row height reserved even when no cancel action is offered.
 
 The screen renders at 100 % interface scale like every other transient splash.
@@ -545,7 +545,7 @@ The two controller sheets (`SteamControllerTestView`, `SteamControllerMappingVie
 full-window settings-style flows on Surface Deep, wrapped in the modal spec: 2px accent top bar
 (`SteamControllerModalTopBar`), App Bar header block (`SteamControllerModalHeader` — 10pt bold
 accent eyebrow "STEAM CONTROLLER", tracking 1.1, over a 20pt bold title, with the shared square
-28×28 `OpenNOWModalCloseButton`), 18 (Card) horizontal / 16 (Medium) vertical header padding, and
+28×28 `OPNModalCloseButton`), 18 (Card) horizontal / 16 (Medium) vertical header padding, and
 1px Stroke Subtle rules (`SteamControllerModalRule`) between every band. Escape dismisses both.
 Every size is pre-scale and multiplied by `opnUIScale`, which the sheets read from the
 environment; hairline rules stay 1px at all scales.
@@ -567,14 +567,14 @@ Shared square pieces live in `SteamControllerModalChrome.swift`:
   (#FFFFFF @ 0.055) with a 1px Stroke Subtle; the badge is height 20 with 8 padding, the section
   18 (Card) padding under an eyebrow header.
 
-Mapping-specific chrome: the profile picker is an `OpenNOWDropdownMenu` (trigger height 30, Row
+Mapping-specific chrome: the profile picker is an `OPNDropdownMenu` (trigger height 30, Row
 Fill, 1px Stroke Regular), the profile name is a 14pt regular field on Surface Field with a 2px
 accent focus stroke, and the category sidebar (width 168) follows the Main Menu row spec — height
 30, 12 (Control Row) padding, white 0.08 on hover, accent @ 0.095 fill with a 3px accent leading
 bar when active. The footer carries a `Semantic.warning` "UNSAVED CHANGES" eyebrow, CANCEL
-(`OpenNOWModalSecondaryButtonStyle`, `.cancelAction`) and SAVE (`VendorGetInButtonStyle`,
+(`OPNModalSecondaryButtonStyle`, `.cancelAction`) and SAVE (`VendorGetInButtonStyle`,
 `.defaultAction`, opacity 0.46 while there is nothing to save). Row actions elsewhere in the bar
-use `OpenNOWCompactButtonStyle`.
+use `OPNCompactButtonStyle`.
 
 ### Focus Ring (`openNowFocusRing`)
 
@@ -604,8 +604,8 @@ Seven SwiftLint custom rules in `.swiftlint.yml` check the "Don't" list mechanic
   artwork; the login vendor icon annotates its one line.
 - Surfaces that predate the rules are grandfathered in `.swiftlint-baseline.json`, not exempted:
   the tree still reports them when the baseline is dropped, and each one is a burn-down item.
-- Token files (`OpenNOWDesign.swift`, `StreamHUDComponents.swift`, `SettingsView.swift`,
-  `LoginStyles.swift`, `OpenNOWButtons.swift`) are excluded where they define the literals the
+- Token files (`OPNDesign.swift`, `StreamHUDComponents.swift`, `SettingsView.swift`,
+  `LoginStyles.swift`, `OPNButtons.swift`) are excluded where they define the literals the
   rules ban elsewhere — that is where a colour or font is allowed to be spelled out.
 
 ## Guidelines
@@ -614,7 +614,7 @@ Seven SwiftLint custom rules in `.swiftlint.yml` check the "Don't" list mechanic
 
 - Build every panel, button, field, and card as a `Rectangle` with a 1px stroke.
 - Use Hanken Grotesk on all branded and stream surfaces; keep the size/weight scale above.
-- Pull colors from `OpenNOWDesign` / `WebRTCMediaStreamTheme` tokens; express light
+- Pull colors from `OPNDesign` / `WebRTCMediaStreamTheme` tokens; express light
   tints as white opacities from the token tables.
 - Reserve accent for primary actions, active/focused states, eyebrows, and edge bars.
 - Indicate keyboard/gamepad focus with the 2px accent focus ring or accent stroke.

@@ -19,7 +19,7 @@ struct CatalogMainMenuOverlay: View {
                 // and the panel can carry separate transitions. A conditional ancestor animates as
                 // one block: the dimming would slide in with the drawer.
                 if isPresented {
-                    OpenNOWDesign.Surface.scrim
+                    OPNDesign.Surface.scrim
                         .ignoresSafeArea()
                         .onTapGesture { isPresented = false }
                         .transition(.opacity)
@@ -34,7 +34,7 @@ struct CatalogMainMenuOverlay: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
-        .opnMotion(OpenNOWDesign.Motion.panel, value: isPresented)
+        .opnMotion(OPNDesign.Motion.panel, value: isPresented)
         // Closed, this is an empty ZStack with nothing to hit; the guard is belt and braces so a
         // permanently mounted full-window overlay can never steal hover from the rails below it.
         .allowsHitTesting(isPresented)
@@ -57,25 +57,25 @@ struct CatalogMainMenuPanel: View {
                 Text("GEFORCE NOW")
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(1.4)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
                 Text("OpenNOW Menu")
                     .catalogFont(size: 20, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
             }
             .padding(.horizontal, 22 * uiScale)
-            .padding(.top, OpenNOWDesign.Spacing.large(scale: uiScale))
-            .padding(.bottom, OpenNOWDesign.Spacing.card(scale: uiScale))
+            .padding(.top, OPNDesign.Spacing.large(scale: uiScale))
+            .padding(.bottom, OPNDesign.Spacing.card(scale: uiScale))
 
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)
 
             CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
-                .padding(.horizontal, OpenNOWDesign.Spacing.card(scale: uiScale))
-                .padding(.vertical, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+                .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+                .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
 
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)
 
             ScrollView(.vertical, showsIndicators: false) {
@@ -100,8 +100,8 @@ struct CatalogMainMenuPanel: View {
                             isPresented = false
                         }
                     }
-                    .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
-                    .padding(.top, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+                    .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
+                    .padding(.top, OPNDesign.Spacing.contentVertical(scale: uiScale))
 
                     VStack(alignment: .leading, spacing: 6 * uiScale) {
                         CatalogMainMenuSectionLabel("ACTIONS")
@@ -117,33 +117,33 @@ struct CatalogMainMenuPanel: View {
                             }
                         }
                     }
-                    .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
-                    .padding(.top, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-                    .padding(.bottom, OpenNOWDesign.Spacing.card(scale: uiScale))
+                    .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
+                    .padding(.top, OPNDesign.Spacing.contentVertical(scale: uiScale))
+                    .padding(.bottom, OPNDesign.Spacing.card(scale: uiScale))
                 }
             }
 
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)
 
             CatalogMainMenuRow(title: "Sign Out", subtitle: viewModel.account.displayName, systemImage: "rectangle.portrait.and.arrow.right", isActive: false) {
                 isPresented = false
                 onSignOut(viewModel.account)
             }
-            .padding(.horizontal, OpenNOWDesign.Spacing.section(scale: uiScale))
-            .padding(.vertical, OpenNOWDesign.Spacing.small(scale: uiScale))
+            .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
+            .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
-        .background(OpenNOWDesign.Surface.overlay.opacity(0.985))
+        .background(OPNDesign.Surface.overlay.opacity(0.985))
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(OpenNOWDesign.Stroke.subtle)
+                .fill(OPNDesign.Stroke.subtle)
                 .frame(width: 1)
         }
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(OpenNOWDesign.accent)
+                .fill(OPNDesign.accent)
                 .frame(height: 2)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
@@ -179,8 +179,8 @@ struct CatalogMainMenuSectionLabel: View {
         Text(title)
             .catalogFont(size: 10, weight: .bold)
             .tracking(1.1)
-            .foregroundStyle(OpenNOWDesign.Text.muted)
-            .padding(.horizontal, OpenNOWDesign.Spacing.small(scale: uiScale))
+            .foregroundStyle(OPNDesign.Text.muted)
+            .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, 5 * uiScale)
     }
 }
@@ -194,33 +194,33 @@ struct CatalogMainMenuPlaytimeCard: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let activeSession = activeSessionTime(at: context.date)
-            VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.section(scale: uiScale)) {
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.section(scale: uiScale)) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(activeSession == nil ? "REMAINING PLAYTIME" : "CURRENT SESSION")
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(1.1)
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                     Spacer(minLength: 0)
                     Text(status.membershipTier.uppercased())
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))
-                        .padding(.horizontal, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-                        .frame(height: OpenNOWDesign.Spacing.large(scale: uiScale))
-                        .background(OpenNOWDesign.accent)
+                        .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
+                        .frame(height: OPNDesign.Spacing.large(scale: uiScale))
+                        .background(OPNDesign.accent)
                 }
                 Text(activeSession?.remainingText ?? status.remainingPlaytimeText)
                     .catalogFont(size: 22, weight: .bold)
-                    .foregroundStyle((activeSession != nil || status.isAvailable) ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle((activeSession != nil || status.isAvailable) ? OPNDesign.Text.primary : OPNDesign.Text.tertiary)
                     .lineLimit(1)
                 Text(activeSession?.usageText ?? status.usageText)
                     .catalogFont(size: 11, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                     .lineLimit(1)
             }
-            .padding(OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OpenNOWDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .padding(OPNDesign.Spacing.contentVertical(scale: uiScale))
+            .background(OPNDesign.Fill.neutral(0.055))
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 
@@ -266,7 +266,7 @@ struct CatalogMainMenuRow: View {
             HStack(spacing: 13 * uiScale) {
                 ZStack {
                     Rectangle()
-                        .fill(isActive ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
+                        .fill(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
@@ -288,20 +288,20 @@ struct CatalogMainMenuRow: View {
                     if !subtitle.isEmpty {
                         Text(subtitle)
                             .catalogFont(size: 11, weight: .medium)
-                            .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.leading, OpenNOWDesign.Spacing.xSmall(scale: uiScale))
-            .padding(.trailing, OpenNOWDesign.Spacing.controlRow(scale: uiScale))
+            .padding(.leading, OPNDesign.Spacing.xSmall(scale: uiScale))
+            .padding(.trailing, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: (compact ? 38 : 50) * uiScale)
             .background(rowBackground)
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(isActive ? OpenNOWDesign.accent : Color.clear)
+                    .fill(isActive ? OPNDesign.accent : Color.clear)
                     .frame(width: 3)
             }
             .contentShape(Rectangle())
@@ -309,23 +309,23 @@ struct CatalogMainMenuRow: View {
         .buttonStyle(.opnPressable)
         .disabled(isLoading)
         .onHover { isHovering = $0 }
-        .opnMotion(OpenNOWDesign.Motion.hover, value: isHovering)
+        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .accessibilityLabel(title)
     }
 
     private var rowBackground: Color {
-        if isActive { return OpenNOWDesign.accent.opacity(0.095) }
-        return OpenNOWDesign.Fill.neutral(isHovering ? 0.085 : 0)
+        if isActive { return OPNDesign.accent.opacity(0.095) }
+        return OPNDesign.Fill.neutral(isHovering ? 0.085 : 0)
     }
 
     private var titleColor: Color {
-        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isActive ? OpenNOWDesign.Text.primary : OpenNOWDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
+        if role == .destructive { return OPNDesign.Semantic.destructive }
+        return isActive ? OPNDesign.Text.primary : OPNDesign.Fill.neutral(isHovering ? 0.96 : 0.82)
     }
 
     private var iconColor: Color {
         if isActive { return .black.opacity(0.86) }
-        if role == .destructive { return OpenNOWDesign.Semantic.destructive }
-        return isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.secondary
+        if role == .destructive { return OPNDesign.Semantic.destructive }
+        return isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary
     }
 }

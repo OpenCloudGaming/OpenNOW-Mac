@@ -16,15 +16,15 @@ struct CatalogContentView: View {
     @State private var isPointerInsideDetailPanel = false
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
     @Environment(\.opnUIScale) private var uiScale
-    @AppStorage(OpenNOWHomeLayout.modeKey) private var homeLayoutRawValue = OpenNOWHomeLayout.Mode.classic.rawValue
-    @AppStorage(OpenNOWThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
+    @AppStorage(OPNHomeLayout.modeKey) private var homeLayoutRawValue = OPNHomeLayout.Mode.classic.rawValue
+    @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     /// Seconds between hero rotations. Driven by a `.task` loop rather than a `Timer.publish`
     /// stored on this struct: the struct is rebuilt on every re-render, which restarts a stored
     /// publisher's interval before it ever fires.
     private static let heroRotationInterval = Duration.seconds(5)
 
     private var isMotionReduced: Bool {
-        OpenNOWDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
+        OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
     }
 
     var body: some View {
@@ -181,10 +181,10 @@ struct CatalogContentView: View {
                             }
                         }
                         .padding(.bottom, 44)
-                        .opnMotion(OpenNOWDesign.Motion.panel, value: detailAnimationKey)
+                        .opnMotion(OPNDesign.Motion.panel, value: detailAnimationKey)
                     }
                     .background(
-                        OpenNOWDesign.Surface.app
+                        OPNDesign.Surface.app
                             .contentShape(Rectangle())
                             .onTapGesture { viewModel.closeGameDetailsFromBackground() }
                     )
@@ -201,7 +201,7 @@ struct CatalogContentView: View {
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
                     }
                 }
-                .background(OpenNOWDesign.Surface.app)
+                .background(OPNDesign.Surface.app)
                 .task {
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.heroRotationInterval)
@@ -234,7 +234,7 @@ struct CatalogContentView: View {
     }
 
     private var isPosterHome: Bool {
-        (OpenNOWHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
+        (OPNHomeLayout.Mode(rawValue: homeLayoutRawValue) ?? .classic) == .poster
     }
 
     private var selectedRailScrollAnchor: String? {
@@ -387,7 +387,7 @@ struct CatalogHeroView: View {
                         ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, _ in
                             Button { onSelectSlide(index) } label: {
                                 Circle()
-                                    .fill(index == activeIndex ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.58))
+                                    .fill(index == activeIndex ? OPNDesign.accent : OPNDesign.Fill.neutral(0.58))
                                     .frame(width: index == activeIndex ? 12 * uiScale : 9 * uiScale, height: index == activeIndex ? 12 * uiScale : 9 * uiScale)
                             }
                             .buttonStyle(.plain)
@@ -456,12 +456,12 @@ struct CatalogBrowseControlsView: View {
                 if !viewModel.resultSummary.isEmpty {
                     Text(viewModel.resultSummary.uppercased())
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
                 if viewModel.hasMoreCatalogResults {
                     Text("SHOWING TOP RESULTS")
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.88))
+                        .foregroundStyle(OPNDesign.accentInk.opacity(0.88))
                 }
                 Spacer()
                 if !viewModel.searchQuery.trimmed.isEmpty || viewModel.selectedFilterCount > 0 {
@@ -472,11 +472,11 @@ struct CatalogBrowseControlsView: View {
                     }
                         .buttonStyle(.plain)
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                 }
-                OpenNOWDropdownMenu(
+                OPNDropdownMenu(
                     items: viewModel.sortOptions.map { option in
-                        OpenNOWDropdownItem(
+                        OPNDropdownItem(
                             id: option.id,
                             title: option.label.isEmpty ? option.id : option.label,
                             isSelected: option.id == viewModel.selectedSortId
@@ -484,15 +484,15 @@ struct CatalogBrowseControlsView: View {
                     },
                     isDisabled: viewModel.sortOptions.isEmpty
                 ) {
-                    HStack(spacing: OpenNOWDesign.Spacing.xSmall) {
+                    HStack(spacing: OPNDesign.Spacing.xSmall) {
                         Text("SORT: \(viewModel.selectedSortLabel.uppercased())")
                         Image(systemName: "chevron.down")
                     }
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
-                    .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
+                    .foregroundStyle(OPNDesign.Text.primary)
+                    .padding(.horizontal, OPNDesign.Spacing.controlRow)
                     .frame(height: 34)
-                    .background(OpenNOWDesign.Fill.neutral(0.08))
+                    .background(OPNDesign.Fill.neutral(0.08))
                 }
             }
 
@@ -500,9 +500,9 @@ struct CatalogBrowseControlsView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(viewModel.visibleFilterGroups, id: \.id) { group in
-                            OpenNOWDropdownMenu(
+                            OPNDropdownMenu(
                                 items: group.options.map { option in
-                                    OpenNOWDropdownItem(
+                                    OPNDropdownItem(
                                         id: option.id,
                                         title: option.label.isEmpty ? option.id : option.label,
                                         isSelected: viewModel.selectedFilterIds.contains(option.id)
@@ -514,11 +514,11 @@ struct CatalogBrowseControlsView: View {
                                     Image(systemName: "slider.horizontal.3")
                                 }
                                 .catalogFont(size: 11, weight: .bold)
-                                .foregroundStyle(OpenNOWDesign.Text.secondary)
-                                .padding(.horizontal, OpenNOWDesign.Spacing.controlRow)
+                                .foregroundStyle(OPNDesign.Text.secondary)
+                                .padding(.horizontal, OPNDesign.Spacing.controlRow)
                                 .frame(height: 32)
-                                .background(OpenNOWDesign.Fill.neutral(0.075))
-                                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                                .background(OPNDesign.Fill.neutral(0.075))
+                                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                             }
                         }
                         ForEach(selectedFilterOptions, id: \.id) { option in
@@ -531,7 +531,7 @@ struct CatalogBrowseControlsView: View {
                                 .foregroundStyle(.black.opacity(0.88))
                                 .padding(.horizontal, 11)
                                 .frame(height: 32)
-                                .background(OpenNOWDesign.accent)
+                                .background(OPNDesign.accent)
                             }
                             .buttonStyle(.plain)
                         }
@@ -555,15 +555,15 @@ struct CatalogEmptyDestinationView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .catalogFont(size: 22, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
                     .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .catalogFont(size: 24, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                     Text(message)
                         .catalogFont(size: 14, weight: .medium)
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
             }
             HStack(spacing: 10) {
@@ -582,8 +582,8 @@ struct CatalogEmptyDestinationView: View {
         }
         .padding(22)
         .frame(maxWidth: 620, alignment: .leading)
-        .background(OpenNOWDesign.Fill.neutral(0.055))
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(0.055))
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private var icon: String {

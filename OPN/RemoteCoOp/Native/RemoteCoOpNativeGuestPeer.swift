@@ -291,7 +291,7 @@ public final class OPNRemoteCoOpNativeGuestPeer: NSObject, RTCPeerConnectionDele
             return true
         }
         guard shouldReport else { return }
-        OpenNOWLog.warning(.stream, "Remote Co-Op guest peer lost its connection: \(reason)")
+        OPNLog.warning(.stream, "Remote Co-Op guest peer lost its connection: \(reason)")
         onConnectionFailed?(reason)
     }
 

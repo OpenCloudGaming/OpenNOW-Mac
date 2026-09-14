@@ -29,7 +29,7 @@ struct SettingsSidebar: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .background(SettingsVendorLayout.sidebar)
         .overlay(alignment: .trailing) {
-            Rectangle().fill(OpenNOWDesign.Stroke.subtle).frame(width: 1)
+            Rectangle().fill(OPNDesign.Stroke.subtle).frame(width: 1)
         }
     }
 
@@ -83,7 +83,7 @@ struct SettingsWindowWidthKey: PreferenceKey {
 /// How many settings in a tab still wear the NEW tag, so a reader who never opens that tab still
 /// learns something arrived in it.
 enum SettingsNewBadges {
-    static func group(for row: OpenNOWNewSettings.Row) -> CatalogSettingsGroup {
+    static func group(for row: OPNNewSettings.Row) -> CatalogSettingsGroup {
         switch row {
         case .surroundSound: .audio
         case .sessionReadyAction, .steamBigPictureMode: .general
@@ -92,8 +92,8 @@ enum SettingsNewBadges {
     }
 
     @MainActor static func count(in group: CatalogSettingsGroup) -> Int {
-        OpenNOWNewSettings.Row.allCases
-            .filter { self.group(for: $0) == group && OpenNOWNewSettings.isNew($0) }
+        OPNNewSettings.Row.allCases
+            .filter { self.group(for: $0) == group && OPNNewSettings.isNew($0) }
             .count
     }
 }
@@ -115,16 +115,16 @@ struct SettingsSidebarItem: View {
                 Image(systemName: group.icon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(isSelected ? OpenNOWDesign.accentInk : (isHovering ? OpenNOWDesign.Text.secondary : OpenNOWDesign.Text.tertiary))
+                    .foregroundStyle(isSelected ? OPNDesign.accentInk : (isHovering ? OPNDesign.Text.secondary : OPNDesign.Text.tertiary))
                     .frame(width: 16 * uiScale, height: 16 * uiScale)
                 if showsLabel {
                     Text(group.title)
                         .font(.settingsFont(size: 13 * uiScale, weight: isSelected ? .bold : .medium))
-                        .foregroundStyle(isSelected ? OpenNOWDesign.Text.primary : (isHovering ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary))
+                        .foregroundStyle(isSelected ? OPNDesign.Text.primary : (isHovering ? OPNDesign.Text.primary : OPNDesign.Text.tertiary))
                         .lineLimit(1)
                     Spacer(minLength: 4 * uiScale)
-                    if showsBetaTag { OpenNOWBetaTag(uiScale: uiScale * 0.85, compact: true) }
-                    if newCount > 0 { OpenNOWNewTag(uiScale: uiScale * 0.85) }
+                    if showsBetaTag { OPNBetaTag(uiScale: uiScale * 0.85, compact: true) }
+                    if newCount > 0 { OPNNewTag(uiScale: uiScale * 0.85) }
                 } else {
                     Spacer(minLength: 0)
                 }
@@ -135,7 +135,7 @@ struct SettingsSidebarItem: View {
             .background(background)
             .overlay(alignment: .leading) {
                 Rectangle()
-                    .fill(isSelected ? OpenNOWDesign.accent : .clear)
+                    .fill(isSelected ? OPNDesign.accent : .clear)
                     .frame(width: 3 * uiScale)
             }
             .contentShape(Rectangle())
@@ -150,7 +150,7 @@ struct SettingsSidebarItem: View {
     }
 
     private var background: Color {
-        if isSelected { return OpenNOWDesign.accent.opacity(0.12) }
-        return isHovering ? OpenNOWDesign.Fill.neutral(0.05) : .clear
+        if isSelected { return OPNDesign.accent.opacity(0.12) }
+        return isHovering ? OPNDesign.Fill.neutral(0.05) : .clear
     }
 }

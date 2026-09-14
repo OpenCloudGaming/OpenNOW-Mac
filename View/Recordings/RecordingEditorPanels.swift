@@ -64,7 +64,7 @@ struct RecordingEditorAdvancedDrawer: View {
 
             Text(detail)
                 .font(.recordingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(detailIsNotice ? OpenNOWDesign.accentInk.opacity(0.80) : OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(detailIsNotice ? OPNDesign.accentInk.opacity(0.80) : OPNDesign.Text.tertiary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: 14 * uiScale, alignment: .topLeading)
@@ -81,9 +81,9 @@ struct RecordingEditorAdvancedDrawer: View {
         smallButton("Move Left", help: "Move earlier in the timeline", isDisabled: !viewModel.canMoveSelectedSegment(offset: -1)) { viewModel.moveSelectedSegment(offset: -1) }
         smallButton("Move Right", help: "Move later in the timeline", isDisabled: !viewModel.canMoveSelectedSegment(offset: 1)) { viewModel.moveSelectedSegment(offset: 1) }
         separator
-        OpenNOWDropdownMenu(
+        OPNDropdownMenu(
             items: viewModel.library.map { recording in
-                OpenNOWDropdownItem(
+                OPNDropdownItem(
                     id: recording.id.uuidString,
                     title: "\(recording.title) · \(recordingEditorDurationText(recording.durationSeconds))"
                 ) { viewModel.appendRecording(recording) }
@@ -96,11 +96,11 @@ struct RecordingEditorAdvancedDrawer: View {
                 Image(systemName: "chevron.down")
             }
             .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-            .foregroundStyle(OpenNOWDesign.Text.primary)
+            .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, 10 * uiScale)
             .frame(height: RecordingEditorMetrics.compactControlHeight * uiScale)
-            .background(OpenNOWDesign.Stroke.subtle)
-            .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNDesign.Stroke.subtle)
+            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
     }
 
@@ -185,7 +185,7 @@ struct RecordingEditorAdvancedDrawer: View {
     /// Groups controls that do different jobs on the same line.
     private var separator: some View {
         Rectangle()
-            .fill(OpenNOWDesign.Stroke.regular)
+            .fill(OPNDesign.Stroke.regular)
             .frame(width: 1, height: RecordingEditorMetrics.compactControlHeight * uiScale * 0.7)
             .padding(.horizontal, 4 * uiScale)
     }
@@ -249,11 +249,11 @@ struct RecordingEditorSlider: View {
         HStack(spacing: 8 * uiScale) {
             Text(title)
                 .font(.recordingsFont(size: 10 * uiScale, weight: .medium))
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .frame(width: 78 * uiScale, alignment: .leading)
                 .lineLimit(1)
             Slider(value: $value, in: range, onEditingChanged: onEditingChanged)
-                .tint(OpenNOWDesign.accent)
+                .tint(OPNDesign.accent)
         }
     }
 }

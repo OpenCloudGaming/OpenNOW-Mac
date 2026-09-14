@@ -15,22 +15,22 @@ import Foundation
 /// itself and two titles would compete.
 @MainActor @Test func onlyAnEmptyLabsSuppressesTheHeader() {
     let suppressing = CatalogSettingsGroup.allCases.filter(\.isEmptyStatePage)
-    #expect(suppressing == (OpenNOWLabs.hasFlags ? [] : [.labs]))
+    #expect(suppressing == (OPNLabs.hasFlags ? [] : [.labs]))
 }
 
 /// A flag has to say what it turns on and when it went on trial, or nobody can judge whether to
 /// risk it or whether it has been forgotten.
 @MainActor @Test func everyLabsFlagIntroducesItself() {
-    for flag in OpenNOWLabs.flags {
+    for flag in OPNLabs.flags {
         #expect(!flag.id.isEmpty)
         #expect(!flag.title.isEmpty, "\(flag.id) has no title")
         #expect(!flag.summary.isEmpty, "\(flag.id) does not say what it does")
         #expect(!flag.since.isEmpty, "\(flag.id) does not say when it went on trial")
         #expect(flag.storageKey.hasPrefix("OpenNOW.Labs."), "\(flag.id) stores itself outside the Labs namespace")
     }
-    #expect(Set(OpenNOWLabs.flags.map(\.id)).count == OpenNOWLabs.flags.count, "two flags share an id")
+    #expect(Set(OPNLabs.flags.map(\.id)).count == OPNLabs.flags.count, "two flags share an id")
     // A retired flag reads as off rather than trapping.
-    #expect(!OpenNOWLabs.isEnabled(id: "a-flag-that-was-removed"))
+    #expect(!OPNLabs.isEnabled(id: "a-flag-that-was-removed"))
 }
 
 @Test func theTabsAreOneDestinationPerConcernInAFixedOrder() {

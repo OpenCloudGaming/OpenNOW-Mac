@@ -76,7 +76,7 @@ final class CatalogLaunchPrefetch {
         startedAt = ContinuousClock.now
         // Also prewarms the vpcId lookup, which every catalog query waits on.
         gameService.configureCatalogSession(accessToken: accessToken, idToken: idToken, userId: accountIdentifier)
-        OpenNOWLog.info(.catalog, "Launch panel prefetch started")
+        OPNLog.info(.catalog, "Launch panel prefetch started")
         gameService.fetchMarqueePanelObjects { [weak self] success, panels, error in
             self?.handlePanels(kind: .marquee, success: success, panels: panels, error: error)
         }
@@ -149,7 +149,7 @@ final class CatalogLaunchPrefetch {
     private func applyCachedPanels(_ cached: [OPNCatalogPanelObject], for kind: PanelKind) {
         guard (panels[kind] ?? []).isEmpty else { return }
         panels[kind] = cached
-        OpenNOWLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(cached.flatMap(\.sections).count)")
+        OPNLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(cached.flatMap(\.sections).count)")
         observer?(.panels(kind, cached))
         prefetchFirstFrameImages(for: kind)
     }
@@ -177,7 +177,7 @@ final class CatalogLaunchPrefetch {
             let message = error.isEmpty ? "No \(kind.rawValue) panels returned." : error
             panelStates[kind] = .failed
             guard (panels[kind] ?? []).isEmpty else { return }
-            OpenNOWLog.warning(.catalog, "Launch panel prefetch failed kind=\(kind.rawValue) error=\(message)")
+            OPNLog.warning(.catalog, "Launch panel prefetch failed kind=\(kind.rawValue) error=\(message)")
             observer?(.panelsFailed(kind, message))
             return
         }
@@ -195,7 +195,7 @@ final class CatalogLaunchPrefetch {
         guard success else {
             gameListStates[kind] = .failed
             guard (gameLists[kind] ?? []).isEmpty else { return }
-            OpenNOWLog.warning(.catalog, "Launch \(kind.rawValue) prefetch failed error=\(error)")
+            OPNLog.warning(.catalog, "Launch \(kind.rawValue) prefetch failed error=\(error)")
             observer?(.gamesFailed(kind, error))
             return
         }
@@ -210,7 +210,7 @@ final class CatalogLaunchPrefetch {
         let elapsed = startedAt.duration(to: .now).components
         let elapsedMs = Int(elapsed.seconds * 1000) + Int(elapsed.attoseconds / 1_000_000_000_000_000)
         let kindSuffix = kind.map { " kind=\($0)" } ?? ""
-        OpenNOWLog.info(.catalog, "Launch \(label) prefetch delivered\(kindSuffix) elapsed=\(elapsedMs)ms \(unit)=\(count)")
+        OPNLog.info(.catalog, "Launch \(label) prefetch delivered\(kindSuffix) elapsed=\(elapsedMs)ms \(unit)=\(count)")
     }
 
     private func isActiveState(_ state: FetchState?) -> Bool {

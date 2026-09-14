@@ -24,7 +24,7 @@ extension NativeNVSTHostViewModel {
         renderTraceCounter += 1
         guard renderTraceCounter % 10 == 1 else { return }
         let skipped = render.framesReceived > render.framesDrawn ? render.framesReceived - render.framesDrawn : 0
-        OpenNOWLog.info(.stream, String(format: "render mode=%@ tier=%@ received=%llu drawn=%llu skipped=%llu present=%.1fms max=%.1f jitter=%.2f interval=%.1f/%.1f audioJb=%.1fms",
+        OPNLog.info(.stream, String(format: "render mode=%@ tier=%@ received=%llu drawn=%llu skipped=%llu present=%.1fms max=%.1f jitter=%.2f interval=%.1f/%.1f audioJb=%.1fms",
                                         render.presentationMode, render.activeTier, render.framesReceived, render.framesDrawn, skipped,
                                         render.presentLatencyMs, render.presentLatencyMaxMs, render.presentJitterMs, render.frameIntervalMs, render.maxFrameIntervalMs,
                                         latestNativeStats?.audioJitterBufferMilliseconds ?? -1))

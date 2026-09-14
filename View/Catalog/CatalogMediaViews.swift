@@ -66,13 +66,13 @@ struct CatalogImageFallback: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [OpenNOWDesign.Fill.neutral(0.10), OpenNOWDesign.Fill.neutral(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: [OPNDesign.Fill.neutral(0.10), OPNDesign.Fill.neutral(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
             if isLoading {
                 SkeletonBlock()
             } else {
                 Image(systemName: "play.rectangle.fill")
                     .catalogFont(size: 34, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.78))
+                    .foregroundStyle(OPNDesign.accentInk.opacity(0.78))
                     .offset(x: iconOffsetX)
             }
         }
@@ -96,23 +96,23 @@ struct CatalogMessageView: View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
                 Rectangle()
-                    .fill(OpenNOWDesign.accent.opacity(0.13))
+                    .fill(OPNDesign.accent.opacity(0.13))
                 Image(systemName: systemImage)
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
             }
             .frame(width: 36, height: 36)
-            .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.30), lineWidth: 1) }
+            .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(presentation.title)
                     .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let hint = presentation.hint {
                     Text(hint)
                         .catalogFont(size: 12, weight: .medium)
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -121,12 +121,12 @@ struct CatalogMessageView: View {
                 Button { copy(details) } label: {
                     Text(copiedDetails ? "COPIED" : "COPY DETAILS")
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .tracking(0.7)
                         .padding(.horizontal, 10)
                         .frame(height: 28)
-                        .background(OpenNOWDesign.Fill.neutral(0.065))
-                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNDesign.Fill.neutral(0.065))
+                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
             }
@@ -134,12 +134,12 @@ struct CatalogMessageView: View {
                 Button(action: onGenerateDiagnostics) {
                     Text(Self.diagnosticsTitle(for: diagnosticsState))
                         .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(diagnosticsState.isError ? OpenNOWDesign.Semantic.destructive : OpenNOWDesign.accentInk)
+                        .foregroundStyle(diagnosticsState.isError ? OPNDesign.Semantic.destructive : OPNDesign.accentInk)
                         .tracking(0.7)
                         .padding(.horizontal, 10)
                         .frame(height: 28)
-                        .background(OpenNOWDesign.accent.opacity(0.10))
-                        .overlay { Rectangle().stroke(OpenNOWDesign.accent.opacity(0.34), lineWidth: 1) }
+                        .background(OPNDesign.accent.opacity(0.10))
+                        .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.34), lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .disabled(diagnosticsState.isWorking)
@@ -149,19 +149,19 @@ struct CatalogMessageView: View {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .catalogFont(size: 11, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
                         .frame(width: 28, height: 28)
-                        .background(OpenNOWDesign.Fill.neutral(0.065))
-                        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNDesign.Fill.neutral(0.065))
+                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .help("Dismiss")
             }
         }
         .padding(14)
-        .background(OpenNOWDesign.Fill.neutral(0.060))
-        .overlay(alignment: .leading) { Rectangle().fill(OpenNOWDesign.accent).frame(width: 3) }
-        .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(0.060))
+        .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
+        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private static func diagnosticsTitle(for state: AboutDiagnosticsState) -> String {
@@ -295,7 +295,7 @@ struct CatalogDetailImageArrow: View {
                 .frame(width: 34 * uiScale, height: 34 * uiScale)
                 .frame(width: 48 * uiScale, height: 48 * uiScale)
                 .background(.black.opacity(0.28), in: Circle())
-                .overlay { Circle().stroke(OpenNOWDesign.Stroke.strong, lineWidth: 1) }
+                .overlay { Circle().stroke(OPNDesign.Stroke.strong, lineWidth: 1) }
         }
         .buttonStyle(.plain)
     }
@@ -316,11 +316,11 @@ struct CatalogFavoriteButton: View {
         Button(action: toggle) {
             Image(systemName: isFavorite ? "heart.fill" : "heart")
                 .catalogFont(size: iconSize, weight: .bold)
-                .foregroundStyle(isFavorite ? .black.opacity(0.88) : OpenNOWDesign.Semantic.favorite)
+                .foregroundStyle(isFavorite ? .black.opacity(0.88) : OPNDesign.Semantic.favorite)
                 .frame(width: side * uiScale, height: side * uiScale)
-                .background(isFavorite ? OpenNOWDesign.Semantic.favorite : OpenNOWDesign.Fill.neutral(0.08))
+                .background(isFavorite ? OPNDesign.Semantic.favorite : OPNDesign.Fill.neutral(0.08))
                 .overlay {
-                    Rectangle().strokeBorder(OpenNOWDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
+                    Rectangle().strokeBorder(OPNDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
                 }
                 .contentShape(Rectangle())
         }

@@ -54,13 +54,13 @@ struct CatalogShowAllResizeZones<ResizeGesture: Gesture>: View {
                         resizeZone(.bottomRight, width: cornerSize, height: cornerSize)
                         VStack(alignment: .trailing, spacing: 4) {
                             Rectangle()
-                                .fill(OpenNOWDesign.Fill.neutral(0.28))
+                                .fill(OPNDesign.Fill.neutral(0.28))
                                 .frame(width: 9, height: 1)
                             Rectangle()
-                                .fill(OpenNOWDesign.Fill.neutral(0.42))
+                                .fill(OPNDesign.Fill.neutral(0.42))
                                 .frame(width: 15, height: 1)
                             Rectangle()
-                                .fill(OpenNOWDesign.accent.opacity(0.86))
+                                .fill(OPNDesign.accent.opacity(0.86))
                                 .frame(width: 21, height: 1)
                         }
                         .rotationEffect(.degrees(-45))
@@ -218,13 +218,13 @@ struct CatalogShowAllEmptySearchView: View {
         VStack(spacing: 10) {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .catalogFont(size: 34, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.accentInk.opacity(0.84))
+                .foregroundStyle(OPNDesign.accentInk.opacity(0.84))
             Text("No matching games")
                 .catalogFont(size: 18, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.primary)
+                .foregroundStyle(OPNDesign.Text.primary)
             Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Try searching by title, genre, store, publisher, input type, rating, or tag." : "No metadata matched \"\(query)\".")
                 .catalogFont(size: 13, weight: .medium)
-                .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                .foregroundStyle(OPNDesign.Text.tertiary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
         }

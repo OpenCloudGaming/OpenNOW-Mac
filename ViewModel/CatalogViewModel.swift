@@ -112,7 +112,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     /// True for a page that is nothing but an empty state. It names itself, so the standard page
     /// header above it would be a second, competing title, and there is nothing to scroll.
     @MainActor var isEmptyStatePage: Bool {
-        self == .labs && !OpenNOWLabs.hasFlags
+        self == .labs && !OPNLabs.hasFlags
     }
 
     var title: String {
@@ -515,7 +515,7 @@ final class CatalogViewModel {
             loadCatalogDataAfterProviderConfiguration()
             return
         }
-        OpenNOWLog.info(.catalog, "Initial catalog load deferred until expired session refresh completes")
+        OPNLog.info(.catalog, "Initial catalog load deferred until expired session refresh completes")
         Task { [weak self] in
             guard let self else { return }
             _ = await onRefreshAuth()
@@ -596,9 +596,9 @@ final class CatalogViewModel {
                     : "Provider endpoint lookup failed idpId=\(providerIdpId) error=\(error)"
                 Task { @MainActor in
                     if success {
-                        OpenNOWLog.info(.auth, message)
+                        OPNLog.info(.auth, message)
                     } else {
-                        OpenNOWLog.warning(.auth, message)
+                        OPNLog.warning(.auth, message)
                     }
                     continuation.resume()
                 }

@@ -64,7 +64,7 @@ struct ControllerCatalogView: View {
     let onSignOut: (LoginAccount) -> Void
     let onForget: (LoginAccount) -> Void
 
-    @AppStorage(OpenNOWInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @Environment(\.opnUIScale) private var uiScale
     /// Owns the shell's whole controller state machine, and the input router, gamepad navigator and
     /// on-screen keyboard it drives. Still a `@StateObject` on this view, so its lifetime is exactly
@@ -334,14 +334,14 @@ private struct ControllerHeader: View {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text("GEFORCE NOW")
                     .catalogFont(size: 11, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.accentInk)
+                    .foregroundStyle(OPNDesign.accentInk)
                     .tracking(1.6)
                 Text(headerTitle)
                     .catalogFont(size: 24, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
             }
             Spacer(minLength: 0)
-            HStack(spacing: OpenNOWDesign.Spacing.medium(scale: uiScale)) {
+            HStack(spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
                 ControllerDesktopModeButton(isFocused: isFocused, exit: exitControllerMode)
                 CatalogAccountAvatar(account: viewModel.account, size: 34)
             }
@@ -373,7 +373,7 @@ private struct ControllerDeviceLabel: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        HStack(spacing: OpenNOWDesign.Spacing.xxSmall(scale: uiScale)) {
+        HStack(spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
             Image(systemName: glyphs.usesControllerGlyphs ? "gamecontroller.fill" : "keyboard")
                 .catalogFont(size: 9, weight: .bold)
             Text(text)
@@ -382,7 +382,7 @@ private struct ControllerDeviceLabel: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
-        .foregroundStyle(glyphs.usesControllerGlyphs ? OpenNOWDesign.Text.tertiary : OpenNOWDesign.Text.muted)
+        .foregroundStyle(glyphs.usesControllerGlyphs ? OPNDesign.Text.tertiary : OPNDesign.Text.muted)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(text)
     }
@@ -407,10 +407,10 @@ private struct ControllerDesktopModeButton: View {
         Button(action: exit) {
             Image(systemName: "macwindow")
                 .catalogFont(size: 13, weight: .bold)
-                .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.Text.primary)
+                .foregroundStyle(isFocused ? .black.opacity(0.86) : OPNDesign.Text.primary)
                 .frame(width: 40 * uiScale, height: 34 * uiScale)
-                .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.08))
+                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .openNowFocusRing(isFocused)
         }
         .buttonStyle(.plain)
@@ -431,12 +431,12 @@ private struct ControllerNavigationBar: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: OpenNOWDesign.Spacing.xSmall(scale: uiScale)) {
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             // Above the tabs rather than in the header: it is a status line about how you are
             // driving this bar, so it reads with the bar and leaves the header to the controls.
             ControllerDeviceLabel(glyphs: glyphs)
                 .frame(width: layout.contentWidth, alignment: .leading)
-                .padding(.top, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+                .padding(.top, OPNDesign.Spacing.contentVertical(scale: uiScale))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12 * uiScale) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -450,18 +450,18 @@ private struct ControllerNavigationBar: View {
                                     .catalogFont(size: 12, weight: .bold)
                                     .tracking(0.8)
                             }
-                            .foregroundStyle(active ? .black.opacity(0.86) : OpenNOWDesign.Text.secondary)
+                            .foregroundStyle(active ? .black.opacity(0.86) : OPNDesign.Text.secondary)
                             .padding(.horizontal, 14 * uiScale)
                             .frame(height: 40 * uiScale)
-                            .background(active ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
-                            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                            .background(active ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
+                            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
                             .openNowFocusRing(selected)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .frame(width: layout.contentWidth, alignment: .leading)
-                .padding(.bottom, OpenNOWDesign.Spacing.contentVertical(scale: uiScale))
+                .padding(.bottom, OPNDesign.Spacing.contentVertical(scale: uiScale))
             }
         }
         .frame(width: layout.contentWidth)
@@ -584,17 +584,17 @@ private struct ControllerSearchEntryBar: View {
             HStack(spacing: 12 * uiScale) {
                 Image(systemName: "magnifyingglass")
                     .catalogFont(size: 15, weight: .bold)
-                    .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                    .foregroundStyle(isFocused ? .black.opacity(0.86) : OPNDesign.accent)
                 Text("Search")
                     .catalogFont(size: 14, weight: .medium)
-                    .foregroundStyle(isFocused ? .black.opacity(0.82) : OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(isFocused ? .black.opacity(0.82) : OPNDesign.Text.tertiary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16 * uiScale)
             .frame(height: 44 * uiScale)
-            .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
+            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .openNowFocusRing(isFocused)
         }
         .buttonStyle(.plain)

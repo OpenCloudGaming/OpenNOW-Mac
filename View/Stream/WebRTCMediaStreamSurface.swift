@@ -66,7 +66,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State var onScreenKeyboardVisible = false
     @State var restorePointerLockOnKeyboardHide = false
     @StateObject var onScreenKeyboard = StreamOnScreenKeyboardModel()
-    @AppStorage(OpenNOWInterfacePreferences.uiScaleKey) var uiScale = OpenNOWInterfacePreferences.defaultUIScale
+    @AppStorage(OPNInterfacePreferences.uiScaleKey) var uiScale = OPNInterfacePreferences.defaultUIScale
     @State var sessionLimit: StreamSessionSidebarLimit?
 
     public init(configuration: StreamLaunchConfiguration,

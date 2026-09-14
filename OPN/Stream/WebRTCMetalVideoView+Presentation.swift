@@ -97,7 +97,7 @@ extension OPNMetalVideoView {
         os_unfair_lock_unlock(&frameLock)
         guard let url else { return }
         guard let drawable = metalView.currentDrawable, let commandQueue, let device = metalView.device else {
-            OpenNOWLog.warning(.stream, "Render snapshot: no drawable")
+            OPNLog.warning(.stream, "Render snapshot: no drawable")
             return
         }
         let source = drawable.texture
@@ -114,7 +114,7 @@ extension OPNMetalVideoView {
         guard let staging = device.makeTexture(descriptor: descriptor),
               let commandBuffer = commandQueue.makeCommandBuffer(),
               let blit = commandBuffer.makeBlitCommandEncoder() else {
-            OpenNOWLog.warning(.stream, "Render snapshot: could not create the copy")
+            OPNLog.warning(.stream, "Render snapshot: could not create the copy")
             return
         }
         blit.copy(from: source, to: staging)
@@ -126,21 +126,21 @@ extension OPNMetalVideoView {
         let height = source.height
         commandBuffer.addCompletedHandler { _ in
             guard let image = CIImage(mtlTexture: stagingTexture, options: [.colorSpace: CGColorSpace.sRGBForRender as Any]) else {
-                OpenNOWLog.warning(.stream, "Render snapshot: Core Image cannot read a \(formatName) drawable")
+                OPNLog.warning(.stream, "Render snapshot: Core Image cannot read a \(formatName) drawable")
                 return
             }
             // Metal's origin is top-left, Core Image's bottom-left.
             let oriented = image.oriented(.downMirrored)
             let context = CIContext(options: [.cacheIntermediates: false])
             guard let data = context.jpegRepresentation(of: oriented, colorSpace: CGColorSpace.sRGBForRender, options: [:]) else {
-                OpenNOWLog.warning(.stream, "Render snapshot: JPEG encode failed")
+                OPNLog.warning(.stream, "Render snapshot: JPEG encode failed")
                 return
             }
             do {
                 try data.write(to: url, options: .atomic)
-                OpenNOWLog.info(.stream, "Render snapshot \(width)x\(height) \(formatName) -> \(url.path)")
+                OPNLog.info(.stream, "Render snapshot \(width)x\(height) \(formatName) -> \(url.path)")
             } catch {
-                OpenNOWLog.warning(.stream, "Render snapshot: write failed \(error.localizedDescription)")
+                OPNLog.warning(.stream, "Render snapshot: write failed \(error.localizedDescription)")
             }
         }
         commandBuffer.commit()
@@ -195,7 +195,7 @@ extension OPNMetalVideoView {
             metalView.isPaused = false
         }
         resetDrawCadence()
-        OpenNOWLog.info(.stream, "Video presentation mode \(previous.label) -> \(mode.label)")
+        OPNLog.info(.stream, "Video presentation mode \(previous.label) -> \(mode.label)")
     }
 
     /// The frame this refresh should draw, or nil when there is nothing new. `smooth` hands out
@@ -304,7 +304,7 @@ extension OPNMetalVideoView {
         rendererNV12 = nil
         rendererRGB = nil
         rendererI420 = nil
-        OpenNOWLog.info(.stream, "Video output format \(Self.outputFormatName(previous)) -> \(Self.outputFormatName(format)) transfer=\(transfer) edr=\(transfer.isHDR)")
+        OPNLog.info(.stream, "Video output format \(Self.outputFormatName(previous)) -> \(Self.outputFormatName(format)) transfer=\(transfer) edr=\(transfer.isHDR)")
         return true
     }
 

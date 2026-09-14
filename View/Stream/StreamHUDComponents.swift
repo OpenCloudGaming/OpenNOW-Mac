@@ -9,9 +9,9 @@ enum WebRTCMediaStreamTheme {
     /// chosen accent instead of a hardcoded green. The stream view is deliberately never
     /// invalidated while a session is live, so a mid-session accent change still waits for the
     /// next render, same as before this read became dynamic.
-    static var accent: Color { OpenNOWDesign.Fixed.accent }
+    static var accent: Color { OPNDesign.Fixed.accent }
 
-    static var accentSoft: Color { OpenNOWDesign.accentSoft }
+    static var accentSoft: Color { OPNDesign.accentSoft }
 
     static let appBar = Color(red: 45 / 255, green: 45 / 255, blue: 45 / 255)
     static let surface = Color(red: 25 / 255, green: 25 / 255, blue: 25 / 255)
@@ -33,8 +33,8 @@ enum WebRTCMediaStreamTheme {
 }
 
 extension Font {
-    static func streamFont(size: CGFloat, weight: OpenNOWUIFont.Weight = .regular) -> Font {
-        OpenNOWUIFont.font(size: size, weight: weight)
+    static func streamFont(size: CGFloat, weight: OPNUIFont.Weight = .regular) -> Font {
+        OPNUIFont.font(size: size, weight: weight)
     }
 }
 
@@ -485,7 +485,7 @@ struct StreamHUDSection<Content: View>: View {
                     .font(.streamFont(size: 10, weight: .bold))
                     .tracking(1.1)
                     .foregroundStyle(WebRTCMediaStreamTheme.textTertiary)
-                if showsBetaTag { OpenNOWBetaTag(uiScale: 1, prominent: true) }
+                if showsBetaTag { OPNBetaTag(uiScale: 1, prominent: true) }
                 Spacer(minLength: 0)
             }
             content

@@ -50,7 +50,7 @@ struct ControllerGameDetailOverlay: View {
     var body: some View {
         let metrics = ControllerGameDetailMetrics(viewport: layout.size, scale: uiScale)
         ZStack(alignment: .topLeading) {
-            OpenNOWDesign.Surface.app
+            OPNDesign.Surface.app
             VStack(alignment: .leading, spacing: 0) {
                 hero(metrics: metrics, width: layout.size.width)
                 actionRow
@@ -128,10 +128,10 @@ struct ControllerGameDetailOverlay: View {
         return Text(tab.title)
             .catalogFont(size: 11, weight: .bold)
             .tracking(1.0)
-            .foregroundStyle(isActive ? OpenNOWDesign.Text.primary : OpenNOWDesign.Text.tertiary)
+            .foregroundStyle(isActive ? OPNDesign.Text.primary : OPNDesign.Text.tertiary)
             .padding(.bottom, 8 * uiScale)
             .overlay(alignment: .bottom) {
-                if isActive { Rectangle().fill(OpenNOWDesign.accent).frame(height: 2) }
+                if isActive { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
             }
     }
 
@@ -150,7 +150,7 @@ struct ControllerGameDetailOverlay: View {
                     .init(color: .clear, location: 0.00),
                     .init(color: .black.opacity(0.34), location: 0.46),
                     .init(color: .black.opacity(0.78), location: 0.78),
-                    .init(color: OpenNOWDesign.Surface.app, location: 1.00)
+                    .init(color: OPNDesign.Surface.app, location: 1.00)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -178,11 +178,11 @@ struct ControllerGameDetailOverlay: View {
                 ForEach(GameDetailPresentation.capabilityLabels(game: game), id: \.self) { label in
                     Text(label)
                         .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                         .padding(.horizontal, 8 * uiScale)
                         .frame(height: 24 * uiScale)
-                        .background(OpenNOWDesign.Fill.neutral(0.12))
-                        .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNDesign.Fill.neutral(0.12))
+                        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -205,7 +205,7 @@ struct ControllerGameDetailOverlay: View {
         }
         .catalogFont(size: 12, weight: .bold)
         .tracking(0.6)
-        .foregroundStyle(OpenNOWDesign.Text.secondary)
+        .foregroundStyle(OPNDesign.Text.secondary)
     }
 
     private var closeHeader: some View {
@@ -213,14 +213,14 @@ struct ControllerGameDetailOverlay: View {
             ControllerGlyphPill(glyph: glyphs.back)
             Text("BACK")
                 .catalogFont(size: 11, weight: .bold)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
             Button(action: close) {
                 Image(systemName: "xmark")
                     .catalogFont(size: 13, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
                     .background(Color.black.opacity(0.55))
-                    .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                    .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
         }
@@ -253,14 +253,14 @@ struct ControllerGameDetailOverlay: View {
                     .catalogFont(size: 13, weight: .bold)
                     .tracking(0.9)
             }
-            .foregroundStyle(isFilled ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
+            .foregroundStyle(isFilled ? .black.opacity(0.88) : OPNDesign.Text.primary)
             .padding(.horizontal, 22 * uiScale)
             // Matched box, not matched emphasis: Play earns its prominence from the accent fill, so
             // sizing it larger as well made the pair read as two unrelated controls.
             .frame(minWidth: 150 * uiScale)
             .frame(height: 44 * uiScale)
-            .background(isFilled ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.10))
-            .overlay { Rectangle().strokeBorder(isFilled ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+            .background(isFilled ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10))
+            .overlay { Rectangle().strokeBorder(isFilled ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
             .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
@@ -271,7 +271,7 @@ struct ControllerGameDetailOverlay: View {
     /// the rest of controller mode already uses for "choose one of these".
     private func moreMenu(metrics: ControllerGameDetailMetrics) -> some View {
         ZStack {
-            OpenNOWDesign.Surface.scrim
+            OPNDesign.Surface.scrim
                 .ignoresSafeArea()
                 .onTapGesture { closeMoreMenu() }
             VStack(alignment: .leading, spacing: 0) {
@@ -292,18 +292,18 @@ struct ControllerGameDetailOverlay: View {
                             HStack(spacing: 13 * uiScale) {
                                 Image(systemName: action.icon)
                                     .catalogFont(size: 14, weight: .bold)
-                                    .foregroundStyle(isFocused ? .black.opacity(0.86) : OpenNOWDesign.accent)
+                                    .foregroundStyle(isFocused ? .black.opacity(0.86) : OPNDesign.accent)
                                     .frame(width: 26 * uiScale)
                                 Text(action.title(game: game, selectedVariant: selectedVariant, viewModel: viewModel))
                                     .catalogFont(size: 15, weight: .bold)
-                                    .foregroundStyle(isFocused ? .black.opacity(0.88) : OpenNOWDesign.Text.primary)
+                                    .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.primary)
                                     .lineLimit(1)
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 14 * uiScale)
                             .frame(height: 48 * uiScale)
-                            .background(isFocused ? OpenNOWDesign.accent : OpenNOWDesign.Fill.neutral(0.055))
-                            .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+                            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
+                            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
                             .openNowFocusRing(isFocused, onAccentFill: true)
                         }
                         .buttonStyle(.plain)
@@ -313,9 +313,9 @@ struct ControllerGameDetailOverlay: View {
                 .padding(.bottom, 22 * uiScale)
             }
             .frame(width: min(560 * uiScale, max(layout.size.width - metrics.horizontalPadding * 2, 1)), alignment: .topLeading)
-            .background(OpenNOWDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .top) { Rectangle().fill(OpenNOWDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
+            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 
@@ -327,13 +327,13 @@ struct ControllerGameDetailOverlay: View {
             VStack(alignment: .leading, spacing: 16 * uiScale) {
                 Text(GameDetailPresentation.shortDescription(game: game))
                     .catalogFont(size: 16, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
                 if !longDescription.isEmpty {
                     Text(longDescription)
                         .catalogFont(size: 14, weight: .medium)
-                        .foregroundStyle(OpenNOWDesign.Text.secondary)
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -344,7 +344,7 @@ struct ControllerGameDetailOverlay: View {
     /// A strip rather than a grid: the pad walks it left to right, and the selected shot is the one
     /// the lightbox opens, so browsing and enlarging share a single index.
     private var screenshotsPanel: some View {
-        let thumbnailWidth = OpenNOWDesign.clamped(layout.size.width * 0.22, minimum: 180, maximum: 300)
+        let thumbnailWidth = OPNDesign.clamped(layout.size.width * 0.22, minimum: 180, maximum: 300)
         return ControllerInfoSection(label: "SCREENSHOTS", uiScale: uiScale) {
             ScrollViewReader { scrollProxy in
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -372,7 +372,7 @@ struct ControllerGameDetailOverlay: View {
             CatalogRemoteImage(url: viewModel.optimizedImageURL(url, width: 640), contentMode: .fill, maxPixelSize: 640)
                 .frame(width: width, height: width * 9 / 16)
                 .clipped()
-                .overlay { Rectangle().strokeBorder(isSelected ? OpenNOWDesign.accent : OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .overlay { Rectangle().strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
                 .openNowFocusRing(isSelected)
                 .contentShape(Rectangle())
         }
@@ -401,11 +401,11 @@ struct ControllerGameDetailOverlay: View {
             Text("\(selectedScreenshotIndex + 1) / \(screenshots.count)")
                 .catalogFont(size: 12, weight: .bold)
                 .tracking(0.8)
-                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 26 * uiScale)
-                .background(OpenNOWDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().strokeBorder(OpenNOWDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNDesign.Fill.neutral(0.08))
+                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .padding(.bottom, 24 * uiScale)
         }
     }
@@ -432,11 +432,11 @@ struct ControllerGameDetailOverlay: View {
                     VStack(alignment: .leading, spacing: 8 * uiScale) {
                         Text(game.ratingLabel.isEmpty ? "CLOUD GAMING" : game.ratingLabel.uppercased())
                             .catalogFont(size: 13, weight: .bold)
-                            .foregroundStyle(OpenNOWDesign.Text.primary)
+                            .foregroundStyle(OPNDesign.Text.primary)
                         ForEach(descriptors, id: \.self) { descriptor in
                             Text(descriptor)
                                 .catalogFont(size: 12, weight: .medium)
-                                .foregroundStyle(OpenNOWDesign.Text.secondary)
+                                .foregroundStyle(OPNDesign.Text.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
@@ -454,11 +454,11 @@ private struct ControllerGameDetailMetrics {
     let wordmarkHeight: CGFloat
 
     init(viewport: CGSize, scale: CGFloat) {
-        let padding = OpenNOWDesign.clamped(viewport.width * 0.06, minimum: 28, maximum: 96) * scale
+        let padding = OPNDesign.clamped(viewport.width * 0.06, minimum: 28, maximum: 96) * scale
         horizontalPadding = min(padding, viewport.width * 0.14)
-        heroHeight = OpenNOWDesign.clamped(viewport.height * 0.42, minimum: 220, maximum: 520)
+        heroHeight = OPNDesign.clamped(viewport.height * 0.42, minimum: 220, maximum: 520)
         // Held under half the band: the caption still has to seat its metadata and capability rows.
-        wordmarkHeight = min(OpenNOWDesign.clamped(viewport.height * 0.15, minimum: 76, maximum: 150) * scale, heroHeight * 0.44)
+        wordmarkHeight = min(OPNDesign.clamped(viewport.height * 0.15, minimum: 76, maximum: 150) * scale, heroHeight * 0.44)
     }
 }
 
@@ -479,9 +479,9 @@ private struct ControllerInfoSection<Content: View>: View {
                 Text(label)
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(1.1)
-                    .foregroundStyle(OpenNOWDesign.Text.tertiary)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
                 Rectangle()
-                    .fill(OpenNOWDesign.Stroke.subtle)
+                    .fill(OPNDesign.Stroke.subtle)
                     .frame(height: 1)
             }
             content
@@ -501,11 +501,11 @@ private struct ControllerInfoSpecRow: View {
                 Text(label.uppercased())
                     .catalogFont(size: 10, weight: .bold)
                     .tracking(0.6)
-                    .foregroundStyle(OpenNOWDesign.Text.muted)
+                    .foregroundStyle(OPNDesign.Text.muted)
                     .frame(width: 92 * uiScale, alignment: .leading)
                 Text(value)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(OpenNOWDesign.Text.secondary)
+                    .foregroundStyle(OPNDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

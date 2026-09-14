@@ -219,7 +219,7 @@ extension OPNAuthService {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    func generateOpenNOWDeviceId() -> String {
+    func generateOPNDeviceId() -> String {
         var hostnameBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
         let hostname = gethostname(&hostnameBuffer, hostnameBuffer.count) == 0
             ? String(decoding: hostnameBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)

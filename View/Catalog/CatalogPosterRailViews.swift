@@ -42,14 +42,14 @@ struct CatalogPosterRailView: View {
             HStack {
                 Text(section.title)
                     .catalogFont(size: 20, weight: .medium)
-                    .foregroundStyle(OpenNOWDesign.Text.primary)
+                    .foregroundStyle(OPNDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if canShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 13, weight: .bold)
-                        .foregroundStyle(OpenNOWDesign.Text.primary)
+                        .foregroundStyle(OPNDesign.Text.primary)
                 }
             }
             .frame(height: 28 * uiScale)
@@ -112,7 +112,7 @@ struct CatalogPosterRailView: View {
                         .opacity(isRailHovering ? 1 : 0)
                         .allowsHitTesting(isRailHovering)
                         .accessibilityHidden(!isRailHovering)
-                        .opnMotion(OpenNOWDesign.Motion.hover, value: isRailHovering)
+                        .opnMotion(OPNDesign.Motion.hover, value: isRailHovering)
                     }
                 }
                 .onHover { isRailHovering = $0 }

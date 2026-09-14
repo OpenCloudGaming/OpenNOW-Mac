@@ -1,23 +1,23 @@
 /// Each appearance now resolves an accent that is already readable on its own page, so the ink and
 /// the fill agree - and dark keeps exactly the colour that ships today.
 @MainActor @Test func theAccentAndItsInkAgreeOnEveryPage() {
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-    let darkAccent = brightness(of: OpenNOWDesign.accent)
-    #expect(brightness(of: OpenNOWDesign.accentInk) == darkAccent)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    let darkAccent = brightness(of: OPNDesign.accent)
+    #expect(brightness(of: OPNDesign.accentInk) == darkAccent)
     withAppearance(.light) {
-        #expect(brightness(of: OpenNOWDesign.accentInk) == brightness(of: OpenNOWDesign.accent))
-        #expect(brightness(of: OpenNOWDesign.accent) < darkAccent, "the light page kept the bright accent")
+        #expect(brightness(of: OPNDesign.accentInk) == brightness(of: OPNDesign.accent))
+        #expect(brightness(of: OPNDesign.accent) < darkAccent, "the light page kept the bright accent")
         // Artwork and video never turn light, so the accent drawn on them does not either.
-        #expect(brightness(of: OpenNOWDesign.Fixed.accent) == darkAccent)
+        #expect(brightness(of: OPNDesign.Fixed.accent) == darkAccent)
     }
 }
 
 /// Black reads on the bright accent, white on the deep one; the token has to follow the fill.
 @MainActor @Test func theInkOnAnAccentFillFollowsWhichAccentIsUnderIt() {
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-    #expect(brightness(of: OpenNOWDesign.onAccent) == 0)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    #expect(brightness(of: OPNDesign.onAccent) == 0)
     withAppearance(.light) {
-        #expect(brightness(of: OpenNOWDesign.onAccent) > 0.9)
+        #expect(brightness(of: OPNDesign.onAccent) > 0.9)
     }
 }
 
@@ -34,10 +34,10 @@ import Testing
     return Double(resolved.brightnessComponent)
 }
 
-@MainActor private func withAppearance(_ appearance: OpenNOWThemePreferences.Appearance, _ body: () -> Void) {
-    OpenNOWDesign.applyAppearance(appearance, systemColorScheme: .dark)
+@MainActor private func withAppearance(_ appearance: OPNThemePreferences.Appearance, _ body: () -> Void) {
+    OPNDesign.applyAppearance(appearance, systemColorScheme: .dark)
     body()
-    OpenNOWDesign.applyAppearance(.dark, systemColorScheme: .dark)
+    OPNDesign.applyAppearance(.dark, systemColorScheme: .dark)
 }
 
 @MainActor @Test func everySettingsSurfaceFollowsTheChosenAppearance() {
@@ -63,56 +63,56 @@ import Testing
 /// Text and surfaces have to flip together. They came apart once already: the text tokens resolved
 /// live while the surfaces behind them were frozen, so light mode painted dark text on a dark page.
 @MainActor @Test func textAndSurfacesFlipTogetherSoOneNeverPaintsOnTheOther() {
-    #expect(brightness(of: OpenNOWDesign.Text.primary) > brightness(of: OpenNOWDesign.Surface.app))
+    #expect(brightness(of: OPNDesign.Text.primary) > brightness(of: OPNDesign.Surface.app))
     withAppearance(.light) {
-        #expect(brightness(of: OpenNOWDesign.Text.primary) < brightness(of: OpenNOWDesign.Surface.app))
+        #expect(brightness(of: OPNDesign.Text.primary) < brightness(of: OPNDesign.Surface.app))
     }
 }
 
 @MainActor @Test func aNeutralFillWashesAgainstThePageRatherThanAlwaysWhite() {
-    let darkFill = brightness(of: OpenNOWDesign.Fill.neutral(0.5))
+    let darkFill = brightness(of: OPNDesign.Fill.neutral(0.5))
     withAppearance(.light) {
-        #expect(brightness(of: OpenNOWDesign.Fill.neutral(0.5)) < darkFill)
+        #expect(brightness(of: OPNDesign.Fill.neutral(0.5)) < darkFill)
     }
 }
 
 /// The palette is pushed from a root view's `body`, so it runs once per body pass on every root.
 /// It has to be cheap to call repeatedly and it has to resolve both halves together.
 @MainActor @Test func applyingTheSameThemeTwiceIsANoOpButAChangeIsNot() {
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-    #expect(OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark) == false)
-    #expect(OpenNOWDesign.applyTheme(accent: .magenta, appearance: .dark, systemColorScheme: .dark))
-    #expect(OpenNOWDesign.applyTheme(accent: .magenta, appearance: .light, systemColorScheme: .dark))
-    #expect(brightness(of: OpenNOWDesign.Surface.app) > 0.5, "the light appearance did not reach the surfaces")
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    #expect(OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark) == false)
+    #expect(OPNDesign.applyTheme(accent: .magenta, appearance: .dark, systemColorScheme: .dark))
+    #expect(OPNDesign.applyTheme(accent: .magenta, appearance: .light, systemColorScheme: .dark))
+    #expect(brightness(of: OPNDesign.Surface.app) > 0.5, "the light appearance did not reach the surfaces")
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
 }
 
 /// Match System has to follow the OS, which is the only case where the system scheme is consulted.
 @MainActor @Test func matchSystemFollowsTheOperatingSystemScheme() {
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .light)
-    #expect(brightness(of: OpenNOWDesign.Surface.app) > 0.5)
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .dark)
-    #expect(brightness(of: OpenNOWDesign.Surface.app) < 0.5)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .light)
+    #expect(brightness(of: OPNDesign.Surface.app) > 0.5)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .system, systemColorScheme: .dark)
+    #expect(brightness(of: OPNDesign.Surface.app) < 0.5)
 }
 
 /// The shipping accents are bright enough to vanish on a light page, so accent-coloured LABELS go
 /// through `accentInk`, which darkens until it clears the text contrast floor.
 @MainActor @Test func everyAccentStaysReadableAsTextOnALightPage() {
-    let surface = OpenNOWThemePreferences.lightPaletteTokens.surfaceApp
-    let surfaceLuminance = OpenNOWThemePreferences.relativeLuminance(red: surface.red, green: surface.green, blue: surface.blue)
-    for preset in OpenNOWThemePreferences.AccentColor.allCases {
+    let surface = OPNThemePreferences.lightPaletteTokens.surfaceApp
+    let surfaceLuminance = OPNThemePreferences.relativeLuminance(red: surface.red, green: surface.green, blue: surface.blue)
+    for preset in OPNThemePreferences.AccentColor.allCases {
         let components = preset.components
-        let ink = OpenNOWThemePreferences.legibleAccentComponents(
+        let ink = OPNThemePreferences.legibleAccentComponents(
             red: components.red,
             green: components.green,
             blue: components.blue,
             onSurfaceLuminance: surfaceLuminance
         )
-        let ratio = OpenNOWThemePreferences.contrastRatio(
+        let ratio = OPNThemePreferences.contrastRatio(
             red: ink.red, green: ink.green, blue: ink.blue,
             againstRed: surface.red, againstGreen: surface.green, againstBlue: surface.blue
         )
-        #expect(ratio >= OpenNOWThemePreferences.minimumTextContrastRatio, "\(preset.label) is unreadable as text on a light page")
+        #expect(ratio >= OPNThemePreferences.minimumTextContrastRatio, "\(preset.label) is unreadable as text on a light page")
     }
 }
 
@@ -124,9 +124,9 @@ import Testing
 }
 
 @MainActor @Test func aWashCarriesLessInkOnALightPageThanOnADarkOne() {
-    OpenNOWDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-    #expect(abs(alpha(of: OpenNOWDesign.Fill.neutral(0.38)) - 0.38) < 0.01)
+    OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
+    #expect(abs(alpha(of: OPNDesign.Fill.neutral(0.38)) - 0.38) < 0.01)
     withAppearance(.light) {
-        #expect(abs(alpha(of: OpenNOWDesign.Fill.neutral(0.38)) - 0.38 * OpenNOWDesign.Fill.lightWashScale) < 0.01)
+        #expect(abs(alpha(of: OPNDesign.Fill.neutral(0.38)) - 0.38 * OPNDesign.Fill.lightWashScale) < 0.01)
     }
 }
