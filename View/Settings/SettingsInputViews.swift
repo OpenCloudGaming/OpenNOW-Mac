@@ -7,10 +7,8 @@ struct InputSettingsPage: View {
     let uiScale: CGFloat
     @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var model = InterfaceSettingsViewModel()
-    @ObservedObject private var mappingStore = SteamControllerMappingStore.shared
     @State private var inputMonitoringGranted = InputSettingsPage.isInputMonitoringGranted
     @State private var showingControllerTest = false
-    @State private var showingControllerMapping = false
 
     private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
 
@@ -33,9 +31,6 @@ struct InputSettingsPage: View {
         .onDisappear { model.steamNavigator.stop() }
         .sheet(isPresented: $showingControllerTest) {
             SteamControllerTestView()
-        }
-        .sheet(isPresented: $showingControllerMapping) {
-            SteamControllerMappingView()
         }
     }
 
@@ -154,7 +149,7 @@ struct InputSettingsPage: View {
                     Text("Test Controller")
                         .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.Text.primary)
-                    Text("Open a visual tester to verify button presses, stick positions, and trigger values. Steam Controllers show their full shell; other pads use a generic layout.")
+                    Text("Verify live button presses, sticks, and triggers. Steam Controller and DualShock 4 use dedicated diagrams; other pads use a generic layout.")
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(OPNDesign.Text.tertiary)
                 }
@@ -165,22 +160,6 @@ struct InputSettingsPage: View {
                 .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
             }
 
-            SettingsDivider(uiScale: uiScale)
-            HStack {
-                VStack(alignment: .leading, spacing: 5 * uiScale) {
-                    Text("Controller Mapping")
-                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OPNDesign.Text.primary)
-                    Text(mappingStore.activeProfile.map { "Profile \"\($0.name)\" is applied to streams." } ?? "Bind every Steam Controller button, pad, and stick to a keyboard key, mouse action, or gamepad combo.")
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                }
-                Spacer()
-                Button("Open Mapping") {
-                    showingControllerMapping = true
-                }
-                .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
-            }
         }
         .settingsSection("controller-tools")
     }

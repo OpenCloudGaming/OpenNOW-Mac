@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Shared artwork constants for the two controller diagrams (`SteamControllerDiagramView` and
-/// `GenericControllerDiagramView`). Both shells are authored in the same 456×320 space, rendered at
-/// the same reference width, and inked with the fixed hardware palette from `OPNDesign.Fixed`, so
-/// the two diagrams line up wherever they are swapped for one another.
+/// Shared artwork constants for the three controller diagrams (`SteamControllerDiagramView`,
+/// `DualShock4DiagramView`, and `GenericControllerDiagramView`). Every shell is authored in the
+/// same 456×320 space, rendered at the same reference width, and inked with the fixed hardware
+/// palette from `OPNDesign.Fixed`, so the diagrams line up wherever they are swapped for one
+/// another.
 enum ControllerDiagramArtwork {
     /// The authoring space the shell assets and every live overlay are drawn in.
     static let artSize = CGSize(width: 456, height: 320)
@@ -12,8 +13,8 @@ enum ControllerDiagramArtwork {
     /// hardware grows with the chrome around it instead of shrinking as the panel widens.
     static let diagramWidth: CGFloat = 560
 
-    /// The shell palette: matte black plastic under a fixed grey outline, the same in both
-    /// appearances because the hardware is.
+    /// The shell palette: matte black plastic under a fixed grey outline, the same in every
+    /// appearance because the hardware is.
     static let shellFill = OPNDesign.Fixed.controllerShell
     static let shellStroke = OPNDesign.Fixed.controllerShellStroke
 

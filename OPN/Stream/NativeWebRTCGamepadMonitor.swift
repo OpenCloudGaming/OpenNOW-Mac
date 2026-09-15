@@ -511,6 +511,10 @@ public final class NativeWebRTCGamepadMonitor {
 
     /// Which `GCExtendedGamepad` control backs each button. A table rather than one `if` per
     /// button; `nil` means the pad does not expose that control.
+    ///
+    /// `buttonOptions` is the left-hand centre button on every pad and `buttonMenu` the right-hand
+    /// one - SHARE/OPTIONS on a DualShock 4, View/Menu on an Xbox, Create/Options on a DualSense -
+    /// so the two stay on the same sides as `.select` and `.start` regardless of brand.
     // `nonisolated`, not `nonisolated(unsafe)`: with a `@Sendable` accessor the tuple array is
     // genuinely Sendable, so `buttons(from:)` can read it off the main actor with no escape hatch.
     nonisolated private static let buttonInputs: [(input: @Sendable (GCExtendedGamepad) -> GCControllerButtonInput?, button: GamepadButtons)] = [

@@ -118,7 +118,7 @@ static let and a `scale:`-parameterized function; use the function on surfaces t
 multiply by `opnUIScale`.
 
 | Token | Value | | Token | Value |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `xxSmall` | 4 | | `large` | 20 |
 | `xSmall` | 8 | | `xLarge` | 24 |
 | `small` | 12 | | `xxLarge` | 32 |
@@ -182,7 +182,7 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 - **Avatar**: 14 (`OPNDesign.Radius.avatar`).
 - **Exceptions**: circular mic toggle and status dots on the stream surface, login vendor
   icon buttons (`size * 0.32`), and the controller diagram artwork
-  (`SteamControllerDiagramView`, `GenericControllerDiagramView`), which traces physical
+  (`SteamControllerDiagramView`, `DualShock4DiagramView`, `GenericControllerDiagramView`), which traces physical
   hardware — round face buttons, pill grips, oval trackpads, circular stick wells — rather
   than chrome. Everything laid out *around* those drawings, including the 2px accent
   selection ring, stays square. New UI must not add further exceptions.
@@ -541,9 +541,10 @@ The screen renders at 100 % interface scale like every other transient splash.
 
 ### Controller Sheets (test / mapping)
 
-The two controller sheets (`SteamControllerTestView`, `SteamControllerMappingView`) are
-opened from Settings → Input → Controller Tools, and the mapping editor also from the stream
-HUD. Both are full-window settings-style flows on Surface Deep, wrapped in the modal spec:
+The controller tester (`SteamControllerTestView`) opens from Settings → Input → Controller
+Tools. The Steam-only mapping editor (`SteamControllerMappingView`) opens from Settings →
+Input → Steam Controller and from the stream HUD; generic and DualShock mapping are not
+implemented. Both are full-window settings-style flows on Surface Deep, wrapped in the modal spec:
 2px accent top bar (`SteamControllerModalTopBar`), App Bar header block
 (`SteamControllerModalHeader` — 10pt bold accent eyebrow, tracking 1.1, over a 20pt bold
 title, with the shared square 28×28 `OPNModalCloseButton`), 18 (Card) horizontal / 16 (Medium)
@@ -552,14 +553,27 @@ every band. The tester's eyebrow reads "CONTROLLER"; the mapping editor's reads 
 CONTROLLER". Escape dismisses both. Every size is pre-scale and multiplied by `opnUIScale`,
 which the sheets read from the environment; hairline rules stay 1px at all scales.
 
-The tester draws whichever shell matches the attached pad. A Steam Controller gets
-`SteamControllerDiagramView` (full Triton hardware, rumble panel); anything GameController
-exposes gets the read-only `GenericControllerDiagramView` — Xbox, PlayStation, and every other
-pad — and no rumble panel, which is a Steam HID feature. Both diagrams live in the same
+The tester draws whichever shell matches the attached pad, and always exactly one of the three:
+
+- A Steam Controller gets `SteamControllerDiagramView` — full Triton hardware, rumble panel.
+- A DualShock 4 gets the read-only `DualShock4DiagramView` — the PS4 shell with its touchpad, the
+  PlayStation face glyphs (△ ○ × □), Share/Options (`buttonOptions` left, `buttonMenu` right),
+  and a PS button. The front-view artwork preserves DS4 proportions: flat upper bridge, wide
+  touchpad, circular control platforms, separate directional keycaps, symmetrical recessed
+  sticks, speaker grille, and tapered grips. Face glyphs are vector strokes, not font glyphs;
+  the shell uses Steam's 4px silhouette / 2px detail strokes in authored coordinates.
+- Everything else GameController exposes — Xbox, DualSense, and every other pad — gets the
+  read-only `GenericControllerDiagramView`.
+
+Neither of the read-only shells draws a rumble panel, which is a Steam HID feature. Detection is
+`GCDualShockGamepad` on the attached profile, with the `GCProductCategoryDualShock4` identity as
+the fallback for a pad bridged through a virtual driver. All three diagrams live in the same
 456×320 authored space at the same 560 reference width, share their shell palette and overlay
 ink through `ControllerDiagramArtwork` (`OPNDesign.Fixed.controllerShell` /
 `.controllerShellStroke`), and scale from the interface scale environment. Their shell art is
 the DESIGN.md radius exception: every rounded shape traces physical hardware, not chrome.
+The tester always shows a battery badge while connected: a reported percentage, “Charging”
+when only the charge state is known, or “Battery unavailable” when macOS supplies neither.
 
 Shared square pieces live in `SteamControllerModalChrome.swift`:
 

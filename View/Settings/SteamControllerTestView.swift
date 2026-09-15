@@ -1,10 +1,11 @@
 import Combine
 import SwiftUI
 
-/// Live input tester: connection state, the matching controller diagram - Valve's shell for a
-/// Steam Controller, a generic gamepad shell for anything GameController exposes - and every raw
-/// axis and button value. Chrome follows the modal spec in DESIGN.md - accent top bar, App Bar
-/// header, square surfaces, tokenised colours - and scales with the interface scale setting.
+/// Live input tester: connection state, the matching controller diagram - Valve's Triton shell for
+/// a Steam Controller, a DualShock 4 shell for a PS4 pad, and a generic gamepad shell for anything
+/// else GameController exposes - and every raw axis and button value. Chrome follows the modal spec
+/// in DESIGN.md - accent top bar, App Bar header, square surfaces, tokenised colours - and scales
+/// with the interface scale setting.
 struct SteamControllerTestView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.opnUIScale) private var uiScale
@@ -12,13 +13,14 @@ struct SteamControllerTestView: View {
     @StateObject private var genericModel = GenericControllerTestModel()
 
     /// Which pad the tester is showing. Steam wins when both are attached: its HID path is the only
-    /// one with rumble and a full shell to draw, and the generic branch covers everything else.
-    private enum InputSource { case steam, generic, none }
+    /// one with rumble and a full shell to draw. Everything else GameController exposes is the
+    /// generic branch, which draws the DualShock 4 shell when the attached pad is a PS4 pad.
+    private enum InputSource { case steam, dualShock4, generic, none }
 
     private var inputSource: InputSource {
         if steamModel.isConnected { return .steam }
-        if genericModel.isConnected { return .generic }
-        return .none
+        guard genericModel.isConnected else { return .none }
+        return genericModel.padShell == .dualShock4 ? .dualShock4 : .generic
     }
 
     private var sheetSize: CGSize {
@@ -65,6 +67,9 @@ struct SteamControllerTestView: View {
             controllerDiagram
             rumblePanel
             rawValuesPanel
+        case .dualShock4:
+            dualShockDiagram
+            rawValuesPanel
         case .generic:
             GenericControllerDiagramView(snapshot: genericModel.snapshot)
             rawValuesPanel
@@ -78,7 +83,7 @@ struct SteamControllerTestView: View {
     private var connectedDeviceName: String {
         switch inputSource {
         case .steam: steamModel.deviceID
-        case .generic: genericModel.deviceName
+        case .dualShock4, .generic: genericModel.deviceName
         case .none: ""
         }
     }
@@ -86,7 +91,7 @@ struct SteamControllerTestView: View {
     private var batteryPercent: Int? {
         switch inputSource {
         case .steam: steamModel.batteryLevel.map { Int($0) }
-        case .generic: genericModel.batteryPercent
+        case .dualShock4, .generic: genericModel.batteryPercent
         case .none: nil
         }
     }
@@ -94,7 +99,7 @@ struct SteamControllerTestView: View {
     private var isCharging: Bool {
         switch inputSource {
         case .steam: steamModel.isCharging
-        case .generic: genericModel.isCharging
+        case .dualShock4, .generic: genericModel.isCharging
         case .none: false
         }
     }
@@ -110,43 +115,13 @@ struct SteamControllerTestView: View {
                 .foregroundStyle(OPNDesign.Text.secondary)
             if inputSource != .none {
                 Spacer()
-                if let battery = batteryPercent {
-                    SteamControllerBadge(uiScale: uiScale) {
-                        HStack(spacing: 4 * uiScale) {
-                            Image(systemName: isCharging ? "bolt.fill" : batteryIconName(for: battery))
-                                .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                                .foregroundStyle(isCharging ? OPNDesign.accentInk : batteryColor(for: battery))
-                            Text("\(battery)%")
-                                .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                                .foregroundStyle(OPNDesign.Text.tertiary)
-                                .monospacedDigit()
-                        }
-                    }
-                }
+                ControllerTestBatteryBadge(percentage: batteryPercent, isCharging: isCharging)
                 Text(connectedDeviceName)
                     .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.muted)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-        }
-    }
-
-    private func batteryIconName(for level: Int) -> String {
-        switch level {
-        case 90...: return "battery.100percent"
-        case 60..<90: return "battery.75percent"
-        case 30..<60: return "battery.50percent"
-        case 15..<30: return "battery.25percent"
-        default: return "battery.0percent"
-        }
-    }
-
-    private func batteryColor(for level: Int) -> Color {
-        switch level {
-        case 20...: return OPNDesign.accent
-        case 10..<20: return OPNDesign.Semantic.warning
-        default: return OPNDesign.Semantic.destructive
         }
     }
 
@@ -172,6 +147,15 @@ struct SteamControllerTestView: View {
         VStack(spacing: 6 * uiScale) {
             SteamControllerDiagramView(snapshot: steamModel.snapshot)
             Text("L4 · L5 · R4 · R5 sit on the underside of the grips")
+                .font(.settingsFont(size: 10 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.muted)
+        }
+    }
+
+    private var dualShockDiagram: some View {
+        VStack(spacing: 6 * uiScale) {
+            DualShock4DiagramView(snapshot: genericModel.snapshot)
+            Text("The touchpad tracks the primary finger and clicks on press")
                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                 .foregroundStyle(OPNDesign.Text.muted)
         }
@@ -224,6 +208,7 @@ struct SteamControllerTestView: View {
     private var rawValuesPanel: some View {
         switch inputSource {
         case .steam: steamRawValuesPanel
+        case .dualShock4: dualShockRawValuesPanel
         case .generic: genericRawValuesPanel
         case .none: EmptyView()
         }
@@ -283,6 +268,58 @@ struct SteamControllerTestView: View {
             buttonStateRow("RPT", active: steamModel.snapshot.rightPad.touched)
             buttonStateRow("LPC", active: steamModel.snapshot.leftPad.pressed)
             buttonStateRow("RPC", active: steamModel.snapshot.rightPad.pressed)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The DS4 panel is the generic one plus the two controls only this pad has: the touchpad's
+    /// tracked position and its touch/click states.
+    private var dualShockRawValuesPanel: some View {
+        SteamControllerSection(title: "RAW INPUT VALUES", uiScale: uiScale) {
+            HStack(alignment: .top, spacing: OPNDesign.Spacing.xLarge(scale: uiScale)) {
+                VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
+                    genericAxesColumn
+                    touchpadColumn
+                }
+                dualShockButtonStatesGrid
+            }
+        }
+    }
+
+    private var touchpadColumn: some View {
+        let pad = genericModel.snapshot.touchpad ?? ControllerTouchpadState()
+        return VStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+            axisBar("TPX", value: pad.x)
+            axisBar("TPY", value: pad.y)
+            HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
+                buttonStateRow("TCH", active: pad.touched)
+                buttonStateRow("CLK", active: pad.pressed)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var dualShockButtonStatesGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 6 * uiScale), count: 2),
+            spacing: 4 * uiScale
+        ) {
+            buttonStateRow("TRI", active: genericModel.snapshot.buttons.contains(.north))
+            buttonStateRow("CIR", active: genericModel.snapshot.buttons.contains(.east))
+            buttonStateRow("CRO", active: genericModel.snapshot.buttons.contains(.south))
+            buttonStateRow("SQR", active: genericModel.snapshot.buttons.contains(.west))
+            buttonStateRow("L1", active: genericModel.snapshot.buttons.contains(.leftShoulder))
+            buttonStateRow("R1", active: genericModel.snapshot.buttons.contains(.rightShoulder))
+            buttonStateRow("SHR", active: genericModel.snapshot.buttons.contains(.select))
+            buttonStateRow("OPT", active: genericModel.snapshot.buttons.contains(.start))
+            buttonStateRow("PS", active: genericModel.snapshot.buttons.contains(.mode))
+            buttonStateRow("L3", active: genericModel.snapshot.buttons.contains(.leftStick))
+            buttonStateRow("R3", active: genericModel.snapshot.buttons.contains(.rightStick))
+            buttonStateRow("DU", active: genericModel.snapshot.buttons.contains(.dpadUp))
+            buttonStateRow("DD", active: genericModel.snapshot.buttons.contains(.dpadDown))
+            buttonStateRow("DL", active: genericModel.snapshot.buttons.contains(.dpadLeft))
+            buttonStateRow("DR", active: genericModel.snapshot.buttons.contains(.dpadRight))
         }
         .frame(maxWidth: .infinity)
     }

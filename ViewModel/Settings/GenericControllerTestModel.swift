@@ -11,6 +11,39 @@ import Combine
 import Foundation
 import GameController
 
+/// Which shell art the native (non-Steam) branch of the tester draws.
+///
+/// GameController hands out a `GCDualShockGamepad` for a DualShock 4 and a plain
+/// `GCExtendedGamepad` for every other pad, including a DualSense - so detection is the runtime
+/// profile class first, and the device identity second, for a pad that arrives bridged through a
+/// virtual driver as a plain extended gamepad.
+enum NativeGamepadShell: Equatable {
+    case dualShock4
+    case generic
+
+    init(controller: GCController, gamepad: GCExtendedGamepad) {
+        if gamepad is GCDualShockGamepad {
+            self = .dualShock4
+            return
+        }
+        let identity = "\(controller.vendorName ?? "") \(controller.productCategory)".lowercased()
+        self = identity.contains(GCProductCategoryDualShock4.lowercased()) || identity.contains("dualshock")
+            ? .dualShock4
+            : .generic
+    }
+}
+
+/// A DualShock 4 touchpad frame: the finger's position in -1...1, whether a finger is on the
+/// surface, and whether the touchpad itself is clicked. GameController reports both fingers
+/// through `touchpadPrimary`/`touchpadSecondary`; a diagram draws one tracking dot, so the
+/// primary finger is the one held here.
+struct ControllerTouchpadState: Equatable {
+    var x: Float = 0
+    var y: Float = 0
+    var touched = false
+    var pressed = false
+}
+
 /// One frame of a GameController pad, holding the parts of `SteamControllerInputSnapshot` a
 /// non-Steam pad actually has.
 struct GenericControllerInputSnapshot: Equatable {
@@ -21,6 +54,8 @@ struct GenericControllerInputSnapshot: Equatable {
     var leftStickY: Float = 0
     var rightStickX: Float = 0
     var rightStickY: Float = 0
+    /// Only a pad with a touchpad fills this; every other GameController pad leaves it `nil`.
+    var touchpad: ControllerTouchpadState?
 
     init() {}
 
@@ -32,6 +67,19 @@ struct GenericControllerInputSnapshot: Equatable {
         leftStickY = gamepad.leftThumbstick.yAxis.value
         rightStickX = gamepad.rightThumbstick.xAxis.value
         rightStickY = gamepad.rightThumbstick.yAxis.value
+        if let dualShock = gamepad as? GCDualShockGamepad {
+            let x = dualShock.touchpadPrimary.xAxis.value
+            let y = dualShock.touchpadPrimary.yAxis.value
+            touchpad = ControllerTouchpadState(
+                x: x,
+                y: y,
+                // Capacitive touch rides the touchpad button element. A lifted finger parks the
+                // axes at centre, so a live position is the fallback for a pad that does not
+                // report touch on the button at all.
+                touched: dualShock.touchpadButton.isTouched || abs(x) > 0.02 || abs(y) > 0.02,
+                pressed: dualShock.touchpadButton.isPressed
+            )
+        }
     }
 }
 
@@ -42,6 +90,8 @@ final class GenericControllerTestModel: ObservableObject {
     @Published private(set) var snapshot = GenericControllerInputSnapshot()
     @Published private(set) var isConnected = false
     @Published private(set) var deviceName = ""
+    /// Which shell the tester should draw for the attached pad.
+    @Published private(set) var padShell: NativeGamepadShell = .generic
     @Published private(set) var batteryPercent: Int?
     @Published private(set) var isCharging = false
 
@@ -76,6 +126,7 @@ final class GenericControllerTestModel: ObservableObject {
         controller = nil
         isConnected = false
         deviceName = ""
+        padShell = .generic
         batteryPercent = nil
         isCharging = false
         snapshot = GenericControllerInputSnapshot()
@@ -88,6 +139,7 @@ final class GenericControllerTestModel: ObservableObject {
             self.controller = nil
             isConnected = false
             deviceName = ""
+            padShell = .generic
             batteryPercent = nil
             isCharging = false
             snapshot = GenericControllerInputSnapshot()
@@ -96,6 +148,9 @@ final class GenericControllerTestModel: ObservableObject {
         self.controller = controller
         isConnected = true
         deviceName = controller.vendorName ?? controller.productCategory
+        if let gamepad = controller.extendedGamepad {
+            padShell = NativeGamepadShell(controller: controller, gamepad: gamepad)
+        }
         refreshSnapshot()
     }
 
@@ -107,13 +162,10 @@ final class GenericControllerTestModel: ObservableObject {
     }
 
     private func refreshBattery(_ controller: GCController) {
-        guard let battery = controller.battery,
-              let percent = ControllerBatteryInfo.percentage(level: battery.batteryLevel, state: battery.batteryState) else {
-            if batteryPercent != nil { batteryPercent = nil }
-            if isCharging { isCharging = false }
-            return
+        let percent = controller.battery.flatMap {
+            ControllerBatteryInfo.percentage(level: $0.batteryLevel, state: $0.batteryState)
         }
-        let charging = battery.batteryState == .charging || battery.batteryState == .full
+        let charging = controller.battery?.batteryState == .charging
         if percent != batteryPercent { batteryPercent = percent }
         if charging != isCharging { isCharging = charging }
     }
