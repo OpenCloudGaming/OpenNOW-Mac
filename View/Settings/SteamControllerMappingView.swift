@@ -64,6 +64,10 @@ struct SteamControllerMappingView: View {
             profileBar
                 .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                 .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
+                // The profile dropdown's open panel is an overlay confined to this row's own
+                // paint order (see OPNDropdownMenu's zIndex note); without this, the sidebar and
+                // diagram painted after it in this VStack still draw on top of it.
+                .zIndex(1)
             SteamControllerModalRule()
             if draft != nil {
                 configuratorLayout
@@ -230,8 +234,7 @@ struct SteamControllerMappingView: View {
                     SteamControllerDiagramView(
                         snapshot: liveModel.snapshot,
                         selectedControl: selectedControl,
-                        onSelectControl: { selectedControl = $0 },
-                        backgroundColor: OPNDesign.Surface.deep
+                        onSelectControl: { selectedControl = $0 }
                     )
                     Text("Click any control to bind it")
                         .font(.settingsFont(size: 10 * uiScale, weight: .medium))

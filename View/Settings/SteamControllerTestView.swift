@@ -117,7 +117,7 @@ struct SteamControllerTestView: View {
 
     private var controllerDiagram: some View {
         VStack(spacing: 6 * uiScale) {
-            SteamControllerDiagramView(snapshot: model.snapshot, backgroundColor: OPNDesign.Surface.deep)
+            SteamControllerDiagramView(snapshot: model.snapshot)
             Text("L4 · L5 · R4 · R5 sit on the underside of the grips")
                 .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                 .foregroundStyle(OPNDesign.Text.muted)

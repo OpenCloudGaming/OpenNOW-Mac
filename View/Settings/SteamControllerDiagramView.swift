@@ -16,7 +16,6 @@ struct SteamControllerDiagramView: View {
     let snapshot: SteamControllerInputSnapshot
     var selectedControl: SteamControllerControl?
     var onSelectControl: ((SteamControllerControl) -> Void)?
-    var backgroundColor: Color = OPNDesign.Surface.deep
 
     @Environment(\.opnUIScale) private var uiScale
 
@@ -24,6 +23,22 @@ struct SteamControllerDiagramView: View {
     // positioned in those same coordinates and scaled to the rendered diagram width,
     // so the two always line up.
     private static let artSize = CGSize(width: 456, height: 320)
+    /// The real shell is matte black plastic. `OPNDesign.Fill.neutral`/`Stroke.strong` wash with
+    /// the app's light/dark palette, which read as a barely-there pale gray in light mode - the
+    /// shell needs a fixed tone of its own, same in both appearances.
+    private static let shellFill = Color(red: 0.14, green: 0.14, blue: 0.145)
+    private static let shellStroke = Color(red: 0.42, green: 0.42, blue: 0.44)
+    /// Everything drawn *on* the shell (buttons, sticks, pads, grips) needs the same fixed
+    /// white-on-dark ink the shell itself now uses - `OPNDesign.Fill`/`Stroke`/`Text` wash the
+    /// other way in light mode and nearly vanish against the fixed-dark plastic.
+    private enum Overlay {
+        static func fill(_ opacity: Double) -> Color { Color.white.opacity(opacity) }
+        static let strokeSubtle = Color.white.opacity(0.10)
+        static let strokeRegular = Color.white.opacity(0.14)
+        static let strokeStrong = Color.white.opacity(0.22)
+        static let textTertiary = Color.white.opacity(0.52)
+        static let textMuted = Color.white.opacity(0.38)
+    }
     /// Unscaled reference width. The rendered diagram is this times the interface scale, so the
     /// hardware grows with the chrome around it instead of shrinking as the panel widens.
     static let diagramWidth: CGFloat = 560
@@ -85,12 +100,12 @@ struct SteamControllerDiagramView: View {
                 .renderingMode(.template)
                 .resizable()
                 .frame(width: diagramWidth, height: diagramHeight)
-                .foregroundStyle(OPNDesign.Fill.neutral(0.38))
+                .foregroundStyle(Self.shellFill)
             Image("SteamControllerShell")
                 .renderingMode(.template)
                 .resizable()
                 .frame(width: diagramWidth, height: diagramHeight)
-                .foregroundStyle(OPNDesign.Stroke.strong)
+                .foregroundStyle(Self.shellStroke)
 
             // Each arm/button is its own independent selectable + position() call — not
             // grouped inside a shared parent with internal offsets — because a tap target
@@ -109,7 +124,7 @@ struct SteamControllerDiagramView: View {
                 .rotationEffect(.degrees(270))
                 .position(x: art(65.5), y: art(75))
             RoundedRectangle(cornerRadius: art(2))
-                .fill(OPNDesign.Fill.neutral(0.06))
+                .fill(Overlay.fill(0.06))
                 .frame(width: art(21), height: art(21))
                 .position(x: art(88), y: art(75))
 
@@ -217,20 +232,20 @@ struct SteamControllerDiagramView: View {
         let travel = art(13.75)
         return ZStack {
             Circle()
-                .fill(OPNDesign.Fill.neutral(0.02))
+                .fill(Overlay.fill(0.02))
                 .overlay(
                     Circle().stroke(
-                        pressed ? OPNDesign.accent.opacity(0.7) : (active ? OPNDesign.Fill.neutral(0.28) : OPNDesign.Stroke.regular),
+                        pressed ? OPNDesign.accent.opacity(0.7) : (active ? Overlay.fill(0.28) : Overlay.strokeRegular),
                         lineWidth: pressed ? 1.5 : 1
                     )
                 )
                 .frame(width: well, height: well)
 
             Circle()
-                .fill(active ? OPNDesign.accent.opacity(0.9) : OPNDesign.Stroke.regular)
+                .fill(active ? OPNDesign.accent.opacity(0.9) : Overlay.strokeRegular)
                 .overlay(
                     Circle().stroke(
-                        active ? OPNDesign.accent : OPNDesign.Fill.neutral(0.28),
+                        active ? OPNDesign.accent : Overlay.fill(0.28),
                         lineWidth: 1
                     )
                 )
@@ -243,11 +258,11 @@ struct SteamControllerDiagramView: View {
     private func faceButtonNode(_ label: String, pressed: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(pressed ? OPNDesign.accent : OPNDesign.Fill.neutral(0.05))
-                .overlay(Circle().stroke(pressed ? OPNDesign.accent.opacity(0.8) : OPNDesign.Stroke.strong, lineWidth: 1))
+                .fill(pressed ? OPNDesign.accent : Overlay.fill(0.05))
+                .overlay(Circle().stroke(pressed ? OPNDesign.accent.opacity(0.8) : Overlay.strokeStrong, lineWidth: 1))
             Text(label)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OPNDesign.onAccent : OPNDesign.Text.muted)
+                .foregroundStyle(pressed ? OPNDesign.onAccent : Overlay.textMuted)
         }
         .frame(width: art(27), height: art(27))
     }
@@ -258,14 +273,14 @@ struct SteamControllerDiagramView: View {
         // The label counter-rotates so "U/R/D/L" stay upright at every arm's rotation.
         return ZStack {
             RoundedRectangle(cornerRadius: art(4))
-                .fill(pressed ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06))
+                .fill(pressed ? OPNDesign.accent : Overlay.fill(0.06))
                 .overlay(
                     RoundedRectangle(cornerRadius: art(4))
-                        .stroke(pressed ? OPNDesign.accent.opacity(0.7) : OPNDesign.Stroke.regular, lineWidth: 1)
+                        .stroke(pressed ? OPNDesign.accent.opacity(0.7) : Overlay.strokeRegular, lineWidth: 1)
                 )
             Text(label)
                 .font(.settingsFont(size: 8 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OPNDesign.onAccent : OPNDesign.Text.muted)
+                .foregroundStyle(pressed ? OPNDesign.onAccent : Overlay.textMuted)
                 .rotationEffect(.degrees(-rotation))
         }
         .frame(width: armWidth, height: armLength)
@@ -274,12 +289,12 @@ struct SteamControllerDiagramView: View {
     private func centerButton(icon: String, pressed: Bool) -> some View {
         ZStack {
             Capsule()
-                .fill(pressed ? OPNDesign.accent.opacity(0.25) : OPNDesign.Fill.neutral(0.04))
+                .fill(pressed ? OPNDesign.accent.opacity(0.25) : Overlay.fill(0.04))
             Capsule()
-                .stroke(pressed ? OPNDesign.accent.opacity(0.7) : OPNDesign.Stroke.regular, lineWidth: 1)
+                .stroke(pressed ? OPNDesign.accent.opacity(0.7) : Overlay.strokeRegular, lineWidth: 1)
             Image(systemName: icon)
                 .font(.settingsFont(size: 8 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OPNDesign.accentInk : OPNDesign.Text.muted)
+                .foregroundStyle(pressed ? OPNDesign.accentInk : Overlay.textMuted)
         }
         .frame(width: art(30), height: art(14))
     }
@@ -287,10 +302,10 @@ struct SteamControllerDiagramView: View {
     private func steamButtonView(pressed: Bool) -> some View {
         ZStack {
             Circle()
-                .fill(pressed ? OPNDesign.accent.opacity(0.25) : OPNDesign.Fill.neutral(0.05))
-                .overlay(Circle().stroke(pressed ? OPNDesign.accent.opacity(0.8) : OPNDesign.Stroke.regular, lineWidth: 1))
+                .fill(pressed ? OPNDesign.accent.opacity(0.25) : Overlay.fill(0.05))
+                .overlay(Circle().stroke(pressed ? OPNDesign.accent.opacity(0.8) : Overlay.strokeRegular, lineWidth: 1))
             Canvas { context, size in
-                let ink = pressed ? OPNDesign.accent : OPNDesign.Text.muted
+                let ink = pressed ? OPNDesign.accent : Overlay.textMuted
                 let bigCenter = CGPoint(x: size.width * 0.40, y: size.height * 0.62)
                 let smallCenter = CGPoint(x: size.width * 0.66, y: size.height * 0.36)
                 var rod = Path()
@@ -303,8 +318,8 @@ struct SteamControllerDiagramView: View {
                 context.fill(Path(ellipseIn: CGRect(x: smallCenter.x - smallRadius, y: smallCenter.y - smallRadius, width: smallRadius * 2, height: smallRadius * 2)), with: .color(ink))
                 let bigHole = bigRadius * 0.45
                 let smallHole = smallRadius * 0.45
-                context.fill(Path(ellipseIn: CGRect(x: bigCenter.x - bigHole, y: bigCenter.y - bigHole, width: bigHole * 2, height: bigHole * 2)), with: .color(backgroundColor))
-                context.fill(Path(ellipseIn: CGRect(x: smallCenter.x - smallHole, y: smallCenter.y - smallHole, width: smallHole * 2, height: smallHole * 2)), with: .color(backgroundColor))
+                context.fill(Path(ellipseIn: CGRect(x: bigCenter.x - bigHole, y: bigCenter.y - bigHole, width: bigHole * 2, height: bigHole * 2)), with: .color(Self.shellFill))
+                context.fill(Path(ellipseIn: CGRect(x: smallCenter.x - smallHole, y: smallCenter.y - smallHole, width: smallHole * 2, height: smallHole * 2)), with: .color(Self.shellFill))
             }
             .frame(width: art(26), height: art(26))
             .clipShape(Circle())
@@ -315,12 +330,12 @@ struct SteamControllerDiagramView: View {
     private func quickAccessButtonView(pressed: Bool) -> some View {
         ZStack {
             Capsule()
-                .fill(pressed ? OPNDesign.accent.opacity(0.25) : OPNDesign.Fill.neutral(0.04))
+                .fill(pressed ? OPNDesign.accent.opacity(0.25) : Overlay.fill(0.04))
             Capsule()
-                .stroke(pressed ? OPNDesign.accent.opacity(0.8) : OPNDesign.Stroke.regular, lineWidth: 1)
+                .stroke(pressed ? OPNDesign.accent.opacity(0.8) : Overlay.strokeRegular, lineWidth: 1)
             Image(systemName: "ellipsis")
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OPNDesign.accentInk : OPNDesign.Text.muted)
+                .foregroundStyle(pressed ? OPNDesign.accentInk : Overlay.textMuted)
         }
         .frame(width: art(38), height: art(15))
     }
@@ -328,10 +343,10 @@ struct SteamControllerDiagramView: View {
     private func trackpadView(_ pad: SteamControllerTrackpadState) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: art(16))
-                .fill(pad.pressed ? OPNDesign.accent.opacity(0.12) : OPNDesign.Fill.neutral(0.045))
+                .fill(pad.pressed ? OPNDesign.accent.opacity(0.12) : Overlay.fill(0.045))
                 .overlay(
                     RoundedRectangle(cornerRadius: art(16)).stroke(
-                        pad.pressed ? OPNDesign.accent.opacity(0.8) : (pad.touched ? OPNDesign.accent.opacity(0.45) : OPNDesign.Stroke.regular),
+                        pad.pressed ? OPNDesign.accent.opacity(0.8) : (pad.touched ? OPNDesign.accent.opacity(0.45) : Overlay.strokeRegular),
                         lineWidth: pad.pressed ? 1.5 : 1
                     )
                 )
@@ -343,7 +358,7 @@ struct SteamControllerDiagramView: View {
                         let y = size.height * CGFloat(row + 1) / CGFloat(count + 1)
                         context.fill(
                             Path(ellipseIn: CGRect(x: x - 1, y: y - 1, width: 2, height: 2)),
-                            with: .color(OPNDesign.Stroke.subtle)
+                            with: .color(Overlay.strokeSubtle)
                         )
                     }
                 }
@@ -364,15 +379,15 @@ struct SteamControllerDiagramView: View {
         let pressed = control.gamepadButton.map { snapshot.buttons.contains($0) } ?? false
         return ZStack {
             Capsule()
-                .fill(pressed ? OPNDesign.accent.opacity(0.25) : OPNDesign.Fill.neutral(0.02))
+                .fill(pressed ? OPNDesign.accent.opacity(0.25) : Overlay.fill(0.02))
             Capsule()
                 .stroke(
-                    pressed ? OPNDesign.accent.opacity(0.7) : OPNDesign.Stroke.strong,
+                    pressed ? OPNDesign.accent.opacity(0.7) : Overlay.strokeStrong,
                     style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
                 )
             Text(control.label)
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OPNDesign.accentInk : OPNDesign.Text.tertiary)
+                .foregroundStyle(pressed ? OPNDesign.accentInk : Overlay.textTertiary)
         }
         .frame(width: art(30), height: art(15))
     }
