@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.8.0...v0.9.0) (2026-09-14)
+
+
+### Features
+
+* add device code sign in ([#32](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/32)) ([e1fb965](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e1fb965d211c03b71575e1dc442a428b260f1014))
+* add jump back in ([9fdb91e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/9fdb91e70c6b1bfdde961b84ead28487a52283e0))
+* add theme settings ([#30](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/30)) ([3512c47](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3512c475a8757b4046cd12dcaab9a3d3f7080cbf))
+* improve stream starting ui ([#34](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/34)) ([7327dd7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/7327dd7addaf9ab968dc99875c4ce83f9c1f43f3))
+* **nvst:** add fullscreen on hud ([0943e2f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0943e2ff386d0dcd7bfdb77a34b8f23f1a9a16ce))
+* slide stream HUDs in and out ([ace7cd3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/ace7cd34eafad5ddddd53f741cd47509a1006c92))
+* **stream:** add full screen session-ready action ([#31](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/31)) ([3d0bf17](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3d0bf1747a6e72d5cf7dc2023ff839f42676e9a9))
+* surface GOG store connection in Settings ([fc735b3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/fc735b3bb8d1649b15bbf3aa00cd6bb4990fe7a5))
+
+
+### Bug Fixes
+
+* battle net store variation ([#33](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/33)) ([cf7d2f2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cf7d2f2b1261f14829c7936611ee82cf0175d80f))
+* deliver updates to beta channel subscribers ([d799b28](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d799b28290cab8d66f1c62e2b0b8ef0846c8e3b5))
+* restore dropdown panel minimum width ([67dd584](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/67dd58454cd9e647be539f31785eccf4efb09b5a))
+* stats hud animation ([8ac834d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8ac834d45fa6b02899fd301c388b15e086714e74))
+
 ## [0.8.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.7.1...v0.8.0) (2026-09-12)
 
 
