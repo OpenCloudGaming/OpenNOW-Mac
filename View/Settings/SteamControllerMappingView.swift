@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Steam Input / Steam Deck-style controller remapping: a category sidebar, the live
+/// Steam Controller-only remapping: a category sidebar, the live
 /// controller diagram (tap any control to select it), and a binding panel on the right for
 /// whatever's selected. Every control can go to a gamepad-button chord (today's default),
 /// a keyboard key, a mouse action, or off; trackpads and sticks additionally get a
@@ -56,7 +56,7 @@ struct SteamControllerMappingView: View {
             SteamControllerModalTopBar()
             SteamControllerModalHeader(
                 eyebrow: "STEAM CONTROLLER",
-                title: "Controller Mapping",
+                title: "Steam Controller Mapping",
                 uiScale: uiScale,
                 onClose: { dismiss() }
             )

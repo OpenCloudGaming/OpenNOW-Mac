@@ -359,8 +359,8 @@ extension WebRTCMediaStreamSurface {
                     action: toggleFullScreenFromHUD
                 )
                 StreamHUDActionRow(
-                    title: "Controller Mapping",
-                    subtitle: "Steam Controller grip binds",
+                    title: "Steam Controller Mapping",
+                    subtitle: "Steam Controller only",
                     systemName: "gamecontroller",
                     isActive: false,
                     isDisabled: false,
