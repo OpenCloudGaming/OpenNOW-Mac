@@ -7,7 +7,10 @@ struct InputSettingsPage: View {
     let uiScale: CGFloat
     @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var model = InterfaceSettingsViewModel()
+    @ObservedObject private var mappingStore = SteamControllerMappingStore.shared
     @State private var inputMonitoringGranted = InputSettingsPage.isInputMonitoringGranted
+    @State private var showingControllerTest = false
+    @State private var showingControllerMapping = false
 
     private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
 
@@ -18,6 +21,7 @@ struct InputSettingsPage: View {
             mouseCard
             modeCard
             controlsCard
+            controllerToolsCard
         }
         .onAppear {
             model.steamNavigator.start()
@@ -27,6 +31,12 @@ struct InputSettingsPage: View {
             inputMonitoringGranted = Self.isInputMonitoringGranted
         }
         .onDisappear { model.steamNavigator.stop() }
+        .sheet(isPresented: $showingControllerTest) {
+            SteamControllerTestView()
+        }
+        .sheet(isPresented: $showingControllerMapping) {
+            SteamControllerMappingView()
+        }
     }
 
     private var mouseCard: some View {
@@ -136,6 +146,44 @@ struct InputSettingsPage: View {
         }
         .settingsSection("controls")
     }
+
+    private var controllerToolsCard: some View {
+        SettingsCard(title: "Controller Tools", uiScale: uiScale) {
+            HStack {
+                VStack(alignment: .leading, spacing: 5 * uiScale) {
+                    Text("Test Controller")
+                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                        .foregroundStyle(OPNDesign.Text.primary)
+                    Text("Open a visual tester to verify button presses, stick positions, and trigger values. Steam Controllers show their full shell; other pads use a generic layout.")
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(OPNDesign.Text.tertiary)
+                }
+                Spacer()
+                Button("Open Tester") {
+                    showingControllerTest = true
+                }
+                .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
+            }
+
+            SettingsDivider(uiScale: uiScale)
+            HStack {
+                VStack(alignment: .leading, spacing: 5 * uiScale) {
+                    Text("Controller Mapping")
+                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                        .foregroundStyle(OPNDesign.Text.primary)
+                    Text(mappingStore.activeProfile.map { "Profile \"\($0.name)\" is applied to streams." } ?? "Bind every Steam Controller button, pad, and stick to a keyboard key, mouse action, or gamepad combo.")
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(OPNDesign.Text.tertiary)
+                }
+                Spacer()
+                Button("Open Mapping") {
+                    showingControllerMapping = true
+                }
+                .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
+            }
+        }
+        .settingsSection("controller-tools")
+    }
 }
 
 extension InputSettingsPage {
@@ -152,6 +200,7 @@ extension InputSettingsPage {
     static let sections: [SettingsSection] = [
         SettingsSection("mouse", "Mouse & Keyboard"),
         SettingsSection("mode", "Controller Mode"),
-        SettingsSection("controls", "Controls")
+        SettingsSection("controls", "Controls"),
+        SettingsSection("controller-tools", "Controller Tools")
     ]
 }

@@ -597,8 +597,8 @@ private final class GamepadPollState {
                 )))
             }
             if let battery = controller.battery {
-                let percent = Int((battery.batteryLevel * 100).rounded())
-                let bucketedLevel = (percent / 5) * 5
+                let percent = ControllerBatteryInfo.percentage(level: battery.batteryLevel, state: battery.batteryState) ?? -1
+                let bucketedLevel = percent < 0 ? -1 : (percent / 5) * 5
                 if lastBatteryLevels[identifier] != bucketedLevel {
                     lastBatteryLevels[identifier] = bucketedLevel
                     let label = "P\(playerIndex + 1)"

@@ -24,6 +24,12 @@ enum OPNDesign {
     enum Fixed {
         static let surfaceDeep = Color(red: 18 / 255, green: 19 / 255, blue: 18 / 255)
 
+        /// The controller diagram shells. Real gamepad plastic is matte black under a fixed grey
+        /// outline, and the palette tokens wash the other way in light mode, where the shell would
+        /// read as barely-there pale grey instead of a device.
+        static let controllerShell = Color(red: 0.14, green: 0.14, blue: 0.145)
+        static let controllerShellStroke = Color(red: 0.42, green: 0.42, blue: 0.44)
+
         static func ink(_ opacity: Double) -> Color { Color.white.opacity(opacity) }
 
         /// The accent as it reads on those surfaces: always the bright value, because the deep one

@@ -3,20 +3,12 @@ import CryptoKit
 import SwiftUI
 
 /// Everything Valve's controllers need on this Mac: whether OpenNOW is holding the device, the two
-/// system permissions that gate cursor control and input capture, rumble, and the way in to the
-/// tester and the mapping editor.
+/// system permissions that gate cursor control and input capture, and rumble. The test and mapping
+/// surfaces live with the rest of the controller tools on the Input page.
 struct SteamControllerSettingsPage: View {
     let uiScale: CGFloat
     @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
     @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
-    @ObservedObject private var mappingStore: SteamControllerMappingStore
-
-    init(uiScale: CGFloat, mappingStore: SteamControllerMappingStore = .shared) {
-        self.uiScale = uiScale
-        _mappingStore = ObservedObject(wrappedValue: mappingStore)
-    }
-    @State private var showingControllerTest = false
-    @State private var showingControllerMapping = false
     @State private var permissionResetInFlight = false
     @State private var permissionResetError: String?
     @State private var rumbleTestMessage: String?
@@ -173,48 +165,7 @@ struct SteamControllerSettingsPage: View {
                         Spacer()
                     }
                 }
-
-                SettingsCard(title: "Tools", uiScale: uiScale) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 5 * uiScale) {
-                            Text("Test Controller")
-                                .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                                .foregroundStyle(OPNDesign.Text.primary)
-                            Text("Open a visual tester to verify button presses, stick positions, and trigger values.")
-                                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(OPNDesign.Text.tertiary)
-                        }
-                        Spacer()
-                        Button("Open Tester") {
-                            showingControllerTest = true
-                        }
-                        .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
-                    }
-
-                    SettingsDivider(uiScale: uiScale)
-                    HStack {
-                        VStack(alignment: .leading, spacing: 5 * uiScale) {
-                            Text("Controller Mapping")
-                                .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                                .foregroundStyle(OPNDesign.Text.primary)
-                            Text(mappingStore.activeProfile.map { "Profile \"\($0.name)\" is applied to streams." } ?? "Bind every button, pad, and stick to a keyboard key, mouse action, or gamepad combo.")
-                                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                                .foregroundStyle(OPNDesign.Text.tertiary)
-                        }
-                        Spacer()
-                        Button("Open Mapping") {
-                            showingControllerMapping = true
-                        }
-                        .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
-                    }
-                }
             }
-        }
-        .sheet(isPresented: $showingControllerTest) {
-            SteamControllerTestView()
-        }
-        .sheet(isPresented: $showingControllerMapping) {
-            SteamControllerMappingView()
         }
         .alert(
             "Reset Failed",

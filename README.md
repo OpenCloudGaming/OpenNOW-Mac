@@ -116,7 +116,7 @@ OpenNOW talks to Valve's controllers directly over HID, so you get the pad in yo
 - **Visual mapping editor** - click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
 - **Combos on any control** - bind a back grip to `B + R2`; the modifier lands first, the press follows a beat later, so games read it as a real combo.
 - **Profiles** - save as many as you like and switch between them.
-- **Built-in tester** - Settings → Input → Steam Controller shows every button, axis, and pad live.
+- **Built-in tester** - Settings → Input → Controller Tools shows every button, axis, and pad live; Steam Controllers draw their full shell, other pads a generic one.
 - **Lizard mode off** - the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
 
 ![Controller mapping editor with controller diagram, profile picker, and binding panel](docs/screenshots/controller-mapping.png)
