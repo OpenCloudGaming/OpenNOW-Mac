@@ -187,27 +187,41 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
             OPNUpdatePreferences.clearReminder()
         }
         if automatic, !OPNUpdatePreferences.shouldRunAutomaticUpdateCheck() { return }
+        if OPNUpdatePreferences.updateChecksAreSuspendedForDebugging { return }
         guard updateCheckTask == nil, updateInstallTask == nil else { return }
         updateCheckTask = Task { @MainActor in
-            defer { updateCheckTask = nil }
+            let presentation = OPNUpdatePresentation.shared
+            presentation.beginUpdateCheck()
+            let startedAt = ContinuousClock.now
             do {
                 let release = try await githubUpdater.checkForUpdate(channel: OPNUpdatePreferences.updateChannel)
-                guard let release else {
-                    if showingCurrentStatus {
-                        OPNUpdatePresentation.shared.present(.upToDate(version: githubUpdater.currentVersion))
-                    }
-                    return
+                if let release {
+                    presentUpdate(for: release, automatic: automatic)
+                } else if showingCurrentStatus {
+                    presentation.present(.upToDate(version: githubUpdater.currentVersion))
                 }
-                presentUpdate(for: release, automatic: automatic)
+            } catch is CancellationError where !showingCurrentStatus {
+                // Automatic check interrupted; nothing to surface.
             } catch is CancellationError {
-                guard showingCurrentStatus else { return }
-                OPNUpdatePresentation.shared.present(.checkFailed(message: "The update check was interrupted."))
+                presentation.present(.checkFailed(message: "The update check was interrupted."))
+            } catch where !showingCurrentStatus {
+                // Automatic check failed; nothing to surface.
             } catch {
-                guard showingCurrentStatus else { return }
-                OPNUpdatePresentation.shared.present(.checkFailed(message: error.localizedDescription))
+                presentation.present(.checkFailed(message: error.localizedDescription))
             }
+            // A cached or very fast check would flash the CHECKING state imperceptibly, so hold it
+            // long enough to read and stamp the result so the UI can report when that last happened.
+            let remaining = Self.minimumUpdateCheckVisibility - (ContinuousClock.now - startedAt)
+            if remaining > .zero {
+                try? await Task.sleep(for: remaining)
+            }
+            OPNUpdatePreferences.lastUpdateCheckDate = Date()
+            updateCheckTask = nil
+            presentation.endUpdateCheck()
         }
     }
+
+    private static let minimumUpdateCheckVisibility: Duration = .milliseconds(800)
 
     /// An automatic check that lands mid-session would drop a modal over the game, so it waits for
     /// the stream to end. A check the user asked for is shown immediately either way.

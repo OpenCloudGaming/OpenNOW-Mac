@@ -9,6 +9,7 @@ struct AboutSettingsPage: View {
     @AppStorage(OPNUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OPNUpdatePreferences.defaultAutomaticUpdateChecksEnabled
     @AppStorage(OPNUpdatePreferences.updateChannelKey) private var updateChannelRawValue = OPNUpdatePreferences.defaultUpdateChannel.rawValue
     @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
+    @ObservedObject private var updatePresentation = OPNUpdatePresentation.shared
 
     var body: some View {
         ZStack {
@@ -72,12 +73,14 @@ struct AboutSettingsPage: View {
                 }
                 SettingsDivider(uiScale: uiScale)
                 HStack(spacing: 10 * uiScale) {
-                    SettingsActionButton(title: "CHECK FOR UPDATES", uiScale: uiScale) {
+                    SettingsActionButton(title: isButtonChecking ? "CHECKING…" : "CHECK FOR UPDATES", uiScale: uiScale) {
                         OPNAppDelegate.requestApplicationUpdateCheck()
                     }
-                    Text("Checks GitHub releases and installs a newer signed OpenNOW build when available.")
+                    .disabled(isButtonChecking)
+                    Text(updateCheckStatusText)
                         .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                         .foregroundStyle(OPNDesign.Text.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -141,9 +144,45 @@ struct AboutSettingsPage: View {
         OPNUpdateChannel(rawValue: updateChannelRawValue) ?? OPNUpdatePreferences.defaultUpdateChannel
     }
 
+    private var isButtonChecking: Bool {
+        #if DEBUG
+        if updatePresentation.buttonStatusPreview == .checking { return true }
+        #endif
+        return updatePresentation.isCheckingForUpdate
+    }
+
+    private var updateCheckStatusText: String {
+        #if DEBUG
+        switch updatePresentation.buttonStatusPreview {
+        case .checking:
+            return "Checking GitHub for a newer release…"
+        case .lastChecked(let date):
+            return "Last checked \(date.formatted(.relative(presentation: .named)))"
+        case .neverChecked:
+            return "OpenNOW has not checked for updates yet."
+        case nil:
+            break
+        }
+        #endif
+        if OPNUpdatePreferences.updateChecksAreSuspendedForDebugging {
+            return updateSuspendedMessage
+        }
+        guard !updatePresentation.isCheckingForUpdate else {
+            return "Checking GitHub for a newer release…"
+        }
+        guard let date = OPNUpdatePreferences.lastUpdateCheckDate else {
+            return "OpenNOW has not checked for updates yet."
+        }
+        return "Last checked \(date.formatted(.relative(presentation: .named)))"
+    }
+
+    private var updateSuspendedMessage: String {
+        "Update checks are suspended in debug builds, which report version 0.0.0. Test the update dialogs with OpenNOW ▸ Preview Update Dialog."
+    }
+
     private var automaticUpdateChecksSubtitle: String {
         if OPNUpdatePreferences.updateChecksAreSuspendedForDebugging {
-            return "Paused while running a debug build or attached debugger. Manual checks remain available."
+            return "Paused while running a debug build or attached debugger, which reports version 0.0.0. Use OpenNOW ▸ Preview Update Dialog to test the update UI."
         }
         if automaticUpdateChecksEnabled {
             return "Checks GitHub releases on launch and hourly while OpenNOW is running."

@@ -42,4 +42,29 @@ import Testing
             #expect(OPNUpdatePreferences.updateChannel == .stable)
         }
     }
+
+    @Test func lastUpdateCheckDateRoundTripsThroughStorage() {
+        let defaults = OPNAppPreferenceStorage.standard
+        let key = OPNUpdatePreferences.lastUpdateCheckDateKey
+        let existing = defaults.object(forKey: key)
+        defer {
+            if let existing {
+                defaults.set(existing, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+
+        defaults.removeObject(forKey: key)
+        #expect(OPNUpdatePreferences.lastUpdateCheckDate == nil)
+
+        let date = Date(timeIntervalSince1970: 1_900_000_000)
+        OPNUpdatePreferences.lastUpdateCheckDate = date
+        #expect(OPNUpdatePreferences.lastUpdateCheckDate == date)
+        #expect(defaults.double(forKey: key) == date.timeIntervalSince1970)
+
+        OPNUpdatePreferences.lastUpdateCheckDate = nil
+        #expect(OPNUpdatePreferences.lastUpdateCheckDate == nil)
+        #expect(defaults.object(forKey: key) == nil)
+    }
 }

@@ -159,6 +159,21 @@ struct OPNApp: App {
                         OPNUpdatePresentation.shared.presentSampleStatus(.installFailed(message: "The downloaded app bundle did not pass macOS code-signature verification."))
                     }
                 }
+                Menu("Preview Button Status") {
+                    Button(buttonStatusItemName("CHECKING…", matches: .checking)) {
+                        OPNUpdatePresentation.shared.previewButtonStatus(.checking)
+                    }
+                    Button(buttonStatusItemName("JUST CHECKED", matches: .lastChecked(Date()))) {
+                        OPNUpdatePresentation.shared.previewButtonStatus(.lastChecked(Date()))
+                    }
+                    Button(buttonStatusItemName("NEVER CHECKED", matches: .neverChecked)) {
+                        OPNUpdatePresentation.shared.previewButtonStatus(.neverChecked)
+                    }
+                    Divider()
+                    Button(buttonStatusItemName("LIVE BEHAVIOR", matches: nil)) {
+                        OPNUpdatePresentation.shared.previewButtonStatus(nil)
+                    }
+                }
                 #endif
             }
             CommandMenu("Stream") {
@@ -185,4 +200,25 @@ struct OPNApp: App {
         }
         .defaultSize(width: 1280, height: 800)
     }
+
+    #if DEBUG
+    /// Labels a Preview Button Status item with a leading checkmark when it is the currently active
+    /// preview, so picking one gives visible feedback. Matching ignores the `lastChecked` date, since
+    /// each press stores a fresh `Date()`.
+    private func buttonStatusItemName(_ name: String, matches target: OPNUpdatePresentation.ButtonStatusPreview?) -> String {
+        guard let preview = OPNUpdatePresentation.shared.buttonStatusPreview else {
+            return target == nil ? "✓ \(name)" : name
+        }
+        let isActive: Bool
+        switch (preview, target) {
+        case (.checking, .some(.checking)),
+             (.lastChecked, .some(.lastChecked)),
+             (.neverChecked, .some(.neverChecked)):
+            isActive = true
+        default:
+            isActive = false
+        }
+        return isActive ? "✓ \(name)" : name
+    }
+    #endif
 }

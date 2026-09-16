@@ -13,6 +13,7 @@ enum OPNUpdatePreferences {
     static let defaultUpdateChannel = OPNUpdateChannel.stable
 
     private static let remindAfterKey = "OpenNOWUpdateRemindAfter"
+    static let lastUpdateCheckDateKey = "OpenNOWLastUpdateCheckDate"
 
     static var updateChannel: OPNUpdateChannel {
         get {
@@ -74,6 +75,21 @@ enum OPNUpdatePreferences {
 
     static func clearReminder() {
         OPNAppPreferenceStorage.standard.removeObject(forKey: remindAfterKey)
+    }
+
+    static var lastUpdateCheckDate: Date? {
+        get {
+            let timestamp = OPNAppPreferenceStorage.standard.double(forKey: lastUpdateCheckDateKey)
+            guard timestamp > 0 else { return nil }
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        set {
+            if let newValue {
+                OPNAppPreferenceStorage.standard.set(newValue.timeIntervalSince1970, forKey: lastUpdateCheckDateKey)
+            } else {
+                OPNAppPreferenceStorage.standard.removeObject(forKey: lastUpdateCheckDateKey)
+            }
+        }
     }
 
     private static var isDebuggerAttached: Bool {

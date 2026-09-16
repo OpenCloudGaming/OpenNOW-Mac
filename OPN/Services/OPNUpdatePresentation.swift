@@ -26,6 +26,9 @@ final class OPNUpdatePresentation: ObservableObject {
     @Published private(set) var request: Request?
     @Published private(set) var notes = OPNReleaseNotes.empty
     @Published private(set) var installState = InstallState.idle
+    /// True while a manual or automatic check is in flight. Drives the CHECK FOR UPDATES button's
+    /// "CHECKING…" state so the tap gives immediate feedback during the GitHub round-trip.
+    @Published private(set) var isCheckingForUpdate = false
     /// Outlives `request`: the modal can be dismissed, the update is still pending.
     @Published private(set) var availableRelease: OPNGitHubRelease?
 
@@ -37,9 +40,32 @@ final class OPNUpdatePresentation: ObservableObject {
     /// replacing the running app when the install button is pressed.
     private(set) var isPreviewingSample = false
     private var simulatedInstallTask: Task<Void, Never>?
+
+    /// Debug-only lens for the Settings → About CHECK FOR UPDATES row, so each button state can be
+    /// previewed without a real check (which is suspended in debug builds anyway). `nil` renders the
+    /// live status. Set from the OpenNOW ▸ Preview Button Status menu.
+    nonisolated enum ButtonStatusPreview: Equatable {
+        case checking
+        case lastChecked(Date)
+        case neverChecked
+    }
+
+    @Published private(set) var buttonStatusPreview: ButtonStatusPreview?
+
+    func previewButtonStatus(_ preview: ButtonStatusPreview?) {
+        buttonStatusPreview = preview
+    }
     #endif
 
     private init() {}
+
+    func beginUpdateCheck() {
+        isCheckingForUpdate = true
+    }
+
+    func endUpdateCheck() {
+        isCheckingForUpdate = false
+    }
 
     func present(_ request: Request) {
         #if DEBUG
