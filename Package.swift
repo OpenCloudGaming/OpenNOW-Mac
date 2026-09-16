@@ -51,6 +51,7 @@ let package = Package(
                 "OpenNOW.entitlements",
                 "OPNApp.swift",
                 "OpenNOW.xcodeproj",
+                "Benchmarks",
                 "RemoteCoOp",
                 "Resources",
                 "Tests",
@@ -81,6 +82,20 @@ let package = Package(
             path: "Tests",
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"])
+            ]
+        ),
+        // Benchmark harnesses that ran inside the test suite as env-gated, never-failing "@Tests".
+        // They measure what tests deliberately do not assert on, so they live in a runnable tool
+        // instead: `swift run OpenNOWBenchmarks catalog|stream-preferences|relay-conversion`.
+        // `-enable-testing` lets the audits reach the module's internal types, exactly as @testable
+        // did from the test target.
+        .executableTarget(
+            name: "OpenNOWBenchmarks",
+            dependencies: ["OpenNOW", "WebRTC"],
+            path: "Benchmarks",
+            swiftSettings: [
+                .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"]),
+                .unsafeFlags(["-enable-testing"])
             ]
         )
     ],

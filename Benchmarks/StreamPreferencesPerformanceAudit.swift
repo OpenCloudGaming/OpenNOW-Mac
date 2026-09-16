@@ -1,5 +1,8 @@
+//  Stream preference hot-path measurements.
+//
+//  Output is JSON on stdout; set OPENNOW_PERF_AUDIT_OUTPUT to also write it to a file.
+
 import Foundation
-import Testing
 @testable import OpenNOW
 
 private struct CommonPerformanceAuditMeasurement: Encodable {
@@ -17,9 +20,7 @@ private struct CommonPerformanceAuditOutput: Encodable {
     let measurements: [CommonPerformanceAuditMeasurement]
 }
 
-@Test func streamPreferencesPerformanceAudit() throws {
-    guard ProcessInfo.processInfo.environment["OPENNOW_PERF_AUDIT"] == "1" else { return }
-
+func runStreamPreferencesPerformanceAudit() throws -> Bool {
     let measurements = [
         measureCommonAuditOperation(operation: "OPNStreamPreferences.loadDeviceCapabilities", iterations: 200) {
             _ = OPNStreamPreferences.loadDeviceCapabilities()
@@ -41,6 +42,7 @@ private struct CommonPerformanceAuditOutput: Encodable {
         try data.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
     }
     print(String(decoding: data, as: UTF8.self))
+    return true
 }
 
 private func measureCommonAuditOperation(operation: String, iterations: Int, body: () -> Void) -> CommonPerformanceAuditMeasurement {

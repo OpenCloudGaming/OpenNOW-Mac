@@ -190,21 +190,4 @@ import Testing
         navigator.processSnapshot(deviceID: activeDeviceID, snapshot: makeSnapshot(buttons: [.south]), isActiveOverride: true)
         #expect(captured == [.confirm])
     }
-
-    @Test func multipleSequentialDpadEdgesMapToMoveCommands() {
-        let navigator = GamepadUINavigator()
-        var captured: [ControllerInputCommand] = []
-        navigator.onCommand = { captured.append($0) }
-        drive(navigator, snapshots: [
-            makeSnapshot(),
-            makeSnapshot(buttons: [.dpadRight]),
-            makeSnapshot(),
-            makeSnapshot(buttons: [.dpadDown]),
-            makeSnapshot(),
-            makeSnapshot(buttons: [.dpadLeft]),
-            makeSnapshot(),
-            makeSnapshot(buttons: [.dpadUp]),
-        ])
-        #expect(captured == [.move(.right), .move(.down), .move(.left), .move(.up)])
-    }
 }

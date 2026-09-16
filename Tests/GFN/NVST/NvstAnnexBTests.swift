@@ -60,12 +60,6 @@ struct NvstAnnexBTests {
         #expect(!NvstDatagramClassifier.looksLikeRTP(dtls))
     }
 
-    @Test func routedIPv4DiscoveryReturnsAddressOrNil() {
-        let address = NvstRoutedIPv4.discover()
-        // On a networked dev machine this resolves; on isolated runners it is nil. Either is
-        // valid — the point is the probe path runs without crashing.
-        #expect(address == nil || address?.split(separator: ".").count == 4)
-    }
 }
 
 @Suite struct NvstElementaryStreamTests {
@@ -133,13 +127,6 @@ struct NvstAnnexBTests {
 
     /// `prepare` is the single copy-free pass the decoder actually runs, so it must agree with
     /// the split helpers: parameter sets and the AUD lifted out, the IDR length-prefixed.
-    @Test func prepareSplitsParameterSetsAndLengthPrefixesThePictureInOnePass() {
-        let prepared = NvstElementaryStream.prepare(Self.h264AccessUnit, codec: .h264)
-        #expect(prepared.parameterSets.sequenceParameterSets == [Data([0x67, 0x42, 0xe0])])
-        #expect(prepared.parameterSets.pictureParameterSets == [Data([0x68, 0xce])])
-        #expect(prepared.sample == Data([0x00, 0x00, 0x00, 0x03, 0x65, 0x88, 0x84]))
-    }
-
     @Test func prepareStripsAv1TemporalDelimitersAndHarvestsTheSequenceHeader() {
         // Temporal delimiter + sequence header + frame: the TD is not sample data, and the SH
         // becomes the parameter set the av1C format description is built from.

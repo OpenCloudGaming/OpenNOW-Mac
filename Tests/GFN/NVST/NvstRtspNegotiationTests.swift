@@ -417,12 +417,6 @@ import Testing
         #expect(!body.contains("a=x-nv-vqos[0].avoidDuplicateNonReflexGameFrames:"))
     }
 
-    @Test func unsetPrefilterLeavesTheCapturedBaselineInPlace() {
-        let body = NvstRtspSdp.buildAnnounceSdp(.init())
-        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterMode:2"))
-        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterModel:4"))
-    }
-
     @Test func chosenPrefilterOverridesTheCapturedBaselineOnIndexZero() {
         let body = NvstRtspSdp.buildAnnounceSdp(.init(prefilterMode: 3,
                                                      prefilterSharpness: 8,

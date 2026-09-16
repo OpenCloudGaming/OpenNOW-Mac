@@ -120,6 +120,8 @@ private final class Connection {
 public actor OPNRemoteCoOpEmbeddedServer {
     private let documentRoot: URL
     private let logger: (@Sendable (String) -> Void)?
+    private let handshakeTimeout: Duration
+    private let joinDeadline: TimeInterval
     private var listener: NWListener?
     private var heartbeatTask: Task<Void, Never>?
     private var connections: [UUID: Connection] = [:]
@@ -137,7 +139,7 @@ public actor OPNRemoteCoOpEmbeddedServer {
     private var unauthenticatedConnections: Set<UUID> = []
     /// Seconds a connection may live after the handshake without sending a join. Mirrors the
     /// native listener's join deadline and closes the same slot-exhaustion window.
-    static let joinDeadline: TimeInterval = 30
+    static let defaultJoinDeadline: TimeInterval = 30
     /// Keyed rather than single-slot: a second `events()` call used to orphan the first stream, whose
     /// consumer then waited forever.
     private var eventContinuations: [UUID: AsyncStream<OPNRemoteCoOpSignalingEvent>.Continuation] = [:]
@@ -159,7 +161,7 @@ public actor OPNRemoteCoOpEmbeddedServer {
     static let maximumUnauthenticatedConnections = 16
     /// A connection that opens TCP and never finishes a request head is dropped. Well beyond any
     /// real handshake, short enough that idle sockets do not accumulate.
-    static let handshakeTimeout: Duration = .seconds(15)
+    static let defaultHandshakeTimeout: Duration = .seconds(15)
     /// How often every live socket is asked to prove it is still there.
     ///
     /// Once a socket upgrades, the handshake timeout stops applying to it and gameplay input rides
@@ -175,12 +177,16 @@ public actor OPNRemoteCoOpEmbeddedServer {
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                 participantOwnership: OPNRemoteCoOpParticipantOwnership,
                 additionalAllowedOrigins: [String] = [],
-                logger: (@Sendable (String) -> Void)? = nil) {
+                logger: (@Sendable (String) -> Void)? = nil,
+                handshakeTimeout: Duration? = nil,
+                joinDeadline: TimeInterval? = nil) {
         self.documentRoot = documentRoot
         self.networkConfiguration = networkConfiguration
         self.participantOwnership = participantOwnership
         self.additionalAllowedOrigins = additionalAllowedOrigins.map { $0.lowercased() }
         self.logger = logger
+        self.handshakeTimeout = handshakeTimeout ?? OPNRemoteCoOpEmbeddedServer.defaultHandshakeTimeout
+        self.joinDeadline = joinDeadline ?? OPNRemoteCoOpEmbeddedServer.defaultJoinDeadline
     }
 
     public func events() -> AsyncStream<OPNRemoteCoOpSignalingEvent> {
@@ -452,8 +458,9 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// upgraded is either a stalled client or a socket being held open deliberately.
     private func scheduleHandshakeTimeout(for id: UUID) {
         Task { [weak self] in
-            try? await Task.sleep(for: Self.handshakeTimeout)
-            await self?.dropIfHandshakeIncomplete(id)
+            guard let self else { return }
+            try? await Task.sleep(for: self.handshakeTimeout)
+            await self.dropIfHandshakeIncomplete(id)
         }
     }
 
@@ -470,8 +477,9 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// from `handshakeTimeout` because a TLS/TCP handshake can finish without a join ever arriving.
     private func scheduleJoinDeadline(for id: UUID) {
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.joinDeadline))
-            await self?.dropIfJoinDeadlineExpired(id)
+            guard let self else { return }
+            try? await Task.sleep(for: .seconds(self.joinDeadline))
+            await self.dropIfJoinDeadlineExpired(id)
         }
     }
 

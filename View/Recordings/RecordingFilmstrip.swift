@@ -17,7 +17,7 @@ import SwiftUI
 /// was assumed to be expensive; measured, it is five to eight milliseconds - nothing against the
 /// decode - and caching them cost a reentrancy hazard, a serialisation chain, and a lifetime to
 /// get wrong.
-private enum RecordingFilmstripDecoder {
+enum RecordingFilmstripDecoder {
     /// Enough to use the machine without thrashing it.
     private static var workerCount: Int {
         min(6, max(2, ProcessInfo.processInfo.activeProcessorCount / 3))
@@ -34,7 +34,7 @@ private enum RecordingFilmstripDecoder {
     /// 1492ms interleaved and 716ms contiguous, because interleaving makes every worker decode
     /// forward through the same groups of pictures. The whole-recording grid, six seconds apart, is
     /// the other way round - no group is shared, so interleaving only balances the load better.
-    private static func split(_ times: [Double], workers: Int) -> [[Double]] {
+    static func split(_ times: [Double], workers: Int) -> [[Double]] {
         let sorted = times.sorted()
         guard workers > 1, sorted.count > 1 else { return [sorted] }
         let spacing = ((sorted.last ?? 0) - (sorted.first ?? 0)) / Double(sorted.count - 1)

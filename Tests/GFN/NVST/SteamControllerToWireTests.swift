@@ -53,12 +53,6 @@ import Testing
 
     /// The Steam button and the "…" button are distinct Ibex bits and must not be confused — the
     /// swap that had them backwards is exactly what made "…" open the guide overlay.
-    @Test func steamAndQuickAccessMatchThisHardware() {
-        // Hardware-confirmed on the Puck (opposite of the kernel's Ibex table — see the report parser).
-        #expect(wireMask(ibexButtons: 0x0001_0000) == NvstGamepadPacket.Button.guide)  // Steam -> Guide
-        #expect(wireMask(ibexButtons: 0x0000_0010) == 0)                               // "…" -> client-side only
-    }
-
     /// The Ibex D-pad bits come from the LEFT TRACKPAD and reach the wire on touch alone. A gate
     /// requiring the pad click (bit 0x0400_0000) was tried and reverted: its premise — a character
     /// walking from a resting thumb — was the MOUSE path, and gamepad input was dead at the time

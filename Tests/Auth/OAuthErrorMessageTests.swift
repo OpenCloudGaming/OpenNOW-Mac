@@ -19,12 +19,6 @@ struct OAuthErrorMessageTests {
         #expect(params["token"] == "a+b")
     }
 
-    @Test("Starfleet parses callback values the same way")
-    func starfleetParsesFormEncoding() {
-        let params = StarfleetTokenParser.parseQueryString("error_description=Error+in+idp+callback")
-        #expect(params["error_description"] == "Error in idp callback")
-    }
-
     @Test("NVIDIA diagnostics become recovery steps")
     func mapsNvidiaErrors() {
         #expect(LoginViewModel.signInGuidance(for: "Error in idp callback").contains("SIGN IN WITH A CODE"))

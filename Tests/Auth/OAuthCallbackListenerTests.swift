@@ -110,7 +110,7 @@ struct OAuthCallbackListenerTests {
         defer { close(silentPeer) }
 
         let query = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
-            service.startOAuthCallbackListener(port: port, expectedState: expectedState) { result in
+            service.startOAuthCallbackListener(port: port, expectedState: expectedState, receiveTimeout: 0.5) { result in
                 guard resumeGuard.claim() else { return }
                 continuation.resume(with: result)
             } readyHandler: {

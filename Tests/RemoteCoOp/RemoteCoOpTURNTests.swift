@@ -349,15 +349,6 @@ struct RemoteCoOpTURNTests {
     /// A relay needs only the TURN key; the account half is for the usage readout. Requiring both
     /// would block the fallback path, since a host who pasted a dashboard key may never have had a
     /// working API token at all.
-    @Test func aTURNKeyAloneIsEnoughToRelay() throws {
-        let credentials = OPNRemoteCoOpRelayCredentials(
-            turnKey: turnKey,
-            account: OPNRemoteCoOpCloudflareAccount(accountID: "", apiToken: "")
-        )
-        #expect(credentials.canRelay)
-        #expect(!credentials.canReportUsage)
-    }
-
     // MARK: - Quota arithmetic
 
     @Test func quotaMathTracksTheFreeAllowance() throws {
@@ -410,33 +401,22 @@ struct RemoteCoOpTURNTests {
     /// Direct mode's whole promise is that nothing about this Mac's public address is shared. A relay
     /// is exactly that: appending one here would have contacted Cloudflare and disclosed it the
     /// moment a TURN key happened to be configured, regardless of whether ICE ever used the candidate.
-    @Test func relayAugmentationLeavesDirectOnlyAlone() async throws {
-        SessionManagerURLProtocol.install(host: Self.mintHost) { _ in
-            SessionManagerURLProtocol.response(json: [
-                "iceServers": ["urls": ["turns:turn.cloudflare.com:443?transport=tcp"], "username": "u", "credential": "c"],
-            ])
-        }
-        defer { SessionManagerURLProtocol.uninstall(host: Self.mintHost) }
+    @Test func relayAugmentationNeverChangesTheBaseConfiguration() async throws {
+        // Augmentation exists to ADD the relay, never to substitute for the base or fail the
+        // invite: direct-only transport, an unusable key, and a refused mint each leave the
+        // configuration untouched, because a thrown error would be no session for anyone.
+        let directOnly = OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
+        let directOnlyResult = await OPNRemoteCoOpHostingEndpoint.relayAugmented(directOnly, credentials: OPNRemoteCoOpRelayCredentials(turnKey: turnKey, account: account()))
+        #expect(directOnlyResult.iceServers.map(\.urls) == directOnly.iceServers.map(\.urls))
 
-        let base = OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
-        let augmented = await OPNRemoteCoOpHostingEndpoint.relayAugmented(base, credentials: OPNRemoteCoOpRelayCredentials(turnKey: turnKey, account: account()))
-        #expect(augmented.iceServers.map(\.urls) == base.iceServers.map(\.urls))
-    }
+        let withoutKey = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic)
+        let withoutKeyResult = await OPNRemoteCoOpHostingEndpoint.relayAugmented(withoutKey, credentials: OPNRemoteCoOpRelayCredentials(turnKey: OPNRemoteCoOpTURNKey(keyID: "", keyToken: ""), account: account()))
+        #expect(withoutKeyResult.iceServers.map(\.urls) == withoutKey.iceServers.map(\.urls))
 
-    @Test func relayAugmentationLeavesTheConfigurationAloneWithoutAKey() async throws {
-        let base = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic)
-        let augmented = await OPNRemoteCoOpHostingEndpoint.relayAugmented(base, credentials: OPNRemoteCoOpRelayCredentials(turnKey: OPNRemoteCoOpTURNKey(keyID: "", keyToken: ""), account: account()))
-        #expect(augmented.iceServers.map(\.urls) == base.iceServers.map(\.urls))
-    }
-
-    /// A relay that cannot be minted must not fail the invite: direct-only is a working session for
-    /// most guests, where a thrown error is no session for anyone.
-    @Test func relayAugmentationFallsBackToDirectWhenCloudflareRefuses() async throws {
         SessionManagerURLProtocol.install(host: Self.mintHost) { _ in (401, Data()) }
         defer { SessionManagerURLProtocol.uninstall(host: Self.mintHost) }
-
-        let base = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic)
-        let augmented = await OPNRemoteCoOpHostingEndpoint.relayAugmented(base, credentials: OPNRemoteCoOpRelayCredentials(turnKey: turnKey, account: account()))
-        #expect(augmented.iceServers.map(\.urls) == base.iceServers.map(\.urls))
+        let refused = OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic)
+        let refusedResult = await OPNRemoteCoOpHostingEndpoint.relayAugmented(refused, credentials: OPNRemoteCoOpRelayCredentials(turnKey: turnKey, account: account()))
+        #expect(refusedResult.iceServers.map(\.urls) == refused.iceServers.map(\.urls))
     }
 }

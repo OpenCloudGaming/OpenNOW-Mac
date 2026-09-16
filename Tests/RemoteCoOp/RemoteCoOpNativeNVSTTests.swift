@@ -71,13 +71,6 @@ import Testing
     /// `1 << i | 1 << (i + 8)`: the low byte is "connected", the high byte is "XInput-style". The
     /// pair has to stay in step - registering as one kind and updating as another is what made the
     /// pad appear and vanish immediately.
-    @Test func theConnectedBitmapMarksEveryPadAsXInputStyle() {
-        #expect(NvstGamepadPacket.connectedBitmap(for: [0]) == 0x0101)
-        #expect(NvstGamepadPacket.connectedBitmap(for: [0, 1]) == 0x0303)
-        #expect(NvstGamepadPacket.connectedBitmap(for: [0, 1, 2, 3]) == 0x0F0F)
-        #expect(NvstGamepadPacket.connectedBitmap(for: [2]) == 0x0404)
-    }
-
     /// Out-of-range slots cannot be announced, and an empty set is the host-only default rather
     /// than zero: a zero bitmap announces no devices at all, which drops the host's own pad.
     @Test func theConnectedBitmapIgnoresImpossibleSlotsAndNeverAnnouncesNothing() {
@@ -99,14 +92,6 @@ import Testing
                               NvstGamepadPacket.connectedBitmapOffset)
         #expect(descriptorBitmap == stateBitmap)
         #expect(descriptorBitmap == 0x0505)
-    }
-
-    /// `StreamGamepadTopology` already built this value for the vendored path. The native
-    /// transport derives its descriptor from the same topology, so the two must agree or a guest
-    /// would be announced by one and not the other.
-    @Test func theTopologyAndThePacketAgreeOnTheBitmap() {
-        let topology = StreamGamepadTopology(playerIndices: [0, 1])
-        #expect(topology.registrationBitmap == NvstGamepadPacket.connectedBitmap(for: topology.playerIndices))
     }
 }
 

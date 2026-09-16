@@ -1,6 +1,7 @@
 //  Small pieces the recording editor uses in several places.
 //
 
+import CoreGraphics
 import Foundation
 
 /// Tracks how many views still want a recording's derived media.
@@ -87,4 +88,47 @@ struct RecordingTrimHeadroom: Equatable {
         }
         return RecordingTrimHeadroom(leading: 0, trailing: min(max(0, sourceDuration - segmentEnd), cap))
     }
+}
+
+/// The part of a clip's source the timeline window shows, or nil when none of it is showing.
+///
+/// Runs in `RecordingTimelineView` for every drawn clip on every redraw. The fractions are clamped
+/// before the range is built so a clip running off either edge asks for exactly what is visible.
+func recordingVisibleSourceRange(
+    clipX: CGFloat,
+    clipWidth: CGFloat,
+    trackWidth: CGFloat,
+    start: Double,
+    duration: Double,
+    whenZoomed: Bool
+) -> ClosedRange<Double>? {
+    guard whenZoomed, clipWidth > 1 else { return nil }
+    let leadingFraction = min(max(0, -clipX / clipWidth), 1)
+    let trailingFraction = min(max(0, (trackWidth - clipX) / clipWidth), 1)
+    guard trailingFraction > leadingFraction else { return nil }
+    let lower = start + duration * Double(leadingFraction)
+    let upper = start + duration * Double(trailingFraction)
+    guard upper > lower else { return nil }
+    return lower...upper
+}
+
+/// Where a pending trim edge lands, bounded by the room the drag reserved and by the footage.
+///
+/// The clip keeps at least a beat (`0.05`) of its committed span, the leading edge cannot cross the
+/// source's head, and the trailing edge cannot pass the source's tail. The headroom values are the
+/// room this drag reserved outward, so with none reserved the edge stays at its committed side.
+func recordingTrimBound(
+    _ seconds: Double,
+    start: Double,
+    end: Double,
+    sourceDuration: Double,
+    isLeading: Bool,
+    headroom: RecordingTrimHeadroom
+) -> Double {
+    if isLeading {
+        let earliest = max(0, start - headroom.leading)
+        return seconds.clampedBetween(earliest, end - 0.05)
+    }
+    let latest = min(sourceDuration, end + headroom.trailing)
+    return seconds.clampedBetween(start + 0.05, latest)
 }

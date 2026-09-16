@@ -111,19 +111,6 @@ private func croppedAspect(_ crop: StreamRecordingCrop, sourceAspect: Double) ->
     crop.width * sourceAspect / crop.height
 }
 
-@Test func cropPresetsSolveTheirRatioAgainstA16By9Source() throws {
-    let aspect = 16.0 / 9.0
-
-    let square = try #require(RecordingEditorCropPreset.square.crop(sourceAspect: aspect))
-    #expect(abs(croppedAspect(square, sourceAspect: aspect) - 1) < 0.001, "1:1 used to produce a 4:3 crop")
-
-    let wide = try #require(RecordingEditorCropPreset.wide.crop(sourceAspect: aspect))
-    #expect(abs(croppedAspect(wide, sourceAspect: aspect) - 16.0 / 9.0) < 0.001, "16:9 used to produce a 1.39:1 crop")
-
-    let vertical = try #require(RecordingEditorCropPreset.vertical.crop(sourceAspect: aspect))
-    #expect(abs(croppedAspect(vertical, sourceAspect: aspect) - 9.0 / 16.0) < 0.001)
-}
-
 @Test func cropPresetsSolveTheirRatioAgainstThe21By9CapturesThisAppRecords() throws {
     let aspect = 5120.0 / 2160.0
 

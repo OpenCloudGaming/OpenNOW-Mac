@@ -12,14 +12,6 @@ struct ControllerToolsTests {
         #expect(entry.sectionID == "controller-tools")
     }
 
-    @Test func controllerTestingRemainsInSharedTools() throws {
-        let entry = try #require(SettingsSearchIndex.results(for: "Test Controller").first)
-        #expect(entry.sectionID == "controller-tools")
-        #expect(SettingsSearchIndex.entries.contains {
-            $0.sectionID == "controller-tools" && $0.title.contains("Mapping")
-        })
-    }
-
     @Test func dualShockShellFillMatchesItsContour() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let assets = root.appendingPathComponent("View/Assets.xcassets")

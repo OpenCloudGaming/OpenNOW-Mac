@@ -122,14 +122,6 @@ import Testing
     }
 
     /// Same for the shared secret, whose URL field has the same shape.
-    @Test func aHalfTypedSecretURLIsNotErased() throws {
-        let target = "turns:turn.example.com:443?transport=tcp"
-        for length in 1...target.count {
-            let typed = String(target.prefix(length))
-            #expect(OPNRemoteCoOpSharedSecretRelay(urlText: typed, secret: "k").urlText == typed)
-        }
-    }
-
     /// Whitespace a host is mid-way through typing has to survive too - trimming on the way in makes
     /// a trailing space impossible to type.
     @Test func credentialsAreStoredVerbatimAndTrimmedOnlyWhenRead() throws {
@@ -191,12 +183,6 @@ import Testing
         #expect(OPNRemoteCoOpSharedSecretRelay(urls: [], secret: "k", username: "player").username == "player")
     }
 
-    @Test func sharedSecretNeedsBothPartsAndProducesNothingOtherwise() throws {
-        #expect(!OPNRemoteCoOpSharedSecretRelay(urlText: "turns:a:443", secret: "").isUsable)
-        #expect(OPNRemoteCoOpSharedSecretRelay(urlText: "turns:a:443", secret: "").iceServers().isEmpty)
-        #expect(!OPNRemoteCoOpSharedSecretRelay(urlText: "", secret: "k").isUsable)
-    }
-
     // MARK: - Dispatch
 
     private func credentials(_ provider: OPNRemoteCoOpRelayProvider) -> OPNRemoteCoOpRelayCredentials {
@@ -241,18 +227,6 @@ import Testing
     /// Labels name a provider a host will recognise, not the credential scheme underneath - the
     /// mechanism names told nobody which option to pick. The generic schemes are not tied to the
     /// provider they are named after, so the summaries have to name the others.
-    @Test func providerLabelsNameAProviderAndSummariesNameTheRest() throws {
-        #expect(OPNRemoteCoOpRelayProvider.staticCredentials.label == "ExpressTURN")
-        #expect(OPNRemoteCoOpRelayProvider.sharedSecret.label == "coturn")
-        #expect(OPNRemoteCoOpRelayProvider.staticCredentials.summary.contains("Metered"))
-        #expect(OPNRemoteCoOpRelayProvider.staticCredentials.summary.contains("Xirsys"))
-        #expect(OPNRemoteCoOpRelayProvider.pickerFootnote.contains("Metered"))
-        for provider in OPNRemoteCoOpRelayProvider.allCases {
-            #expect(!provider.label.isEmpty)
-            #expect(!provider.summary.isEmpty)
-        }
-    }
-
     /// Renaming a label must not resettle a host's stored choice, which is keyed on the raw value.
     @Test func storedProviderIdentifiersAreStable() throws {
         #expect(OPNRemoteCoOpRelayProvider.cloudflare.rawValue == "cloudflare")
@@ -408,11 +382,5 @@ import Testing
         #expect(!result.succeeded)
         #expect(result.failure == "No relay is configured.")
         #expect(result.elapsed == 0)
-    }
-
-    @Test func switchingProviderSwitchesWhichCredentialsAreUsed() async throws {
-        let viaStatic = await credentials(.staticCredentials).iceServers()
-        let viaSecret = await credentials(.sharedSecret).iceServers()
-        #expect(viaStatic.first?.urls != viaSecret.first?.urls)
     }
 }

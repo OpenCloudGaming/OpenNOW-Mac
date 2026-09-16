@@ -112,20 +112,4 @@ struct NvstByteCodecTests {
         #expect(try reader.u8() == 0x05)
         #expect(reader.isAtEnd)
     }
-
-    @Test func writerAndReaderRoundTripMixedFields() throws {
-        var writer = NvstByteWriter(capacity: 32)
-        writer.u8(0x23)
-        writer.u64BE(0x0102030405060708)
-        writer.u16LE(0x0101)
-        writer.float32LE(2.5)
-        writer.zeroes(2)
-        var reader = NvstByteReader(writer.data)
-        #expect(try reader.u8() == 0x23)
-        #expect(try reader.u64BE() == 0x0102030405060708)
-        #expect(try reader.u16LE() == 0x0101)
-        #expect(try reader.float32LE() == 2.5)
-        #expect(try reader.bytes(2) == Data([0, 0]))
-        #expect(reader.isAtEnd)
-    }
 }

@@ -125,12 +125,14 @@ extension RecordingTimelineView {
     /// bound the handle would run past the end of the track again, which is the thing the headroom
     /// exists to prevent.
     private func boundedTrimSeconds(_ seconds: Double, for segment: RecordingEditorSegment, isLeading: Bool) -> Double {
-        if isLeading {
-            let earliest = max(0, segment.startSeconds - trimHeadroom.leading)
-            return seconds.clampedBetween(earliest, segment.endSeconds - 0.05)
-        }
-        let latest = min(segment.recording.durationSeconds, segment.endSeconds + trimHeadroom.trailing)
-        return seconds.clampedBetween(segment.startSeconds + 0.05, latest)
+        recordingTrimBound(
+            seconds,
+            start: segment.startSeconds,
+            end: segment.endSeconds,
+            sourceDuration: segment.recording.durationSeconds,
+            isLeading: isLeading,
+            headroom: trimHeadroom
+        )
     }
 
     /// What the release will do, drawn before it happens.

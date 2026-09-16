@@ -132,7 +132,10 @@ enum RecordingTestFixtures {
                 }
             }
             if sawRecording && framesAfterStart >= frames { break }
-            try await Task.sleep(for: .milliseconds(34))
+            // The sleep paces the feed for the writer's spin-up, not for real-time cadence: the
+            // recorder timestamps from its own frame counter, so a faster feed shortens the test
+            // without changing the recorded duration or the pts spacing.
+            try await Task.sleep(for: .milliseconds(12))
         }
         recorder.stop()
         var terminalStatus: StreamRecordingStatus?

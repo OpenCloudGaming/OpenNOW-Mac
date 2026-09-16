@@ -1,5 +1,13 @@
+//  Catalog hot-path measurements at catalog sizes a real account can hit.
+//
+//  The derivations measured here are deliberately standalone copies of the ViewModel's algorithms
+//  ("CatalogViewModel.catalogSections equivalent" and friends): the real methods need the full
+//  view model, while this audit exists to answer "is this mapping fast enough at N games?".
+//  Keep the copies in step with the production code when either changes.
+//
+//  Output is JSON on stdout; set OPENNOW_PERF_AUDIT_OUTPUT to also write it to a file.
+
 import Foundation
-import Testing
 @testable import OpenNOW
 
 private struct PerformanceAuditMeasurement: Encodable {
@@ -24,9 +32,7 @@ private struct AuditCatalogSectionModel {
     let games: [OPNCatalogGameObject]
 }
 
-@Test func catalogModelPerformanceAudit() throws {
-    guard ProcessInfo.processInfo.environment["OPENNOW_PERF_AUDIT"] == "1" else { return }
-
+func runCatalogPerformanceAudit() throws -> Bool {
     let sizes = [96, 500, 1_500, 3_000]
     var measurements: [PerformanceAuditMeasurement] = []
 
@@ -84,6 +90,7 @@ private struct AuditCatalogSectionModel {
         try data.write(to: URL(fileURLWithPath: outputPath), options: .atomic)
     }
     print(String(decoding: data, as: UTF8.self))
+    return true
 }
 
 private func measureAuditOperation(package: String, operation: String, modelCount: Int, iterations: Int, body: () -> Void) -> PerformanceAuditMeasurement {

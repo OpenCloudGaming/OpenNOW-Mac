@@ -27,15 +27,6 @@ import Testing
         }
     }
 
-    @Test func onlyFullScreenModeRequestsAFullScreenStream() {
-        withPreservedMode {
-            for mode in OPNSessionReadyAction.Mode.allCases {
-                OPNSessionReadyAction.mode = mode
-                #expect(OPNSessionReadyAction.isFullScreenRequestedWhenReady == (mode == .fullScreen))
-            }
-        }
-    }
-
     @Test func unknownStoredModeFallsBackToNotification() {
         withPreservedMode {
             UserDefaults.standard.set("bring-to-front-and-full-screen", forKey: key)

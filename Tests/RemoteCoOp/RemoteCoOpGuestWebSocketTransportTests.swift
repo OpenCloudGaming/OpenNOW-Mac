@@ -30,7 +30,9 @@ struct RemoteCoOpGuestWebSocketTransportTests {
         let server = OPNRemoteCoOpEmbeddedServer(
             documentRoot: root,
             networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, latencyMode: .lowLatency),
-            participantOwnership: OPNRemoteCoOpParticipantOwnership()
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
+            handshakeTimeout: .seconds(2),
+            joinDeadline: 2
         )
         let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-ws-tls-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)

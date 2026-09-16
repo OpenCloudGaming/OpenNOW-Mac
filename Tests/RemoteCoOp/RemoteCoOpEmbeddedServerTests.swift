@@ -32,7 +32,11 @@ import Testing
         let server = OPNRemoteCoOpEmbeddedServer(
             documentRoot: root,
             networkConfiguration: configuration,
-            participantOwnership: OPNRemoteCoOpParticipantOwnership()
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
+            // A stalled socket is dropped in seconds, not in the 15 s a real host allows: the
+            // violation tests would otherwise each wait out the production handshake window.
+            handshakeTimeout: .seconds(2),
+            joinDeadline: 2
         )
         let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-tls-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
@@ -309,7 +313,9 @@ import Testing
         let owner = UUID()
         try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
             kind: .guestJoinRequested, roomID: UUID(), participantID: owner, inviteToken: "a.b", displayName: "Owner"))))
-        _ = try await socket.receive()
+        // The server sends an unverified join nothing back, so `receive()` would only unblock at
+        // the next heartbeat sweep; sleeping past the local round trip is the barrier instead.
+        try? await Task.sleep(for: .milliseconds(150))
 
         // Same socket, a different participant's disconnect. Must be dropped.
         try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
@@ -409,7 +415,7 @@ import Testing
     /// allows three guests, so the connection cap has to be comfortably above that.
     @Test func theConnectionCapLeavesRoomForEveryGuest() {
         #expect(OPNRemoteCoOpEmbeddedServer.maximumConnections > 3 * 4)
-        #expect(OPNRemoteCoOpEmbeddedServer.handshakeTimeout > .seconds(1))
+        #expect(OPNRemoteCoOpEmbeddedServer.defaultHandshakeTimeout > .seconds(1))
     }
 }
 
@@ -482,7 +488,9 @@ import Testing
         let server = OPNRemoteCoOpEmbeddedServer(
             documentRoot: root,
             networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic, latencyMode: .lowLatency),
-            participantOwnership: OPNRemoteCoOpParticipantOwnership()
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
+            handshakeTimeout: .seconds(2),
+            joinDeadline: 2
         )
         let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-tls-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
@@ -600,7 +608,9 @@ import Testing
         let owner = UUID()
         try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(
             kind: .guestJoinRequested, roomID: UUID(), participantID: owner, inviteToken: "a.b", displayName: "Owner"))))
-        _ = try await socket.receive()
+        // The server sends an unverified join nothing back, so `receive()` would only unblock at
+        // the next heartbeat sweep; sleeping past the local round trip is the barrier instead.
+        try? await Task.sleep(for: .milliseconds(150))
 
         // Someone else's input, then its own. Only the second may arrive.
         try await socket.send(.string(try OPNRemoteCoOpWireCodec.encode(OPNRemoteCoOpWireMessage(

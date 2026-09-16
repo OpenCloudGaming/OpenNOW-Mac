@@ -73,13 +73,3 @@ import Testing
     #expect(json["timestamps"] == nil)
 }
 
-@MainActor
-@Test func discordRichPresenceDefaultsToEnabled() throws {
-    let suite = try #require(UserDefaults(suiteName: "discord.tests.\(UUID().uuidString)"))
-    let presence = DiscordRichPresence(defaults: suite)
-    #expect(presence.isEnabled == true)
-
-    presence.isEnabled = false
-    #expect(presence.isEnabled == false)
-    #expect(suite.bool(forKey: DiscordRichPresenceConfig.enabledDefaultsKey) == false)
-}

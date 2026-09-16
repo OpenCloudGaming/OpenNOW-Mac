@@ -48,7 +48,9 @@ struct StreamRecordingTests {
                 }
             }
             if sawRecording && framesAfterStart >= 8 { break }
-            try await Task.sleep(for: .milliseconds(34))
+            // Pacing for the writer's spin-up only; the recorder's timestamps come from its own
+            // frame counter, so a faster feed does not change the recorded duration.
+            try await Task.sleep(for: .milliseconds(12))
         }
         recorder.stop()
 
@@ -378,7 +380,9 @@ struct StreamRecordingTests {
                 }
             }
             if sawRecording && framesAfterStart >= 8 { break }
-            try await Task.sleep(for: .milliseconds(34))
+            // Pacing for the writer's spin-up only; the recorder's timestamps come from its own
+            // frame counter, so a faster feed does not change the recorded duration.
+            try await Task.sleep(for: .milliseconds(12))
         }
         recorder.stop()
 

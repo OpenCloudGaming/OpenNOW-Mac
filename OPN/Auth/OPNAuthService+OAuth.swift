@@ -76,6 +76,7 @@ extension OPNAuthService {
     func startOAuthCallbackListener(
         port: Int,
         expectedState: String,
+        receiveTimeout: TimeInterval = OPNAuthService.oauthCallbackReceiveTimeout,
         completion: @escaping @Sendable (Result<String, Error>) -> Void,
         readyHandler: @escaping @Sendable () -> Void
     ) {
@@ -107,7 +108,7 @@ extension OPNAuthService {
                 guard Self.awaitConnection(socketDescriptor, timeout: min(deadline.timeIntervalSinceNow, 1)) else { continue }
                 let clientSocket = accept(socketDescriptor, nil, nil)
                 guard clientSocket >= 0 else { continue }
-                guard let request = Self.receiveRequest(clientSocket),
+                guard let request = Self.receiveRequest(clientSocket, timeout: receiveTimeout),
                       let query = Self.callbackQuery(from: request),
                       Self.isAuthorizationResponse(query, expectedState: expectedState) else {
                     Self.respond(clientSocket, status: "404 Not Found", body: "")
@@ -132,8 +133,8 @@ extension OPNAuthService {
         return polled > 0 && (descriptors[0].revents & Int16(POLLIN)) != 0
     }
 
-    private static func receiveRequest(_ clientSocket: Int32) -> String? {
-        var receiveTimeout = timeval(tv_sec: Int(oauthCallbackReceiveTimeout), tv_usec: 0)
+    private static func receiveRequest(_ clientSocket: Int32, timeout: TimeInterval) -> String? {
+        var receiveTimeout = timeval(tv_sec: Int(timeout), tv_usec: 0)
         setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout, socklen_t(MemoryLayout<timeval>.size))
         var buffer = [UInt8](repeating: 0, count: 4096)
         let byteCount = recv(clientSocket, &buffer, buffer.count - 1, 0)

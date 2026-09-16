@@ -1,27 +1,29 @@
-//  Measures what a guest costs the host per frame, before deciding what to do about it.
+//  Measures what a guest costs the host per frame.
 //
 //  The relay hands the same `RTCVideoFrame` to every guest's peer, and each peer independently
 //  converts it with `newI420()`. Same input, same output, once per guest. Whether that is worth
-//  sharing is a number, not an opinion, so it is measured here at the sizes a real session uses: an
-//  NVST 5K decode scaled down to the relay's ceiling.
+//  sharing is a number, not an opinion, so it is measured here at the sizes a real session uses:
+//  an NVST 5K decode scaled down to the relay's ceiling.
 //
+//  The last two measurements carry regression thresholds — the whole point of the relay's shared
+//  conversion is that adding guests must not multiply the work. A breach prints a FAIL verdict and
+//  the runner exits nonzero, so the gate survives without timed asserts living in the test suite.
 
 import CoreMedia
 import CoreVideo
 import Foundation
-import Testing
 @preconcurrency import WebRTC
 @testable import OpenNOW
 
-@Suite("Remote Co-Op relay conversion cost", .serialized)
 struct RemoteCoOpVideoRelayConversionBenchmark {
     /// An NV12 buffer, which is what VideoToolbox hands back from the NVST decoder.
     static func makePixelBuffer(width: Int, height: Int) throws -> CVPixelBuffer {
         var pixelBuffer: CVPixelBuffer?
         let attributes: [String: Any] = [kCVPixelBufferIOSurfacePropertiesKey as String: [:]]
         let status = CVPixelBufferCreate(nil, width, height, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, attributes as CFDictionary, &pixelBuffer)
-        #expect(status == kCVReturnSuccess)
-        let buffer = try #require(pixelBuffer)
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            throw BenchmarkError.pixelBufferCreationFailed(status: status)
+        }
         // Written rather than left zeroed: an untouched allocation can be lazily backed, which would
         // measure the page faults of the first pass instead of the conversion.
         CVPixelBufferLockBaseAddress(buffer, [])
@@ -58,6 +60,22 @@ struct RemoteCoOpVideoRelayConversionBenchmark {
         return samples.sorted()[samples.count / 2]
     }
 
+    static func run() throws -> Bool {
+        var verdicts: [String] = []
+        print("one I420 conversion, at the sizes the relay actually emits")
+        try conversionCostBySize()
+
+        print("per-guest conversion multiplies, shared conversion does not")
+        try conversionCostByGuestCount()
+
+        verdicts.append(try relayCostIsFlatAcrossGuests().verdict)
+        verdicts.append(try droppedFramesCostNothing().verdict)
+        for verdict in verdicts where verdict.hasPrefix("FAIL") {
+            print(verdict)
+        }
+        return !verdicts.contains { $0.hasPrefix("FAIL") }
+    }
+
     /// One conversion, at the sizes the relay actually produces.
     ///
     /// The preset is a bounding box, not the output: `adaptedSize` preserves the source aspect ratio,
@@ -65,14 +83,13 @@ struct RemoteCoOpVideoRelayConversionBenchmark {
     /// not cosmetic - it decides which libyuv path runs. An exact halving has a dedicated fast row
     /// scaler; 0.375 and 0.75 do not, and cost several times more. Measuring a size the relay never
     /// emits gives a number several times too high, which is what a first pass at this did.
-    @Test("one I420 conversion, at the sizes the relay actually emits")
-    func conversionCostBySize() throws {
-        let pixelBuffer = try Self.makePixelBuffer(width: 5120, height: 2160)
+    static func conversionCostBySize() throws {
+        let pixelBuffer = try makePixelBuffer(width: 5120, height: 2160)
         for preset in OPNRemoteCoOpQualityPreset.allCases {
             let target = OPNRemoteCoOpHostVideoRelay.adaptedSize(sourceWidth: 5120, sourceHeight: 2160, maximumWidth: preset.width, maximumHeight: preset.height)
-            let frame = Self.relayFrame(from: pixelBuffer, targetWidth: target.width, targetHeight: target.height)
+            let frame = relayFrame(from: pixelBuffer, targetWidth: target.width, targetHeight: target.height)
             _ = frame.newI420()
-            let median = Self.medianMilliseconds(30) { _ = frame.newI420() }
+            let median = medianMilliseconds(30) { _ = frame.newI420() }
             let ratio = Double(target.width) / 5120
             print(String(format: "[relay conversion] %@ box -> %dx%d (x%.3f)  %.3f ms/frame  (%.1f%% of that preset's frame budget)",
                          preset.label, target.width, target.height, ratio, median, median / (1000.0 / Double(preset.fps)) * 100))
@@ -80,18 +97,17 @@ struct RemoteCoOpVideoRelayConversionBenchmark {
     }
 
     /// The before and after, on a frame shaped exactly as the relay emits it.
-    @Test("per-guest conversion multiplies, shared conversion does not")
-    func conversionCostByGuestCount() throws {
-        let pixelBuffer = try Self.makePixelBuffer(width: 5120, height: 2160)
+    static func conversionCostByGuestCount() throws {
+        let pixelBuffer = try makePixelBuffer(width: 5120, height: 2160)
         // The 4K preset: the worst real case, because 0.75 misses libyuv's halving fast path.
         let target = OPNRemoteCoOpHostVideoRelay.adaptedSize(sourceWidth: 5120, sourceHeight: 2160, maximumWidth: 3840, maximumHeight: 2160)
-        let frame = Self.relayFrame(from: pixelBuffer, targetWidth: target.width, targetHeight: target.height)
+        let frame = relayFrame(from: pixelBuffer, targetWidth: target.width, targetHeight: target.height)
         _ = frame.newI420()
         for guests in 1...3 {
-            let perPeer = Self.medianMilliseconds(20) {
+            let perPeer = medianMilliseconds(20) {
                 for _ in 0..<guests { _ = frame.newI420() }
             }
-            let shared = Self.medianMilliseconds(20) {
+            let shared = medianMilliseconds(20) {
                 let converted = frame.newI420()
                 for _ in 0..<guests { _ = converted }
             }
@@ -121,9 +137,8 @@ struct RemoteCoOpVideoRelayConversionBenchmark {
     }
 
     /// The measurement that decided this: cost through the real relay as guests are added.
-    @Test("adding guests no longer multiplies the conversion")
-    func relayCostIsFlatAcrossGuests() throws {
-        let pixelBuffer = try Self.makePixelBuffer(width: 5120, height: 2160)
+    static func relayCostIsFlatAcrossGuests() throws -> (verdict: String, message: String) {
+        let pixelBuffer = try makePixelBuffer(width: 5120, height: 2160)
         var costs: [Double] = []
         for guests in 1...3 {
             let relay = OPNRemoteCoOpHostVideoRelay()
@@ -133,23 +148,28 @@ struct RemoteCoOpVideoRelayConversionBenchmark {
             // Warm: the first frame pays for allocations this is not trying to measure.
             relay.renderPixelBuffer(pixelBuffer, presentationTime: CMTime(value: 1, timescale: 90_000))
             var timestamp: Int64 = 2
-            let median = Self.medianMilliseconds(20) {
+            let median = medianMilliseconds(20) {
                 relay.renderPixelBuffer(pixelBuffer, presentationTime: CMTime(value: timestamp, timescale: 90_000))
                 timestamp += 1
             }
             costs.append(median)
             print(String(format: "[relay conversion] %d guest(s) through the relay: %.3f ms/frame", guests, median))
-            #expect(sinks.allSatisfy { $0.converted > 0 })
+            if sinks.allSatisfy({ $0.converted > 0 }) == false {
+                return (verdict: "FAIL: a sink received no frames through the relay", message: "")
+            }
         }
         // Three guests must not cost meaningfully more than one. Before sharing this was 3.0 -> 9.1 ms,
         // which is past the 8.3 ms a 120 fps frame gets; the tolerance is loose enough for a loaded
         // machine but nowhere near loose enough to let per-guest conversion back in.
-        #expect(costs[2] < costs[0] * 1.8, "3 guests cost \(costs[2]) ms vs 1 guest \(costs[0]) ms")
+        if costs[2] < costs[0] * 1.8 {
+            return (verdict: "PASS", message: "3 guests cost \(costs[2]) ms vs 1 guest \(costs[0]) ms")
+        }
+        return (verdict: "FAIL: 3 guests cost \(costs[2]) ms vs 1 guest \(costs[0]) ms", message: "")
     }
 
-    @Test("a frame every guest drops converts nothing")
-    func droppedFramesCostNothing() throws {
-        let pixelBuffer = try Self.makePixelBuffer(width: 5120, height: 2160)
+    /// A frame every guest drops converts nothing.
+    static func droppedFramesCostNothing() throws -> (verdict: String, message: String) {
+        let pixelBuffer = try makePixelBuffer(width: 5120, height: 2160)
         let relay = OPNRemoteCoOpHostVideoRelay()
         relay.setPreferredOutputSize(width: 2560, height: 1440)
         let sinks = (0..<3).map { _ in ConvertingSink() }
@@ -159,11 +179,21 @@ struct RemoteCoOpVideoRelayConversionBenchmark {
         }
         // Laziness is the reason the conversion is not simply done once up front in the relay: guests
         // have their own frame rates, and a 60 fps guest on a 120 fps source drops half the frames.
-        let median = Self.medianMilliseconds(20) {
+        let median = medianMilliseconds(20) {
             relay.renderPixelBuffer(pixelBuffer, presentationTime: CMTime(value: 1, timescale: 90_000))
         }
         print(String(format: "[relay conversion] 3 guests all dropping: %.3f ms/frame", median))
-        #expect(median < 0.5, "a frame nobody forwards should not be converted, took \(median) ms")
-        #expect(sinks.allSatisfy { $0.converted == 0 })
+        if median < 0.5, sinks.allSatisfy({ $0.converted == 0 }) {
+            return (verdict: "PASS", message: "a frame nobody forwards was not converted")
+        }
+        return (verdict: "FAIL: a frame nobody forwards was converted, took \(median) ms", message: "")
     }
+}
+
+enum BenchmarkError: Error {
+    case pixelBufferCreationFailed(status: CVReturn)
+}
+
+func runRemoteCoOpVideoRelayConversionBenchmark() throws -> Bool {
+    try RemoteCoOpVideoRelayConversionBenchmark.run()
 }

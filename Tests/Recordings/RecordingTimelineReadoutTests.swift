@@ -491,37 +491,30 @@ private func makeLibraryModel() -> (RecordingsViewModel, StreamRecording, Stream
 
 // MARK: - Visible source range (filmstrip window)
 
-/// Mirrors `RecordingTimelineView.visibleSourceRange`, which is private to the view.
-private func visibleSourceRange(clipX: CGFloat, clipWidth: CGFloat, trackWidth: CGFloat,
-                                start: Double, duration: Double) -> ClosedRange<Double>? {
-    guard clipWidth > 1 else { return nil }
-    let leading = min(max(0, -clipX / clipWidth), 1)
-    let trailing = min(max(0, (trackWidth - clipX) / clipWidth), 1)
-    guard trailing > leading else { return nil }
-    let lower = start + duration * Double(leading)
-    let upper = start + duration * Double(trailing)
-    guard upper > lower else { return nil }
-    return lower...upper
-}
-
 @Test func aClipFullyOnScreenAsksForItsWholeSourceRange() {
-    let range = visibleSourceRange(clipX: 0, clipWidth: 300, trackWidth: 300, start: 10, duration: 30)
+    let range = recordingVisibleSourceRange(clipX: 0, clipWidth: 300, trackWidth: 300, start: 10, duration: 30, whenZoomed: true)
     #expect(range == 10...40)
 }
 
 @Test func aClipRunningOffBothEdgesAsksOnlyForWhatIsShowing() {
     // Zoomed in: the clip is three track-widths wide and starts one width off to the left, so the
     // middle third of it is on screen.
-    let range = visibleSourceRange(clipX: -300, clipWidth: 900, trackWidth: 300, start: 0, duration: 90)
+    let range = recordingVisibleSourceRange(clipX: -300, clipWidth: 900, trackWidth: 300, start: 0, duration: 90, whenZoomed: true)
     let bounds = try? #require(range)
     #expect(bounds?.lowerBound == 30)
     #expect(bounds?.upperBound == 60)
 }
 
 @Test func aClipEntirelyOffScreenAsksForNothing() {
-    #expect(visibleSourceRange(clipX: -5000, clipWidth: 100, trackWidth: 300, start: 0, duration: 30) == nil)
-    #expect(visibleSourceRange(clipX: 5000, clipWidth: 100, trackWidth: 300, start: 0, duration: 30) == nil)
-    #expect(visibleSourceRange(clipX: 0, clipWidth: 0, trackWidth: 300, start: 0, duration: 30) == nil)
+    #expect(recordingVisibleSourceRange(clipX: -5000, clipWidth: 100, trackWidth: 300, start: 0, duration: 30, whenZoomed: true) == nil)
+    #expect(recordingVisibleSourceRange(clipX: 5000, clipWidth: 100, trackWidth: 300, start: 0, duration: 30, whenZoomed: true) == nil)
+    #expect(recordingVisibleSourceRange(clipX: 0, clipWidth: 0, trackWidth: 300, start: 0, duration: 30, whenZoomed: true) == nil)
+}
+
+@Test func anUnzoomedTimelineAsksForNoSourceRange() {
+    // The window's source ranges exist so the filmstrip shows the frames under the zoom; at the
+    // unzoomed scale the drawn range already is the source range.
+    #expect(recordingVisibleSourceRange(clipX: 0, clipWidth: 300, trackWidth: 300, start: 10, duration: 30, whenZoomed: false) == nil)
 }
 
 @Test func aSubSecondRulerStepGetsSubSecondLabels() {
@@ -569,29 +562,37 @@ private func visibleSourceRange(clipX: CGFloat, clipWidth: CGFloat, trackWidth: 
 
 // MARK: - Deferred trim
 
-/// Mirrors `RecordingTimelineView.boundedTrimSeconds`, which is private to the view.
-private func boundedTrim(_ seconds: Double, start: Double, end: Double, sourceDuration: Double, isLeading: Bool) -> Double {
-    if isLeading { return min(max(0, seconds), max(0, end - 0.05)) }
-    return max(min(sourceDuration, seconds), start + 0.05)
-}
-
 @Test func aPendingTrimStopsWhereTheFootageDoes() {
     // The drag no longer mutates the segment, so the view has to bound the preview itself or the
-    // ghost strip would run off the end of the recording.
-    #expect(boundedTrim(-5, start: 10, end: 20, sourceDuration: 30, isLeading: true) == 0)
-    #expect(boundedTrim(99, start: 10, end: 20, sourceDuration: 30, isLeading: false) == 30)
+    // ghost strip would run off the end of the recording. The bounds are the source recording with
+    // this drag's headroom restored: room reserved outward lets the edge reach the footage ends.
+    let leadingHeadroom = RecordingTrimHeadroom(leading: 10, trailing: 0)
+    #expect(recordingTrimBound(-5, start: 10, end: 20, sourceDuration: 30, isLeading: true, headroom: leadingHeadroom) == 0)
+
+    let trailingHeadroom = RecordingTrimHeadroom(leading: 0, trailing: 10)
+    #expect(recordingTrimBound(99, start: 10, end: 20, sourceDuration: 30, isLeading: false, headroom: trailingHeadroom) == 30)
 }
 
 @Test func aPendingTrimKeepsTheClipLongerThanNothing() {
-    #expect(boundedTrim(25, start: 10, end: 20, sourceDuration: 30, isLeading: true) == 19.95)
-    #expect(boundedTrim(5, start: 10, end: 20, sourceDuration: 30, isLeading: false) == 10.05)
+    #expect(recordingTrimBound(25, start: 10, end: 20, sourceDuration: 30, isLeading: true, headroom: .none) == 19.95)
+    #expect(recordingTrimBound(5, start: 10, end: 20, sourceDuration: 30, isLeading: false, headroom: .none) == 10.05)
+}
+
+@Test func aPendingTrimWithoutReservedRoomStaysAtTheCommittedEdge() {
+    // No drag is underway when the headroom is none: neither edge may cross its committed side,
+    // so the pending trim can only sit on the clip it edits.
+    #expect(recordingTrimBound(-5, start: 10, end: 20, sourceDuration: 30, isLeading: true, headroom: .none) == 10)
+    #expect(recordingTrimBound(99, start: 10, end: 20, sourceDuration: 30, isLeading: false, headroom: .none) == 20)
 }
 
 @Test func aPendingTrimOutwardIsAllowedPastTheCommittedEdge() {
     // Dragging back out is the case the preview exists for: the bound is the source recording, not
-    // the clip's current trim.
-    #expect(boundedTrim(2, start: 10, end: 20, sourceDuration: 30, isLeading: true) == 2)
-    #expect(boundedTrim(28, start: 10, end: 20, sourceDuration: 30, isLeading: false) == 28)
+    // the clip's current trim, once the drag's headroom is added back.
+    let leadingHeadroom = RecordingTrimHeadroom(leading: 10, trailing: 0)
+    #expect(recordingTrimBound(2, start: 10, end: 20, sourceDuration: 30, isLeading: true, headroom: leadingHeadroom) == 2)
+
+    let trailingHeadroom = RecordingTrimHeadroom(leading: 0, trailing: 10)
+    #expect(recordingTrimBound(28, start: 10, end: 20, sourceDuration: 30, isLeading: false, headroom: trailingHeadroom) == 28)
 }
 
 // MARK: - Trim headroom
@@ -640,27 +641,11 @@ private func boundedTrim(_ seconds: Double, start: Double, end: Double, sourceDu
 
 // MARK: - Filmstrip work splitting
 
-/// Mirrors `RecordingFilmstripDecoder.split`, which is private to its file.
-private func splitFrameTimes(_ times: [Double], workers: Int, keyframeInterval: Double = 2) -> [[Double]] {
-    let sorted = times.sorted()
-    guard workers > 1, sorted.count > 1 else { return [sorted] }
-    let spacing = ((sorted.last ?? 0) - (sorted.first ?? 0)) / Double(sorted.count - 1)
-    guard spacing < keyframeInterval else {
-        return (0..<workers).map { worker in
-            sorted.enumerated().filter { $0.offset % workers == worker }.map(\.element)
-        }
-    }
-    let perWorker = Int((Double(sorted.count) / Double(workers)).rounded(.up))
-    return stride(from: 0, to: sorted.count, by: perWorker).map {
-        Array(sorted[$0..<Swift.min($0 + perWorker, sorted.count)])
-    }
-}
-
 @Test func denselyPackedFramesAreSplitIntoContiguousBlocks() {
     // Frames inside one group of pictures: interleaving makes every worker decode forward through
     // the same group. Measured at 1492ms interleaved against 716ms contiguous on a 5K capture.
     let times = (0..<32).map { 120 + Double($0) * 0.5 }
-    let groups = splitFrameTimes(times, workers: 4)
+    let groups = RecordingFilmstripDecoder.split(times, workers: 4)
 
     #expect(groups.count == 4)
     for group in groups {
@@ -674,7 +659,7 @@ private func splitFrameTimes(_ times: [Double], workers: Int, keyframeInterval: 
     // A frame every six seconds shares no group of pictures with its neighbours, so there is
     // nothing to reuse and interleaving balances the load instead.
     let times = (0..<24).map { Double($0) * 6 }
-    let groups = splitFrameTimes(times, workers: 4)
+    let groups = RecordingFilmstripDecoder.split(times, workers: 4)
 
     #expect(groups.count == 4)
     for group in groups {
@@ -685,7 +670,7 @@ private func splitFrameTimes(_ times: [Double], workers: Int, keyframeInterval: 
 }
 
 @Test func splittingHandlesFewerFramesThanWorkers() {
-    #expect(splitFrameTimes([5], workers: 4) == [[5]])
-    #expect(splitFrameTimes([], workers: 4) == [[]])
-    #expect(splitFrameTimes([1, 2, 3], workers: 1) == [[1, 2, 3]])
+    #expect(RecordingFilmstripDecoder.split([5], workers: 4) == [[5]])
+    #expect(RecordingFilmstripDecoder.split([], workers: 4) == [[]])
+    #expect(RecordingFilmstripDecoder.split([1, 2, 3], workers: 1) == [[1, 2, 3]])
 }

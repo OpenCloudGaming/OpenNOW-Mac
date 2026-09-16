@@ -221,15 +221,14 @@ struct RecordingTimelineView: View {
     /// frames for it. At zoom 1 that is the whole clip and the coarse grid is enough; zoomed in it
     /// is a few seconds, which is worth sixty-four frames of its own.
     private func visibleSourceRange(of item: TimelineClipFrame, layout: RecordingTimelineGeometry) -> ClosedRange<Double>? {
-        guard layout.isZoomed, item.width > 1 else { return nil }
-        let leadingFraction = min(max(0, -item.x / item.width), 1)
-        let trailingFraction = min(max(0, (layout.width - item.x) / item.width), 1)
-        guard trailingFraction > leadingFraction else { return nil }
-        let span = item.segment.durationSeconds
-        let lower = item.segment.startSeconds + span * Double(leadingFraction)
-        let upper = item.segment.startSeconds + span * Double(trailingFraction)
-        guard upper > lower else { return nil }
-        return lower...upper
+        recordingVisibleSourceRange(
+            clipX: item.x,
+            clipWidth: item.width,
+            trackWidth: layout.width,
+            start: item.segment.startSeconds,
+            duration: item.segment.durationSeconds,
+            whenZoomed: layout.isZoomed
+        )
     }
 
     // MARK: - Overlays

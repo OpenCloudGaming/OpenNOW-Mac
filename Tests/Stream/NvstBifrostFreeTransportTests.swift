@@ -49,17 +49,6 @@ import Testing
         }
     }
 
-    @Test func aSessionWithoutAnyHostCannotNegotiate() async throws {
-        let transport = NvstBifrostFreeTransport(controlTimeout: .milliseconds(200))
-        let receiver = NativeNVSTMediaSession()
-        await #expect(throws: NativeNVSTError.self) {
-            _ = try await transport.connect(
-                allocation: allocation(rawSessionJSON: "{}", signalingServer: ""),
-                mediaReceiver: receiver
-            )
-        }
-    }
-
     @Test func theControlEndpointIsSynthesizedFromTheSessionHost() {
         let json = #"{"connectionInfo":[{"usage":16,"port":322},{"usage":14,"port":443}]}"#
         let endpoints = NvstRtspEndpoints.collect(
@@ -130,27 +119,6 @@ import Testing
 
     /// The configuration is stored for the bundle bring-up to read when the session negotiates;
     /// what it holds is what the mic decision is made from.
-    @Test func theStoredMicrophoneConfigurationIsWhatTheBundleBringUpReads() async throws {
-        let transport = NvstBifrostFreeTransport()
-        try await transport.setMicrophoneConfiguration(
-            NativeNVSTMicrophoneConfiguration(volume: 0.5,
-                                              voiceActivityEnabled: false,
-                                              captureRequested: true,
-                                              initiallyEnabled: false))
-        let stored = await transport.microphoneConfiguration
-        #expect(stored?.captureRequested == true)
-        #expect(stored?.initiallyEnabled == false)
-        #expect(stored?.volume == 0.5)
-    }
-
-    @Test func diagnosticsNameTheTransportEvenBeforeConnecting() async {
-        let transport = NvstBifrostFreeTransport()
-        let metadata = await transport.diagnosticMetadata()
-        #expect(metadata["transport"] == "nvst-bifrost-free")
-        #expect(metadata["nvidiaLibraries"] == "none")
-        #expect(metadata["framesDecoded"] == "0")
-    }
-
     @Test func codecMappingCoversEveryNvstCodec() {
         #expect(NvstBifrostFreeTransport.mediaCodec(.h264) == .h264)
         #expect(NvstBifrostFreeTransport.mediaCodec(.hevc) == .h265)

@@ -321,14 +321,6 @@ struct NvstKeyboardAndGamepadTests {
         #expect(Array(up[40..<48]) == withUnsafeBytes(of: timestamp.littleEndian) { Array($0) })
     }
 
-    @Test func aPointerMoveStillCarriesOneTimestamp() {
-        let move = NvstRemoteInput.framed(
-            NvstRemoteInput.mouseMove(deltaX: 24, deltaY: 24),
-            framing: .enveloped, sequence: 0, timestampMicroseconds: 23_182_056
-        )
-        #expect(move.count == 40)
-    }
-
     /// Byte-for-byte against `OPNInputProtocolEncoder`, the encoder the vendored path used — the one
     /// build where the gamepad demonstrably reached games. Everything after the outer timestamp must
     /// match; only bytes 1..9 differ, because that encoder stamps them from its own clock.
@@ -570,9 +562,6 @@ struct NvstStreamProfileTests {
 
     /// The frame interval the pacer is told, for the rates the app can be configured to.
     @Test func theFrameIntervalFollowsTheFrameRate() {
-        #expect(1_000_000 / 60 == 16666)
-        #expect(1_000_000 / 120 == 8333)
-        #expect(1_000_000 / 144 == 6944)
         // The fallback when the session names no rate.
         #expect(NvstBifrostFreeTransport.targetFrameTimeMicroseconds == 16000)
     }

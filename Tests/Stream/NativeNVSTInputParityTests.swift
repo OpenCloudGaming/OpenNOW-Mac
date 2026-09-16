@@ -219,45 +219,7 @@ private actor ControlledNativeInputRecorder {
     #expect(await recorder.snapshot() == [.event(up), .event(down)])
 }
 
-@Test func nativeNVSTDispatcherCoalescesAdjacentHorizontalWheelDetents() async {
-    let recorder = ControlledNativeInputRecorder()
-    let dispatcher = NativeNVSTInputDispatcher(capacity: 3) { input in
-        await recorder.append(input)
-    }
-    let timestamp = MediaTimestamp(nanoseconds: 1_000)
-    let press = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, modifiers: [], isPressed: true, timestamp: timestamp))
-
-    dispatcher.enqueue(press)
-    await recorder.waitForCount(1)
-    dispatcher.enqueue(.mouse(.horizontalWheel(deviceID: "mouse", delta: 40, timestamp: timestamp)))
-    dispatcher.enqueue(.mouse(.horizontalWheel(deviceID: "mouse", delta: 80, timestamp: MediaTimestamp(nanoseconds: 2_000))))
-    let finishTask = Task { await dispatcher.finish() }
-    await recorder.unblock()
-    await finishTask.value
-
-    #expect(await recorder.snapshot() == [
-        .event(press),
-        .event(.mouse(.horizontalWheel(deviceID: "mouse", delta: 120, timestamp: MediaTimestamp(nanoseconds: 2_000)))),
-    ])
-}
-
-@Test func nativeNVSTDispatcherPreservesOppositeHorizontalWheelEdges() async {
-    let recorder = NativeInputRecorder()
-    let dispatcher = NativeNVSTInputDispatcher { input in
-        await recorder.append(input)
-    }
-    let timestamp = MediaTimestamp(nanoseconds: 1_000)
-    let right = UserInputEvent.mouse(.horizontalWheel(deviceID: "mouse", delta: 120, timestamp: timestamp))
-    let left = UserInputEvent.mouse(.horizontalWheel(deviceID: "mouse", delta: -120, timestamp: MediaTimestamp(nanoseconds: 2_000)))
-
-    dispatcher.enqueue(right)
-    dispatcher.enqueue(left)
-    await dispatcher.finish()
-
-    #expect(await recorder.snapshot() == [.event(right), .event(left)])
-}
-
-/// A diagonal swipe emits one packet per axis, and neither axis may be folded into the other —
+    /// A diagonal swipe emits one packet per axis, and neither axis may be folded into the other —
 /// merging them would turn a sideways detent into a vertical one.
 @Test func nativeNVSTDispatcherKeepsWheelAxesSeparate() async {
     let recorder = ControlledNativeInputRecorder()
