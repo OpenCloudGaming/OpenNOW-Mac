@@ -84,6 +84,7 @@ import Testing
         // recordings library link, and the Controller Tools card's two button rows.
         let unscannable: Set<String> = [
             "Microphone Test", "Cloudmatch Region", "Your recordings", "Test Controller", "Controller Mapping",
+            "Controller Order",
         ]
         let stale = SettingsSearchIndex.entries
             .map(\.title)
