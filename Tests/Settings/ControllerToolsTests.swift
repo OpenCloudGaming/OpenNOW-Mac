@@ -5,17 +5,17 @@ import Testing
 @MainActor
 @Suite("Controller tools")
 struct ControllerToolsTests {
-    @Test func mappingSearchTargetsSteamControllerSettings() throws {
+    @Test func mappingSearchTargetsSharedControllerTools() throws {
         let entry = try #require(SettingsSearchIndex.results(for: "Controller Mapping").first)
-        #expect(entry.title == "Steam Controller Mapping")
+        #expect(entry.title == "Controller Mapping")
         #expect(entry.group == .input)
-        #expect(entry.sectionID == "steam-controller")
+        #expect(entry.sectionID == "controller-tools")
     }
 
     @Test func controllerTestingRemainsInSharedTools() throws {
         let entry = try #require(SettingsSearchIndex.results(for: "Test Controller").first)
         #expect(entry.sectionID == "controller-tools")
-        #expect(!SettingsSearchIndex.entries.contains {
+        #expect(SettingsSearchIndex.entries.contains {
             $0.sectionID == "controller-tools" && $0.title.contains("Mapping")
         })
     }

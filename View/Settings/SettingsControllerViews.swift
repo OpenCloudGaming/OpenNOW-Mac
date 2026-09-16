@@ -3,13 +3,11 @@ import CryptoKit
 import SwiftUI
 
 /// Everything Valve's controllers need on this Mac: whether OpenNOW is holding the device, the two
-/// system permissions that gate cursor control and input capture, rumble, and Steam-only mappings.
+/// system permissions that gate cursor control and input capture, plus rumble.
 /// The shared controller tester stays in Controller Tools on the Input page.
 struct SteamControllerSettingsPage: View {
     let uiScale: CGFloat
     @ObservedObject private var hidMonitor = SteamControllerHIDMonitor.shared
-    @ObservedObject private var mappingStore = SteamControllerMappingStore.shared
-    @State private var showingControllerMapping = false
     @AppStorage(SteamControllerPreference.key) private var steamControllerSupportEnabled = false
     @State private var permissionResetInFlight = false
     @State private var permissionResetError: String?
@@ -65,8 +63,6 @@ struct SteamControllerSettingsPage: View {
                     uiScale: uiScale,
                     action: setSteamControllerSupportEnabled
                 )
-                SettingsDivider(uiScale: uiScale)
-                mappingRow
             }
 
             if steamControllerSupportEnabled {
@@ -171,9 +167,6 @@ struct SteamControllerSettingsPage: View {
                 }
             }
         }
-        .sheet(isPresented: $showingControllerMapping) {
-            SteamControllerMappingView()
-        }
         .alert(
             "Reset Failed",
             isPresented: Binding(
@@ -184,26 +177,6 @@ struct SteamControllerSettingsPage: View {
             Button("OK") { permissionResetError = nil }
         } message: {
             Text(permissionResetError ?? "")
-        }
-    }
-
-    private var mappingRow: some View {
-        HStack(spacing: 12 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text("Steam Controller Mapping")
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text(mappingStore.activeProfile.map { "Steam Controller profile \"\($0.name)\" is applied to streams." }
-                     ?? "Bind Steam Controller buttons, pads, and sticks to keyboard keys, mouse actions, or gamepad combos.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-            Button("Open Mapping") {
-                showingControllerMapping = true
-            }
-            .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
         }
     }
 

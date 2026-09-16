@@ -74,12 +74,15 @@ public final class NativeWebRTCGamepadMonitor {
     }
     public private(set) var topology = StreamGamepadTopology(playerIndices: [])
     nonisolated(unsafe) private var observerTokens: [NSObjectProtocol] = []
-    nonisolated(unsafe) private var pollState = GamepadPollState()
-    private let pollingQueue = DispatchQueue(label: "com.opennow.gamepad-poll", qos: .userInteractive)
-    private var pollingAllowed = false
-    private let bindingClock = ContinuousClock()
-    private var bindingEngines: [InputDeviceID: SteamControllerBindingEngine] = [:]
-    private var reapplyTasks: [InputDeviceID: Task<Void, Never>] = [:]
+    nonisolated(unsafe) var pollState = NativeGamepadPollState()
+    let pollingQueue = DispatchQueue(label: "com.opennow.gamepad-poll", qos: .userInteractive)
+    var pollingAllowed = false
+    var mappingsEnabled = false
+    private var mappingSubscription: AnyCancellable?
+    var bindingOutputLedger = ControllerBindingOutputLedger()
+    let bindingClock = ContinuousClock()
+    var bindingEngines: [InputDeviceID: ControllerBindingEngine] = [:]
+    var reapplyTasks: [InputDeviceID: Task<Void, Never>] = [:]
     /// Whether the Steam guide chord is currently driving the real macOS pointer. The stream view
     /// must not hide a cursor the player is actively aiming with.
     var onLocalCursorInjectionChanged: ((Bool) -> Void)?
@@ -103,11 +106,11 @@ public final class NativeWebRTCGamepadMonitor {
     public var onChordCommand: ((StreamOSKChordCommand) -> Void)?
     /// Returning true hands the raw snapshot to the on-screen keyboard instead of
     /// the binding engine. The keyboard also owns button navigation while active.
-    public var onScreenKeyboardCapture: ((InputDeviceID, SteamControllerInputSnapshot) -> Bool)?
+    public var onScreenKeyboardCapture: ((InputDeviceID, ControllerInputSnapshot) -> Bool)?
 
-    let mappingProvider: any SteamControllerMappingProviding
+    let mappingProvider: any ControllerMappingProviding
 
-    init(mappingProvider: any SteamControllerMappingProviding = SteamControllerMappingStore.shared) {
+    init(mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared) {
         self.mappingProvider = mappingProvider
         observerTokens = [
             NotificationCenter.default.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] _ in
@@ -118,6 +121,9 @@ public final class NativeWebRTCGamepadMonitor {
             },
         ]
         refreshControllerSlots()
+        mappingSubscription = mappingProvider.revisionPublisher.dropFirst().sink { [weak self] _ in
+            self?.refreshMappingConfiguration()
+        }
     }
 
     deinit {
@@ -215,7 +221,7 @@ public final class NativeWebRTCGamepadMonitor {
         SteamControllerHIDMonitor.shared.endInputCapture(self)
         reapplyTasks.values.forEach { $0.cancel() }
         reapplyTasks.removeAll()
-        bindingEngines.removeAll()
+        releaseSteamBindings()
         chordTracker.reset()
         onScreenKeyboardCapturedDevices.removeAll()
         if !localCursorModeHeld.isEmpty {
@@ -312,6 +318,7 @@ public final class NativeWebRTCGamepadMonitor {
     private func refreshControllerSlots() {
         let previousSteamSlots = pollState.steamControllerSlots
         let previousOccupiedSlots = Set(pollState.controllerSlots.values).union(pollState.steamControllerSlots.values)
+        ControllerMappingDevices.shared.refresh()
         let cachedControllers = Array(Self.availableNativeControllers().prefix(4))
         // Steam Controllers take the low player slots. GameController pads used to be numbered
         // first, so anything else present — a real pad, or a VIRTUAL one like the bridge-pad
@@ -334,10 +341,9 @@ public final class NativeWebRTCGamepadMonitor {
             pollState.controllerSlots = newControllerSlots
             pollState.steamControllerSlots = newSteamSlots
             pollState.cachedControllers = cachedControllers
-            pollState.lastStates.removeAll()
         }
         for deviceID in bindingEngines.keys where newSteamSlots[deviceID] == nil {
-            bindingEngines.removeValue(forKey: deviceID)
+            releaseSteamBinding(deviceID: deviceID, playerIndex: previousSteamSlots[deviceID] ?? 0)
             reapplyTasks.removeValue(forKey: deviceID)?.cancel()
         }
         for deviceID in previousSteamSlots.keys where newSteamSlots[deviceID] == nil {
@@ -349,6 +355,7 @@ public final class NativeWebRTCGamepadMonitor {
             localCursorModeHeld.subtract(staleCursorDeviceIDs)
             SteamControllerLocalCursorInjector.shared.reset()
         }
+        refreshMappingConfiguration()
         if pollingAllowed {
             emitSlotTransitions(previousSteamSlots: previousSteamSlots, previousOccupiedSlots: previousOccupiedSlots)
             newControllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
@@ -373,12 +380,12 @@ public final class NativeWebRTCGamepadMonitor {
         let currentControllerSlots = pollState.controllerSlots
         for (deviceID, slot) in currentSteamSlots where previousSteamSlots[deviceID] != slot {
             guard let snapshot = SteamControllerHIDMonitor.shared.snapshot(for: deviceID),
-                  snapshot != SteamControllerInputSnapshot() else { continue }
+                  snapshot != ControllerInputSnapshot() else { continue }
             processSteamSnapshot(deviceID: deviceID, playerIndex: slot, snapshot: snapshot)
         }
         let occupiedSlots = Set(currentControllerSlots.values).union(currentSteamSlots.values)
         for slot in previousOccupiedSlots.subtracting(occupiedSlots) {
-            applyBindingEngine(deviceID: InputDeviceID("released-controller-\(slot)"), playerIndex: slot, snapshot: SteamControllerInputSnapshot(), includePointerMotion: true)
+            applyBindingEngine(deviceID: InputDeviceID("released-controller-\(slot)"), playerIndex: slot, snapshot: ControllerInputSnapshot(), includePointerMotion: true)
         }
     }
 
@@ -387,11 +394,11 @@ public final class NativeWebRTCGamepadMonitor {
             guard let self else { return }
             self.pollState.startPolling(on: self.pollingQueue, onEvents: { [weak self] events in
                 guard let self else { return }
+                self.pollState.pendingEvents.append(contentsOf: events)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    for event in events {
-                        self.onInputEvent?(event)
-                    }
+                    let pending = self.pollingQueue.sync { self.pollState.takePendingEvents() }
+                    for event in pending { self.emitInputEvent(event) }
                 }
             }, onBatteryChange: { [weak self] changes in
                 guard let self else { return }
@@ -403,13 +410,15 @@ public final class NativeWebRTCGamepadMonitor {
     }
 
     private func stopPollingTimer() {
-        pollingQueue.sync {
+        let releases = pollingQueue.sync {
             pollState.stopPolling()
+            return pollState.takePendingEvents() + pollState.resetMappings()
         }
+        for event in releases { emitInputEvent(event) }
         nativeBatteryLevels.removeAll()
     }
 
-    private func handleSteamControllerInput(_ deviceID: InputDeviceID, snapshot: SteamControllerInputSnapshot) {
+    private func handleSteamControllerInput(_ deviceID: InputDeviceID, snapshot: ControllerInputSnapshot) {
         guard pollingAllowed, let playerIndex = pollState.steamControllerSlots[deviceID] else { return }
         processSteamSnapshot(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot)
     }
@@ -420,7 +429,7 @@ public final class NativeWebRTCGamepadMonitor {
     /// keyboard captures the device), then the capture split, then normal binding.
     /// The Steam button itself is left in the buttons — the local-cursor modifier
     /// below reads it.
-    private func processSteamSnapshot(deviceID: InputDeviceID, playerIndex: Int, snapshot: SteamControllerInputSnapshot) {
+    func processSteamSnapshot(deviceID: InputDeviceID, playerIndex: Int, snapshot: ControllerInputSnapshot) {
         let chord = chordTracker.process(buttons: snapshot.buttons, deviceID: deviceID)
         var snapshot = snapshot
         snapshot.buttons = chord.buttons
@@ -429,7 +438,7 @@ public final class NativeWebRTCGamepadMonitor {
         }
         if onScreenKeyboardCapture?(deviceID, snapshot) == true {
             if onScreenKeyboardCapturedDevices.insert(deviceID).inserted {
-                applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: SteamControllerInputSnapshot(), includePointerMotion: true)
+                applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: ControllerInputSnapshot(), includePointerMotion: true)
             }
             if localCursorModeHeld.remove(deviceID) != nil {
                 SteamControllerLocalCursorInjector.shared.reset()
@@ -449,39 +458,6 @@ public final class NativeWebRTCGamepadMonitor {
         }
         if localCursorModeHeld.remove(deviceID) != nil {
             SteamControllerLocalCursorInjector.shared.reset()
-        }
-    }
-
-    /// While the Guide/Steam button is held, `includePointerMotion` is false — trackpad
-    /// and stick pointer motion is suppressed here so `SteamControllerLocalCursorInjector`
-    /// can drive the real macOS cursor from the right pad instead. Buttons/triggers/sticks
-    /// keep forwarding normally either way.
-    private func applyBindingEngine(deviceID: InputDeviceID, playerIndex: Int, snapshot: SteamControllerInputSnapshot, includePointerMotion: Bool) {
-        reapplyTasks.removeValue(forKey: deviceID)?.cancel()
-        let profile = mappingProvider.activeProfile ?? SteamControllerMappingProfile(name: "Default")
-        let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
-        var engine = bindingEngines[deviceID] ?? SteamControllerBindingEngine()
-        var result = engine.applyDiscreteControls(profile: profile, snapshot: snapshot, deviceID: deviceID, playerIndex: playerIndex, now: bindingClock.now, timestamp: timestamp)
-        if includePointerMotion {
-            result.events.append(contentsOf: engine.applyPointerMotion(profile: profile, snapshot: snapshot, deviceID: deviceID, timestamp: timestamp))
-        }
-        bindingEngines[deviceID] = engine
-        for event in result.events {
-            onInputEvent?(event)
-        }
-        if let delay = result.nextReapplyDelay {
-            scheduleReapply(deviceID: deviceID, playerIndex: playerIndex, after: delay)
-        }
-    }
-
-    private func scheduleReapply(deviceID: InputDeviceID, playerIndex: Int, after delay: Duration) {
-        reapplyTasks[deviceID] = Task { [weak self] in
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled, let self, self.pollingAllowed else { return }
-            self.reapplyTasks.removeValue(forKey: deviceID)
-            guard self.pollState.steamControllerSlots[deviceID] == playerIndex,
-                  let latest = SteamControllerHIDMonitor.shared.snapshot(for: deviceID) else { return }
-            self.processSteamSnapshot(deviceID: deviceID, playerIndex: playerIndex, snapshot: latest)
         }
     }
 
@@ -538,88 +514,6 @@ public final class NativeWebRTCGamepadMonitor {
     nonisolated static func buttons(from gamepad: GCExtendedGamepad) -> GamepadButtons {
         buttonInputs.reduce(into: GamepadButtons()) { result, entry in
             if entry.input(gamepad)?.isPressed == true { result.insert(entry.button) }
-        }
-    }
-}
-
-private final class GamepadPollState {
-    var controllerSlots: [ObjectIdentifier: Int] = [:]
-    var steamControllerSlots: [InputDeviceID: Int] = [:]
-    var cachedControllers: [GCController] = []
-    var lastStates: [ObjectIdentifier: GamepadControlSnapshot] = [:]
-    var lastBatteryLevels: [ObjectIdentifier: Int] = [:]
-    private var timer: DispatchSourceTimer?
-
-    func startPolling(on queue: DispatchQueue, onEvents: @escaping @Sendable ([UserInputEvent]) -> Void, onBatteryChange: @escaping @Sendable ([ControllerBatteryInfo]) -> Void) {
-        guard timer == nil else { return }
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now(), repeating: 1.0 / 60.0, leeway: .milliseconds(1))
-        timer.setEventHandler { [weak self] in
-            self?.pollAndEmit(onEvents: onEvents, onBatteryChange: onBatteryChange)
-        }
-        self.timer = timer
-        timer.resume()
-    }
-
-    func stopPolling() {
-        timer?.cancel()
-        timer = nil
-    }
-
-    private func pollAndEmit(onEvents: @escaping @Sendable ([UserInputEvent]) -> Void, onBatteryChange: @escaping @Sendable ([ControllerBatteryInfo]) -> Void) {
-        // No global count gate: it raced the slot maps and could bail every tick, killing the whole
-        // poll. The per-controller `controllerSlots[id]` lookup below already skips anything unslotted.
-        var events: [UserInputEvent] = []
-        var batteryChanges: [ControllerBatteryInfo] = []
-        for controller in cachedControllers {
-            guard let gamepad = controller.extendedGamepad,
-                  let playerIndex = controllerSlots[ObjectIdentifier(controller)] else { continue }
-            let identifier = ObjectIdentifier(controller)
-            let buttons = NativeWebRTCGamepadMonitor.buttons(from: gamepad)
-            let snapshot = GamepadControlSnapshot(
-                buttons: buttons,
-                leftTrigger: gamepad.leftTrigger.value,
-                rightTrigger: gamepad.rightTrigger.value,
-                leftStickX: gamepad.leftThumbstick.xAxis.value,
-                leftStickY: gamepad.leftThumbstick.yAxis.value,
-                rightStickX: gamepad.rightThumbstick.xAxis.value,
-                rightStickY: gamepad.rightThumbstick.yAxis.value
-            )
-            if lastStates[identifier] != snapshot {
-                lastStates[identifier] = snapshot
-                events.append(.gamepad(GamepadState(
-                    deviceID: InputDeviceID(controller.vendorName ?? "controller-\(playerIndex)"),
-                    playerIndex: playerIndex,
-                    buttons: buttons,
-                    leftTrigger: gamepad.leftTrigger.value,
-                    rightTrigger: gamepad.rightTrigger.value,
-                    leftStickX: gamepad.leftThumbstick.xAxis.value,
-                    leftStickY: gamepad.leftThumbstick.yAxis.value,
-                    rightStickX: gamepad.rightThumbstick.xAxis.value,
-                    rightStickY: gamepad.rightThumbstick.yAxis.value,
-                    timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
-                )))
-            }
-            if let battery = controller.battery {
-                let percent = ControllerBatteryInfo.percentage(level: battery.batteryLevel, state: battery.batteryState) ?? -1
-                let bucketedLevel = percent < 0 ? -1 : (percent / 5) * 5
-                if lastBatteryLevels[identifier] != bucketedLevel {
-                    lastBatteryLevels[identifier] = bucketedLevel
-                    let label = "P\(playerIndex + 1)"
-                    batteryChanges.append(ControllerBatteryInfo(id: "native-\(identifier.hashValue)", label: label, level: percent, charging: battery.batteryState == .charging))
-                }
-            }
-        }
-        let currentIDs = Set(cachedControllers.prefix(4).map { ObjectIdentifier($0) })
-        let staleIDs = lastBatteryLevels.keys.filter { !currentIDs.contains($0) }
-        for staleID in staleIDs {
-            lastBatteryLevels.removeValue(forKey: staleID)
-        }
-        if !events.isEmpty {
-            onEvents(events)
-        }
-        if !batteryChanges.isEmpty {
-            onBatteryChange(batteryChanges)
         }
     }
 }
@@ -682,14 +576,4 @@ private final class ControllerHapticState {
         try player.start(atTime: 0)
         players[locality] = player
     }
-}
-
-private struct GamepadControlSnapshot: Equatable {
-    let buttons: GamepadButtons
-    let leftTrigger: Float
-    let rightTrigger: Float
-    let leftStickX: Float
-    let leftStickY: Float
-    let rightStickX: Float
-    let rightStickY: Float
 }

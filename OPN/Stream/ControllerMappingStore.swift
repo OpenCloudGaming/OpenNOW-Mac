@@ -2,56 +2,85 @@ import Combine
 import Foundation
 
 @MainActor
-public final class SteamControllerMappingStore: ObservableObject {
-    public static let shared = SteamControllerMappingStore()
+public final class ControllerMappingStore: ObservableObject {
+    public static let shared = ControllerMappingStore()
 
-    public static let profilesKey = "OpenNOW.Input.SteamControllerMappingProfiles"
+    public static let profilesKey = "OpenNOW.Input.ControllerMappingProfiles"
     public static let activeProfileKey = "OpenNOW.Input.SteamControllerMappingActiveProfile"
 
-    @Published public private(set) var profiles: [SteamControllerMappingProfile]
+    @Published public private(set) var profiles: [ControllerMappingProfile]
     @Published public private(set) var activeProfileID: UUID?
 
+    @Published private var revision = 0
+    private var assignments: [InputDeviceID: UUID] = [:]
     private let defaults: UserDefaults
+
+    var revisionPublisher: AnyPublisher<Int, Never> { $revision.eraseToAnyPublisher() }
+
+    func profile(for deviceID: InputDeviceID, family: ControllerFamily) -> ControllerMappingProfile? {
+        if let id = assignments[deviceID], let profile = profiles.first(where: { $0.id == id && $0.family == family }) {
+            return profile
+        }
+        return family == .steam ? activeProfile : nil
+    }
+
+    func assignProfile(_ id: UUID?, to deviceID: InputDeviceID, family: ControllerFamily) {
+        assignments[deviceID] = profiles.first(where: { $0.id == id && $0.family == family })?.id
+        revision += 1
+    }
+
+    func removeDisconnectedAssignments(connectedIDs: Set<InputDeviceID>) {
+        let next = assignments.filter { connectedIDs.contains($0.key) }
+        guard next != assignments else { return }
+        assignments = next
+        revision += 1
+    }
+
+    var requiresRawSteamTrackpads: Bool {
+        activeProfile?.wantsRawTrackpadCapture == true || assignments.values.contains { id in
+            profiles.contains { $0.id == id && $0.family == .steam && $0.wantsRawTrackpadCapture }
+        }
+    }
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        if let data = defaults.data(forKey: Self.profilesKey),
-           let decoded = try? JSONDecoder().decode([SteamControllerMappingProfile].self, from: data) {
+        if let data = defaults.data(forKey: Self.profilesKey) ?? defaults.data(forKey: "OpenNOW.Input.SteamControllerMappingProfiles"),
+           let decoded = try? JSONDecoder().decode([ControllerMappingProfile].self, from: data) {
             profiles = decoded
         } else {
             profiles = Self.migrateLegacyProfiles(defaults: defaults)
         }
         if let rawID = defaults.string(forKey: Self.activeProfileKey), let id = UUID(uuidString: rawID) {
-            activeProfileID = profiles.contains(where: { $0.id == id }) ? id : nil
+            activeProfileID = profiles.contains(where: { $0.id == id && $0.family == .steam }) ? id : nil
         } else {
-            activeProfileID = profiles.first?.id
+            activeProfileID = profiles.first(where: { $0.family == .steam })?.id
         }
         if defaults.data(forKey: Self.profilesKey) == nil {
             persist()
         }
     }
 
-    public var activeProfile: SteamControllerMappingProfile? {
+    public var activeProfile: ControllerMappingProfile? {
         guard let activeProfileID else { return nil }
         return profiles.first(where: { $0.id == activeProfileID })
     }
 
     public func setActiveProfile(_ id: UUID?) {
-        activeProfileID = profiles.contains(where: { $0.id == id }) ? id : nil
+        activeProfileID = profiles.contains(where: { $0.id == id && $0.family == .steam }) ? id : nil
         persist()
     }
 
     @discardableResult
-    public func createProfile(named name: String) -> SteamControllerMappingProfile {
+    public func createProfile(named name: String, family: ControllerFamily = .steam, activateSteamDefault: Bool = true) -> ControllerMappingProfile {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let profile = SteamControllerMappingProfile(name: trimmed.isEmpty ? defaultProfileName() : trimmed)
+        let profile = ControllerMappingProfile(name: trimmed.isEmpty ? defaultProfileName() : trimmed, family: family)
         profiles.append(profile)
-        activeProfileID = profile.id
+        if family == .steam, activateSteamDefault { activeProfileID = profile.id }
         persist()
         return profile
     }
 
-    public func updateProfile(_ profile: SteamControllerMappingProfile) {
+    public func updateProfile(_ profile: ControllerMappingProfile) {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         var updated = profile
         let trimmed = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -62,6 +91,7 @@ public final class SteamControllerMappingStore: ObservableObject {
 
     public func deleteProfile(_ id: UUID) {
         profiles.removeAll { $0.id == id }
+        assignments = assignments.filter { $0.value != id }
         if activeProfileID == id {
             activeProfileID = nil
         }
@@ -80,6 +110,7 @@ public final class SteamControllerMappingStore: ObservableObject {
     }
 
     private func persist() {
+        defer { revision += 1 }
         if let data = try? JSONEncoder().encode(profiles) {
             defaults.set(data, forKey: Self.profilesKey)
         }
@@ -97,7 +128,7 @@ public final class SteamControllerMappingStore: ObservableObject {
     /// First launch after this feature ships: fold the old grip-only profile (if any)
     /// and the old global trackpad-mouse toggle into one migrated profile, so existing
     /// users see identical behavior until they open the new editor.
-    private static func migrateLegacyProfiles(defaults: UserDefaults) -> [SteamControllerMappingProfile] {
+    private static func migrateLegacyProfiles(defaults: UserDefaults) -> [ControllerMappingProfile] {
         var legacyGrips: SteamControllerGripProfile?
         if let data = defaults.data(forKey: Self.legacyGripProfilesKey),
            let decoded = try? JSONDecoder().decode([SteamControllerGripProfile].self, from: data) {
@@ -109,7 +140,7 @@ public final class SteamControllerMappingStore: ObservableObject {
         }
         let key = SteamControllerTrackpadMousePreference.key
         let legacyTrackpadMouseEnabled = defaults.object(forKey: key) == nil ? true : defaults.bool(forKey: key)
-        let migrated = SteamControllerMappingProfile.migratedDefault(legacyGrips: legacyGrips, legacyTrackpadMouseEnabled: legacyTrackpadMouseEnabled)
+        let migrated = ControllerMappingProfile.migratedDefault(legacyGrips: legacyGrips, legacyTrackpadMouseEnabled: legacyTrackpadMouseEnabled)
         return [migrated]
     }
 }

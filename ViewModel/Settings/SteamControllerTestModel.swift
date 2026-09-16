@@ -10,7 +10,7 @@ import Foundation
 
 @MainActor
 final class SteamControllerTestModel: ObservableObject {
-    @Published var snapshot = SteamControllerInputSnapshot()
+    @Published var snapshot = ControllerInputSnapshot()
     @Published var deviceID: String = ""
     @Published var isConnected = false
     @Published var batteryLevel: UInt8?
@@ -94,7 +94,7 @@ final class SteamControllerTestModel: ObservableObject {
             deviceID = ""
             batteryLevel = nil
             isCharging = false
-            snapshot = SteamControllerInputSnapshot()
+            snapshot = ControllerInputSnapshot()
         }
     }
 }

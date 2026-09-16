@@ -3,8 +3,7 @@ import SwiftUI
 /// A generic gamepad's shell, live-highlighted from a `GenericControllerInputSnapshot`. The
 /// counterpart to `SteamControllerDiagramView` for the pads GameController exposes - Xbox,
 /// PlayStation, and anything else that is not a Steam Controller - drawn in the same authored
-/// space with the same overlay vocabulary. Read-only: mapping profiles are Steam-only, so there is
-/// nothing here to tap.
+/// space with the same overlay vocabulary. Read-only: the mapping editor places selectable controls above this preview.
 ///
 /// The rounded shapes below are the documented artwork exception in DESIGN.md: they trace physical
 /// hardware (round face buttons, circular stick wells, a cross d-pad), not chrome. Everything the
@@ -24,7 +23,7 @@ struct GenericControllerDiagramView: View {
     private func art(_ value: CGFloat) -> CGFloat { value * artScale }
 
     var body: some View {
-        VStack(spacing: 6 * uiScale) {
+        VStack(spacing: ControllerDiagramArtwork.sectionSpacing * uiScale) {
             shoulderRow
             controllerBody
         }
@@ -46,7 +45,7 @@ struct GenericControllerDiagramView: View {
             )
             .position(x: art(356), y: 27 * uiScale)
         }
-        .frame(width: diagramWidth, height: 54 * uiScale)
+        .frame(width: diagramWidth, height: ControllerDiagramArtwork.shoulderHeight * uiScale)
     }
 
     private func shoulderGroup(triggerLabel: String, value: Float, bumperLabel: String, pressed: Bool) -> some View {

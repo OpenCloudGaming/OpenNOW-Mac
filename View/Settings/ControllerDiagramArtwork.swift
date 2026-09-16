@@ -12,6 +12,16 @@ enum ControllerDiagramArtwork {
     /// Unscaled reference width. The rendered diagram is this times the interface scale, so the
     /// hardware grows with the chrome around it instead of shrinking as the panel widens.
     static let diagramWidth: CGFloat = 560
+    static let shoulderHeight: CGFloat = 54
+    static let sectionSpacing: CGFloat = 6
+    static var diagramSize: CGSize {
+        CGSize(width: diagramWidth, height: shoulderHeight + sectionSpacing + artSize.height * diagramWidth / artSize.width)
+    }
+
+    static func fittedScale(in size: CGSize, maximumScale: CGFloat) -> CGFloat {
+        guard size.width > 0, size.height > 0, maximumScale > 0 else { return 0 }
+        return min(maximumScale, size.width / diagramSize.width, size.height / diagramSize.height)
+    }
 
     /// The shell palette: matte black plastic under a fixed grey outline, the same in every
     /// appearance because the hardware is.

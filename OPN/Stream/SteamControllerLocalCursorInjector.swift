@@ -28,7 +28,7 @@ final class SteamControllerLocalCursorInjector {
         _ = AXIsProcessTrustedWithOptions(options)
     }
 
-    func update(pad: SteamControllerTrackpadState) {
+    func update(pad: ControllerTrackpadState) {
         guard Self.hasAccessibilityPermission else { return }
         handleMotion(pad: pad)
         handleClick(pressed: pad.pressed)
@@ -43,7 +43,7 @@ final class SteamControllerLocalCursorInjector {
         lastPad = nil
     }
 
-    private func handleMotion(pad: SteamControllerTrackpadState) {
+    private func handleMotion(pad: ControllerTrackpadState) {
         guard pad.touched else {
             lastPad = nil
             return

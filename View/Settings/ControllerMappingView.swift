@@ -1,24 +1,18 @@
 import SwiftUI
 
-/// Steam Controller-only remapping: a category sidebar, the live
-/// controller diagram (tap any control to select it), and a binding panel on the right for
-/// whatever's selected. Every control can go to a gamepad-button chord (today's default),
-/// a keyboard key, a mouse action, or off; trackpads and sticks additionally get a
-/// continuous-motion "Behavior" (mouse / scroll wheel / joystick / disabled).
-///
-/// Chrome follows the modal spec in DESIGN.md: accent top bar, App Bar header, Stroke Subtle
-/// rules, square controls throughout, and every size multiplied by the interface scale.
-struct SteamControllerMappingView: View {
+struct ControllerMappingView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.opnUIScale) var uiScale
-    @ObservedObject var store: SteamControllerMappingStore
+    @ObservedObject var store: ControllerMappingStore
 
-    init(store: SteamControllerMappingStore = .shared) {
+    init(store: ControllerMappingStore = .shared) {
         _store = ObservedObject(wrappedValue: store)
     }
-    @StateObject var liveModel = SteamControllerTestModel()
-    @State var draft: SteamControllerMappingProfile?
-    @State var selectedControl: SteamControllerControl = .leftGrip
+    @StateObject var liveModel = ControllerMappingLiveModel()
+    @ObservedObject var devices = ControllerMappingDevices.shared
+    @State var selection = ControllerMappingSelection.none
+    @State var draft: ControllerMappingProfile?
+    @State var selectedControl: ControllerControl = .leftGrip
     @State var bindingKindOverride: BindingKind?
     @FocusState private var nameFieldFocused: Bool
 
@@ -42,8 +36,18 @@ struct SteamControllerMappingView: View {
         }
     }
 
-    private var savedProfile: SteamControllerMappingProfile? {
-        store.activeProfile
+    var resolvedSelection: ControllerMappingSelection { selection.resolved(devices: devices.devices) }
+    var selectedDeviceID: InputDeviceID? {
+        guard case .device(let id) = resolvedSelection else { return nil }
+        return id
+    }
+    var selectedDevice: ControllerMappingDevice? { devices.devices.first { $0.id == selectedDeviceID } }
+    var family: ControllerFamily { selectedDevice?.family ?? (resolvedSelection == .steamDefaults ? .steam : .generic) }
+    var availableControls: [ControllerControl] { selectedDevice?.controls ?? (resolvedSelection == .steamDefaults ? ControllerFamily.steam.controls : []) }
+    var savedProfile: ControllerMappingProfile? {
+        if resolvedSelection == .steamDefaults { return store.activeProfile }
+        guard let selectedDevice else { return nil }
+        return store.profile(for: selectedDevice.id, family: selectedDevice.family)
     }
 
     private var hasUnsavedChanges: Bool {
@@ -55,24 +59,30 @@ struct SteamControllerMappingView: View {
         VStack(spacing: 0) {
             SteamControllerModalTopBar()
             SteamControllerModalHeader(
-                eyebrow: "STEAM CONTROLLER",
-                title: "Steam Controller Mapping",
+                eyebrow: "CONTROLLER",
+                title: "Controller Mapping",
                 uiScale: uiScale,
                 onClose: { dismiss() }
             )
             SteamControllerModalRule()
-            profileBar
-                .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
-                .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
-                // The profile dropdown's open panel is an overlay confined to this row's own
-                // paint order (see OPNDropdownMenu's zIndex note); without this, the sidebar and
-                // diagram painted after it in this VStack still draw on top of it.
-                .zIndex(1)
-            SteamControllerModalRule()
-            if draft != nil {
-                configuratorLayout
+            if resolvedSelection == .none {
+                disconnectedMessage
             } else {
-                noProfileMessage
+                devicePicker
+                    .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+                    .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
+                    .zIndex(2)
+                SteamControllerModalRule()
+                profileBar
+                    .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+                    .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
+                    .zIndex(1)
+                SteamControllerModalRule()
+                if draft != nil {
+                    configuratorLayout
+                } else {
+                    noProfileMessage
+                }
             }
             SteamControllerModalRule()
             footer
@@ -88,12 +98,13 @@ struct SteamControllerMappingView: View {
         .onExitCommand { dismiss() }
         .onAppear {
             liveModel.start()
-            draft = savedProfile
+            selection = resolvedSelection
+            updateSelectedController()
         }
         .onDisappear { liveModel.stop() }
-        .onChange(of: store.activeProfileID) {
-            draft = savedProfile
-        }
+        .onChange(of: savedProfile) { draft = savedProfile }
+        .onChange(of: resolvedSelection) { updateSelectedController() }
+        .onChange(of: devices.devices) { selection = resolvedSelection }
         .onChange(of: selectedControl) {
             bindingKindOverride = nil
         }
@@ -112,17 +123,19 @@ struct SteamControllerMappingView: View {
                     fillsWidth: false,
                     uiScale: uiScale
                 ) {
-                    if let id = savedProfile?.id, store.profiles.count > 1 {
+                    if let id = savedProfile?.id {
                         store.deleteProfile(id)
                     }
                 }
-                .disabled(store.profiles.count <= 1)
                 .help("Delete this profile")
             }
 
             Spacer()
 
-            Button("New Profile") { store.createProfile(named: "") }
+            Button("New Profile") {
+                let profile = store.createProfile(named: "", family: family, activateSteamDefault: resolvedSelection == .steamDefaults)
+                selectProfile(profile.id)
+            }
                 .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
         }
     }
@@ -131,17 +144,18 @@ struct SteamControllerMappingView: View {
     /// of the app shell does not have.
     private var profilePicker: some View {
         OPNDropdownMenu(
-            items: store.profiles.map { profile in
+            items: [OPNDropdownItem(id: "passthrough", title: family == .steam ? "Steam defaults" : "No mapping (passthrough)",
+                                    isSelected: savedProfile == nil, action: { selectProfile(nil) })] + store.profiles.filter { $0.family == family }.map { profile in
                 OPNDropdownItem(
                     id: profile.id.uuidString,
                     title: profile.name.isEmpty ? "Untitled" : profile.name,
                     isSelected: profile.id == savedProfile?.id,
-                    action: { store.setActiveProfile(profile.id) }
+                    action: { selectProfile(profile.id) }
                 )
             }
         ) {
             HStack(spacing: 6 * uiScale) {
-                Text(savedProfile?.name ?? "Default")
+                Text(savedProfile?.name ?? (family == .steam ? "Steam defaults" : "No mapping"))
                     .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
@@ -190,22 +204,47 @@ struct SteamControllerMappingView: View {
                     .foregroundStyle(OPNDesign.Semantic.warning)
             }
             Spacer()
-            Button("CANCEL") { dismiss() }
+            Button(resolvedSelection == .none ? "CLOSE" : "CANCEL") { dismiss() }
                 .buttonStyle(OPNModalSecondaryButtonStyle(uiScale: uiScale))
                 .keyboardShortcut(.cancelAction)
 
-            Button("SAVE") {
-                if let draft { store.updateProfile(draft) }
-                SteamControllerHIDMonitor.shared.refreshCaptureConfiguration()
-                dismiss()
+            if resolvedSelection != .none {
+                Button("SAVE") {
+                    if let draft { store.updateProfile(draft) }
+                    SteamControllerHIDMonitor.shared.refreshCaptureConfiguration()
+                    dismiss()
+                }
+                .buttonStyle(VendorGetInButtonStyle(uiScale: uiScale))
+                .keyboardShortcut(.defaultAction)
+                .disabled(!hasUnsavedChanges)
+                .opacity(hasUnsavedChanges ? 1 : 0.46)
             }
-            .buttonStyle(VendorGetInButtonStyle(uiScale: uiScale))
-            .keyboardShortcut(.defaultAction)
-            .disabled(!hasUnsavedChanges)
-            .opacity(hasUnsavedChanges ? 1 : 0.46)
         }
         .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
         .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
+    }
+
+    private func updateSelectedController() {
+        liveModel.selectedDeviceID = selectedDeviceID
+        selectedControl = availableControls.first ?? .faceA
+        bindingKindOverride = nil
+        draft = savedProfile
+    }
+
+    private var disconnectedMessage: some View {
+        VStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
+            Image(systemName: "gamecontroller")
+                .font(.settingsFont(size: 40 * uiScale))
+                .foregroundStyle(OPNDesign.Text.muted)
+            Text("No controller connected")
+                .font(.settingsFont(size: 20 * uiScale, weight: .bold))
+            Text("Connect a controller to configure mappings. Your saved profiles are kept.")
+                .font(.settingsFont(size: 14 * uiScale))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var noProfileMessage: some View {
@@ -213,7 +252,7 @@ struct SteamControllerMappingView: View {
             Image(systemName: "gamecontroller")
                 .font(.settingsFont(size: 40 * uiScale))
                 .foregroundStyle(OPNDesign.Text.muted.opacity(0.5))
-            Text("No profile selected")
+            Text("Direct passthrough — select or create a profile to enable custom mappings")
                 .font(.settingsFont(size: 14 * uiScale, weight: .medium))
                 .foregroundStyle(OPNDesign.Text.tertiary)
         }
@@ -229,20 +268,22 @@ struct SteamControllerMappingView: View {
             Rectangle()
                 .fill(OPNDesign.Stroke.subtle)
                 .frame(width: 1)
-            ScrollView {
-                VStack(spacing: OPNDesign.Spacing.section(scale: uiScale)) {
-                    SteamControllerDiagramView(
-                        snapshot: liveModel.snapshot,
-                        selectedControl: selectedControl,
-                        onSelectControl: { selectedControl = $0 }
-                    )
-                    Text("Click any control to bind it")
-                        .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.muted)
+            VStack(spacing: OPNDesign.Spacing.section(scale: uiScale)) {
+                Text(family == .steam ? "Choose a control or click the diagram" : "Choose a control to bind it")
+                    .font(.settingsFont(size: 10 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.muted)
+                SettingsFlowLayout(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+                    ForEach(availableControls.filter { $0.category == selectedControl.category }) { control in
+                        SteamControllerChip(label: family.label(for: control), isSelected: selectedControl == control,
+                                            fillsWidth: false, uiScale: uiScale) { selectedControl = control }
+                    }
                 }
-                .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
-                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+                ControllerMappingDiagram(family: family, snapshot: liveModel.snapshot, selectedControl: selectedControl,
+                                         onSelectControl: { selectedControl = $0 })
             }
+            .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             Rectangle()
                 .fill(OPNDesign.Stroke.subtle)
                 .frame(width: 1)
@@ -254,14 +295,14 @@ struct SteamControllerMappingView: View {
 
     private var categorySidebar: some View {
         VStack(alignment: .leading, spacing: 2 * uiScale) {
-            ForEach(SteamControllerMappingCategory.allCases) { category in
+            ForEach(ControllerMappingCategory.allCases.filter { category in availableControls.contains { $0.category == category } }) { category in
                 SteamControllerCategoryRow(
                     label: category.label,
                     systemImage: category.systemImage,
                     isActive: selectedControl.category == category,
                     uiScale: uiScale
                 ) {
-                    selectedControl = SteamControllerControl.allCases.first(where: { $0.category == category }) ?? selectedControl
+                    selectedControl = availableControls.first(where: { $0.category == category }) ?? selectedControl
                 }
             }
             Spacer()
@@ -285,7 +326,7 @@ struct SteamControllerMappingView: View {
                 // The badge sizes to its label. A fixed width truncated the long ones — every pad
                 // and stick control reads "R. Pad Click", not "R4".
                 HStack(spacing: OPNDesign.Spacing.section(scale: uiScale)) {
-                    Text(control.label)
+                    Text(family.label(for: control))
                         .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                         .foregroundStyle(held ? OPNDesign.onAccent : OPNDesign.Text.primary)
                         .fixedSize()
@@ -352,18 +393,19 @@ struct SteamControllerMappingView: View {
         .background(OPNDesign.Surface.panel)
     }
 
-    private func isHeld(_ control: SteamControllerControl) -> Bool {
+    private func isHeld(_ control: ControllerControl) -> Bool {
         switch control {
         case .leftTrigger: liveModel.snapshot.leftTrigger > 0.5
         case .rightTrigger: liveModel.snapshot.rightTrigger > 0.5
         case .leftPadClick: liveModel.snapshot.leftPad.pressed
         case .rightPadClick: liveModel.snapshot.rightPad.pressed
+        case .touchpadClick: liveModel.snapshot.touchpad?.pressed == true
         default:
             control.gamepadButton.map { liveModel.snapshot.buttons.contains($0) } ?? false
         }
     }
 
-    private func bindingKind(for target: SteamControllerBindingTarget) -> BindingKind {
+    private func bindingKind(for target: ControllerBindingTarget) -> BindingKind {
         switch target {
         case .passthroughButton, .gamepadChord: .gamepad
         case .keyboardKey: .keyboard

@@ -2,9 +2,9 @@ import Foundation
 
 /// Every physical control on the controller that can be bound to a keyboard key, mouse
 /// action, or gamepad-button chord. Continuous controls (trackpads, sticks) additionally
-/// get a `SteamControllerPadSettings` behavior instead of (or alongside) a discrete
-/// binding — see `SteamControllerMappingProfile`.
-public enum SteamControllerControl: String, Codable, CaseIterable, Identifiable, Sendable {
+/// get a `ControllerPadSettings` behavior instead of (or alongside) a discrete
+/// binding — see `ControllerMappingProfile`.
+public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Sendable {
     case faceA, faceB, faceX, faceY
     case leftShoulder, rightShoulder
     case leftTrigger, rightTrigger
@@ -12,7 +12,7 @@ public enum SteamControllerControl: String, Codable, CaseIterable, Identifiable,
     case dpadUp, dpadDown, dpadLeft, dpadRight
     case leftGrip, leftGrip2, rightGrip, rightGrip2
     case select, start
-    case leftPadClick, rightPadClick
+    case leftPadClick, rightPadClick, touchpadClick
 
     public var id: String { rawValue }
 
@@ -40,10 +40,11 @@ public enum SteamControllerControl: String, Codable, CaseIterable, Identifiable,
         case .start: "Start"
         case .leftPadClick: "L. Pad Click"
         case .rightPadClick: "R. Pad Click"
+        case .touchpadClick: "Touchpad"
         }
     }
 
-    public var category: SteamControllerMappingCategory {
+    public var category: ControllerMappingCategory {
         switch self {
         case .faceA, .faceB, .faceX, .faceY, .leftShoulder, .rightShoulder,
              .leftGrip, .leftGrip2, .rightGrip, .rightGrip2, .select, .start:
@@ -54,14 +55,14 @@ public enum SteamControllerControl: String, Codable, CaseIterable, Identifiable,
             .triggers
         case .leftStickClick, .rightStickClick:
             .joysticks
-        case .leftPadClick, .rightPadClick:
+        case .leftPadClick, .rightPadClick, .touchpadClick:
             .trackpads
         }
     }
 
     /// The native bit this control forwards when its binding is `.passthroughButton`.
     /// `nil` for triggers (analog passthrough instead) and pad clicks (no native bit —
-    /// see the migration defaults in `SteamControllerMappingProfile`).
+    /// see the migration defaults in `ControllerMappingProfile`).
     public var gamepadButton: GamepadButtons? {
         switch self {
         case .faceA: .south
@@ -82,13 +83,13 @@ public enum SteamControllerControl: String, Codable, CaseIterable, Identifiable,
         case .rightGrip2: .rightGrip2
         case .select: .select
         case .start: .start
-        case .leftTrigger, .rightTrigger, .leftPadClick, .rightPadClick:
+        case .leftTrigger, .rightTrigger, .leftPadClick, .rightPadClick, .touchpadClick:
             nil
         }
     }
 }
 
-public enum SteamControllerMappingCategory: String, CaseIterable, Identifiable, Sendable {
+public enum ControllerMappingCategory: String, CaseIterable, Identifiable, Sendable {
     case buttons, dpad, triggers, joysticks, trackpads
 
     public var id: String { rawValue }
@@ -117,16 +118,16 @@ public enum SteamControllerMappingCategory: String, CaseIterable, Identifiable, 
 /// What a discrete control does when it's pressed. `.passthroughButton` reproduces
 /// today's default (forward the control's own native bit, or its raw analog value for
 /// triggers); every other case consumes the press instead of forwarding it.
-public enum SteamControllerBindingTarget: Equatable, Sendable {
+public enum ControllerBindingTarget: Equatable, Sendable {
     case passthroughButton
-    case gamepadChord(SteamControllerGripCombo)
+    case gamepadChord(ControllerButtonChord)
     case keyboardKey(keyCode: UInt16, modifiers: KeyboardModifiers)
     case mouseButton(MouseButton)
     case mouseScroll(Int16)
     case disabled
 }
 
-extension SteamControllerBindingTarget: Codable {
+extension ControllerBindingTarget: Codable {
     private enum Kind: String, Codable {
         case passthroughButton, gamepadChord, keyboardKey, mouseButton, mouseScroll, disabled
     }
@@ -141,7 +142,7 @@ extension SteamControllerBindingTarget: Codable {
         case .passthroughButton:
             self = .passthroughButton
         case .gamepadChord:
-            self = .gamepadChord(try container.decode(SteamControllerGripCombo.self, forKey: .combo))
+            self = .gamepadChord(try container.decode(ControllerButtonChord.self, forKey: .combo))
         case .keyboardKey:
             self = .keyboardKey(
                 keyCode: try container.decode(UInt16.self, forKey: .keyCode),
@@ -181,7 +182,7 @@ extension SteamControllerBindingTarget: Codable {
 }
 
 /// Continuous-motion behavior for a trackpad or stick.
-public enum SteamControllerPointerMode: String, Codable, Sendable, CaseIterable, Identifiable {
+public enum ControllerPointerMode: String, Codable, Sendable, CaseIterable, Identifiable {
     /// Sticks only: forward the raw analog axis to the game, unchanged (today's default).
     case joystickPassthrough
     case mouse
@@ -200,36 +201,42 @@ public enum SteamControllerPointerMode: String, Codable, Sendable, CaseIterable,
     }
 }
 
-public struct SteamControllerPadSettings: Equatable, Codable, Sendable {
-    public var mode: SteamControllerPointerMode
+public struct ControllerPadSettings: Equatable, Codable, Sendable {
+    public var mode: ControllerPointerMode
     public var sensitivity: Float
     public var invertY: Bool
 
-    public init(mode: SteamControllerPointerMode, sensitivity: Float = 1.0, invertY: Bool = false) {
+    public init(mode: ControllerPointerMode, sensitivity: Float = 1.0, invertY: Bool = false) {
         self.mode = mode
         self.sensitivity = max(0.1, min(4.0, sensitivity))
         self.invertY = invertY
     }
 }
 
-public struct SteamControllerMappingProfile: Equatable, Identifiable, Sendable {
+public struct ControllerMappingProfile: Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
-    public var bindings: [SteamControllerControl: SteamControllerBindingTarget]
-    public var leftPad: SteamControllerPadSettings
-    public var rightPad: SteamControllerPadSettings
-    public var leftStick: SteamControllerPadSettings
-    public var rightStick: SteamControllerPadSettings
+    public var family: ControllerFamily
+    public var touchpad: ControllerPadSettings
+    public var bindings: [ControllerControl: ControllerBindingTarget]
+    public var leftPad: ControllerPadSettings
+    public var rightPad: ControllerPadSettings
+    public var leftStick: ControllerPadSettings
+    public var rightStick: ControllerPadSettings
 
     public init(id: UUID = UUID(),
                 name: String,
-                bindings: [SteamControllerControl: SteamControllerBindingTarget] = [:],
-                leftPad: SteamControllerPadSettings = SteamControllerPadSettings(mode: .disabled),
-                rightPad: SteamControllerPadSettings = SteamControllerPadSettings(mode: .disabled),
-                leftStick: SteamControllerPadSettings = SteamControllerPadSettings(mode: .joystickPassthrough),
-                rightStick: SteamControllerPadSettings = SteamControllerPadSettings(mode: .joystickPassthrough)) {
+                family: ControllerFamily = .steam,
+                touchpad: ControllerPadSettings = ControllerPadSettings(mode: .disabled),
+                bindings: [ControllerControl: ControllerBindingTarget] = [:],
+                leftPad: ControllerPadSettings = ControllerPadSettings(mode: .disabled),
+                rightPad: ControllerPadSettings = ControllerPadSettings(mode: .disabled),
+                leftStick: ControllerPadSettings = ControllerPadSettings(mode: .joystickPassthrough),
+                rightStick: ControllerPadSettings = ControllerPadSettings(mode: .joystickPassthrough)) {
         self.id = id
         self.name = name
+        self.family = family
+        self.touchpad = touchpad
         self.bindings = bindings
         self.leftPad = leftPad
         self.rightPad = rightPad
@@ -237,7 +244,7 @@ public struct SteamControllerMappingProfile: Equatable, Identifiable, Sendable {
         self.rightStick = rightStick
     }
 
-    public func binding(for control: SteamControllerControl) -> SteamControllerBindingTarget {
+    public func binding(for control: ControllerControl) -> ControllerBindingTarget {
         bindings[control] ?? .passthroughButton
     }
 
@@ -252,8 +259,8 @@ public struct SteamControllerMappingProfile: Equatable, Identifiable, Sendable {
     /// passes through as-is; trackpads mirror whatever `SteamControllerTrackpadMousePreference`
     /// was set to (on by default — right pad moves the mouse, left pad scrolls, both pads
     /// click as mouse buttons); sticks pass through as real analog axes.
-    public static func migratedDefault(legacyGrips: SteamControllerGripProfile?, legacyTrackpadMouseEnabled: Bool) -> SteamControllerMappingProfile {
-        var bindings: [SteamControllerControl: SteamControllerBindingTarget] = [:]
+    public static func migratedDefault(legacyGrips: SteamControllerGripProfile?, legacyTrackpadMouseEnabled: Bool) -> ControllerMappingProfile {
+        var bindings: [ControllerControl: ControllerBindingTarget] = [:]
         if let legacyGrips {
             for (grip, combo) in legacyGrips.combos where !combo.isEmpty {
                 bindings[grip.control] = .gamepadChord(combo)
@@ -261,18 +268,18 @@ public struct SteamControllerMappingProfile: Equatable, Identifiable, Sendable {
         }
         bindings[.leftPadClick] = legacyTrackpadMouseEnabled ? .mouseButton(.middle) : .disabled
         bindings[.rightPadClick] = legacyTrackpadMouseEnabled ? .mouseButton(.left) : .disabled
-        return SteamControllerMappingProfile(
+        return ControllerMappingProfile(
             id: legacyGrips?.id ?? UUID(),
             name: legacyGrips?.name ?? "Default",
             bindings: bindings,
-            leftPad: SteamControllerPadSettings(mode: legacyTrackpadMouseEnabled ? .scrollWheel : .disabled),
-            rightPad: SteamControllerPadSettings(mode: legacyTrackpadMouseEnabled ? .mouse : .disabled)
+            leftPad: ControllerPadSettings(mode: legacyTrackpadMouseEnabled ? .scrollWheel : .disabled),
+            rightPad: ControllerPadSettings(mode: legacyTrackpadMouseEnabled ? .mouse : .disabled)
         )
     }
 }
 
 extension SteamControllerGripButton {
-    var control: SteamControllerControl {
+    var control: ControllerControl {
         switch self {
         case .l4: .leftGrip
         case .l5: .leftGrip2
@@ -282,30 +289,34 @@ extension SteamControllerGripButton {
     }
 }
 
-extension SteamControllerMappingProfile: Codable {
+extension ControllerMappingProfile: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, name, bindings, leftPad, rightPad, leftStick, rightStick
+        case id, name, family, touchpad, bindings, leftPad, rightPad, leftStick, rightStick
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
-        let rawBindings = try container.decodeIfPresent([String: SteamControllerBindingTarget].self, forKey: .bindings) ?? [:]
+        family = try container.decodeIfPresent(ControllerFamily.self, forKey: .family) ?? .steam
+        touchpad = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .touchpad) ?? ControllerPadSettings(mode: .disabled)
+        let rawBindings = try container.decodeIfPresent([String: ControllerBindingTarget].self, forKey: .bindings) ?? [:]
         bindings = rawBindings.reduce(into: [:]) { result, entry in
-            guard let control = SteamControllerControl(rawValue: entry.key) else { return }
+            guard let control = ControllerControl(rawValue: entry.key) else { return }
             result[control] = entry.value
         }
-        leftPad = try container.decodeIfPresent(SteamControllerPadSettings.self, forKey: .leftPad) ?? SteamControllerPadSettings(mode: .disabled)
-        rightPad = try container.decodeIfPresent(SteamControllerPadSettings.self, forKey: .rightPad) ?? SteamControllerPadSettings(mode: .disabled)
-        leftStick = try container.decodeIfPresent(SteamControllerPadSettings.self, forKey: .leftStick) ?? SteamControllerPadSettings(mode: .joystickPassthrough)
-        rightStick = try container.decodeIfPresent(SteamControllerPadSettings.self, forKey: .rightStick) ?? SteamControllerPadSettings(mode: .joystickPassthrough)
+        leftPad = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .leftPad) ?? ControllerPadSettings(mode: .disabled)
+        rightPad = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .rightPad) ?? ControllerPadSettings(mode: .disabled)
+        leftStick = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .leftStick) ?? ControllerPadSettings(mode: .joystickPassthrough)
+        rightStick = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .rightStick) ?? ControllerPadSettings(mode: .joystickPassthrough)
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
+        try container.encode(family, forKey: .family)
+        try container.encode(touchpad, forKey: .touchpad)
         let rawBindings = Dictionary(uniqueKeysWithValues: bindings.map { ($0.key.rawValue, $0.value) })
         try container.encode(rawBindings, forKey: .bindings)
         try container.encode(leftPad, forKey: .leftPad)

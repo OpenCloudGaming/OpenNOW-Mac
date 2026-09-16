@@ -35,7 +35,7 @@ private struct ControllerRowCommandKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Optional on purpose. These rows are shared components - `SteamControllerMappingView` renders
+    /// Optional on purpose. These rows are shared components - `ControllerMappingView` renders
     /// some of them from the stream surface, outside any Settings page - and an `@EnvironmentObject`
     /// traps when it is missing. A nil registry simply means "no pad focus here".
     var controllerSettingsFocus: ControllerSettingsFocusModel? {

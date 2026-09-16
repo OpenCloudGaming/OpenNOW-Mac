@@ -45,10 +45,10 @@ private func connectionReport(detail: UInt8) -> [UInt8] {
     return report
 }
 
-private func parsedState(_ report: [UInt8], previous: SteamControllerInputSnapshot = SteamControllerInputSnapshot(), model: SteamControllerModel = .legacy) -> SteamControllerInputSnapshot {
+private func parsedState(_ report: [UInt8], previous: ControllerInputSnapshot = ControllerInputSnapshot(), model: SteamControllerModel = .legacy) -> ControllerInputSnapshot {
     guard case .state(let snapshot) = SteamControllerReport.parse(report, previous: previous, model: model) else {
         Issue.record("Expected a state event")
-        return SteamControllerInputSnapshot()
+        return ControllerInputSnapshot()
     }
     return snapshot
 }
@@ -107,14 +107,14 @@ private func parsedState(_ report: [UInt8], previous: SteamControllerInputSnapsh
     }
 
     @Test func centersJoystickWhenOnlyLeftPadTouched() {
-        let previous = SteamControllerInputSnapshot(leftStickX: 0.5, leftStickY: 0.5)
+        let previous = ControllerInputSnapshot(leftStickX: 0.5, leftStickY: 0.5)
         let snapshot = parsedState(inputReport(buttons: (0, 0, 0b0000_1000), leftPadX: 1000, leftPadY: 1000), previous: previous)
         #expect(snapshot.leftStickX == 0)
         #expect(snapshot.leftStickY == 0)
     }
 
     @Test func preservesJoystickDuringInterleavedPadFrames() {
-        let previous = SteamControllerInputSnapshot(leftStickX: 0.5, leftStickY: -0.5)
+        let previous = ControllerInputSnapshot(leftStickX: 0.5, leftStickY: -0.5)
         let snapshot = parsedState(inputReport(buttons: (0, 0, 0b1000_1000), leftPadX: 1000, leftPadY: 1000), previous: previous)
         #expect(snapshot.leftStickX == 0.5)
         #expect(snapshot.leftStickY == -0.5)
@@ -131,17 +131,17 @@ private func parsedState(_ report: [UInt8], previous: SteamControllerInputSnapsh
     }
 
     @Test func parsesWirelessConnectionEvents() {
-        #expect(SteamControllerReport.parse(connectionReport(detail: 0x02), previous: SteamControllerInputSnapshot(), model: .legacy) == .connected)
-        #expect(SteamControllerReport.parse(connectionReport(detail: 0x01), previous: SteamControllerInputSnapshot(), model: .legacy) == .disconnected)
+        #expect(SteamControllerReport.parse(connectionReport(detail: 0x02), previous: ControllerInputSnapshot(), model: .legacy) == .connected)
+        #expect(SteamControllerReport.parse(connectionReport(detail: 0x01), previous: ControllerInputSnapshot(), model: .legacy) == .disconnected)
     }
 
     @Test func ignoresUnknownReports() {
         var battery = [UInt8](repeating: 0, count: SteamControllerReport.reportLength)
         battery[0] = 0x01
         battery[2] = 0x04
-        #expect(SteamControllerReport.parse(battery, previous: SteamControllerInputSnapshot(), model: .legacy) == .ignored)
-        #expect(SteamControllerReport.parse([0xde, 0xad], previous: SteamControllerInputSnapshot(), model: .legacy) == .ignored)
-        #expect(SteamControllerReport.parse([], previous: SteamControllerInputSnapshot(), model: .legacy) == .ignored)
+        #expect(SteamControllerReport.parse(battery, previous: ControllerInputSnapshot(), model: .legacy) == .ignored)
+        #expect(SteamControllerReport.parse([0xde, 0xad], previous: ControllerInputSnapshot(), model: .legacy) == .ignored)
+        #expect(SteamControllerReport.parse([], previous: ControllerInputSnapshot(), model: .legacy) == .ignored)
     }
 
     @Test func lizardModeReportsAreWellFormed() {
@@ -322,7 +322,7 @@ private func tritonReport(reportID: UInt8 = 0x42,
 
     @Test func acceptsAllStateReportVariants() {
         for reportID: UInt8 in [0x42, 0x45, 0x47] {
-            let event = SteamControllerReport.parse(tritonReport(reportID: reportID, buttons: 0x1), previous: SteamControllerInputSnapshot(), model: .triton)
+            let event = SteamControllerReport.parse(tritonReport(reportID: reportID, buttons: 0x1), previous: ControllerInputSnapshot(), model: .triton)
             guard case .state(let snapshot) = event else {
                 Issue.record("Expected state for report \(reportID)")
                 continue
@@ -333,26 +333,26 @@ private func tritonReport(reportID: UInt8 = 0x42,
 
     @Test func parsesWirelessStatusEvents() {
         for reportID: UInt8 in [0x79, 0x46] {
-            #expect(SteamControllerReport.parse([reportID, 0x02], previous: SteamControllerInputSnapshot(), model: .triton) == .connected)
-            #expect(SteamControllerReport.parse([reportID, 0x01], previous: SteamControllerInputSnapshot(), model: .triton) == .disconnected)
+            #expect(SteamControllerReport.parse([reportID, 0x02], previous: ControllerInputSnapshot(), model: .triton) == .connected)
+            #expect(SteamControllerReport.parse([reportID, 0x01], previous: ControllerInputSnapshot(), model: .triton) == .disconnected)
         }
     }
 
     @Test func parsesBatteryReport() {
         // The level byte is a percentage, so a full pad must report 100 — not
         // 39, which is what scaling 0x64 by 100/255 used to produce.
-        #expect(SteamControllerReport.parse([0x43, 0x01, 0x64], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
-        #expect(SteamControllerReport.parse([0x43, 0x01, 0x00], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 0, charging: false))
-        #expect(SteamControllerReport.parse([0x43, 0x01, 0x23], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: false))
-        #expect(SteamControllerReport.parse([0x43, 0x04, 0x23], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: true))
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0x64], previous: ControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0x00], previous: ControllerInputSnapshot(), model: .triton) == .battery(level: 0, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0x23], previous: ControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x04, 0x23], previous: ControllerInputSnapshot(), model: .triton) == .battery(level: 35, charging: true))
         // Out-of-range levels clamp instead of overflowing the percentage.
-        #expect(SteamControllerReport.parse([0x43, 0x01, 0xFF], previous: SteamControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
-        #expect(SteamControllerReport.parse([0x43, 0x01], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
+        #expect(SteamControllerReport.parse([0x43, 0x01, 0xFF], previous: ControllerInputSnapshot(), model: .triton) == .battery(level: 100, charging: false))
+        #expect(SteamControllerReport.parse([0x43, 0x01], previous: ControllerInputSnapshot(), model: .triton) == .ignored)
     }
 
     @Test func ignoresUnknownTritonReports() {
-        #expect(SteamControllerReport.parse([], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
-        #expect(SteamControllerReport.parse([0x42, 0x00], previous: SteamControllerInputSnapshot(), model: .triton) == .ignored)
+        #expect(SteamControllerReport.parse([], previous: ControllerInputSnapshot(), model: .triton) == .ignored)
+        #expect(SteamControllerReport.parse([0x42, 0x00], previous: ControllerInputSnapshot(), model: .triton) == .ignored)
     }
 
     @Test func lizardModeReportUsesFeatureReportOne() {
@@ -424,10 +424,10 @@ private func deckStateReport(buttons: UInt64 = 0,
     return report
 }
 
-private func parsedDeckState(_ report: [UInt8]) -> SteamControllerInputSnapshot {
-    guard case .state(let snapshot) = SteamControllerReport.parseDeckState(report, previous: SteamControllerInputSnapshot()) else {
+private func parsedDeckState(_ report: [UInt8]) -> ControllerInputSnapshot {
+    guard case .state(let snapshot) = SteamControllerReport.parseDeckState(report, previous: ControllerInputSnapshot()) else {
         Issue.record("Expected a deck state event")
-        return SteamControllerInputSnapshot()
+        return ControllerInputSnapshot()
     }
     return snapshot
 }
@@ -504,6 +504,6 @@ private func parsedDeckState(_ report: [UInt8]) -> SteamControllerInputSnapshot 
     }
 
     @Test func ignoresShortReports() {
-        #expect(SteamControllerReport.parseDeckState([0x09], previous: SteamControllerInputSnapshot()) == .ignored)
+        #expect(SteamControllerReport.parseDeckState([0x09], previous: ControllerInputSnapshot()) == .ignored)
     }
 }

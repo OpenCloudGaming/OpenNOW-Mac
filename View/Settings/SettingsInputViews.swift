@@ -9,6 +9,7 @@ struct InputSettingsPage: View {
     @StateObject private var model = InterfaceSettingsViewModel()
     @State private var inputMonitoringGranted = InputSettingsPage.isInputMonitoringGranted
     @State private var showingControllerTest = false
+    @State private var showingControllerMapping = false
 
     private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
 
@@ -29,6 +30,7 @@ struct InputSettingsPage: View {
             inputMonitoringGranted = Self.isInputMonitoringGranted
         }
         .onDisappear { model.steamNavigator.stop() }
+        .sheet(isPresented: $showingControllerMapping) { ControllerMappingView() }
         .sheet(isPresented: $showingControllerTest) {
             SteamControllerTestView()
         }
@@ -142,6 +144,25 @@ struct InputSettingsPage: View {
         .settingsSection("controls")
     }
 
+    private var mappingRow: some View {
+        HStack(spacing: 12 * uiScale) {
+            VStack(alignment: .leading, spacing: 5 * uiScale) {
+                Text("Controller Mapping")
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                Text("Opt-in mappings for Steam, DualShock 4, and generic controllers. Unassigned native controllers pass through unchanged.")
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button("Open Mapping") {
+                showingControllerMapping = true
+            }
+            .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
+        }
+    }
+
     private var controllerToolsCard: some View {
         SettingsCard(title: "Controller Tools", uiScale: uiScale) {
             HStack {
@@ -159,7 +180,8 @@ struct InputSettingsPage: View {
                 }
                 .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
             }
-
+            SettingsDivider(uiScale: uiScale)
+            mappingRow
         }
         .settingsSection("controller-tools")
     }

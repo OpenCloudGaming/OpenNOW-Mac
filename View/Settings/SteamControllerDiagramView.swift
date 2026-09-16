@@ -13,9 +13,9 @@ import SwiftUI
 // shape below traces the physical controller. The rule stays on for the rest of View/.
 // swiftlint:disable design_no_corner_radius
 struct SteamControllerDiagramView: View {
-    let snapshot: SteamControllerInputSnapshot
-    var selectedControl: SteamControllerControl?
-    var onSelectControl: ((SteamControllerControl) -> Void)?
+    let snapshot: ControllerInputSnapshot
+    var selectedControl: ControllerControl?
+    var onSelectControl: ((ControllerControl) -> Void)?
 
     @Environment(\.opnUIScale) private var uiScale
 
@@ -26,14 +26,14 @@ struct SteamControllerDiagramView: View {
     private func art(_ value: CGFloat) -> CGFloat { value * artScale }
 
     var body: some View {
-        VStack(spacing: 6 * uiScale) {
+        VStack(spacing: ControllerDiagramArtwork.sectionSpacing * uiScale) {
             shoulderRow
             controllerBody
         }
     }
 
     @ViewBuilder
-    private func selectable<Content: View>(_ control: SteamControllerControl, @ViewBuilder content: () -> Content) -> some View {
+    private func selectable<Content: View>(_ control: ControllerControl, @ViewBuilder content: () -> Content) -> some View {
         let isSelected = selectedControl == control
         content()
             .contentShape(Rectangle())
@@ -57,11 +57,11 @@ struct SteamControllerDiagramView: View {
             )
             .position(x: art(362), y: 27 * uiScale)
         }
-        .frame(width: diagramWidth, height: 54 * uiScale)
+        .frame(width: diagramWidth, height: ControllerDiagramArtwork.shoulderHeight * uiScale)
     }
 
-    private func shoulderGroup(triggerControl: SteamControllerControl, triggerLabel: String, value: Float,
-                                bumperControl: SteamControllerControl, bumperLabel: String, pressed: Bool) -> some View {
+    private func shoulderGroup(triggerControl: ControllerControl, triggerLabel: String, value: Float,
+                                bumperControl: ControllerControl, bumperLabel: String, pressed: Bool) -> some View {
         VStack(spacing: 4 * uiScale) {
             selectable(triggerControl) { triggerButton(triggerLabel, value: value) }
                 .frame(width: 104 * uiScale, height: 26 * uiScale)
@@ -316,7 +316,7 @@ struct SteamControllerDiagramView: View {
         .frame(width: art(38), height: art(15))
     }
 
-    private func trackpadView(_ pad: SteamControllerTrackpadState) -> some View {
+    private func trackpadView(_ pad: ControllerTrackpadState) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: art(16))
                 .fill(pad.pressed ? OPNDesign.accent.opacity(0.12) : ControllerDiagramArtwork.Overlay.fill(0.045))
@@ -351,7 +351,7 @@ struct SteamControllerDiagramView: View {
         .frame(width: art(93), height: art(93))
     }
 
-    private func gripPill(_ control: SteamControllerControl) -> some View {
+    private func gripPill(_ control: ControllerControl) -> some View {
         let pressed = control.gamepadButton.map { snapshot.buttons.contains($0) } ?? false
         return ZStack {
             Capsule()

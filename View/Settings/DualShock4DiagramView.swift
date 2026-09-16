@@ -4,8 +4,8 @@ import SwiftUI
 /// shell in the tester's set: Valve's Triton art for a Steam Controller, this PS4 shell for a pad
 /// GameController reports as `GCDualShockGamepad`, and `GenericControllerDiagramView` for
 /// everything else. Drawn in the same authored space with the same overlay vocabulary, so the
-/// three line up wherever they are swapped for one another. Read-only: mapping profiles are
-/// Steam-only, so there is nothing here to tap.
+/// three line up wherever they are swapped for one another. Read-only: the mapping editor places
+/// selectable controls above this preview.
 ///
 /// Two GameController details shape the drawing:
 ///
@@ -38,7 +38,7 @@ struct DualShock4DiagramView: View {
     private var touchpad: ControllerTouchpadState { snapshot.touchpad ?? ControllerTouchpadState() }
 
     var body: some View {
-        VStack(spacing: 6 * uiScale) {
+        VStack(spacing: ControllerDiagramArtwork.sectionSpacing * uiScale) {
             shoulderRow
             controllerBody
         }
@@ -60,7 +60,7 @@ struct DualShock4DiagramView: View {
             )
             .position(x: art(368), y: 27 * uiScale)
         }
-        .frame(width: diagramWidth, height: 54 * uiScale)
+        .frame(width: diagramWidth, height: ControllerDiagramArtwork.shoulderHeight * uiScale)
     }
 
     private func shoulderGroup(triggerLabel: String, value: Float, bumperLabel: String, pressed: Bool) -> some View {

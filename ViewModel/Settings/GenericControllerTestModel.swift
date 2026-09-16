@@ -44,7 +44,7 @@ struct ControllerTouchpadState: Equatable {
     var pressed = false
 }
 
-/// One frame of a GameController pad, holding the parts of `SteamControllerInputSnapshot` a
+/// One frame of a GameController pad, holding the parts of `ControllerInputSnapshot` a
 /// non-Steam pad actually has.
 struct GenericControllerInputSnapshot: Equatable {
     var buttons: GamepadButtons = []
@@ -73,10 +73,7 @@ struct GenericControllerInputSnapshot: Equatable {
             touchpad = ControllerTouchpadState(
                 x: x,
                 y: y,
-                // Capacitive touch rides the touchpad button element. A lifted finger parks the
-                // axes at centre, so a live position is the fallback for a pad that does not
-                // report touch on the button at all.
-                touched: dualShock.touchpadButton.isTouched || abs(x) > 0.02 || abs(y) > 0.02,
+                touched: dualShock.touchpadButton.isTouched,
                 pressed: dualShock.touchpadButton.isPressed
             )
         }

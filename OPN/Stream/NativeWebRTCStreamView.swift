@@ -214,12 +214,14 @@ public final class NativeWebRTCStreamView: NSView {
     public var remoteInputEnabled = true {
         willSet {
             if remoteInputEnabled && !newValue {
+                gamepadMonitor.setMappingsEnabled(false)
                 releasePressedInputs()
                 setPointerLocked(false)
             }
         }
         didSet {
             if !oldValue && remoteInputEnabled {
+                updateControllerMappingFocus()
                 gamepadMonitor.refreshInputState()
                 restoreInputFocus()
             }
@@ -302,15 +304,19 @@ public final class NativeWebRTCStreamView: NSView {
     /// pump can stop draining the NSApp event queue while overlay buttons
     /// are waiting on those mouse events.
     public var localOverlayCapturesInput = false {
+        willSet {
+            if newValue { gamepadMonitor.setMappingsEnabled(false) }
+        }
         didSet {
             guard oldValue != localOverlayCapturesInput else { return }
+            updateControllerMappingFocus()
             applyLocalCursorPolicy()
         }
     }
     /// Passthrough to the gamepad monitor: while this returns true for a Steam
     /// Controller report, the raw snapshot goes to the on-screen keyboard instead
     /// of the binding engine. Set by the active stream host.
-    public var onScreenKeyboardCapture: ((InputDeviceID, SteamControllerInputSnapshot) -> Bool)? {
+    public var onScreenKeyboardCapture: ((InputDeviceID, ControllerInputSnapshot) -> Bool)? {
         get { gamepadMonitor.onScreenKeyboardCapture }
         set { gamepadMonitor.onScreenKeyboardCapture = newValue }
     }
@@ -367,7 +373,7 @@ public final class NativeWebRTCStreamView: NSView {
     var nativeNVSTRendererEnabled = false
     var nativeNVSTRendererPreparedForShutdown = false
     var nativeNVSTVideoVisible = false
-    private let gamepadMonitor = NativeWebRTCGamepadMonitor()
+    let gamepadMonitor = NativeWebRTCGamepadMonitor()
     var nvstBifrostFreeRenderer: NvstBifrostFreeVideoRenderer?
     var presentationMode = 0
 
@@ -400,6 +406,7 @@ public final class NativeWebRTCStreamView: NSView {
             self.activeGamepadStates = self.activeGamepadStates.filter { topology.playerIndices.contains($0.key) }
             self.onGamepadTopologyChanged?(topology)
         }
+        updateControllerMappingFocus()
         gamepadMonitor.start()
     }
 
@@ -470,6 +477,7 @@ public final class NativeWebRTCStreamView: NSView {
             updateNativeNVSTPresentation()
         }
         installNativeNVSTDisplayNotifications()
+        updateControllerMappingFocus()
         restoreInputFocus()
         window?.acceptsMouseMovedEvents = true
         // The window is a policy input (cursor rects only apply to the key window of the active

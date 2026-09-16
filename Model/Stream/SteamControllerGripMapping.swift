@@ -20,101 +20,19 @@ public enum SteamControllerGripButton: String, Codable, CaseIterable, Identifiab
     }
 }
 
-public struct SteamControllerGripCombo: Codable, Equatable, Sendable {
-    public var buttons: GamepadButtons
-    public var leftTrigger: Bool
-    public var rightTrigger: Bool
-
-    public init(buttons: GamepadButtons = [], leftTrigger: Bool = false, rightTrigger: Bool = false) {
-        self.buttons = buttons.intersection(SteamControllerGripComboTarget.assignableButtons)
-        self.leftTrigger = leftTrigger
-        self.rightTrigger = rightTrigger
-    }
-
-    public var isEmpty: Bool {
-        buttons.isEmpty && !leftTrigger && !rightTrigger
-    }
-
-    public func contains(_ element: SteamControllerGripComboElement) -> Bool {
-        switch element {
-        case .button(let button): buttons.contains(button)
-        case .leftTrigger: leftTrigger
-        case .rightTrigger: rightTrigger
-        }
-    }
-
-    public mutating func toggle(_ element: SteamControllerGripComboElement) {
-        switch element {
-        case .button(let button):
-            guard buttons.contains(button) else {
-                buttons.formUnion(button)
-                return
-            }
-            buttons.remove(button)
-        case .leftTrigger:
-            leftTrigger.toggle()
-        case .rightTrigger:
-            rightTrigger.toggle()
-        }
-    }
-}
-
-public enum SteamControllerGripComboElement: Equatable, Sendable {
-    case button(GamepadButtons)
-    case leftTrigger
-    case rightTrigger
-}
-
-public struct SteamControllerGripComboTarget: Equatable, Identifiable, Sendable {
-    public let label: String
-    public let element: SteamControllerGripComboElement
-
-    public var id: String { label }
-
-    public static let all: [SteamControllerGripComboTarget] = [
-        SteamControllerGripComboTarget(label: "A", element: .button(.south)),
-        SteamControllerGripComboTarget(label: "B", element: .button(.east)),
-        SteamControllerGripComboTarget(label: "X", element: .button(.west)),
-        SteamControllerGripComboTarget(label: "Y", element: .button(.north)),
-        SteamControllerGripComboTarget(label: "L1", element: .button(.leftShoulder)),
-        SteamControllerGripComboTarget(label: "R1", element: .button(.rightShoulder)),
-        SteamControllerGripComboTarget(label: "L2", element: .leftTrigger),
-        SteamControllerGripComboTarget(label: "R2", element: .rightTrigger),
-        SteamControllerGripComboTarget(label: "L3", element: .button(.leftStick)),
-        SteamControllerGripComboTarget(label: "R3", element: .button(.rightStick)),
-        SteamControllerGripComboTarget(label: "D-Up", element: .button(.dpadUp)),
-        SteamControllerGripComboTarget(label: "D-Down", element: .button(.dpadDown)),
-        SteamControllerGripComboTarget(label: "D-Left", element: .button(.dpadLeft)),
-        SteamControllerGripComboTarget(label: "D-Right", element: .button(.dpadRight)),
-        SteamControllerGripComboTarget(label: "Start", element: .button(.start)),
-        SteamControllerGripComboTarget(label: "Select", element: .button(.select)),
-    ]
-
-    public static let assignableButtons: GamepadButtons = all.reduce(into: []) { result, target in
-        if case .button(let button) = target.element {
-            result.formUnion(button)
-        }
-    }
-
-    public static func comboLabel(for combo: SteamControllerGripCombo) -> String {
-        let parts = all.filter { combo.contains($0.element) }.map(\.label)
-        return parts.isEmpty ? "Unassigned" : parts.joined(separator: " + ")
-    }
-}
-
 public struct SteamControllerGripProfile: Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
-    public var combos: [SteamControllerGripButton: SteamControllerGripCombo]
+    public var combos: [SteamControllerGripButton: ControllerButtonChord]
 
-    public init(id: UUID = UUID(), name: String, combos: [SteamControllerGripButton: SteamControllerGripCombo] = [:]) {
+    public init(id: UUID = UUID(), name: String, combos: [SteamControllerGripButton: ControllerButtonChord] = [:]) {
         self.id = id
         self.name = name
         self.combos = combos
     }
 
-    public func combo(for grip: SteamControllerGripButton) -> SteamControllerGripCombo {
-        combos[grip] ?? SteamControllerGripCombo()
+    public func combo(for grip: SteamControllerGripButton) -> ControllerButtonChord {
+        combos[grip] ?? ControllerButtonChord()
     }
 }
 
@@ -129,11 +47,11 @@ extension SteamControllerGripProfile: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
-        let rawCombos: [String: SteamControllerGripCombo]
-        if let current = try? container.decodeIfPresent([String: SteamControllerGripCombo].self, forKey: .combos) {
+        let rawCombos: [String: ControllerButtonChord]
+        if let current = try? container.decodeIfPresent([String: ControllerButtonChord].self, forKey: .combos) {
             rawCombos = current
         } else if let legacy = try? container.decodeIfPresent([String: GamepadButtons].self, forKey: .combos) {
-            rawCombos = legacy.mapValues { SteamControllerGripCombo(buttons: $0) }
+            rawCombos = legacy.mapValues { ControllerButtonChord(buttons: $0) }
         } else {
             rawCombos = [:]
         }

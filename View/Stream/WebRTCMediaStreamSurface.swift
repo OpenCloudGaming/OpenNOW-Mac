@@ -134,7 +134,7 @@ public struct WebRTCMediaStreamSurface: View {
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
         .sheet(isPresented: $showingControllerMapping) {
-            SteamControllerMappingView()
+            ControllerMappingView()
         }
     }
 

@@ -13,8 +13,8 @@ public enum SteamControllerPreference {
     }
 }
 
-/// Superseded by per-pad `SteamControllerPadSettings` in `SteamControllerMappingProfile`.
-/// `key` stays just long enough for `SteamControllerMappingStore`'s one-time migration.
+/// Superseded by per-pad `ControllerPadSettings` in `ControllerMappingProfile`.
+/// `key` stays just long enough for `ControllerMappingStore`'s one-time migration.
 public enum SteamControllerTrackpadMousePreference {
     public static let key = "OpenNOW.Input.SteamControllerTrackpadMouseEnabled"
 }
@@ -89,7 +89,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     struct Consumer {
         let controllersChanged: () -> Void
-        let inputState: (InputDeviceID, SteamControllerInputSnapshot) -> Void
+        let inputState: (InputDeviceID, ControllerInputSnapshot) -> Void
         let batteryLevel: (InputDeviceID, UInt8) -> Void
     }
 
@@ -99,9 +99,9 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         let deviceID: InputDeviceID
         let reportBuffer: UnsafeMutablePointer<UInt8>
         let controllerID: UInt64
-        var snapshot = SteamControllerInputSnapshot()
-        var deckSnapshot = SteamControllerInputSnapshot()
-        var mergedSnapshot = SteamControllerInputSnapshot()
+        var snapshot = ControllerInputSnapshot()
+        var deckSnapshot = ControllerInputSnapshot()
+        var mergedSnapshot = ControllerInputSnapshot()
         var isActive: Bool
         var isSeized = false
         var batteryLevel: UInt8?
@@ -145,9 +145,9 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     /// The 40 ms keep-alive re-sends for each controller currently rumbling.
     var rumbleResendTasks: [InputDeviceID: Task<Void, Never>] = [:]
 
-    let mappingProvider: any SteamControllerMappingProviding
+    let mappingProvider: any ControllerMappingProviding
 
-    init(mappingProvider: any SteamControllerMappingProviding = SteamControllerMappingStore.shared) {
+    init(mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared) {
         self.mappingProvider = mappingProvider
     }
 
@@ -172,13 +172,13 @@ public final class SteamControllerHIDMonitor: ObservableObject {
             .sorted { $0.rawValue < $1.rawValue }
     }
 
-    public func snapshot(for deviceID: InputDeviceID) -> SteamControllerInputSnapshot? {
+    public func snapshot(for deviceID: InputDeviceID) -> ControllerInputSnapshot? {
         // A composite controller's interfaces share a deviceID and its reports can land on any of
         // them, so merge across all of them rather than trusting one — picking a single interface
         // silently drops whichever half of the input arrives on the other.
         let snapshots = devices.values.filter { $0.deviceID == deviceID }.map(\.mergedSnapshot)
         guard !snapshots.isEmpty else { return nil }
-        let empty = SteamControllerInputSnapshot()
+        let empty = ControllerInputSnapshot()
         return snapshots.reduce(into: empty) { merged, snapshot in
             merged.buttons.formUnion(snapshot.buttons)
             merged.leftTrigger = max(merged.leftTrigger, snapshot.leftTrigger)
@@ -196,7 +196,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     /// editing trackpad behavior mid-stream takes effect immediately.
     public func refreshCaptureConfiguration() {
         guard isInputCaptureActive else { return }
-        let wantsRawTrackpadCapture = mappingProvider.activeProfile?.wantsRawTrackpadCapture ?? false
+        let wantsRawTrackpadCapture = mappingProvider.requiresRawSteamTrackpads
         for context in devices.values {
             if wantsRawTrackpadCapture {
                 guard !context.isSeized else { continue }
@@ -211,7 +211,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     public func register(_ consumer: AnyObject,
                          onControllersChanged: @escaping () -> Void,
-                         onInputState: @escaping (InputDeviceID, SteamControllerInputSnapshot) -> Void,
+                         onInputState: @escaping (InputDeviceID, ControllerInputSnapshot) -> Void,
                          onBatteryLevel: @escaping (InputDeviceID, UInt8) -> Void = { _, _ in }) {
         consumers[ObjectIdentifier(consumer)] = Consumer(controllersChanged: onControllersChanged, inputState: onInputState, batteryLevel: onBatteryLevel)
     }

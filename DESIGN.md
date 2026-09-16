@@ -542,15 +542,14 @@ The screen renders at 100 % interface scale like every other transient splash.
 ### Controller Sheets (test / mapping)
 
 The controller tester (`SteamControllerTestView`) opens from Settings → Input → Controller
-Tools. The Steam-only mapping editor (`SteamControllerMappingView`) opens from Settings →
-Input → Steam Controller and from the stream HUD; generic and DualShock mapping are not
-implemented. Both are full-window settings-style flows on Surface Deep, wrapped in the modal spec:
+Tools. The mapping editor (`ControllerMappingView`) opens from the same shared Controller
+Tools section and from the stream HUD. Native mappings are opt-in: no assigned profile means
+unchanged direct gamepad passthrough. Existing Steam defaults and saved profiles are preserved. Both are full-window settings-style flows on Surface Deep, wrapped in the modal spec:
 2px accent top bar (`SteamControllerModalTopBar`), App Bar header block
 (`SteamControllerModalHeader` — 10pt bold accent eyebrow, tracking 1.1, over a 20pt bold
 title, with the shared square 28×28 `OPNModalCloseButton`), 18 (Card) horizontal / 16 (Medium)
 vertical header padding, and 1px Stroke Subtle rules (`SteamControllerModalRule`) between
-every band. The tester's eyebrow reads "CONTROLLER"; the mapping editor's reads "STEAM
-CONTROLLER". Escape dismisses both. Every size is pre-scale and multiplied by `opnUIScale`,
+every band. Both eyebrows read "CONTROLLER". Escape dismisses both. Every size is pre-scale and multiplied by `opnUIScale`,
 which the sheets read from the environment; hairline rules stay 1px at all scales.
 
 The tester draws whichever shell matches the attached pad, and always exactly one of the three:
@@ -591,6 +590,24 @@ Shared square pieces live in `SteamControllerModalChrome.swift`:
 - **Badge** (`SteamControllerBadge`) and **Section** (`SteamControllerSection`): Section Fill
   (#FFFFFF @ 0.055) with a 1px Stroke Subtle; the badge is height 20 with 8 padding, the section
   18 (Card) padding under an eyebrow header.
+
+Mapping opens on an actually connected controller. With no controllers connected it shows a
+"No controller connected" empty state and a Close action, not a Steam diagram or profile editor.
+Hot-plugging selects the first available controller; an existing selection is preserved while it
+remains connected. Steam defaults are an explicit picker option only while a Steam Controller is
+connected. Each connected pad has its own assignment; native connection identities are UUIDs,
+never vendor-name matches. Saved profiles persist, but assignments
+reset on disconnect/restart because GameController exposes no reliable hardware identifier. The
+Steam-default entry edits the preserved shared Steam profile; connected Steam pads can override it.
+The profile picker includes a direct-passthrough option for native pads. Families filter profiles,
+controls, and labels: generic pads have standard buttons/axes, DS4 adds touchpad click/motion only
+when GameController exposes it, and Steam keeps its grips and twin pads. The native diagrams remain
+read-only previews with selectable control chips above; the Steam diagram also supports tapping.
+The preview aspect-fits the entire shell and shoulder row into the remaining editor width and
+height without scrolling or cropping. Only the hardware artwork may shrink below the configured
+interface scale; control chips, sidebar, binding panel, and footer keep their normal scaled sizes.
+The DS4 touch pointer uses reported touch begin/end, never nonzero coordinates as a touch heuristic.
+Mappings affect local streaming, not the system controller or RemoteCoOp guest keyboard/mouse.
 
 Mapping-specific chrome: the profile picker is an `OPNDropdownMenu` (trigger height 30, Row
 Fill, 1px Stroke Regular), the profile name is a 14pt regular field on Surface Field with a 2px
