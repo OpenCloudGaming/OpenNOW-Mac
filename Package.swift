@@ -55,10 +55,10 @@ let package = Package(
                 "Resources",
                 "Tests",
                 "docs",
+                "Vendor",
                 "View/Assets.xcassets",
                 "build",
                 "scripts",
-                "tools",
             ],
             sources: [
                 "App",
