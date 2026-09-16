@@ -63,7 +63,7 @@ extension NativeWebRTCGamepadMonitor {
         }
     }
 
-    func refreshMappingConfiguration() {
+    func refreshMappingConfiguration(replaySteam: Bool = true) {
         SteamControllerHIDMonitor.shared.refreshCaptureConfiguration()
         let registry = ControllerMappingDevices.shared
         var configuration: [ObjectIdentifier: NativeControllerMappingConfiguration] = [:]
@@ -78,6 +78,7 @@ extension NativeWebRTCGamepadMonitor {
             pollState.takePendingEvents() + pollState.configureMappings(configuration)
         }
         for event in releases { emitInputEvent(event) }
+        guard replaySteam else { return }
         for deviceID in Array(bindingEngines.keys) {
             guard let slot = pollState.steamControllerSlots[deviceID],
                   let snapshot = SteamControllerHIDMonitor.shared.snapshot(for: deviceID), pollingAllowed else { continue }

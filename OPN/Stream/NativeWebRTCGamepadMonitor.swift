@@ -79,6 +79,7 @@ public final class NativeWebRTCGamepadMonitor {
     var pollingAllowed = false
     var mappingsEnabled = false
     private var mappingSubscription: AnyCancellable?
+    private var orderSubscription: AnyCancellable?
     var bindingOutputLedger = ControllerBindingOutputLedger()
     let bindingClock = ContinuousClock()
     var bindingEngines: [InputDeviceID: ControllerBindingEngine] = [:]
@@ -123,6 +124,9 @@ public final class NativeWebRTCGamepadMonitor {
         refreshControllerSlots()
         mappingSubscription = mappingProvider.revisionPublisher.dropFirst().sink { [weak self] _ in
             self?.refreshMappingConfiguration()
+        }
+        orderSubscription = ControllerMappingDevices.shared.orderChangesPublisher.sink { [weak self] in
+            self?.refreshControllerSlots()
         }
     }
 
@@ -229,6 +233,7 @@ public final class NativeWebRTCGamepadMonitor {
             SteamControllerLocalCursorInjector.shared.reset()
         }
         stopPollingTimer()
+        nativeBatteryLevels.removeAll()
         stopHaptics()
         OPNStreamTelemetry.capture("webrtc.input.gamepad.monitor.stop", level: .info, message: "Gamepad monitor stopped.")
     }
@@ -250,8 +255,6 @@ public final class NativeWebRTCGamepadMonitor {
         if (seatCommand.lowFrequency > 0 || seatCommand.highFrequency > 0), hapticCommandsSeen <= 8 || hapticCommandsSeen % 300 == 0 {
             OPNLog.info(.controller, "Rumble ceiling \(percent)% pad=\(seatCommand.playerIndex) seat=\(seatCommand.lowFrequency)/\(seatCommand.highFrequency) sent=\(command.lowFrequency)/\(command.highFrequency) ms=\(seatCommand.durationMilliseconds)")
         }
-        // Steam Controllers hold the low slots (see `refreshControllerSlots`) and have no
-        // GameController haptics; their motors are driven through the HID feature report.
         if let deviceID = pollState.steamControllerSlots.first(where: { $0.value == command.playerIndex })?.key {
             if hapticCommandsSeen <= 6 {
                 OPNLog.info(.controller, "Rumble route: Steam Controller \(deviceID.rawValue) for pad \(command.playerIndex)")
@@ -317,34 +320,24 @@ public final class NativeWebRTCGamepadMonitor {
 
     private func refreshControllerSlots() {
         let previousSteamSlots = pollState.steamControllerSlots
-        let previousOccupiedSlots = Set(pollState.controllerSlots.values).union(pollState.steamControllerSlots.values)
-        ControllerMappingDevices.shared.refresh()
-        let cachedControllers = Array(Self.availableNativeControllers().prefix(4))
-        // Steam Controllers take the low player slots. GameController pads used to be numbered
-        // first, so anything else present — a real pad, or a VIRTUAL one like the bridge-pad
-        // DriverKit extension publishing a Microsoft-branded gamepad — pushed the Steam Controller
-        // to player 2. A game that only listens to player 1 then looks completely dead even though
-        // the pad is working and its packets are reaching the seat. This app exists to drive the
-        // Steam Controller, so it gets player 1 when it is connected.
-        var newSteamSlots: [InputDeviceID: Int] = [:]
-        var nextSlot = 0
-        for deviceID in SteamControllerHIDMonitor.shared.activeDeviceIDs where nextSlot < 4 {
-            newSteamSlots[deviceID] = nextSlot
-            nextSlot += 1
+        let registry = ControllerMappingDevices.shared
+        registry.refresh()
+        let nativeIDs = registry.devices.reduce(into: [InputDeviceID: ObjectIdentifier]()) { result, device in
+            if let controller = registry.controller(for: device.id) { result[device.id] = ObjectIdentifier(controller) }
         }
-        var newControllerSlots: [ObjectIdentifier: Int] = [:]
-        for controller in cachedControllers where nextSlot < 4 {
-            newControllerSlots[ObjectIdentifier(controller)] = nextSlot
-            nextSlot += 1
+        let assignments = ControllerSlotAssignments(order: registry.playerOrder,
+                                                    steamIDs: Set(SteamControllerHIDMonitor.shared.activeDeviceIDs), nativeIDs: nativeIDs)
+        let newSteamSlots = assignments.steam
+        let newControllerSlots = assignments.native
+        let cachedControllers = registry.orderedDevices.compactMap { registry.controller(for: $0.id) }
+            .filter { newControllerSlots[ObjectIdentifier($0)] != nil }
+        if newSteamSlots != previousSteamSlots || newControllerSlots != pollState.controllerSlots {
+            prepareForControllerSlotChange()
         }
         pollingQueue.sync {
             pollState.controllerSlots = newControllerSlots
             pollState.steamControllerSlots = newSteamSlots
             pollState.cachedControllers = cachedControllers
-        }
-        for deviceID in bindingEngines.keys where newSteamSlots[deviceID] == nil {
-            releaseSteamBinding(deviceID: deviceID, playerIndex: previousSteamSlots[deviceID] ?? 0)
-            reapplyTasks.removeValue(forKey: deviceID)?.cancel()
         }
         for deviceID in previousSteamSlots.keys where newSteamSlots[deviceID] == nil {
             chordTracker.removeDevice(deviceID)
@@ -355,13 +348,7 @@ public final class NativeWebRTCGamepadMonitor {
             localCursorModeHeld.subtract(staleCursorDeviceIDs)
             SteamControllerLocalCursorInjector.shared.reset()
         }
-        refreshMappingConfiguration()
-        if pollingAllowed {
-            emitSlotTransitions(previousSteamSlots: previousSteamSlots, previousOccupiedSlots: previousOccupiedSlots)
-            newControllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
-        }
-        let validBatteryIDs = Set(pollState.cachedControllers.prefix(4).map { "native-\(ObjectIdentifier($0).hashValue)" }).union(Set(newSteamSlots.keys.map { $0.rawValue }))
-        nativeBatteryLevels.removeAll { !validBatteryIDs.contains($0.id) }
+        refreshBatteryLabels()
         let hapticPlayerIndices = pollState.cachedControllers.compactMap { controller in
             controller.haptics == nil ? nil : newControllerSlots[ObjectIdentifier(controller)]
         }
@@ -371,21 +358,21 @@ public final class NativeWebRTCGamepadMonitor {
             topology = newTopology
             onTopologyChanged?(newTopology)
         }
+        refreshMappingConfiguration(replaySteam: false)
+        if pollingAllowed {
+            emitCurrentSteamStates()
+            newControllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
+        }
         let totalSlots = newControllerSlots.count + newSteamSlots.count
         OPNStreamTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
     }
 
-    private func emitSlotTransitions(previousSteamSlots: [InputDeviceID: Int], previousOccupiedSlots: Set<Int>) {
-        let currentSteamSlots = pollState.steamControllerSlots
-        let currentControllerSlots = pollState.controllerSlots
-        for (deviceID, slot) in currentSteamSlots where previousSteamSlots[deviceID] != slot {
-            guard let snapshot = SteamControllerHIDMonitor.shared.snapshot(for: deviceID),
-                  snapshot != ControllerInputSnapshot() else { continue }
-            processSteamSnapshot(deviceID: deviceID, playerIndex: slot, snapshot: snapshot)
-        }
-        let occupiedSlots = Set(currentControllerSlots.values).union(currentSteamSlots.values)
-        for slot in previousOccupiedSlots.subtracting(occupiedSlots) {
-            applyBindingEngine(deviceID: InputDeviceID("released-controller-\(slot)"), playerIndex: slot, snapshot: ControllerInputSnapshot(), includePointerMotion: true)
+    private func refreshBatteryLabels() {
+        var slots = Dictionary(uniqueKeysWithValues: pollState.steamControllerSlots.map { ($0.key.rawValue, $0.value) })
+        for (id, slot) in pollState.controllerSlots { slots["native-\(id.hashValue)"] = slot }
+        nativeBatteryLevels = nativeBatteryLevels.compactMap { battery in
+            guard let slot = slots[battery.id] else { return nil }
+            return ControllerBatteryInfo(id: battery.id, label: "P\(slot + 1)", level: battery.level, charging: battery.charging)
         }
     }
 
@@ -415,7 +402,6 @@ public final class NativeWebRTCGamepadMonitor {
             return pollState.takePendingEvents() + pollState.resetMappings()
         }
         for event in releases { emitInputEvent(event) }
-        nativeBatteryLevels.removeAll()
     }
 
     private func handleSteamControllerInput(_ deviceID: InputDeviceID, snapshot: ControllerInputSnapshot) {
@@ -471,8 +457,10 @@ public final class NativeWebRTCGamepadMonitor {
             }
         }
         let currentNativeIDs = Set(pollState.cachedControllers.prefix(4).map { "native-\(ObjectIdentifier($0).hashValue)" })
-        updated.removeAll { !currentNativeIDs.contains($0.id) }
+        let validIDs = currentNativeIDs.union(pollState.steamControllerSlots.keys.map(\.rawValue))
+        updated.removeAll { !validIDs.contains($0.id) }
         nativeBatteryLevels = updated
+        refreshBatteryLabels()
     }
 
     private func handleSteamControllerBattery(_ deviceID: InputDeviceID, level: UInt8, charging: Bool) {

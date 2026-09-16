@@ -36,6 +36,10 @@ extension WebRTCMediaStreamSurface {
     /// themselves while they are up, but still forward a neutral state so the game does not see a
     /// button stuck down.
     func routeStreamInput(_ event: UserInputEvent, transport: NativeWebRTCTransport) {
+        if showingControllerOrder {
+            if isStreamReady, let release = ControllerOrderInputPolicy.eventForStream(event) { transport.sendNow(release) }
+            return
+        }
         if onScreenKeyboardVisible, !isEndingStream, case .gamepad(let state) = event {
             onScreenKeyboard.handleGamepadState(state)
             if isStreamReady {

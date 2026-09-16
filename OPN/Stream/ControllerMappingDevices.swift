@@ -18,7 +18,32 @@ struct ControllerMappingDevice: Equatable, Identifiable, Sendable {
 final class ControllerMappingDevices: ObservableObject {
     static let shared = ControllerMappingDevices()
     @Published private(set) var devices: [ControllerMappingDevice] = []
+    @Published private(set) var playerOrder = ControllerPlayerOrder()
+    private let orderChanges = PassthroughSubject<Void, Never>()
+
+    var orderChangesPublisher: AnyPublisher<Void, Never> { orderChanges.eraseToAnyPublisher() }
+    var orderedDevices: [ControllerMappingDevice] {
+        let byID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
+        return playerOrder.deviceIDs.compactMap { byID[$0] }
+    }
+
+    func move(_ id: InputDeviceID, direction: ControllerPlayerOrder.Direction) {
+        var next = playerOrder
+        next.move(id, direction: direction)
+        guard next != playerOrder else { return }
+        playerOrder = next
+        orderChanges.send()
+    }
+
+    func resetOrder() {
+        var next = playerOrder
+        next.reset(connectedIDs: devices.map(\.id))
+        guard next != playerOrder else { return }
+        playerOrder = next
+        orderChanges.send()
+    }
     private var identities = ControllerConnectionIDs()
+    private var steamTopologySubscription: AnyCancellable?
     private var nativeIDs: [ObjectIdentifier: InputDeviceID] = [:]
     private var controllers: [InputDeviceID: GCController] = [:]
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
@@ -28,6 +53,9 @@ final class ControllerMappingDevices: ObservableObject {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refresh() }
             })
+        }
+        steamTopologySubscription = SteamControllerHIDMonitor.shared.topologyChangesPublisher.sink { [weak self] in
+            self?.refresh()
         }
         refresh()
     }
@@ -51,6 +79,9 @@ final class ControllerMappingDevices: ObservableObject {
                                                 family: family, hasTouchpad: gamepad is GCDualShockGamepad))
         }
         if devices != next { devices = next }
+        var order = playerOrder
+        order.update(connectedIDs: next.map(\.id))
+        if order != playerOrder { playerOrder = order }
         ControllerMappingStore.shared.removeDisconnectedAssignments(connectedIDs: Set(next.map(\.id)))
     }
 

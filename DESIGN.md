@@ -618,6 +618,26 @@ bar when active. The footer carries a `Semantic.warning` "UNSAVED CHANGES" eyebr
 `.defaultAction`, opacity 0.46 while there is nothing to save). Row actions elsewhere in the bar
 use `OPNCompactButtonStyle`.
 
+### Controller Order (`ControllerOrderView`)
+
+Available from Settings → Input → Controller Tools and both stream HUDs. Uses the controller-sheet
+header, rules, and Surface Deep, at 680 wide and 320–680 tall (sized to the controller count)
+before interface scaling and screen-size clamping.
+A scrollable list of square Panel rows has a 76-wide accent PLAYER 1–4 label, controller name and
+family, and secondary Up/Down buttons. Extra controllers are marked WAITING and can be moved into
+the first four. The focused move button has a 2px accent border; D-pad/stick navigates rows and
+arrows, Confirm moves, Back closes. Input is polled without taking GameController handler slots,
+and only the key sheet of the active app accepts controller navigation. Empty state explicitly says
+no controllers are connected. The pinned footer offers Default Order (disabled unless custom) and
+Close; all dimensions and typography scale with `opnUIScale`.
+
+Ordering is per connection session, separate from mapping profile assignments. Default order is
+Steam-first; custom order preserves surviving connections and appends new ones, then resets when
+all disconnect. Steam and native topology are observed even while the sheet is closed. Only local
+controllers are reordered; Remote Co-Op guest slots are unchanged. Slot changes stop old rumble,
+release held input before changing routing, refresh battery/player labels and topology, then replay
+current state in the new slots.
+
 ### Focus Ring (`openNowFocusRing`)
 
 2px accent `Rectangle` stroke overlay on the focused control. Used for gamepad and

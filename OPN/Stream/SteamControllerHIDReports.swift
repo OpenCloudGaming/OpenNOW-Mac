@@ -154,6 +154,7 @@ extension SteamControllerHIDMonitor {
         let names = Set(active.compactMap { stringProperty($0.device, key: kIOHIDProductKey)?.lowercased() }
             .filter { !$0.isEmpty })
         Self.claimedNames.withLock { $0 = names }
+        topologyChanges.send()
         for consumer in consumers.values {
             consumer.controllersChanged()
         }

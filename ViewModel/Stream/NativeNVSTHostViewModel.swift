@@ -175,6 +175,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var controllerBatteries: [ControllerBatteryInfo] = []
     var batteryAlertTracker = ControllerBatteryAlertTracker()
     @Published var showingControllerMapping = false
+    @Published var showingControllerOrder = false
     @Published var hudFocusID: String?
     var hudGamepadTracker = StreamHUDGamepadTracker()
     @Published var recordingStatus = StreamRecordingStatus.idle

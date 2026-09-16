@@ -10,6 +10,7 @@ struct InputSettingsPage: View {
     @State private var inputMonitoringGranted = InputSettingsPage.isInputMonitoringGranted
     @State private var showingControllerTest = false
     @State private var showingControllerMapping = false
+    @State private var showingControllerOrder = false
 
     private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
 
@@ -31,6 +32,7 @@ struct InputSettingsPage: View {
         }
         .onDisappear { model.steamNavigator.stop() }
         .sheet(isPresented: $showingControllerMapping) { ControllerMappingView() }
+        .sheet(isPresented: $showingControllerOrder) { ControllerOrderView() }
         .sheet(isPresented: $showingControllerTest) {
             SteamControllerTestView()
         }
@@ -163,6 +165,23 @@ struct InputSettingsPage: View {
         }
     }
 
+    private var controllerOrderRow: some View {
+        HStack(spacing: 12 * uiScale) {
+            VStack(alignment: .leading, spacing: 5 * uiScale) {
+                Text("Controller Order")
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                Text("Choose which connected controllers are Player 1–4. Mapping profiles stay with each controller.")
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button("Reorder Controllers") { showingControllerOrder = true }
+                .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
+        }
+    }
+
     private var controllerToolsCard: some View {
         SettingsCard(title: "Controller Tools", uiScale: uiScale) {
             HStack {
@@ -182,6 +201,8 @@ struct InputSettingsPage: View {
             }
             SettingsDivider(uiScale: uiScale)
             mappingRow
+            SettingsDivider(uiScale: uiScale)
+            controllerOrderRow
         }
         .settingsSection("controller-tools")
     }

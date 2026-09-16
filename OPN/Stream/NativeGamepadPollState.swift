@@ -41,6 +41,12 @@ final class NativeGamepadPollState {
         return events
     }
 
+    func prepareForSlotChange() -> [UserInputEvent] {
+        stopPolling()
+        lastBatteryLevels.removeAll()
+        return takePendingEvents() + configureMappings([:])
+    }
+
     func resetMappings() -> [UserInputEvent] {
         let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
         return mappingSessions.keys.flatMap { mappingSessions[$0]?.reset(timestamp: timestamp) ?? [] }

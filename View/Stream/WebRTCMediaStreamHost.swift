@@ -132,6 +132,9 @@ struct NativeNVSTMediaStreamSurface: View {
         .sheet(isPresented: $model.showingControllerMapping) {
             ControllerMappingView()
         }
+        .sheet(isPresented: $model.showingControllerOrder) {
+            ControllerOrderView()
+        }
     }
 
     @ViewBuilder var nativeWindowOverlay: some View {

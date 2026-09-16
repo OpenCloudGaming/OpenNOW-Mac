@@ -135,6 +135,8 @@ public final class SteamControllerHIDMonitor: ObservableObject {
     var gamepadDeviceContexts: [ObjectIdentifier: DeviceContext] = [:]
     var pendingGamepadDevices: [UInt64: IOHIDDevice] = [:]
     var consumers: [ObjectIdentifier: Consumer] = [:]
+    let topologyChanges = PassthroughSubject<Void, Never>()
+    var topologyChangesPublisher: AnyPublisher<Void, Never> { topologyChanges.eraseToAnyPublisher() }
     private var captureRequesters: Set<ObjectIdentifier> = []
     private var permissionRetryObserver: NSObjectProtocol?
     nonisolated(unsafe) var heartbeatTimer: Timer?

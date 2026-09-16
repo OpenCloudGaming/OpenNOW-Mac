@@ -27,6 +27,7 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "cursor-policy", isDisabled: !isConnected, group: "input", columns: 4, action: cycleCursorPolicy),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, group: "input", columns: 4, action: toggleNativeAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerMapping = true }),
+            StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerOrder = true }),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showStreamControls() }),
             StreamHUDFocusEntry(id: "mouse-sensitivity", isDisabled: !isConnected, action: cycleNativeMouseSensitivity),
         ]

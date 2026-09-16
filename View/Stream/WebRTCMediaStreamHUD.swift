@@ -333,7 +333,7 @@ extension WebRTCMediaStreamSurface {
 
     var hudInputPanel: some View {
         hudSection(label: "INPUT", spacing: 8) {
-            HStack(spacing: 8) {
+            StreamHUDWrappingRow(minimumItemWidth: 42, fixedItemWidth: 42) {
                 StreamHUDActionRow(
                     title: "Paste Clipboard",
                     subtitle: "Send text to stream",
@@ -366,6 +366,15 @@ extension WebRTCMediaStreamSurface {
                     isDisabled: false,
                     isFocused: hudFocusID == "controller-mapping",
                     action: openControllerMapping
+                )
+                StreamHUDActionRow(
+                    title: "Reorder Controllers",
+                    subtitle: "Choose Player 1–4",
+                    systemName: "arrow.up.arrow.down",
+                    isActive: false,
+                    isDisabled: false,
+                    isFocused: hudFocusID == "controller-order",
+                    action: openControllerOrder
                 )
                 StreamHUDActionRow(
                     title: "Quit Menu",
