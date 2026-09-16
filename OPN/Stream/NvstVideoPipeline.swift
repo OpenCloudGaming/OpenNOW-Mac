@@ -498,8 +498,6 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         // The VSync mode decides whether the seat gets a pacing report at all (only Adaptive
         // feeds `FRAME_PACING_FEEDBACK_INTERVAL`), and the report's +16 claim: the real display
         // interval when pacing to the display, the stream target otherwise.
-        let isSendingPacingReports = vsyncMode.isSendingFramePacingReports
-        let claimedVsyncMicroseconds = vsyncMode.isReportingDisplayVsync ? displayVsyncMicroseconds : frameTimeMicroseconds
         lock.unlock()
         guard let bundle = channel else { return }
         // The capture documents this field as the MEASURED interval since the previous frame —
@@ -531,13 +529,13 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         // does — but only while the VSync mode feeds the seat at all (see `NvstVsyncMode`).
         var pacingSent = 0
         var pacingFailed = 0
-        if isSendingPacingReports {
+        if vsyncMode.isSendingFramePacingReports {
             let outcome = sendPacingReportIfDue(
                 frameAckNumber: frameAckNumber,
                 measuredInterFrame: measuredInterFrame,
                 hopMilliseconds: timings.hop,
                 decodeMilliseconds: timings.decode,
-                claimedVsyncMicroseconds: claimedVsyncMicroseconds,
+                claimedVsyncMicroseconds: vsyncMode.isReportingDisplayVsync ? displayVsyncMicroseconds : frameTimeMicroseconds,
                 bundle: bundle
             )
             pacingSent = outcome.sent

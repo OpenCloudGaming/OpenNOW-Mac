@@ -288,16 +288,13 @@ public enum OPNStreamPreferences {
 
     private static func mainThreadScreenSnapshot(screen: NSScreen?) -> OPNStreamScreenSnapshot? {
         nonisolated(unsafe) let requestedScreen = screen
-        if Thread.isMainThread {
-            return MainActor.assumeIsolated {
-                OPNStreamScreenSnapshot(screen: requestedScreen ?? NSScreen.main)
-            }
-        }
-        return DispatchQueue.main.sync {
+        let capture = {
             MainActor.assumeIsolated {
                 OPNStreamScreenSnapshot(screen: requestedScreen ?? NSScreen.main)
             }
         }
+        if Thread.isMainThread { return capture() }
+        return DispatchQueue.main.sync(execute: capture)
     }
 
     public static func codecSupported(_ codec: OPNStreamCodecOption, capabilities: OPNStreamDeviceCapabilities) -> Bool {

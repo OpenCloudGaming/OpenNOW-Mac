@@ -357,7 +357,6 @@ public enum WebRTCMediaStreamSettingsResolver {
         if enableHdr, !colorQuality.lowercased().hasPrefix("10bit") { colorQuality = "10bit_420" }
         let controllerCount = capabilities.connectedGamepadCount
         let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables)
-        let upscalingMode = normalizedUpscalingMode(profile.upscalingMode)
         let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
         let negotiatedAudioChannels = audioChannelCount(surroundMode: profile.surroundMode,
                                                         deviceOutputChannels: capabilities.audioOutputChannelCount,
@@ -390,7 +389,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             microphonePushToTalkModifierMask: profile.microphonePushToTalkModifierMask,
             gameVolume: profile.gameVolume,
             microphoneVolume: profile.microphoneVolume,
-            upscalingMode: upscalingMode,
+            upscalingMode: normalizedUpscalingMode(profile.upscalingMode),
             upscalingSharpness: profile.upscalingSharpness,
             upscalingDenoise: profile.upscalingDenoise,
             upscalingTargetHeight: profile.upscalingTargetHeight,
