@@ -303,37 +303,6 @@ public actor OPNRemoteCoOpEmbeddedServer {
         endpoint = nil
     }
 
-    private func startHeartbeat() {
-        heartbeatTask?.cancel()
-        heartbeatTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.heartbeatInterval)
-                // `guard let self`, not `self?.`: once the actor is gone so is the handle that
-                // could cancel this, and the loop would wake every fifteen seconds forever.
-                guard let self, !Task.isCancelled else { return }
-                await self.sweepIdleConnections()
-            }
-        }
-    }
-
-    /// Asks every signaling socket to answer, and drops the ones that stopped answering.
-    ///
-    /// Both guest clients reply to `heartbeat`, so silence past `socketIdleTimeout` means the peer is
-    /// gone rather than quiet. Dropping it here is what publishes `.guestDisconnected`, which starts
-    /// the grace period and eventually frees the slot.
-    private func sweepIdleConnections() {
-        let now = Date()
-        let heartbeat = OPNRemoteCoOpWireMessage(kind: .heartbeat, roomID: nil)
-        for connection in connections.values where connection.isWebSocket {
-            guard now.timeIntervalSince(connection.lastActivityAt) < Self.socketIdleTimeout else {
-                logger?("Remote Co-Op dropped a signaling socket that stopped answering")
-                close(connection.id)
-                continue
-            }
-            sendWire(connection, heartbeat)
-        }
-    }
-
     /// Sends a host-side command to the guest it names.
     ///
     /// No room bookkeeping: there is exactly one invite and this process owns it, so a command is
@@ -654,8 +623,47 @@ public actor OPNRemoteCoOpEmbeddedServer {
         participantsGivenNetworkConfiguration.remove(participantID)
         for continuation in eventContinuations.values { continuation.yield(.guestDisconnected(participantID)) }
     }
+}
 
-    // MARK: - Sending
+// MARK: - Lifecycle
+
+private extension OPNRemoteCoOpEmbeddedServer {
+
+    private func startHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.heartbeatInterval)
+                // `guard let self`, not `self?.`: once the actor is gone so is the handle that
+                // could cancel this, and the loop would wake every fifteen seconds forever.
+                guard let self, !Task.isCancelled else { return }
+                await self.sweepIdleConnections()
+            }
+        }
+    }
+
+    /// Asks every signaling socket to answer, and drops the ones that stopped answering.
+    ///
+    /// Both guest clients reply to `heartbeat`, so silence past `socketIdleTimeout` means the peer is
+    /// gone rather than quiet. Dropping it here is what publishes `.guestDisconnected`, which starts
+    /// the grace period and eventually frees the slot.
+    private func sweepIdleConnections() {
+        let now = Date()
+        let heartbeat = OPNRemoteCoOpWireMessage(kind: .heartbeat, roomID: nil)
+        for connection in connections.values where connection.isWebSocket {
+            guard now.timeIntervalSince(connection.lastActivityAt) < Self.socketIdleTimeout else {
+                logger?("Remote Co-Op dropped a signaling socket that stopped answering")
+                close(connection.id)
+                continue
+            }
+            sendWire(connection, heartbeat)
+        }
+    }
+}
+
+// MARK: - Sending
+
+private extension OPNRemoteCoOpEmbeddedServer {
 
     private func connection(for handle: OPNRemoteCoOpConnectionHandle) -> Connection? {
         guard handle.transport == .embedded,
