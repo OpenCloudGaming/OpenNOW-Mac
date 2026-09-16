@@ -148,6 +148,10 @@ final class NativeNVSTHostViewModel: ObservableObject {
     /// and the green button, ⌃⌘F and the menu bar change it without going through the HUD.
     @Published var streamWindowIsFullScreen = false
     @Published var pillarboxFillModeIndex = 0
+    /// The VSync mode this session uses, as the index into `OPNStreamPreferences.vsyncModeOptions`.
+    /// Saved on change; the transport applies the client-facing half live and the announce holds
+    /// the seat-facing half for the session. Adaptive until the launch profile loads.
+    @Published var vsyncModeIndex = NvstVsyncMode.adaptive.rawValue
     @Published var upscalingModeIndex = 0
     @Published var upscalingTargetIndex = 1
     @Published var mouseSensitivityPercent = 100
@@ -274,6 +278,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         microphoneDesiredEnabled = microphoneEnabled
         microphonePendingStates.removeAll()
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
+        vsyncModeIndex = profile.vsyncModeIndex
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(resolvedStreamSettings.maxBitrateMbps * 1_000), l4sEnabled: resolvedStreamSettings.enableL4S)
         nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
         lastAcceptedStreamInputAt = Date()
@@ -315,6 +320,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
             configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
             configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
             configuredColorQuality: resolvedStreamSettings.colorQuality,
+            configuredVsyncMode: NvstVsyncMode(rawValue: resolvedStreamSettings.vsyncMode) ?? .adaptive,
             configuredAudioChannelCount: resolvedStreamSettings.audioChannelCount,
             // Auto resolves against the negotiated count, so it can never read as short-changed;
             // an explicit 5.1 or 7.1 ignores that argument and reports what was actually picked.

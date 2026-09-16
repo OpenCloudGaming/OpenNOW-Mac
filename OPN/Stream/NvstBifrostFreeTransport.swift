@@ -236,6 +236,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The session's colour tier (`8bit_420`, `10bit_420`, `10bit_444`, ...), announced as
     /// `video[0].bitDepth` / `chromaFormat` so the ANNOUNCE agrees with what the session PUT asked for.
     let configuredColorQuality: String?
+    /// The client's VSync mode, announced as `video[0].framePacing.mode` / `feedbackMode` and
+    /// fed to the pipeline's `0x203` report cadence. `nil` (a transport that predates the
+    /// setting) keeps the captured baseline's Adaptive behaviour end to end.
+    let configuredVsyncMode: NvstVsyncMode?
     /// Playback channels the resolver settled on (2, 6 or 8): what the bundle's audio section
     /// decodes and what the ANNOUNCE asks the seat to encode.
     let configuredAudioChannelCount: Int
@@ -253,6 +257,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 configuredPrefilterDenoise: Int? = nil,
                 configuredPrefilterModel: Int? = nil,
                 configuredColorQuality: String? = nil,
+                configuredVsyncMode: NvstVsyncMode? = nil,
                 configuredAudioChannelCount: Int = 2,
                 preferredAudioChannelCount: Int = 0,
                 logger: (@Sendable (String) -> Void)? = nil,
@@ -269,6 +274,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterDenoise = configuredPrefilterDenoise
         self.configuredPrefilterModel = configuredPrefilterModel
         self.configuredColorQuality = configuredColorQuality
+        self.configuredVsyncMode = configuredVsyncMode
         self.configuredAudioChannelCount = OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(configuredAudioChannelCount)
         self.preferredAudioChannelCount = preferredAudioChannelCount > 0 ? preferredAudioChannelCount : self.configuredAudioChannelCount
         self.logger = logger
@@ -655,6 +661,7 @@ extension NvstBifrostFreeTransport {
             disablesOwdCongestionControl: !Self.usesOwdCongestionControl,
             announcesExtendedSettings: Self.announcesExtendedSettings,
             echoesOfferedAttributes: Self.echoesOfferedAttributes,
+            vsyncMode: configuredVsyncMode,
             announceOverrides: Self.announceOverridesFromEnvironment(logger: logger)
         )
     }

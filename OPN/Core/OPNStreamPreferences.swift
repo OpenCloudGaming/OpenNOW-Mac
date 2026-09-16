@@ -81,6 +81,14 @@ public enum OPNStreamPreferences {
         OPNStreamPresentationModeOption(label: "Smooth", value: 1),
         OPNStreamPresentationModeOption(label: "Lowest Latency", value: 2)
     ]
+    /// The VSync trio, in the official client's own order (Off, On, Adaptive — the third being
+    /// what the captured ANNOUNCE baseline and every official streaming preset use). Values are
+    /// `NvstVsyncMode` raw values.
+    public static let vsyncModeOptions = [
+        OPNStreamVsyncModeOption(label: "Off", value: 0),
+        OPNStreamVsyncModeOption(label: "On", value: 1),
+        OPNStreamVsyncModeOption(label: "Adaptive", value: 2)
+    ]
     public static let upscalingTargetOptions = [
         OPNStreamUpscalingTargetOption(label: "2K", height: 1440),
         OPNStreamUpscalingTargetOption(label: "4K", height: 2160),
@@ -142,6 +150,7 @@ public enum OPNStreamPreferences {
         Keys.pillarboxFillColor,
         Keys.pillarboxFillDim,
         Keys.presentationModeIndex,
+        Keys.vsyncModeIndex,
         Keys.recordingVideoBitrateMbps,
         Keys.recordingAudioBitrateKbps,
         Keys.recordingEnhancedVideoEnabled,

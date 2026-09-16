@@ -52,6 +52,14 @@ extension NativeNVSTMediaStreamSurface {
                     onSelect: { model.updateNativePillarboxFill(modeIndex: $0) },
                     isFocused: model.hudFocusID == "pillarbox-fill"
                 )
+                StreamHUDDropdown(
+                    label: "VSync",
+                    options: OPNStreamPreferences.vsyncModeOptions.map { ($0.value, $0.label) },
+                    selection: OPNStreamPreferences.vsyncModeOptions[model.vsyncModeIndex].value,
+                    isDisabled: !model.isConnected,
+                    onSelect: { model.updateNativeVsyncMode(modeValue: $0) },
+                    isFocused: model.hudFocusID == "vsync"
+                )
                 nativeHUDDetailRow(label: "Active", value: model.upscalingModeIndex == 0 ? "Native" : OPNStreamPreferences.upscalingModeOptions[model.upscalingModeIndex].label)
                 nativeHUDDetailRow(label: "Resolution", value: model.nativeStreamResolutionText)
                 nativeHUDDetailRow(label: "Frame Rate", value: model.nativeStreamFrameRateText)

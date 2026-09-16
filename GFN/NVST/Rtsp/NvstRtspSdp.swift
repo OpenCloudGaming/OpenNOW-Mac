@@ -274,6 +274,11 @@ public enum NvstRtspSdp {
         public var announcesExtendedSettings: Bool
         /// Lets the seat's DESCRIBE offer override our value for keys we already send.
         public var echoesOfferedAttributes: Bool
+        /// The client's VSync mode, overriding the captured baseline's
+        /// `framePacing.mode:1` / `framePacing.feedbackMode:1` pair (which is the Adaptive
+        /// announce — the official client's profiles all pin `vSync` to Adaptive and the capture
+        /// never left it). Nil keeps the captured baseline, matching today's behaviour.
+        public var vsyncMode: NvstVsyncMode?
         /// Applied last, verbatim: the A/B harness for encoder knobs. Empty in normal operation.
         public var announceOverrides: [(String, String)]
 
@@ -307,10 +312,12 @@ public enum NvstRtspSdp {
                     disablesOwdCongestionControl: Bool = true,
                     announcesExtendedSettings: Bool = false,
                     echoesOfferedAttributes: Bool = false,
+                    vsyncMode: NvstVsyncMode? = nil,
                     announceOverrides: [(String, String)] = []) {
             self.disablesOwdCongestionControl = disablesOwdCongestionControl
             self.announcesExtendedSettings = announcesExtendedSettings
             self.echoesOfferedAttributes = echoesOfferedAttributes
+            self.vsyncMode = vsyncMode
             self.announceOverrides = announceOverrides
             self.offeredAttributes = offeredAttributes
             self.codec = codec

@@ -151,6 +151,9 @@ public struct NvstRtspNegotiationInput: Sendable {
     public let announcesExtendedSettings: Bool
     /// `OPN_NVST_ANNOUNCE_ECHO_OFFER=1`: lets the seat's offer override our announced values.
     public let echoesOfferedAttributes: Bool
+    /// The client's VSync mode, announced as `video[0].framePacing.mode` / `feedbackMode`.
+    /// Nil keeps the captured baseline, which is the Adaptive announce.
+    public let vsyncMode: NvstVsyncMode?
     /// Attributes applied after every other layer, verbatim. The encoder-knob A/B harness
     /// (`OPN_NVST_ANNOUNCE_OVERRIDES`, see `NvstBifrostFreeTransport.announceOverridesFromEnvironment`);
     /// empty in normal operation.
@@ -175,11 +178,13 @@ public struct NvstRtspNegotiationInput: Sendable {
                 disablesOwdCongestionControl: Bool = true,
                 announcesExtendedSettings: Bool = false,
                 echoesOfferedAttributes: Bool = false,
+                vsyncMode: NvstVsyncMode? = nil,
                 announceOverrides: [(String, String)] = []) {
         self.audioChannelCount = audioChannelCount
         self.disablesOwdCongestionControl = disablesOwdCongestionControl
         self.announcesExtendedSettings = announcesExtendedSettings
         self.echoesOfferedAttributes = echoesOfferedAttributes
+        self.vsyncMode = vsyncMode
         self.announceOverrides = announceOverrides
         self.sessionID = sessionID
         self.rtspsEndpoints = rtspsEndpoints

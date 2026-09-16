@@ -133,6 +133,7 @@ extension OPNStreamPreferences {
         storage.set(denoise, forKey: k.upscalingDenoise)
     }
     public static func savePresentationModeIndex(_ value: Int) { storage.set(clamp(value, 0, presentationModeOptions.count - 1), forKey: k.presentationModeIndex) }
+    public static func saveVsyncModeIndex(_ value: Int) { storage.set(clamp(value, 0, vsyncModeOptions.count - 1), forKey: k.vsyncModeIndex) }
     public static func savePillarboxFillModeIndex(_ value: Int) { storage.set(normalizedPillarboxFillModeIndex(value), forKey: k.pillarboxFillModeIndex) }
     public static func savePillarboxFillColor(_ value: String) { storage.set(normalizedPillarboxFillColor(value), forKey: k.pillarboxFillColor) }
     public static func savePillarboxFillDim(_ value: Int) { storage.set(clamp(value, 0, 100), forKey: k.pillarboxFillDim) }
@@ -261,6 +262,8 @@ extension OPNStreamPreferences {
         profile.pillarboxFillDim = clampedInt(dictionary, k.pillarboxFillDim, 55, 101)
         profile.presentationModeIndex = clampedInt(dictionary, k.presentationModeIndex, 0, presentationModeOptions.count)
         profile.presentationMode = presentationModeOptions[profile.presentationModeIndex].value
+        profile.vsyncModeIndex = clampedInt(dictionary, k.vsyncModeIndex, 2, vsyncModeOptions.count)
+        profile.vsyncMode = vsyncModeOptions[profile.vsyncModeIndex].value
     }
 
     /// Recording output plus the per-session behaviour toggles.
@@ -325,6 +328,7 @@ extension OPNStreamPreferences {
             k.pillarboxFillColor: profile.pillarboxFillColor,
             k.pillarboxFillDim: profile.pillarboxFillDim,
             k.presentationModeIndex: profile.presentationModeIndex,
+            k.vsyncModeIndex: profile.vsyncModeIndex,
             k.recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             k.recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             k.surroundModeIndex: profile.surroundModeIndex,

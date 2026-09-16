@@ -295,6 +295,15 @@ extension NvstRtspSdp {
         // for keeping the source itself paced to the client instead of decode having to catch up
         // to a faster one.
         attributes.set("x-nv-video[0].cloudGsync", "1")
+        // The captured baseline's frame-pacing pair is the Adaptive announce
+        // (`mode:1`/`feedbackMode:1`, `FRAME_PACING_FEEDBACK_INTERVAL`). A different VSync mode
+        // has to override both, in the same client-owned layer as everything else the client
+        // knows: the pacer is configured at ANNOUNCE and the seat holds it for the session, so
+        // this is the only place an Off/On choice reaches the seat (see `NvstVsyncMode`).
+        if let vsyncMode = options.vsyncMode {
+            attributes.set("x-nv-video[0].framePacing.mode", vsyncMode.framePacingMode)
+            attributes.set("x-nv-video[0].framePacing.feedbackMode", vsyncMode.framePacingFeedbackMode)
+        }
         // Re-tried and removed again (2026-08-28): announcing avoidDuplicateGameFrames:0 changed
         // nothing live — static scenes still read 44-61 fps — the seat silently drops attributes
         // its DESCRIBE never offered. The static-scene dip is the seat not encoding unchanged

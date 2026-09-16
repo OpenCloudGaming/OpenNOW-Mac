@@ -552,6 +552,7 @@ extension NvstRtspNegotiator {
             disablesOwdCongestionControl: input.disablesOwdCongestionControl,
             announcesExtendedSettings: input.announcesExtendedSettings,
             echoesOfferedAttributes: input.echoesOfferedAttributes,
+            vsyncMode: input.vsyncMode,
             announceOverrides: input.announceOverrides
         )
     }

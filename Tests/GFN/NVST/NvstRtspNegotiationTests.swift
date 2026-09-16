@@ -487,6 +487,10 @@ import Testing
         #expect(lines.contains("a=x-nv-video[0].framePacing.pid.minTargetFrameTimeUs:7936"))
         #expect(!lines.contains("a=x-nv-video[0].framePacing.pid.targetFrameTimeUs:16666"))
         #expect(!lines.contains("a=x-nv-video[0].framePacing.pid.maxTargetFrameTimeUs:16684"))
+        // No VSync choice: the captured baseline's Adaptive pair (`mode:1`/`feedbackMode:1`)
+        // stands untouched, exactly as every official streaming preset announces it.
+        #expect(lines.contains("a=x-nv-video[0].framePacing.mode:1"))
+        #expect(lines.contains("a=x-nv-video[0].framePacing.feedbackMode:1"))
         #expect(lines.contains("a=x-nv-runtime.videoSrtp:1"))
         #expect(lines.contains("a=x-nv-runtime.encryptionKeyId:42"))
         #expect(lines.contains("a=x-nv-runtime.encryptionKey:\(String(repeating: "0A", count: 32))"))
@@ -612,5 +616,24 @@ extension NvstRtspSdpTests {
         #expect(ten444.contains("a=x-nv-video[0].bitDepth:10"))
         #expect(ten444.contains("a=x-nv-video[0].chromaFormat:3"))
         #expect(!ten444.contains("a=x-nv-video[0].chromaFormat:1"))
+    }
+
+    /// The VSync choice overrides the captured baseline's pacing pair, in the client-owned layer:
+    /// Off drops the pacer entirely (`mode:0`), On paces without interval feedback
+    /// (`FRAME_PACING_FEEDBACK_NEVER`), Adaptive is the captured baseline (`mode:1`,
+    /// `feedbackMode:1` = `FRAME_PACING_FEEDBACK_INTERVAL`). See `NvstVsyncMode`.
+    @Test func vsyncModeOverridesTheFramePacingPair() {
+        let off = NvstRtspSdp.buildAnnounceSdp(.init(vsyncMode: .off))
+        #expect(off.contains("a=x-nv-video[0].framePacing.mode:0"))
+        #expect(off.contains("a=x-nv-video[0].framePacing.feedbackMode:0"))
+
+        let on = NvstRtspSdp.buildAnnounceSdp(.init(vsyncMode: .on))
+        #expect(on.contains("a=x-nv-video[0].framePacing.mode:1"))
+        #expect(on.contains("a=x-nv-video[0].framePacing.feedbackMode:0"))
+        #expect(!on.contains("a=x-nv-video[0].framePacing.feedbackMode:1"))
+
+        let adaptive = NvstRtspSdp.buildAnnounceSdp(.init(vsyncMode: .adaptive))
+        #expect(adaptive.contains("a=x-nv-video[0].framePacing.mode:1"))
+        #expect(adaptive.contains("a=x-nv-video[0].framePacing.feedbackMode:1"))
     }
 }

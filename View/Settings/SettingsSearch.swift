@@ -44,6 +44,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("SDR Color Space", .video, "colour", keywords: ["colour space", "rec709"]),
         SettingsSearchEntry("HDR Color Space", .video, "colour", keywords: ["colour space", "rec2020"]),
         SettingsSearchEntry("Maximum Bitrate", .video, "bandwidth", keywords: ["mbps", "bandwidth", "data", "quality"]),
+        SettingsSearchEntry("VSync", .video, "advanced", keywords: ["adaptive", "tearing", "refresh", "frame pacing", "sync"]),
         SettingsSearchEntry("Cloud G-Sync", .video, "advanced", keywords: ["vsync", "tearing", "variable refresh"]),
         SettingsSearchEntry("Logical Resolution Fallback", .video, "advanced", keywords: ["scaling", "retina"]),
         SettingsSearchEntry("HUD Stream", .video, "advanced", keywords: ["overlay", "metadata"]),

@@ -476,6 +476,7 @@ extension OPNStreamPreferences {
         static let pillarboxFillColor = "OpenNOW.Stream.PillarboxFillColor"
         static let pillarboxFillDim = "OpenNOW.Stream.PillarboxFillDim"
         static let presentationModeIndex = "OpenNOW.Stream.PresentationModeIndex"
+        static let vsyncModeIndex = "OpenNOW.Stream.VsyncModeIndex"
         static let recordingVideoBitrateMbps = "OpenNOW.Stream.RecordingVideoBitrateMbps"
         static let recordingAudioBitrateKbps = "OpenNOW.Stream.RecordingAudioBitrateKbps"
         static let recordingEnhancedVideoEnabled = "OpenNOW.Stream.RecordingEnhancedVideoEnabled"

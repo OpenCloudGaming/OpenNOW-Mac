@@ -111,6 +111,7 @@ extension NvstBifrostFreeTransport {
             clock: clock,
             frameTimeMicroseconds: sessionFrameTimeMicroseconds,
             displayVsyncMicroseconds: displayVsyncMicroseconds,
+            vsyncMode: configuredVsyncMode ?? .adaptive,
             logger: logger,
             // Nothing on this transport consumes `videoFrames()` — we own the decoder — but the
             // seam stays fed, off the frame's own critical path.

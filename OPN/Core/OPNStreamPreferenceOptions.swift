@@ -102,6 +102,18 @@ public struct OPNStreamPresentationModeOption: Equatable, Sendable {
     }
 }
 
+/// The client VSync choice (Off / On / Adaptive), stored as the index into
+/// `OPNStreamPreferences.vsyncModeOptions`. Values are `NvstVsyncMode` raw values.
+public struct OPNStreamVsyncModeOption: Equatable, Sendable {
+    public var label: String
+    public var value: Int
+
+    public init(label: String, value: Int) {
+        self.label = label
+        self.value = value
+    }
+}
+
 public struct OPNStreamUpscalingModeOption: Equatable, Sendable {
     public var label: String
     public var value: Int
@@ -358,6 +370,12 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var cursorPolicy = OPNCursorPolicy.auto
     public var presentationModeIndex = 0
     public var presentationMode = 0
+    /// Index into `OPNStreamPreferences.vsyncModeOptions`. Defaults to Adaptive (2) — the
+    /// captured official baseline's announce (`framePacing.mode:1`/`feedbackMode:1`) and every
+    /// official streaming preset's `vSync` field.
+    public var vsyncModeIndex = 2
+    /// `NvstVsyncMode` raw value, for consumers that want the mode rather than the index.
+    public var vsyncMode = NvstVsyncMode.adaptive.rawValue
 
     public var allowsStreamingCustomization: Bool {
         streamingQualityProfileIndex == 0

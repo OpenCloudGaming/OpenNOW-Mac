@@ -136,6 +136,7 @@ extension OPNSessionManager {
         "reflex": bool(settings["enableReflex"], fallback: true),
         "bitDepth": bitDepth,
         "cloudGsync": bool(settings["enableCloudGsync"]),
+        "vsyncMode": min(max(int(settings["vsyncMode"], fallback: 2), 0), 2),
         "enabledL4S": bool(settings["enableL4S"]),
         "mouseMovementFlags": int(settings["mouseMovementFlags"]),
         "trueHdr": hdrEnabled,

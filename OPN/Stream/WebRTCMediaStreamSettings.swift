@@ -98,6 +98,9 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var transportMode: String
     public var streamingQualityProfile: Int
     public var enableCloudGsync: Bool
+    /// `NvstVsyncMode` raw value (0 = Off, 1 = On, 2 = Adaptive). Defaults to Adaptive, the
+    /// captured official baseline.
+    public var vsyncMode: Int
     public var fallbackToLogicalResolution: Bool
     public var hudStreamingMode: Int
     public var sdrColorSpace: Int
@@ -143,6 +146,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 transportMode: String = "webrtc",
                 streamingQualityProfile: Int = 0,
                 enableCloudGsync: Bool = false,
+                vsyncMode: Int = 2,
                 fallbackToLogicalResolution: Bool = false,
                 hudStreamingMode: Int = 0,
                 sdrColorSpace: Int = 2,
@@ -187,6 +191,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.transportMode = transportMode
         self.streamingQualityProfile = streamingQualityProfile
         self.enableCloudGsync = enableCloudGsync
+        self.vsyncMode = vsyncMode
         self.fallbackToLogicalResolution = fallbackToLogicalResolution
         self.hudStreamingMode = hudStreamingMode
         self.sdrColorSpace = sdrColorSpace
@@ -234,6 +239,8 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var transportMode: String
     public var streamingQualityProfile: Int
     public var enableCloudGsync: Bool
+    /// The resolved `NvstVsyncMode` raw value, passed on to the announce (`framePacing.mode`).
+    public var vsyncMode: Int
     public var fallbackToLogicalResolution: Bool
     public var hudStreamingMode: Int
     public var sdrColorSpace: Int
@@ -288,6 +295,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "transportMode": transportMode,
             "streamingQualityProfile": streamingQualityProfile,
             "enableCloudGsync": enableCloudGsync,
+            "vsyncMode": vsyncMode,
             "fallbackToLogicalResolution": fallbackToLogicalResolution,
             "hudStreamingMode": hudStreamingMode,
             "sdrColorSpace": sdrColorSpace,
@@ -370,6 +378,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             transportMode: normalizedTransportMode(profile.transportMode),
             streamingQualityProfile: min(max(profile.streamingQualityProfile, 0), 4),
             enableCloudGsync: profile.enableCloudGsync,
+            vsyncMode: min(max(profile.vsyncMode, 0), 2),
             fallbackToLogicalResolution: profile.fallbackToLogicalResolution,
             hudStreamingMode: min(max(profile.hudStreamingMode, 0), 2),
             sdrColorSpace: min(max(profile.sdrColorSpace, 0), 2),

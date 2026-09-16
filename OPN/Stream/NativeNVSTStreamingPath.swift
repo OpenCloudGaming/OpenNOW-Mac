@@ -36,6 +36,9 @@ public protocol NativeNVSTTransport: Sendable {
     func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws
     func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws
     func setL4SEnabled(_ enabled: Bool) async throws
+    /// Applies the client-facing half of a VSync change to a running session. The seat-facing
+    /// half was fixed at ANNOUNCE; see `NvstVsyncMode`. Throws `notRunning` without a session.
+    func setVsyncMode(_ mode: NvstVsyncMode) async throws
     func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws
     func startRecording(configuration: StreamRecordingConfiguration) async
     func stopRecording() async
@@ -59,6 +62,7 @@ public extension NativeNVSTTransport {
     func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws { throw NativeNVSTError.notRunning }
     func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws { throw NativeNVSTError.notRunning }
     func setL4SEnabled(_ enabled: Bool) async throws { throw NativeNVSTError.notRunning }
+    func setVsyncMode(_ mode: NvstVsyncMode) async throws { throw NativeNVSTError.notRunning }
     func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws { throw NativeNVSTError.notRunning }
     func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
     func setLocalAudioPlaybackMuted(_ muted: Bool) async throws { throw NativeNVSTError.notRunning }
@@ -322,6 +326,11 @@ public actor NativeNVSTStreamingPath {
     public func setL4SEnabled(_ enabled: Bool) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.setL4SEnabled(enabled)
+    }
+
+    public func setVsyncMode(_ mode: NvstVsyncMode) async throws {
+        guard activeSession != nil else { throw NativeNVSTError.notRunning }
+        try await transport.setVsyncMode(mode)
     }
 
     public func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws {

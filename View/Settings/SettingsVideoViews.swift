@@ -125,7 +125,18 @@ struct VideoSettingsPage: View {
     }
 
     private var advancedCard: some View {
-        SettingsDisclosureCard(title: "Advanced", summary: "Cloud G-Sync, HUD stream, colour fallback, power saver", storageKey: "video-advanced", uiScale: uiScale) {
+        SettingsDisclosureCard(title: "Advanced", summary: "VSync, Cloud G-Sync, HUD stream, colour fallback, power saver", storageKey: "video-advanced", uiScale: uiScale) {
+            SettingsOptionRow(title: "VSync",
+                              subtitle: vsyncSubtitle,
+                              options: OPNStreamPreferences.vsyncModeOptions.map(\.label),
+                              selectedIndex: viewModel.streamProfile.vsyncModeIndex,
+                              uiScale: uiScale,
+                              action: viewModel.setVsyncModeIndex)
+            if let tip = cloudGsyncInterplayTip {
+                SettingsDivider(uiScale: uiScale)
+                SettingsInfoRow(label: "Cloud G-Sync", value: tip, uiScale: uiScale)
+            }
+            SettingsDivider(uiScale: uiScale)
             SettingsToggleRow(title: "Cloud G-Sync", subtitle: "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isCompact: true, uiScale: uiScale, action: viewModel.setCloudGsyncEnabled)
             SettingsDivider(uiScale: uiScale)
             SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, isCompact: true, uiScale: uiScale, action: viewModel.setFallbackToLogicalResolution)
@@ -174,6 +185,27 @@ struct VideoSettingsPage: View {
             return "This display reports no HDR headroom, so sessions stay SDR."
         }
         return "Streams a 10-bit HEVC or AV1 signal and presents it in extended range."
+    }
+
+    /// The official client's own guidance for the VSync picker, adapted to this app's terms:
+    /// Off lets the seat's encoder free-run (tearing possible), On paces server frames to the
+    /// negotiated stream rate, Adaptive paces them to this display's refresh.
+    private var vsyncSubtitle: String {
+        switch NvstVsyncMode(rawValue: viewModel.streamProfile.vsyncMode) ?? .adaptive {
+        case .off: return "Off lets the seat render as fast as it can; tearing is possible."
+        case .on: return "On paces server frames to the stream's frame rate."
+        case .adaptive: return "Adaptive paces server frames to this display's refresh."
+        }
+    }
+
+    /// The official app's VRR guidance ("Set VSync to Adaptive") rendered as an info row while it
+    /// is relevant: Cloud G-Sync asks the seat for variable refresh, which only pairs with
+    /// Adaptive pacing. Silent otherwise, so a user who never turns Cloud G-Sync on gets no row.
+    private var cloudGsyncInterplayTip: String? {
+        guard viewModel.streamProfile.enableCloudGsync else { return nil }
+        let vsyncMode = NvstVsyncMode(rawValue: viewModel.streamProfile.vsyncMode) ?? .adaptive
+        guard vsyncMode != .adaptive else { return nil }
+        return "VRR pairs with VSync Adaptive — set VSync to Adaptive."
     }
 
     private var estimatedDataUsage: String {

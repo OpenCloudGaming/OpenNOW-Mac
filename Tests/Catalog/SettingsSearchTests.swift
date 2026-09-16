@@ -108,6 +108,9 @@ import Testing
         #expect(SettingsSearchIndex.results(for: "5.1").contains { $0.title == "Surround Sound" })
         #expect(SettingsSearchIndex.results(for: "black bars").contains { $0.title == "Pillarbox Fill" })
         #expect(SettingsSearchIndex.results(for: "vsync").contains { $0.title == "Cloud G-Sync" })
+        // The labelled row and the reader's word for it both reach the VSync picker.
+        #expect(SettingsSearchIndex.results(for: "vsync").contains { $0.title == "VSync" })
+        #expect(SettingsSearchIndex.results(for: "adaptive").contains { $0.title == "VSync" })
         #expect(SettingsSearchIndex.results(for: "notification").contains { $0.title == "When the Stream Is Ready" })
         // Case and diacritics do not matter.
         #expect(SettingsSearchIndex.results(for: "hdr").contains { $0.title == "HDR" })

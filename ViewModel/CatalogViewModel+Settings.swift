@@ -138,6 +138,12 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setVsyncModeIndex(_ index: Int) {
+        guard canEditStreamingQualitySettings() else { return }
+        OPNStreamPreferences.saveVsyncModeIndex(index)
+        loadSettingsPreferences()
+    }
+
     func setFallbackToLogicalResolution(_ enabled: Bool) {
         guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveFallbackToLogicalResolution(enabled)

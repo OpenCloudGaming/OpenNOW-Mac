@@ -268,6 +268,19 @@ extension NvstBifrostFreeTransport {
         throw NativeNVSTError.transportFailed("Dynamic streaming mode is not implemented on the Bifrost-free path.")
     }
 
+    /// Applies the VSync mode live. The seat-facing half (`framePacing.mode`/`feedbackMode`) was
+    /// fixed at ANNOUNCE and there is no recovered control-plane command to move it, so what
+    /// changes here is the `0x203` report cadence — the client-side half of the same pacer: only
+    /// Adaptive sends reports, and only Adaptive claims the real display vsync, so the seat paces
+    /// to the display exactly when the mode asks it to. See `NvstVsyncMode`.isSendingFramePacingReports.
+    public func setVsyncMode(_ mode: NvstVsyncMode) async throws {
+        guard let pipeline = videoPipeline else {
+            throw NativeNVSTError.notRunning
+        }
+        pipeline.applyVsyncMode(mode)
+        logger?("NVST vsync \(configuredVsyncMode?.label ?? "Adaptive") -> \(mode.label) (announce holds the seat-side mode for the session)")
+    }
+
     public func setL4SEnabled(_ enabled: Bool) async throws {
         throw NativeNVSTError.transportFailed("L4S toggling is not implemented on the Bifrost-free path.")
     }
