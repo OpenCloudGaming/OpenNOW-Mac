@@ -12,14 +12,14 @@ struct SteamControllerTestView: View {
     @StateObject private var steamModel = SteamControllerTestModel()
     @StateObject private var genericModel = GenericControllerTestModel()
 
-    /// Which pad the tester is showing. Steam wins when both are attached: its HID path is the only
-    /// one with rumble and a full shell to draw. Everything else GameController exposes is the
-    /// generic branch, which draws the DualShock 4 shell when the attached pad is a PS4 pad.
+    @ObservedObject private var devices = ControllerMappingDevices.shared
+    @State private var selection = ControllerTestSelection()
+
     private enum InputSource { case steam, dualShock4, generic, none }
 
     private var inputSource: InputSource {
-        if steamModel.isConnected { return .steam }
-        guard genericModel.isConnected else { return .none }
+        if selectedDevice?.family == .steam { return steamModel.isConnected ? .steam : .none }
+        guard selectedDevice != nil, genericModel.isConnected else { return .none }
         return genericModel.padShell == .dualShock4 ? .dualShock4 : .generic
     }
 
@@ -37,6 +37,9 @@ struct SteamControllerTestView: View {
                 onClose: { dismiss() }
             )
             SteamControllerModalRule()
+            ControllerTestDevicePicker(devices: devices.devices, selectedDeviceID: selection.deviceID, onSelect: selectDevice)
+                .zIndex(1)
+            SteamControllerModalRule()
             ScrollView {
                 VStack(spacing: OPNDesign.Spacing.xLarge(scale: uiScale)) {
                     connectionStatusBar
@@ -53,11 +56,33 @@ struct SteamControllerTestView: View {
         .onAppear {
             steamModel.start()
             genericModel.start()
+            devices.refresh()
+            reconcileSelection()
         }
+        .onChange(of: devices.devices) { _, _ in reconcileSelection() }
         .onDisappear {
             steamModel.stop()
             genericModel.stop()
         }
+    }
+
+    private var selectedDevice: ControllerMappingDevice? {
+        devices.devices.first { $0.id == selection.deviceID }
+    }
+
+    private func reconcileSelection() {
+        selection.reconcile(connectedIDs: devices.devices.map(\.id))
+        applySelection()
+    }
+
+    private func selectDevice(_ id: InputDeviceID) {
+        selection.select(id, connectedIDs: devices.devices.map(\.id))
+        applySelection()
+    }
+
+    private func applySelection() {
+        steamModel.selectDevice(selectedDevice?.family == .steam ? selection.deviceID : nil)
+        genericModel.selectController(selection.deviceID.flatMap { devices.controller(for: $0) })
     }
 
     @ViewBuilder
@@ -82,8 +107,7 @@ struct SteamControllerTestView: View {
 
     private var connectedDeviceName: String {
         switch inputSource {
-        case .steam: steamModel.deviceID
-        case .dualShock4, .generic: genericModel.deviceName
+        case .steam, .dualShock4, .generic: selectedDevice?.name ?? ""
         case .none: ""
         }
     }

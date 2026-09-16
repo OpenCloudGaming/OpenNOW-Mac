@@ -93,20 +93,10 @@ final class GenericControllerTestModel: ObservableObject {
     @Published private(set) var isCharging = false
 
     private var controller: GCController?
-    private var observerTokens: [NSObjectProtocol] = []
     private var pollTask: Task<Void, Never>?
 
     func start() {
         stop()
-        observerTokens = [
-            NotificationCenter.default.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshController() }
-            },
-            NotificationCenter.default.addObserver(forName: .GCControllerDidDisconnect, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshController() }
-            },
-        ]
-        refreshController()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 self?.refreshSnapshot()
@@ -118,8 +108,6 @@ final class GenericControllerTestModel: ObservableObject {
     func stop() {
         pollTask?.cancel()
         pollTask = nil
-        for token in observerTokens { NotificationCenter.default.removeObserver(token) }
-        observerTokens = []
         controller = nil
         isConnected = false
         deviceName = ""
@@ -129,10 +117,12 @@ final class GenericControllerTestModel: ObservableObject {
         snapshot = GenericControllerInputSnapshot()
     }
 
-    /// `availableNativeControllers()` is the same filter the stream's gamepad monitor uses: extended
-    /// pads only, and no pad that is really a Steam Controller republished by GameController.
-    private func refreshController() {
-        guard let controller = NativeWebRTCGamepadMonitor.availableNativeControllers().first else {
+    func selectController(_ controller: GCController?) {
+        guard self.controller !== controller else {
+            refreshSnapshot()
+            return
+        }
+        guard let controller, let gamepad = controller.extendedGamepad else {
             self.controller = nil
             isConnected = false
             deviceName = ""
@@ -145,9 +135,7 @@ final class GenericControllerTestModel: ObservableObject {
         self.controller = controller
         isConnected = true
         deviceName = controller.vendorName ?? controller.productCategory
-        if let gamepad = controller.extendedGamepad {
-            padShell = NativeGamepadShell(controller: controller, gamepad: gamepad)
-        }
+        padShell = NativeGamepadShell(controller: controller, gamepad: gamepad)
         refreshSnapshot()
     }
 

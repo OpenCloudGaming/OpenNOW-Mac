@@ -552,7 +552,15 @@ vertical header padding, and 1px Stroke Subtle rules (`SteamControllerModalRule`
 every band. Both eyebrows read "CONTROLLER". Escape dismisses both. Every size is pre-scale and multiplied by `opnUIScale`,
 which the sheets read from the environment; hairline rules stay 1px at all scales.
 
-The tester draws whichever shell matches the attached pad, and always exactly one of the three:
+The tester has a pinned square `OPNDropdownMenu` listing every connected controller, including
+multiple pads of the same family. It initially selects the first connected device (Steam-first),
+keeps that identity selected when other pads connect or player order changes, and selects the
+first remaining device if the selected pad disconnects. With no pads it shows the empty state.
+The picker changes only the tester: it never changes player order or mapping assignments.
+Input, battery, and Steam rumble target only the selected device; changing selection clears old
+telemetry and stops an in-flight test pulse. Native input is polled without taking handler slots.
+
+The tester draws whichever shell matches the selected pad, and always exactly one of the three:
 
 - A Steam Controller gets `SteamControllerDiagramView` — full Triton hardware, rumble panel.
 - A DualShock 4 gets the read-only `DualShock4DiagramView` — the PS4 shell with its touchpad, the
