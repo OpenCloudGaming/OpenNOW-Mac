@@ -582,8 +582,7 @@ extension NativeNVSTHostViewModel {
                     // a stream that has already gone quiet will not resume on its own: reconnect
                     // now rather than waiting out the stall watchdog.
                     if wasUnavailable, isConnected, !isEnding, let path, nativeStreamHealth.zeroFrameStreak >= 2 {
-                        Task { [weak self] in
-                            guard let self else { return }
+                        Task {
                             if await !self.attemptInPlaceReconnect(path: path, reason: "network path restored") {
                                 _ = await self.finish(reason: .failed, message: NativeNVSTStreamHealthFailure.streamStalled.message)
                             }
