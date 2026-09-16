@@ -118,7 +118,7 @@ static let and a `scale:`-parameterized function; use the function on surfaces t
 multiply by `opnUIScale`.
 
 | Token | Value | | Token | Value |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `xxSmall` | 4 | | `large` | 20 |
 | `xSmall` | 8 | | `xLarge` | 24 |
 | `small` | 12 | | `xxLarge` | 32 |
@@ -182,10 +182,10 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 - **Avatar**: 14 (`OPNDesign.Radius.avatar`).
 - **Exceptions**: circular mic toggle and status dots on the stream surface, login vendor
   icon buttons (`size * 0.32`), and the controller diagram artwork
-  (`SteamControllerDiagramView`), which traces physical hardware — round face buttons, pill
-  grips, oval trackpads — rather than chrome. Everything laid out *around* that drawing,
-  including its 2px accent selection ring, stays square. New UI must not add further
-  exceptions.
+  (`SteamControllerDiagramView`, `DualShock4DiagramView`, `GenericControllerDiagramView`), which traces physical
+  hardware — round face buttons, pill grips, oval trackpads, circular stick wells — rather
+  than chrome. Everything laid out *around* those drawings, including the 2px accent
+  selection ring, stays square. New UI must not add further exceptions.
 
 ## Components
 
@@ -539,16 +539,48 @@ row, its 36pt row height reserved even when no cancel action is offered.
 
 The screen renders at 100 % interface scale like every other transient splash.
 
-### Steam Controller Sheets (test / mapping)
+### Controller Sheets (test / mapping)
 
-The two controller sheets (`SteamControllerTestView`, `SteamControllerMappingView`) are
-full-window settings-style flows on Surface Deep, wrapped in the modal spec: 2px accent top bar
-(`SteamControllerModalTopBar`), App Bar header block (`SteamControllerModalHeader` — 10pt bold
-accent eyebrow "STEAM CONTROLLER", tracking 1.1, over a 20pt bold title, with the shared square
-28×28 `OPNModalCloseButton`), 18 (Card) horizontal / 16 (Medium) vertical header padding, and
-1px Stroke Subtle rules (`SteamControllerModalRule`) between every band. Escape dismisses both.
-Every size is pre-scale and multiplied by `opnUIScale`, which the sheets read from the
-environment; hairline rules stay 1px at all scales.
+The controller tester (`SteamControllerTestView`) opens from Settings → Input → Controller
+Tools. The mapping editor (`ControllerMappingView`) opens from the same shared Controller
+Tools section and from the stream HUD. Native mappings are opt-in: no assigned profile means
+unchanged direct gamepad passthrough. Existing Steam defaults and saved profiles are preserved. Both are full-window settings-style flows on Surface Deep, wrapped in the modal spec:
+2px accent top bar (`SteamControllerModalTopBar`), App Bar header block
+(`SteamControllerModalHeader` — 10pt bold accent eyebrow, tracking 1.1, over a 20pt bold
+title, with the shared square 28×28 `OPNModalCloseButton`), 18 (Card) horizontal / 16 (Medium)
+vertical header padding, and 1px Stroke Subtle rules (`SteamControllerModalRule`) between
+every band. Both eyebrows read "CONTROLLER". Escape dismisses both. Every size is pre-scale and multiplied by `opnUIScale`,
+which the sheets read from the environment; hairline rules stay 1px at all scales.
+
+The tester has a pinned square `OPNDropdownMenu` listing every connected controller, including
+multiple pads of the same family. It initially selects the first connected device (Steam-first),
+keeps that identity selected when other pads connect or player order changes, and selects the
+first remaining device if the selected pad disconnects. With no pads it shows the empty state.
+The picker changes only the tester: it never changes player order or mapping assignments.
+Input, battery, and Steam rumble target only the selected device; changing selection clears old
+telemetry and stops an in-flight test pulse. Native input is polled without taking handler slots.
+
+The tester draws whichever shell matches the selected pad, and always exactly one of the three:
+
+- A Steam Controller gets `SteamControllerDiagramView` — full Triton hardware, rumble panel.
+- A DualShock 4 gets the read-only `DualShock4DiagramView` — the PS4 shell with its touchpad, the
+  PlayStation face glyphs (△ ○ × □), Share/Options (`buttonOptions` left, `buttonMenu` right),
+  and a PS button. The front-view artwork preserves DS4 proportions: flat upper bridge, wide
+  touchpad, circular control platforms, separate directional keycaps, symmetrical recessed
+  sticks, speaker grille, and tapered grips. Face glyphs are vector strokes, not font glyphs;
+  the shell uses Steam's 4px silhouette / 2px detail strokes in authored coordinates.
+- Everything else GameController exposes — Xbox, DualSense, and every other pad — gets the
+  read-only `GenericControllerDiagramView`.
+
+Neither of the read-only shells draws a rumble panel, which is a Steam HID feature. Detection is
+`GCDualShockGamepad` on the attached profile, with the `GCProductCategoryDualShock4` identity as
+the fallback for a pad bridged through a virtual driver. All three diagrams live in the same
+456×320 authored space at the same 560 reference width, share their shell palette and overlay
+ink through `ControllerDiagramArtwork` (`OPNDesign.Fixed.controllerShell` /
+`.controllerShellStroke`), and scale from the interface scale environment. Their shell art is
+the DESIGN.md radius exception: every rounded shape traces physical hardware, not chrome.
+The tester always shows a battery badge while connected: a reported percentage, “Charging”
+when only the charge state is known, or “Battery unavailable” when macOS supplies neither.
 
 Shared square pieces live in `SteamControllerModalChrome.swift`:
 
@@ -567,6 +599,24 @@ Shared square pieces live in `SteamControllerModalChrome.swift`:
   (#FFFFFF @ 0.055) with a 1px Stroke Subtle; the badge is height 20 with 8 padding, the section
   18 (Card) padding under an eyebrow header.
 
+Mapping opens on an actually connected controller. With no controllers connected it shows a
+"No controller connected" empty state and a Close action, not a Steam diagram or profile editor.
+Hot-plugging selects the first available controller; an existing selection is preserved while it
+remains connected. Steam defaults are an explicit picker option only while a Steam Controller is
+connected. Each connected pad has its own assignment; native connection identities are UUIDs,
+never vendor-name matches. Saved profiles persist, but assignments
+reset on disconnect/restart because GameController exposes no reliable hardware identifier. The
+Steam-default entry edits the preserved shared Steam profile; connected Steam pads can override it.
+The profile picker includes a direct-passthrough option for native pads. Families filter profiles,
+controls, and labels: generic pads have standard buttons/axes, DS4 adds touchpad click/motion only
+when GameController exposes it, and Steam keeps its grips and twin pads. The native diagrams remain
+read-only previews with selectable control chips above; the Steam diagram also supports tapping.
+The preview aspect-fits the entire shell and shoulder row into the remaining editor width and
+height without scrolling or cropping. Only the hardware artwork may shrink below the configured
+interface scale; control chips, sidebar, binding panel, and footer keep their normal scaled sizes.
+The DS4 touch pointer uses reported touch begin/end, never nonzero coordinates as a touch heuristic.
+Mappings affect local streaming, not the system controller or RemoteCoOp guest keyboard/mouse.
+
 Mapping-specific chrome: the profile picker is an `OPNDropdownMenu` (trigger height 30, Row
 Fill, 1px Stroke Regular), the profile name is a 14pt regular field on Surface Field with a 2px
 accent focus stroke, and the category sidebar (width 168) follows the Main Menu row spec — height
@@ -575,6 +625,26 @@ bar when active. The footer carries a `Semantic.warning` "UNSAVED CHANGES" eyebr
 (`OPNModalSecondaryButtonStyle`, `.cancelAction`) and SAVE (`VendorGetInButtonStyle`,
 `.defaultAction`, opacity 0.46 while there is nothing to save). Row actions elsewhere in the bar
 use `OPNCompactButtonStyle`.
+
+### Controller Order (`ControllerOrderView`)
+
+Available from Settings → Input → Controller Tools and both stream HUDs. Uses the controller-sheet
+header, rules, and Surface Deep, at 680 wide and 320–680 tall (sized to the controller count)
+before interface scaling and screen-size clamping.
+A scrollable list of square Panel rows has a 76-wide accent PLAYER 1–4 label, controller name and
+family, and secondary Up/Down buttons. Extra controllers are marked WAITING and can be moved into
+the first four. The focused move button has a 2px accent border; D-pad/stick navigates rows and
+arrows, Confirm moves, Back closes. Input is polled without taking GameController handler slots,
+and only the key sheet of the active app accepts controller navigation. Empty state explicitly says
+no controllers are connected. The pinned footer offers Default Order (disabled unless custom) and
+Close; all dimensions and typography scale with `opnUIScale`.
+
+Ordering is per connection session, separate from mapping profile assignments. Default order is
+Steam-first; custom order preserves surviving connections and appends new ones, then resets when
+all disconnect. Steam and native topology are observed even while the sheet is closed. Only local
+controllers are reordered; Remote Co-Op guest slots are unchanged. Slot changes stop old rumble,
+release held input before changing routing, refresh battery/player labels and topology, then replay
+current state in the new slots.
 
 ### Focus Ring (`openNowFocusRing`)
 

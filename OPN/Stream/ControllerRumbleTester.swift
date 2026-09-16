@@ -66,6 +66,11 @@ public enum ControllerRumbleTester {
         }
     }
 
+    public static func stopSteamControllerPulse(_ deviceID: InputDeviceID) {
+        pulseStopTasks.removeValue(forKey: deviceID)?.cancel()
+        SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
+    }
+
     @MainActor private static var pulseStopTasks: [InputDeviceID: Task<Void, Never>] = [:]
 
     private static func pulse(haptics: GCDeviceHaptics, amplitude: UInt16) -> Bool {

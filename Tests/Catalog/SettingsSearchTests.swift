@@ -79,9 +79,13 @@ import Testing
 
     @MainActor @Test func everyIndexedSettingStillExists() throws {
         let rendered = Set(try Self.renderedRowTitles().keys)
-        // The microphone test is its own component rather than a generic row, so the scan cannot see
-        // it; everything else in the index must still be rendered somewhere.
-        let unscannable: Set<String> = ["Microphone Test", "Cloudmatch Region", "Your recordings"]
+        // Components the source scan cannot see because they are not built from the scanned
+        // `Settings…Row` family: the microphone test meter, the server-location picker, the
+        // recordings library link, and the Controller Tools card's two button rows.
+        let unscannable: Set<String> = [
+            "Microphone Test", "Cloudmatch Region", "Your recordings", "Test Controller", "Controller Mapping",
+            "Controller Order",
+        ]
         let stale = SettingsSearchIndex.entries
             .map(\.title)
             .filter { !rendered.contains($0) && !unscannable.contains($0) }

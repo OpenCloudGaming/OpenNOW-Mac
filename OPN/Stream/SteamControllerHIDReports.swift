@@ -51,7 +51,7 @@ extension SteamControllerHIDMonitor {
 
     /// Folds a parsed input snapshot into the device's merged state and publishes it when it
     /// actually changed.
-    func applyState(_ snapshot: SteamControllerInputSnapshot,
+    func applyState(_ snapshot: ControllerInputSnapshot,
                             context: DeviceContext,
                             report: [UInt8],
                             isDeckStateReport: Bool) {
@@ -90,7 +90,7 @@ extension SteamControllerHIDMonitor {
         }
     }
 
-    func mergedSnapshot(for context: DeviceContext) -> SteamControllerInputSnapshot {
+    func mergedSnapshot(for context: DeviceContext) -> ControllerInputSnapshot {
         var merged = context.snapshot
         merged.buttons.formUnion(context.deckSnapshot.buttons)
         return merged
@@ -119,7 +119,7 @@ extension SteamControllerHIDMonitor {
     }
 
     func emitNeutralStateIfNeeded(for context: DeviceContext) {
-        let neutral = SteamControllerInputSnapshot()
+        let neutral = ControllerInputSnapshot()
         guard context.mergedSnapshot != neutral else { return }
         context.snapshot = neutral
         context.deckSnapshot = neutral
@@ -128,7 +128,7 @@ extension SteamControllerHIDMonitor {
         notifyInputState(context.deviceID, neutral)
     }
 
-    func notifyInputState(_ deviceID: InputDeviceID, _ snapshot: SteamControllerInputSnapshot) {
+    func notifyInputState(_ deviceID: InputDeviceID, _ snapshot: ControllerInputSnapshot) {
         for consumer in consumers.values {
             consumer.inputState(deviceID, snapshot)
         }
@@ -154,6 +154,7 @@ extension SteamControllerHIDMonitor {
         let names = Set(active.compactMap { stringProperty($0.device, key: kIOHIDProductKey)?.lowercased() }
             .filter { !$0.isEmpty })
         Self.claimedNames.withLock { $0 = names }
+        topologyChanges.send()
         for consumer in consumers.values {
             consumer.controllersChanged()
         }

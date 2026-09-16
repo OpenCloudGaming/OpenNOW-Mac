@@ -24,7 +24,7 @@ let package = Package(
         // Hosted signaling (see RemoteCoOp/hosted-signaling-plan.md). Pinned exactly, like Sentry:
         // this carries the signaling for a live session, and an unattended minor bump is not
         // something to discover mid-stream.
-        .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.3.0")
+        .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.4.0")
     ],
     targets: [
         // Prebuilt WebRTC engine (streaming + Remote Co-Op). Committed artifact: the stasel

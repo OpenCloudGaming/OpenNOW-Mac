@@ -27,14 +27,14 @@ public struct SteamControllerTrackpadMouseTranslator: Sendable {
     public static let pointsPerPadUnit: Float = 700
     public static let wheelUnitsPerPadUnit: Float = 300
 
-    private var previous = SteamControllerInputSnapshot()
+    private var previous = ControllerInputSnapshot()
     private var moveRemainderX: Float = 0
     private var moveRemainderY: Float = 0
     private var wheelRemainder: Float = 0
 
     public init() {}
 
-    public mutating func translate(_ snapshot: SteamControllerInputSnapshot) -> SteamControllerTrackpadMouseActions {
+    public mutating func translate(_ snapshot: ControllerInputSnapshot) -> SteamControllerTrackpadMouseActions {
         var actions = SteamControllerTrackpadMouseActions()
 
         if snapshot.rightPad.touched, previous.rightPad.touched {

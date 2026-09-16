@@ -1,25 +1,29 @@
 import Foundation
 
-public struct SteamControllerBindingResult: Sendable {
+public struct ControllerBindingResult: Sendable {
     public var events: [UserInputEvent] = []
     public var nextReapplyDelay: Duration?
 }
 
-/// Turns a raw `SteamControllerInputSnapshot` into the events the stream actually sees,
-/// according to a `SteamControllerMappingProfile`. Replaces the old fixed 1:1 button
+/// Turns a raw `ControllerInputSnapshot` into the events the stream actually sees,
+/// according to a `ControllerMappingProfile`. Replaces the old fixed 1:1 button
 /// passthrough, the grip-only chord mapper, and the global trackpad-mouse toggle with one
 /// per-device engine that covers every control.
-public struct SteamControllerBindingEngine: Sendable {
+public struct ControllerBindingEngine: Sendable {
     public static let modifierLeadTime: Duration = .milliseconds(50)
     private static let chordModifierButtons: GamepadButtons = [.leftShoulder, .rightShoulder]
     private static let triggerActiveThreshold: Float = 0.5
 
-    private var previousActiveControls: Set<SteamControllerControl> = []
-    private var holdInstants: [SteamControllerControl: ContinuousClock.Instant] = [:]
-    private var leftPadTranslator = SteamControllerPadPointerTranslator()
-    private var rightPadTranslator = SteamControllerPadPointerTranslator()
-    private var leftStickTranslator = SteamControllerStickPointerTranslator()
-    private var rightStickTranslator = SteamControllerStickPointerTranslator()
+    private var previousActiveControls: Set<ControllerControl> = []
+    private var holdInstants: [ControllerControl: ContinuousClock.Instant] = [:]
+    private var leftPadTranslator = ControllerPadPointerTranslator()
+    private var rightPadTranslator = ControllerPadPointerTranslator()
+    private var leftStickTranslator = ControllerStickPointerTranslator()
+    private var rightStickTranslator = ControllerStickPointerTranslator()
+    private var touchpadTranslator = ControllerPadPointerTranslator()
+    private var previousProfile: ControllerMappingProfile?
+    private var heldKeys: [UInt16: KeyboardModifiers] = [:]
+    private var heldMouseButtons: Set<MouseButton> = []
 
     public init() {}
 
@@ -27,17 +31,27 @@ public struct SteamControllerBindingEngine: Sendable {
     /// except trackpad/stick continuous pointer motion (see `applyPointerMotion`). Split
     /// out so a caller can suppress just the pointer half (e.g. while a "hold to use the
     /// local cursor instead" modifier is held) without losing button/gamepad forwarding.
-    public mutating func applyDiscreteControls(profile: SteamControllerMappingProfile,
-                                                snapshot: SteamControllerInputSnapshot,
+    public mutating func applyDiscreteControls(profile: ControllerMappingProfile,
+                                                snapshot: ControllerInputSnapshot,
                                                 deviceID: InputDeviceID,
                                                 playerIndex: Int,
                                                 now: ContinuousClock.Instant,
-                                                timestamp: MediaTimestamp) -> SteamControllerBindingResult {
+                                                timestamp: MediaTimestamp) -> ControllerBindingResult {
+        var releases: [UserInputEvent] = []
+        if let previousProfile, previousProfile != profile {
+            releases = reset(deviceID: deviceID, playerIndex: playerIndex, timestamp: timestamp)
+        }
+        previousProfile = profile
         let active = Self.activeControls(snapshot: snapshot)
         updateHoldInstants(active: active, now: now)
 
         var pass = DiscretePass()
-        for control in SteamControllerControl.allCases {
+        let controlledButtons = profile.family.controls.reduce(into: GamepadButtons()) {
+            if let button = $1.gamepadButton { $0.formUnion(button) }
+        }
+        pass.buttons = snapshot.buttons.subtracting(controlledButtons)
+        if profile.family == .steam { pass.buttons.remove(.mode) }
+        for control in profile.family.controls {
             apply(binding: profile.binding(for: control),
                   control: control,
                   isActive: active.contains(control),
@@ -47,7 +61,7 @@ public struct SteamControllerBindingEngine: Sendable {
                   timestamp: timestamp,
                   into: &pass)
         }
-        if snapshot.buttons.contains(.quickAccess) { pass.buttons.insert(.quickAccess) }
+        pass.events = releases + outputTransitions(keys: pass.keys, mouseButtons: pass.mouseButtons, deviceID: deviceID, timestamp: timestamp) + pass.events
         previousActiveControls = active
 
         let leftTrigger = pass.leftTriggerPulled ? 1 : (Self.consumesTrigger(profile.binding(for: .leftTrigger)) ? 0 : snapshot.leftTrigger)
@@ -68,7 +82,7 @@ public struct SteamControllerBindingEngine: Sendable {
             timestamp: timestamp
         )))
 
-        return SteamControllerBindingResult(events: pass.events, nextReapplyDelay: pass.nextReapplyDelay)
+        return ControllerBindingResult(events: pass.events, nextReapplyDelay: pass.nextReapplyDelay)
     }
 
     /// What one discrete pass accumulates while walking the controls.
@@ -78,11 +92,13 @@ public struct SteamControllerBindingEngine: Sendable {
         var rightTriggerPulled = false
         var nextReapplyDelay: Duration?
         var events: [UserInputEvent] = []
+        var keys: [UInt16: KeyboardModifiers] = [:]
+        var mouseButtons: Set<MouseButton> = []
     }
 
     /// Folds one control's binding into the pass.
-    private func apply(binding: SteamControllerBindingTarget,
-                       control: SteamControllerControl,
+    private func apply(binding: ControllerBindingTarget,
+                       control: ControllerControl,
                        isActive: Bool,
                        wasActive: Bool,
                        deviceID: InputDeviceID,
@@ -103,15 +119,10 @@ public struct SteamControllerBindingEngine: Sendable {
             apply(chord: combo, control: control, now: now, into: &pass)
 
         case .keyboardKey(let keyCode, let modifiers):
-            guard isActive != wasActive else { return }
-            pass.events.append(.keyboard(KeyboardEvent(
-                deviceID: deviceID, keyCode: keyCode, scanCode: keyCode,
-                modifiers: modifiers, isPressed: isActive, timestamp: timestamp
-            )))
+            if isActive { pass.keys[keyCode, default: []].formUnion(modifiers) }
 
         case .mouseButton(let button):
-            guard isActive != wasActive else { return }
-            pass.events.append(.mouse(.button(deviceID: deviceID, button: button, isPressed: isActive, timestamp: timestamp)))
+            if isActive { pass.mouseButtons.insert(button) }
 
         case .mouseScroll(let delta):
             guard isActive, !wasActive else { return }
@@ -121,8 +132,8 @@ public struct SteamControllerBindingEngine: Sendable {
 
     /// A chord's modifiers go down first; the action buttons follow only once the modifier lead
     /// time has elapsed, and the caller is asked to reapply when it has not.
-    private func apply(chord combo: SteamControllerGripCombo,
-                       control: SteamControllerControl,
+    private func apply(chord combo: ControllerButtonChord,
+                       control: ControllerControl,
                        now: ContinuousClock.Instant,
                        into pass: inout DiscretePass) {
         let modifiers = combo.buttons.intersection(Self.chordModifierButtons)
@@ -142,21 +153,29 @@ public struct SteamControllerBindingEngine: Sendable {
     }
 
     /// Trackpad/stick continuous pointer motion (mouse-move or scroll-wheel), driven by
-    /// each control's `SteamControllerPadSettings`. Stateful per pad/stick — call once per
+    /// each control's `ControllerPadSettings`. Stateful per pad/stick — call once per
     /// input report, same as `applyDiscreteControls`.
-    public mutating func applyPointerMotion(profile: SteamControllerMappingProfile,
-                                             snapshot: SteamControllerInputSnapshot,
+    public mutating func applyPointerMotion(profile: ControllerMappingProfile,
+                                             snapshot: ControllerInputSnapshot,
                                              deviceID: InputDeviceID,
                                              timestamp: MediaTimestamp) -> [UserInputEvent] {
         var events: [UserInputEvent] = []
-        events.append(contentsOf: Self.pointerEvents(
-            leftPadTranslator.translate(snapshot.leftPad, settings: profile.leftPad),
-            deviceID: deviceID, timestamp: timestamp
-        ))
-        events.append(contentsOf: Self.pointerEvents(
-            rightPadTranslator.translate(snapshot.rightPad, settings: profile.rightPad),
-            deviceID: deviceID, timestamp: timestamp
-        ))
+        if profile.family == .dualShock4 {
+            events.append(contentsOf: Self.pointerEvents(
+                touchpadTranslator.translate(snapshot.touchpad ?? ControllerTrackpadState(), settings: profile.touchpad),
+                deviceID: deviceID, timestamp: timestamp
+            ))
+        }
+        if profile.family == .steam {
+            events.append(contentsOf: Self.pointerEvents(
+                leftPadTranslator.translate(snapshot.leftPad, settings: profile.leftPad),
+                deviceID: deviceID, timestamp: timestamp
+            ))
+            events.append(contentsOf: Self.pointerEvents(
+                rightPadTranslator.translate(snapshot.rightPad, settings: profile.rightPad),
+                deviceID: deviceID, timestamp: timestamp
+            ))
+        }
         if profile.leftStick.mode != .joystickPassthrough {
             events.append(contentsOf: Self.pointerEvents(
                 leftStickTranslator.translate(x: snapshot.leftStickX, y: snapshot.leftStickY, settings: profile.leftStick),
@@ -172,18 +191,49 @@ public struct SteamControllerBindingEngine: Sendable {
         return events
     }
 
-    public mutating func apply(profile: SteamControllerMappingProfile,
-                                snapshot: SteamControllerInputSnapshot,
+    public mutating func apply(profile: ControllerMappingProfile,
+                                snapshot: ControllerInputSnapshot,
                                 deviceID: InputDeviceID,
                                 playerIndex: Int,
                                 now: ContinuousClock.Instant,
-                                timestamp: MediaTimestamp) -> SteamControllerBindingResult {
+                                timestamp: MediaTimestamp) -> ControllerBindingResult {
         var result = applyDiscreteControls(profile: profile, snapshot: snapshot, deviceID: deviceID, playerIndex: playerIndex, now: now, timestamp: timestamp)
         result.events.append(contentsOf: applyPointerMotion(profile: profile, snapshot: snapshot, deviceID: deviceID, timestamp: timestamp))
         return result
     }
 
-    private mutating func updateHoldInstants(active: Set<SteamControllerControl>, now: ContinuousClock.Instant) {
+    public mutating func reset(deviceID: InputDeviceID, playerIndex: Int, timestamp: MediaTimestamp) -> [UserInputEvent] {
+        var events = outputTransitions(keys: [:], mouseButtons: [], deviceID: deviceID, timestamp: timestamp)
+        events.append(.gamepad(GamepadState(deviceID: deviceID, playerIndex: playerIndex, buttons: [],
+                                           leftTrigger: 0, rightTrigger: 0, leftStickX: 0, leftStickY: 0,
+                                           rightStickX: 0, rightStickY: 0, timestamp: timestamp)))
+        self = ControllerBindingEngine()
+        return events
+    }
+
+    private mutating func outputTransitions(keys: [UInt16: KeyboardModifiers], mouseButtons: Set<MouseButton>,
+                                             deviceID: InputDeviceID, timestamp: MediaTimestamp) -> [UserInputEvent] {
+        var events: [UserInputEvent] = []
+        for key in heldKeys.keys.sorted() where keys[key] != heldKeys[key] {
+            events.append(.keyboard(KeyboardEvent(deviceID: deviceID, keyCode: key, scanCode: key,
+                                                  modifiers: heldKeys[key] ?? [], isPressed: false, timestamp: timestamp)))
+        }
+        for key in keys.keys.sorted() where heldKeys[key] != keys[key] {
+            events.append(.keyboard(KeyboardEvent(deviceID: deviceID, keyCode: key, scanCode: key,
+                                                  modifiers: keys[key] ?? [], isPressed: true, timestamp: timestamp)))
+        }
+        for button in heldMouseButtons.subtracting(mouseButtons).sorted(by: { $0.rawValue < $1.rawValue }) {
+            events.append(.mouse(.button(deviceID: deviceID, button: button, isPressed: false, timestamp: timestamp)))
+        }
+        for button in mouseButtons.subtracting(heldMouseButtons).sorted(by: { $0.rawValue < $1.rawValue }) {
+            events.append(.mouse(.button(deviceID: deviceID, button: button, isPressed: true, timestamp: timestamp)))
+        }
+        heldKeys = keys
+        heldMouseButtons = mouseButtons
+        return events
+    }
+
+    private mutating func updateHoldInstants(active: Set<ControllerControl>, now: ContinuousClock.Instant) {
         for control in active where holdInstants[control] == nil {
             holdInstants[control] = now
         }
@@ -192,9 +242,9 @@ public struct SteamControllerBindingEngine: Sendable {
         }
     }
 
-    private static func activeControls(snapshot: SteamControllerInputSnapshot) -> Set<SteamControllerControl> {
-        var active: Set<SteamControllerControl> = []
-        for control in SteamControllerControl.allCases {
+    private static func activeControls(snapshot: ControllerInputSnapshot) -> Set<ControllerControl> {
+        var active: Set<ControllerControl> = []
+        for control in ControllerControl.allCases {
             if let bit = control.gamepadButton, snapshot.buttons.contains(bit) {
                 active.insert(control)
             }
@@ -203,17 +253,18 @@ public struct SteamControllerBindingEngine: Sendable {
         if snapshot.rightTrigger > Self.triggerActiveThreshold { active.insert(.rightTrigger) }
         if snapshot.leftPad.pressed { active.insert(.leftPadClick) }
         if snapshot.rightPad.pressed { active.insert(.rightPadClick) }
+        if snapshot.touchpad?.pressed == true { active.insert(.touchpadClick) }
         return active
     }
 
-    private static func consumesTrigger(_ target: SteamControllerBindingTarget) -> Bool {
+    private static func consumesTrigger(_ target: ControllerBindingTarget) -> Bool {
         switch target {
         case .passthroughButton: false
         default: true
         }
     }
 
-    private static func pointerEvents(_ actions: SteamControllerPointerActions, deviceID: InputDeviceID, timestamp: MediaTimestamp) -> [UserInputEvent] {
+    private static func pointerEvents(_ actions: ControllerPointerActions, deviceID: InputDeviceID, timestamp: MediaTimestamp) -> [UserInputEvent] {
         guard !actions.isEmpty else { return [] }
         var events: [UserInputEvent] = []
         if actions.moveDeltaX != 0 || actions.moveDeltaY != 0 {

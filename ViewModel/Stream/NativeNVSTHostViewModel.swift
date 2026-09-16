@@ -175,6 +175,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var controllerBatteries: [ControllerBatteryInfo] = []
     var batteryAlertTracker = ControllerBatteryAlertTracker()
     @Published var showingControllerMapping = false
+    @Published var showingControllerOrder = false
     @Published var hudFocusID: String?
     var hudGamepadTracker = StreamHUDGamepadTracker()
     @Published var recordingStatus = StreamRecordingStatus.idle
@@ -336,8 +337,8 @@ final class NativeNVSTHostViewModel: ObservableObject {
         if let bifrostFree = transport as? NvstBifrostFreeTransport {
             attachSeatNotificationHandlers(bifrostFree, nativeView: nativeView)
         }
-        Task {
-            await transport.setRecordingStatusHandler { [weak self] status in
+        Task { [weak self] in
+            await transport.setRecordingStatusHandler { status in
                 self?.handleRecordingStatusChanged(status)
             }
         }
@@ -346,11 +347,11 @@ final class NativeNVSTHostViewModel: ObservableObject {
 
     /// The seat's asynchronous notifications, routed to the surfaces that act on them.
     func attachSeatNotificationHandlers(_ bifrostFree: NvstBifrostFreeTransport, nativeView: NativeWebRTCStreamView) {
-        Task {
+        Task { [weak self, weak nativeView] in
             // Match the local pointer to the game's: the seat stops compositing its own cursor as
             // soon as it starts publishing cursor state, so from then on the only pointer is ours
             // and it has to appear and disappear when the game's does.
-            await bifrostFree.setRemoteCursorVisibilityHandler { [weak nativeView] isVisible in
+            await bifrostFree.setRemoteCursorVisibilityHandler { isVisible in
                 nativeView?.setRemoteCursorVisible(isVisible)
             }
             // Whether the seat still draws a pointer of its own is a separate question from where
@@ -358,13 +359,13 @@ final class NativeNVSTHostViewModel: ObservableObject {
             // watchdog's deadline, neither of which publishes a visibility. The local cursor policy
             // follows this, so a seat that goes quiet gives the pointer back instead of leaving the
             // session with none.
-            await bifrostFree.setRemoteCursorCaptureHandler { [weak nativeView] isCompositing in
+            await bifrostFree.setRemoteCursorCaptureHandler { isCompositing in
                 nativeView?.seatCompositesCursor = isCompositing
             }
             // Rumble: the seat names a pad slot and two motor amplitudes; the gamepad monitor
             // behind the view knows which physical device (GameController pad or Steam
             // Controller) holds that slot.
-            await bifrostFree.setHapticEventHandler { [weak self, weak nativeView] events in
+            await bifrostFree.setHapticEventHandler { events in
                 guard let self, !self.didEnd else { return }
                 self.nativeHapticEventCount += events.count
                 for event in events {
@@ -376,7 +377,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
                     ))
                 }
             }
-            await bifrostFree.setHdrModeHandler { [weak self] notification in
+            await bifrostFree.setHdrModeHandler { notification in
                 guard let self, !self.didEnd else { return }
                 self.nativeHdrModeText = notification.isHDR ? (notification.mode == .trueHdr ? "true-hdr" : "hdr") : ""
             }

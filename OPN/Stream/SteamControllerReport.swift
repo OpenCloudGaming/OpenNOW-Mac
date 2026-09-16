@@ -1,59 +1,7 @@
 import Foundation
 
-public struct SteamControllerTrackpadState: Equatable, Sendable {
-    public var x: Float
-    public var y: Float
-    public var pressure: Float
-    public var touched: Bool
-    public var pressed: Bool
-
-    public init(x: Float = 0,
-                y: Float = 0,
-                pressure: Float = 0,
-                touched: Bool = false,
-                pressed: Bool = false) {
-        self.x = x
-        self.y = y
-        self.pressure = pressure
-        self.touched = touched
-        self.pressed = pressed
-    }
-}
-
-public struct SteamControllerInputSnapshot: Equatable, Sendable {
-    public var buttons: GamepadButtons
-    public var leftTrigger: Float
-    public var rightTrigger: Float
-    public var leftStickX: Float
-    public var leftStickY: Float
-    public var rightStickX: Float
-    public var rightStickY: Float
-    public var leftPad: SteamControllerTrackpadState
-    public var rightPad: SteamControllerTrackpadState
-
-    public init(buttons: GamepadButtons = [],
-                leftTrigger: Float = 0,
-                rightTrigger: Float = 0,
-                leftStickX: Float = 0,
-                leftStickY: Float = 0,
-                rightStickX: Float = 0,
-                rightStickY: Float = 0,
-                leftPad: SteamControllerTrackpadState = SteamControllerTrackpadState(),
-                rightPad: SteamControllerTrackpadState = SteamControllerTrackpadState()) {
-        self.buttons = buttons
-        self.leftTrigger = leftTrigger
-        self.rightTrigger = rightTrigger
-        self.leftStickX = leftStickX
-        self.leftStickY = leftStickY
-        self.rightStickX = rightStickX
-        self.rightStickY = rightStickY
-        self.leftPad = leftPad
-        self.rightPad = rightPad
-    }
-}
-
 public enum SteamControllerReportEvent: Equatable, Sendable {
-    case state(SteamControllerInputSnapshot)
+    case state(ControllerInputSnapshot)
     case connected
     case disconnected
     case battery(level: UInt8, charging: Bool)
@@ -140,7 +88,7 @@ public enum SteamControllerReport {
     private static let tritonLizardModeOn: UInt8 = 0x01
     public static let deckStateReportID: UInt8 = 0x09
 
-    private static func parseLegacy(_ report: [UInt8], previous: SteamControllerInputSnapshot) -> SteamControllerReportEvent {
+    private static func parseLegacy(_ report: [UInt8], previous: ControllerInputSnapshot) -> SteamControllerReportEvent {
         guard report.count >= 5, report[0] == headerVersion, report[1] == 0x00 else { return .ignored }
         switch report[2] {
         case connectionEventType:
@@ -153,7 +101,7 @@ public enum SteamControllerReport {
         }
     }
 
-    private static func parseTriton(_ report: [UInt8], previous: SteamControllerInputSnapshot) -> SteamControllerReportEvent {
+    private static func parseTriton(_ report: [UInt8], previous: ControllerInputSnapshot) -> SteamControllerReportEvent {
         guard let reportID = report.first else { return .ignored }
         switch reportID {
         case tritonStateReportID, tritonBLEStateReportID:
@@ -184,7 +132,7 @@ public enum SteamControllerReport {
         }
     }
 
-    public static func parseDeckState(_ report: [UInt8], previous: SteamControllerInputSnapshot) -> SteamControllerReportEvent {
+    public static func parseDeckState(_ report: [UInt8], previous: ControllerInputSnapshot) -> SteamControllerReportEvent {
         guard report.count >= 60, report.first == deckStateReportID else { return .ignored }
         return .state(deckInputState(from: report))
     }
@@ -197,7 +145,7 @@ public enum SteamControllerReport {
         }
     }
 
-    private static func legacyInputState(from report: [UInt8], previous: SteamControllerInputSnapshot) -> SteamControllerInputSnapshot {
+    private static func legacyInputState(from report: [UInt8], previous: ControllerInputSnapshot) -> ControllerInputSnapshot {
         var snapshot = previous
         snapshot.buttons = legacyButtons(highBits: report[8], midBits: report[9], lowBits: report[10])
         snapshot.leftTrigger = Float(report[11]) / 255
@@ -219,9 +167,9 @@ public enum SteamControllerReport {
         return snapshot
     }
 
-    private static func tritonInputState(from report: [UInt8], padOffset: Int) -> SteamControllerInputSnapshot {
+    private static func tritonInputState(from report: [UInt8], padOffset: Int) -> ControllerInputSnapshot {
         let buttons = UInt32(report[2]) | (UInt32(report[3]) << 8) | (UInt32(report[4]) << 16) | (UInt32(report[5]) << 24)
-        var snapshot = SteamControllerInputSnapshot(
+        var snapshot = ControllerInputSnapshot(
             buttons: tritonButtons(buttons),
             leftTrigger: max(0, axis(report, at: 6)),
             rightTrigger: max(0, axis(report, at: 8)),
@@ -235,14 +183,14 @@ public enum SteamControllerReport {
             rightStickY: axis(report, at: 16)
         )
         if report.count >= padOffset + 12 {
-            snapshot.leftPad = SteamControllerTrackpadState(
+            snapshot.leftPad = ControllerTrackpadState(
                 x: axis(report, at: padOffset),
                 y: axis(report, at: padOffset + 2),
                 pressure: pressure(report, at: padOffset + 4),
                 touched: buttons & TritonButtonMask.leftPadTouch != 0,
                 pressed: buttons & TritonButtonMask.leftPadClick != 0
             )
-            snapshot.rightPad = SteamControllerTrackpadState(
+            snapshot.rightPad = ControllerTrackpadState(
                 x: axis(report, at: padOffset + 6),
                 y: axis(report, at: padOffset + 8),
                 pressure: pressure(report, at: padOffset + 10),
@@ -326,9 +274,9 @@ public enum SteamControllerReport {
         buttons(bits, tritonButtonTable)
     }
 
-    private static func deckInputState(from report: [UInt8]) -> SteamControllerInputSnapshot {
+    private static func deckInputState(from report: [UInt8]) -> ControllerInputSnapshot {
         let buttons = UInt64(report[8]) | (UInt64(report[9]) << 8) | (UInt64(report[10]) << 16) | (UInt64(report[11]) << 24) | (UInt64(report[12]) << 32) | (UInt64(report[13]) << 40) | (UInt64(report[14]) << 48) | (UInt64(report[15]) << 56)
-        return SteamControllerInputSnapshot(
+        return ControllerInputSnapshot(
             buttons: deckButtons(buttons),
             leftTrigger: Float(UInt16(report[44]) | (UInt16(report[45]) << 8)) / Float(UInt16.max),
             rightTrigger: Float(UInt16(report[46]) | (UInt16(report[47]) << 8)) / Float(UInt16.max),
@@ -336,14 +284,14 @@ public enum SteamControllerReport {
             leftStickY: axis(report, at: 50),
             rightStickX: axis(report, at: 52),
             rightStickY: axis(report, at: 54),
-            leftPad: SteamControllerTrackpadState(
+            leftPad: ControllerTrackpadState(
                 x: axis(report, at: 16),
                 y: axis(report, at: 18),
                 pressure: pressure(report, at: 56),
                 touched: buttons & DeckStateButtonMask.leftPadTouched != 0,
                 pressed: buttons & DeckStateButtonMask.leftPadPressed != 0
             ),
-            rightPad: SteamControllerTrackpadState(
+            rightPad: ControllerTrackpadState(
                 x: axis(report, at: 20),
                 y: axis(report, at: 22),
                 pressure: pressure(report, at: 58),
@@ -543,7 +491,7 @@ extension SteamControllerReport {
         static let quickAccess: UInt64 = 1 << 50
     }
 
-    public static func parse(_ report: [UInt8], previous: SteamControllerInputSnapshot, model: SteamControllerModel) -> SteamControllerReportEvent {
+    public static func parse(_ report: [UInt8], previous: ControllerInputSnapshot, model: SteamControllerModel) -> SteamControllerReportEvent {
         switch model {
         case .legacy: parseLegacy(report, previous: previous)
         case .triton: parseTriton(report, previous: previous)

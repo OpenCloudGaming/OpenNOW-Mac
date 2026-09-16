@@ -7,21 +7,21 @@
 
 import SwiftUI
 
-extension SteamControllerMappingView {
+extension ControllerMappingView {
     // MARK: - Gamepad chord editor
 
-    func gamepadEditor(control: SteamControllerControl, target: SteamControllerBindingTarget) -> some View {
-        let combo: SteamControllerGripCombo = {
+    func gamepadEditor(control: ControllerControl, target: ControllerBindingTarget) -> some View {
+        let combo: ControllerButtonChord = {
             if case .gamepadChord(let combo) = target { return combo }
-            return SteamControllerGripCombo()
+            return ControllerButtonChord()
         }()
         return VStack(alignment: .leading, spacing: OPNDesign.Spacing.section(scale: uiScale)) {
-            Text(combo.isEmpty ? "Passthrough (sends its own button)" : SteamControllerGripComboTarget.comboLabel(for: combo))
+            Text(combo.isEmpty ? "Passthrough (sends its own button)" : ControllerChordTarget.comboLabel(for: combo))
                 .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                 .foregroundStyle(combo.isEmpty ? OPNDesign.Text.tertiary : OPNDesign.accentInk)
             let columns = [GridItem(.adaptive(minimum: 64 * uiScale), spacing: OPNDesign.Spacing.xSmall(scale: uiScale))]
             LazyVGrid(columns: columns, alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
-                ForEach(SteamControllerGripComboTarget.all) { chip in
+                ForEach(ControllerChordTarget.all) { chip in
                     SteamControllerChip(
                         label: chip.label,
                         isSelected: combo.contains(chip.element),
@@ -40,21 +40,21 @@ extension SteamControllerMappingView {
 
     // MARK: - Keyboard editor
 
-    func keyboardEditor(control: SteamControllerControl, target: SteamControllerBindingTarget) -> some View {
+    func keyboardEditor(control: ControllerControl, target: ControllerBindingTarget) -> some View {
         let currentLabel: String = {
             if case .keyboardKey(let keyCode, let modifiers) = target {
                 return SteamControllerKeyLabel.label(for: keyCode, modifiers: modifiers)
             }
             return "Click to set a key"
         }()
-        return SteamControllerBindingRecorder(currentLabel: currentLabel) { keyCode, modifiers in
+        return ControllerBindingRecorder(currentLabel: currentLabel) { keyCode, modifiers in
             draft?.bindings[control] = .keyboardKey(keyCode: keyCode, modifiers: modifiers)
         }
     }
 
     // MARK: - Mouse editor
 
-    func mouseEditor(control: SteamControllerControl, target: SteamControllerBindingTarget) -> some View {
+    func mouseEditor(control: ControllerControl, target: ControllerBindingTarget) -> some View {
         let current: MouseButton? = {
             if case .mouseButton(let button) = target { return button }
             return nil
@@ -72,34 +72,41 @@ extension SteamControllerMappingView {
                     draft?.bindings[control] = .mouseButton(button)
                 }
             }
+            ForEach([Int16(120), -120], id: \.self) { delta in
+                SteamControllerChip(label: delta > 0 ? "Scroll Up" : "Scroll Down", isSelected: target == .mouseScroll(delta), uiScale: uiScale) {
+                    draft?.bindings[control] = .mouseScroll(delta)
+                }
+            }
         }
     }
 
     // MARK: - Pad/stick behavior section
 
     enum PadSettingsKind {
-        case leftPad, rightPad, leftStick, rightStick
+        case leftPad, rightPad, leftStick, rightStick, touchpad
     }
 
-    func padSettingsKind(for control: SteamControllerControl) -> PadSettingsKind? {
+    func padSettingsKind(for control: ControllerControl) -> PadSettingsKind? {
         switch control {
         case .leftPadClick: .leftPad
         case .rightPadClick: .rightPad
+        case .touchpadClick: .touchpad
         case .leftStickClick: .leftStick
         case .rightStickClick: .rightStick
         default: nil
         }
     }
 
-    func padSettingsBinding(_ kind: PadSettingsKind) -> Binding<SteamControllerPadSettings> {
+    func padSettingsBinding(_ kind: PadSettingsKind) -> Binding<ControllerPadSettings> {
         Binding(
             get: {
-                guard let draft else { return SteamControllerPadSettings(mode: .disabled) }
+                guard let draft else { return ControllerPadSettings(mode: .disabled) }
                 switch kind {
                 case .leftPad: return draft.leftPad
                 case .rightPad: return draft.rightPad
                 case .leftStick: return draft.leftStick
                 case .rightStick: return draft.rightStick
+                case .touchpad: return draft.touchpad
                 }
             },
             set: { newValue in
@@ -108,6 +115,7 @@ extension SteamControllerMappingView {
                 case .rightPad: draft?.rightPad = newValue
                 case .leftStick: draft?.leftStick = newValue
                 case .rightStick: draft?.rightStick = newValue
+                case .touchpad: draft?.touchpad = newValue
                 }
             }
         )
@@ -116,7 +124,7 @@ extension SteamControllerMappingView {
     func behaviorSection(_ kind: PadSettingsKind) -> some View {
         let binding = padSettingsBinding(kind)
         let isStick = kind == .leftStick || kind == .rightStick
-        let availableModes: [SteamControllerPointerMode] = isStick
+        let availableModes: [ControllerPointerMode] = isStick
             ? [.joystickPassthrough, .mouse, .scrollWheel, .disabled]
             : [.mouse, .scrollWheel, .disabled]
 

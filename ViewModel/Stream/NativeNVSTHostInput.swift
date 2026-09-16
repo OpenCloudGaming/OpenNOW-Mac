@@ -175,7 +175,11 @@ extension NativeNVSTHostViewModel {
             self?.setOnScreenKeyboardVisible(false)
         }
         view.onLocalGamepadState = { [weak self] state in
-            guard let self, !self.isEnding, !self.didEnd, !self.showingControllerMapping else { return }
+            guard let self, !self.isEnding, !self.didEnd else { return }
+            if self.showingControllerMapping || self.showingControllerOrder {
+                _ = self.hudGamepadTracker.navigationStep(state)
+                return
+            }
             if self.streamControlsVisible {
                 self.handleStreamControlsGamepad(state)
             } else if self.unifiedHUDVisible {

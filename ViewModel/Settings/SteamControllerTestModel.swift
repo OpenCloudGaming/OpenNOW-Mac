@@ -1,100 +1,127 @@
-//  Live Steam Controller input for the settings test pane and the binding recorder: it turns the
-//  HID monitor on while a view needs it and publishes the raw snapshot.
-//
-//  Moved out of `SteamControllerTestView`: it is the state two different views share, so it is not
-//  the test view's private business.
-//
-
 import Combine
 import Foundation
 
 @MainActor
 final class SteamControllerTestModel: ObservableObject {
-    @Published var snapshot = SteamControllerInputSnapshot()
-    @Published var deviceID: String = ""
-    @Published var isConnected = false
-    @Published var batteryLevel: UInt8?
-    @Published var isCharging: Bool = false
-    /// Which motor the tester is currently pulsing, for the button highlight.
-    @Published var rumbleInFlight: RumbleTarget?
-    /// Motor amplitude for the test pulse, percent of full scale. Lets the controller's own
-    /// intensity curve be felt without a game in the loop.
+    @Published private(set) var snapshot = ControllerInputSnapshot()
+    @Published private(set) var deviceID = ""
+    @Published private(set) var isConnected = false
+    @Published private(set) var batteryLevel: UInt8?
+    @Published private(set) var isCharging = false
+    @Published private(set) var rumbleInFlight: RumbleTarget?
     @Published var rumbleIntensityPercent = 100
 
     enum RumbleTarget: Equatable { case left, right, both }
 
-    /// Drives the connected controller's motors the way a seat rumble command would, for
-    /// `ControllerRumbleTester.pulseMilliseconds`, then clears them.
+    private var selectedDeviceID: InputDeviceID?
+    private var consumerKey: ObjectIdentifier?
+    private var monitorWasEnabled = false
+    private var rumbleResetTask: Task<Void, Never>?
+
+    func selectDevice(_ id: InputDeviceID?) {
+        if selectedDeviceID != id {
+            stopRumble()
+            selectedDeviceID = id
+            clearTelemetry()
+        }
+        refreshConnection()
+    }
+
+    func receiveSnapshot(_ snapshot: ControllerInputSnapshot, from id: InputDeviceID) {
+        guard id == selectedDeviceID else { return }
+        deviceID = id.rawValue
+        self.snapshot = snapshot
+        isConnected = true
+    }
+
+    func receiveBattery(_ level: UInt8?, charging: Bool, from id: InputDeviceID) {
+        guard id == selectedDeviceID else { return }
+        batteryLevel = level
+        isCharging = charging
+    }
+
+    func rumbleDeviceID(connectedIDs: [InputDeviceID]) -> InputDeviceID? {
+        guard isConnected, let selectedDeviceID, connectedIDs.contains(selectedDeviceID) else { return nil }
+        return selectedDeviceID
+    }
+
     func testRumble(_ target: RumbleTarget) {
-        guard let deviceID = SteamControllerHIDMonitor.shared.activeDeviceIDs.first(where: { $0.rawValue == self.deviceID })
-                ?? SteamControllerHIDMonitor.shared.activeDeviceIDs.first else { return }
+        guard let id = rumbleDeviceID(connectedIDs: SteamControllerHIDMonitor.shared.activeDeviceIDs) else { return }
         let amplitude = UInt16(clamping: Int(Double(UInt16.max) * Double(min(max(rumbleIntensityPercent, 0), 100)) / 100))
         let left: UInt16 = target == .right ? 0 : amplitude
         let right: UInt16 = target == .left ? 0 : amplitude
+        rumbleResetTask?.cancel()
         rumbleInFlight = target
-        ControllerRumbleTester.pulseSteamController(deviceID, left: left, right: right)
-        Task { @MainActor [weak self] in
+        ControllerRumbleTester.pulseSteamController(id, left: left, right: right)
+        rumbleResetTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(ControllerRumbleTester.pulseMilliseconds))
-            if self?.rumbleInFlight == target { self?.rumbleInFlight = nil }
+            guard !Task.isCancelled else { return }
+            self?.rumbleInFlight = nil
+            self?.rumbleResetTask = nil
         }
     }
 
-    private var consumerKey: ObjectIdentifier?
-    private var monitorWasEnabled = false
-
     func start() {
+        guard consumerKey == nil else { return }
         monitorWasEnabled = SteamControllerPreference.isEnabled
         if !monitorWasEnabled {
             SteamControllerHIDMonitor.shared.setEnabled(true)
         }
-
         consumerKey = ObjectIdentifier(self)
         SteamControllerHIDMonitor.shared.beginInputCapture(self)
         SteamControllerHIDMonitor.shared.register(
             self,
             onControllersChanged: { [weak self] in self?.refreshConnection() },
-            onInputState: { [weak self] deviceID, snapshot in
-                guard let self else { return }
-                self.deviceID = deviceID.rawValue
-                self.snapshot = snapshot
-                if !self.isConnected { self.isConnected = true }
-            },
-            onBatteryLevel: { [weak self] _, level in
-                guard let self else { return }
-                self.batteryLevel = level
+            onInputState: { [weak self] id, snapshot in self?.receiveSnapshot(snapshot, from: id) },
+            onBatteryLevel: { [weak self] id, level in
+                self?.receiveBattery(level, charging: SteamControllerHIDMonitor.shared.batteryCharging[id] ?? false, from: id)
             }
         )
         refreshConnection()
     }
 
     func stop() {
-        if let consumerKey {
-            SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
-            SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
-        }
-        consumerKey = nil
-
+        stopRumble()
+        selectedDeviceID = nil
+        clearTelemetry()
+        guard let consumerKey else { return }
+        SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
+        SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
+        self.consumerKey = nil
         if !monitorWasEnabled {
             SteamControllerHIDMonitor.shared.setEnabled(false)
         }
     }
 
+    private func stopRumble() {
+        rumbleResetTask?.cancel()
+        rumbleResetTask = nil
+        if rumbleInFlight != nil, let selectedDeviceID {
+            ControllerRumbleTester.stopSteamControllerPulse(selectedDeviceID)
+        }
+        rumbleInFlight = nil
+    }
+
+    private func clearTelemetry() {
+        isConnected = false
+        deviceID = ""
+        batteryLevel = nil
+        isCharging = false
+        snapshot = ControllerInputSnapshot()
+    }
+
     private func refreshConnection() {
-        let ids = SteamControllerHIDMonitor.shared.activeDeviceIDs
-        if let first = ids.first {
-            isConnected = true
-            deviceID = first.rawValue
-            batteryLevel = SteamControllerHIDMonitor.shared.batteryLevels[first]
-            isCharging = SteamControllerHIDMonitor.shared.batteryCharging[first] ?? false
-            if let snap = SteamControllerHIDMonitor.shared.snapshot(for: first) {
-                snapshot = snap
-            }
-        } else {
-            isConnected = false
-            deviceID = ""
-            batteryLevel = nil
-            isCharging = false
-            snapshot = SteamControllerInputSnapshot()
+        let monitor = SteamControllerHIDMonitor.shared
+        guard let selectedDeviceID, monitor.activeDeviceIDs.contains(selectedDeviceID) else {
+            stopRumble()
+            clearTelemetry()
+            return
+        }
+        isConnected = true
+        deviceID = selectedDeviceID.rawValue
+        receiveBattery(monitor.batteryLevels[selectedDeviceID], charging: monitor.batteryCharging[selectedDeviceID] ?? false, from: selectedDeviceID)
+        if let snapshot = monitor.snapshot(for: selectedDeviceID) {
+            receiveSnapshot(snapshot, from: selectedDeviceID)
         }
     }
 }

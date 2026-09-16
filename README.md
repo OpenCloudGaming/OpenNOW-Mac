@@ -17,6 +17,7 @@
 ---
 
 > ### 🙏 Special Thanks
+>
 > Huge thanks to **[@Jayian1890](https://github.com/Jayian1890)** - the main contributor of **all base and core functionality** of **openNOW-Mac**. This project stands on that foundation.
 
 <br>
@@ -34,7 +35,7 @@ OpenNOW is written in SwiftUI from the ground up and driven by the same WebRTC a
 GeForce NOW works on a Mac, but the official client leaves a lot on the table - a mouse-and-keyboard web view, pillarbox bars baked into every ultrawide stream, and no love for the controllers people actually game with. OpenNOW fills those gaps with a real Mac app, and then keeps going.
 
 | | |
-|---|---|
+| --- | --- |
 | 🎮 **Steam Controller 2026 support** | Wired, Bluetooth LE, and both 2.4 GHz dongles. Full HID parsing, haptics, back grips, trackpads, custom mappings - no Steam required. |
 | 🖥️ **Built for ultrawide** | 21:9 up to 5120×2160 and 32:9 up to 5120×1440, HEVC and AV1, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
 | 🔼 **Upscaling, on both transports** | Off, Spatial, or MetalFX, targeting 2K/4K/5K, with live Clarity and Noise Reduction sliders - gamepad-navigable, same on WebRTC and native NVST. [More ↓](#upscaling) |
@@ -71,7 +72,7 @@ GeForce NOW bakes pillarbox columns into 16:9-only titles - real black pixels, n
 ![Pillarbox fill options: Black, Colour, Blur Mirror, Blur Zoom, Stretch, Crop](docs/screenshots/pillarbox-fill.png)
 
 | Mode | What you get |
-|---|---|
+| --- | --- |
 | **Black** | Leave the encoded bars alone. Zero cost, default. |
 | **Colour** | Flat fill in any colour you pick. |
 | **Blur Mirror** | Mirrors the picture edge outward, blurred. Seamless, no distortion. |
@@ -86,7 +87,7 @@ Blur modes take an adjustable dim. Everything but **Black** runs through the cus
 Three tiers, three targets, and it's the same feature whether you're on WebRTC or native NVST - pick a resolution the game doesn't actually render at and let the client fill in the rest.
 
 | Tier | What it does |
-|---|---|
+| --- | --- |
 | **Off** | Present the decoded frame as-is. Zero cost, default. |
 | **Spatial** | A custom Metal shader: edge-aware sharpen and denoise, tuned per source resolution. |
 | **MetalFX** | Apple's spatial scaler, perceptual color processing, best detail reconstruction at a real GPU cost. |
@@ -116,7 +117,7 @@ OpenNOW talks to Valve's controllers directly over HID, so you get the pad in yo
 - **Visual mapping editor** - click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
 - **Combos on any control** - bind a back grip to `B + R2`; the modifier lands first, the press follows a beat later, so games read it as a real combo.
 - **Profiles** - save as many as you like and switch between them.
-- **Built-in tester** - Settings → Input → Steam Controller shows every button, axis, and pad live.
+- **Built-in tester** - Settings → Input → Controller Tools shows every button, axis, and pad live; Steam Controllers draw their full shell, other pads a generic one.
 - **Lizard mode off** - the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
 
 ![Controller mapping editor with controller diagram, profile picker, and binding panel](docs/screenshots/controller-mapping.png)
@@ -140,7 +141,7 @@ A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NO
 <br>
 
 | Product ID | Device |
-|---|---|
+| --- | --- |
 | `0x1102` | Steam Controller (2015), wired |
 | `0x1142` | Steam Controller (2015) wireless dongle |
 | `0x1302` | Steam Controller (2026, "Triton"), wired |
@@ -151,7 +152,7 @@ A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NO
 **Pipeline**
 
 1. `OPN/Stream/SteamControllerHIDMonitor.swift` matches devices by vendor ID `0x28de` and the product IDs above, opens them via IOKit HID, disables lizard mode with periodic heartbeats, and streams raw input reports.
-2. `OPN/Stream/SteamControllerReport.swift` parses each report into a `SteamControllerInputSnapshot` (buttons, triggers, sticks, trackpads).
+2. `OPN/Stream/SteamControllerReport.swift` parses each report into a `ControllerInputSnapshot` (buttons, triggers, sticks, trackpads).
 3. Snapshots feed the in-app test screen and, during streaming, `NativeWebRTCGamepadMonitor`, which forwards a standard gamepad subset to the GeForce NOW session. Steam/QAM, back grips, and trackpads are parsed and bindable client-side but not forwarded as raw stream input.
 
 **Report layouts** - bit/byte mappings verified against Valve's contributions to SDL's HIDAPI drivers:

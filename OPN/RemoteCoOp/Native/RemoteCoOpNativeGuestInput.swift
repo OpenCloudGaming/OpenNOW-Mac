@@ -10,7 +10,7 @@
 //  200 Hz timer that remains is a safety net, not a sampler - see `OPNRemoteCoOpGuestInputRedundancy`.
 //
 //  Two controller sources, matching the host. `GCController` misses the Steam Controller 2 entirely,
-//  which is raw HID; that path reuses `SteamControllerBindingEngine` so a guest gets the host's own
+//  which is raw HID; that path reuses `ControllerBindingEngine` so a guest gets the host's own
 //  mapping and grip combos. Only gamepad events survive - the packet carries pad state and nothing
 //  else, so a binding producing a keystroke has nowhere to go.
 //
@@ -44,7 +44,7 @@ public final class OPNRemoteCoOpNativeGuestInputSender: @unchecked Sendable {
     private var sequenceNumber: UInt64 = 0
     private var lastSent: Snapshot?
     private var redundancy = OPNRemoteCoOpGuestInputRedundancyPolicy()
-    private var steamBindingEngine = SteamControllerBindingEngine()
+    private var steamBindingEngine = ControllerBindingEngine()
     private var didReportControllerAvailability: Bool?
     private var isRunning = false
 
@@ -165,9 +165,9 @@ public final class OPNRemoteCoOpNativeGuestInputSender: @unchecked Sendable {
 
     /// Player index zero throughout: the host assigns the real slot and this side is never told it.
     @MainActor
-    private func emitSteamSnapshot(_ deviceID: InputDeviceID, _ snapshot: SteamControllerInputSnapshot) {
+    private func emitSteamSnapshot(_ deviceID: InputDeviceID, _ snapshot: ControllerInputSnapshot) {
         guard lock.withLock({ isRunning }) else { return }
-        let profile = SteamControllerMappingStore.shared.activeProfile ?? SteamControllerMappingProfile(name: "Default")
+        let profile = ControllerMappingStore.shared.activeProfile ?? ControllerMappingProfile(name: "Default")
         let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
         var engine = lock.withLock { steamBindingEngine }
         let result = engine.applyDiscreteControls(

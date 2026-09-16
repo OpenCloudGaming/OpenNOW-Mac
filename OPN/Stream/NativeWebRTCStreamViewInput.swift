@@ -289,13 +289,22 @@ extension NativeWebRTCStreamView {
         onAbsoluteMouseMove?(event)
     }
 
+    func updateControllerMappingFocus() {
+        gamepadMonitor.setMappingsEnabled(ControllerMappingFocusPolicy.allowsMappings(
+            appIsActive: NSApplication.shared.isActive, windowIsKey: window?.isKeyWindow == true,
+            remoteInputEnabled: remoteInputEnabled, overlayCapturesInput: localOverlayCapturesInput
+        ))
+    }
+
     func handleFocusLoss() {
+        gamepadMonitor.setMappingsEnabled(false)
         releasePressedInputs()
         setPointerLocked(false)
         applyLocalCursorPolicy()
     }
 
     func handleFocusGain() {
+        updateControllerMappingFocus()
         restoreInputFocus()
         // restoreInputFocus() early-returns with remote input off, an overlay capturing input, or a
         // non-key window, and the cursor policy still needs to reflect that unchanged state.

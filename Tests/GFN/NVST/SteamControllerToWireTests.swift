@@ -19,7 +19,7 @@ import Testing
         report[3] = UInt8(truncatingIfNeeded: ibexButtons >> 8)
         report[4] = UInt8(truncatingIfNeeded: ibexButtons >> 16)
         report[5] = UInt8(truncatingIfNeeded: ibexButtons >> 24)
-        guard case .state(let snapshot) = SteamControllerReport.parse(report, previous: SteamControllerInputSnapshot(), model: .triton) else {
+        guard case .state(let snapshot) = SteamControllerReport.parse(report, previous: ControllerInputSnapshot(), model: .triton) else {
             Issue.record("Expected a state event")
             return 0
         }

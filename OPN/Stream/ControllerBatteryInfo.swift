@@ -28,7 +28,7 @@ public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
         var batteries = collapsed(SteamControllerHIDMonitor.shared.batteryPresences)
         let nativeControllers = NativeWebRTCGamepadMonitor.availableNativeControllers()
         for controller in nativeControllers {
-            let percent = controller.battery.map { Int(($0.batteryLevel * 100).rounded()) } ?? -1
+            let percent = controller.battery.flatMap { percentage(level: $0.batteryLevel, state: $0.batteryState) } ?? -1
             let charging = controller.battery?.batteryState == .charging
             let name: String
             if let vendorName = controller.vendorName, !vendorName.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -40,6 +40,19 @@ public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
         }
         return batteries.enumerated().map { index, info in
             ControllerBatteryInfo(id: info.id, label: "P\(index + 1)", level: info.level, charging: info.charging, name: info.name)
+        }
+    }
+
+    static func percentage(level: Float, state: GCDeviceBattery.State) -> Int? {
+        switch state {
+        case .discharging, .charging, .full:
+            if level.isFinite, (0...1).contains(level) {
+                return Int((level * 100).rounded())
+            }
+
+            return nil
+        default:
+            return nil
         }
     }
 

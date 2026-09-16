@@ -7,11 +7,11 @@ import Testing
 
     private func makeSnapshot(buttons: GamepadButtons = [],
                               leftStickX: Float = 0,
-                              leftStickY: Float = 0) -> SteamControllerInputSnapshot {
-        SteamControllerInputSnapshot(buttons: buttons, leftStickX: leftStickX, leftStickY: leftStickY)
+                              leftStickY: Float = 0) -> ControllerInputSnapshot {
+        ControllerInputSnapshot(buttons: buttons, leftStickX: leftStickX, leftStickY: leftStickY)
     }
 
-    private func drive(_ navigator: GamepadUINavigator, snapshots: [SteamControllerInputSnapshot]) {
+    private func drive(_ navigator: GamepadUINavigator, snapshots: [ControllerInputSnapshot]) {
         let navigatorKey = ObjectIdentifier(navigator)
         SteamControllerHIDMonitor.shared.register(
             navigator,

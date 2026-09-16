@@ -24,6 +24,7 @@ extension WebRTCMediaStreamSurface {
             StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, group: "controls", columns: 8, action: toggleRecording),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, group: "controls", columns: 8, action: toggleAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "controls", columns: 8, action: openControllerMapping),
+            StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "controls", columns: 8, action: openControllerOrder),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "controls", columns: 8, action: { showQuitMenu() }),
         ]
     }

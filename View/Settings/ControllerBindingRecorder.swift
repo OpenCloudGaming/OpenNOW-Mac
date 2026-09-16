@@ -1,11 +1,11 @@
 import AppKit
 import SwiftUI
 
-/// A button that captures the next key press as a `SteamControllerBindingTarget.keyboardKey`.
+/// A button that captures the next key press as a `ControllerBindingTarget.keyboardKey`.
 /// Click it, press a key (Escape cancels), release to commit — the same interaction as any
 /// "click to record a shortcut" control, just with no existing precedent in this app to
 /// build on top of.
-struct SteamControllerBindingRecorder: View {
+struct ControllerBindingRecorder: View {
     let currentLabel: String
     let onRecord: (UInt16, KeyboardModifiers) -> Void
 

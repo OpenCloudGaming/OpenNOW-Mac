@@ -1,6 +1,6 @@
 import Foundation
 
-public struct SteamControllerPointerActions: Equatable, Sendable {
+public struct ControllerPointerActions: Equatable, Sendable {
     public var moveDeltaX: Int16 = 0
     public var moveDeltaY: Int16 = 0
     public var wheelDelta: Int16 = 0
@@ -19,20 +19,20 @@ private func clampedInt16(_ value: Float) -> Int16 {
 /// Converts one trackpad's touch-relative motion into mouse-move or scroll-wheel deltas.
 /// Ported from the pre-remap `SteamControllerTrackpadMouseTranslator`, generalized to run
 /// per-pad so each trackpad can pick its own behavior and sensitivity independently.
-public struct SteamControllerPadPointerTranslator: Sendable {
+public struct ControllerPadPointerTranslator: Sendable {
     public static let basePointsPerPadUnit: Float = 700
     public static let baseWheelUnitsPerPadUnit: Float = 300
 
-    private var previous = SteamControllerTrackpadState()
+    private var previous = ControllerTrackpadState()
     private var moveRemainderX: Float = 0
     private var moveRemainderY: Float = 0
     private var wheelRemainder: Float = 0
 
     public init() {}
 
-    public mutating func translate(_ pad: SteamControllerTrackpadState, settings: SteamControllerPadSettings) -> SteamControllerPointerActions {
+    public mutating func translate(_ pad: ControllerTrackpadState, settings: ControllerPadSettings) -> ControllerPointerActions {
         defer { previous = pad }
-        var actions = SteamControllerPointerActions()
+        var actions = ControllerPointerActions()
         guard pad.touched else {
             moveRemainderX = 0
             moveRemainderY = 0
@@ -68,7 +68,7 @@ public struct SteamControllerPadPointerTranslator: Sendable {
 /// Converts a stick's absolute deflection into a continuous mouse-move or scroll-wheel
 /// velocity command, applied once per input report (the stick springs back to center on
 /// release, so there's no touch-relative delta to read — unlike a trackpad).
-public struct SteamControllerStickPointerTranslator: Sendable {
+public struct ControllerStickPointerTranslator: Sendable {
     public static let baseMouseUnitsPerTick: Float = 14
     public static let baseWheelUnitsPerTick: Float = 6
     private static let deadzone: Float = 0.12
@@ -79,8 +79,8 @@ public struct SteamControllerStickPointerTranslator: Sendable {
 
     public init() {}
 
-    public mutating func translate(x: Float, y: Float, settings: SteamControllerPadSettings) -> SteamControllerPointerActions {
-        var actions = SteamControllerPointerActions()
+    public mutating func translate(x: Float, y: Float, settings: ControllerPadSettings) -> ControllerPointerActions {
+        var actions = ControllerPointerActions()
         guard sqrt(x * x + y * y) > Self.deadzone else {
             moveRemainderX = 0
             moveRemainderY = 0

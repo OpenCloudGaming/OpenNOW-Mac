@@ -87,7 +87,7 @@ final class GamepadUINavigator: ObservableObject {
         }
     }
 
-    func processSnapshot(deviceID: InputDeviceID, snapshot: SteamControllerInputSnapshot, isActiveOverride: Bool? = nil) {
+    func processSnapshot(deviceID: InputDeviceID, snapshot: ControllerInputSnapshot, isActiveOverride: Bool? = nil) {
         let activeIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
         let isActive = isActiveOverride ?? activeIDs.contains(deviceID)
         defer { lastButtons[deviceID] = snapshot.buttons }

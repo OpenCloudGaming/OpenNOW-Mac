@@ -79,6 +79,9 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Suppress Input When Inactive", .input, "mouse", keywords: ["focus", "background", "keyboard"]),
         SettingsSearchEntry("Anti-AFK Mouse Movement", .input, "mouse", keywords: ["idle", "timeout", "disconnect", "away"]),
         SettingsSearchEntry("Controller Mode", .input, "mode", keywords: ["tv", "big picture", "gamepad", "interface"]),
+        SettingsSearchEntry("Test Controller", .input, "controller-tools", keywords: ["tester", "gamepad", "buttons", "sticks", "triggers", "diagnostics"]),
+        SettingsSearchEntry("Controller Mapping", .input, "controller-tools", keywords: ["bind", "remap", "profile", "steam", "dualshock", "generic", "grips", "keyboard", "mouse"]),
+        SettingsSearchEntry("Controller Order", .input, "controller-tools", keywords: ["reorder", "player", "slots", "priority", "swap", "gamepad"]),
         SettingsSearchEntry("Steam Controller Support", .input, "steam-controller", keywords: ["valve", "hid", "gamepad", "triton"]),
         SettingsSearchEntry("Rumble Intensity", .input, "steam-controller", keywords: ["haptics", "vibration", "force feedback"]),
     ]

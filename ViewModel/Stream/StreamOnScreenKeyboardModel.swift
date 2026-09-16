@@ -32,7 +32,7 @@ final class StreamOnScreenKeyboardModel: ObservableObject {
     /// Raw Steam Controller/Deck report, delivered by the gamepad monitor while the
     /// keyboard captures the device. Buttons are already chord-stripped (no
     /// quickAccess, no chord-consumed X).
-    func handleSteamSnapshot(deviceID: InputDeviceID, snapshot: SteamControllerInputSnapshot) {
+    func handleSteamSnapshot(deviceID: InputDeviceID, snapshot: ControllerInputSnapshot) {
         if snapshot.leftPad.touched {
             state.updatePadCursor(.left, x: snapshot.leftPad.x, y: snapshot.leftPad.y)
         } else {

@@ -16,7 +16,7 @@ extension SteamControllerHIDMonitor {
     /// native haptics and the raw reports drive the stream. When seizing fails
     /// (or no trackpad wants raw capture) the firmware emulation is disabled instead.
     func configureCapture(for context: DeviceContext) {
-        let wantsRawTrackpadCapture = mappingProvider.activeProfile?.wantsRawTrackpadCapture ?? false
+        let wantsRawTrackpadCapture = mappingProvider.requiresRawSteamTrackpads
         if wantsRawTrackpadCapture, reopenVendorDevice(context, seize: true) {
             context.isSeized = true
             enableLizardMode(for: context)

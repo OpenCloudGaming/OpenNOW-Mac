@@ -27,6 +27,7 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "cursor-policy", isDisabled: !isConnected, group: "input", columns: 4, action: cycleCursorPolicy),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, group: "input", columns: 4, action: toggleNativeAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerMapping = true }),
+            StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerOrder = true }),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showStreamControls() }),
             StreamHUDFocusEntry(id: "mouse-sensitivity", isDisabled: !isConnected, action: cycleNativeMouseSensitivity),
         ]
@@ -581,8 +582,7 @@ extension NativeNVSTHostViewModel {
                     // a stream that has already gone quiet will not resume on its own: reconnect
                     // now rather than waiting out the stall watchdog.
                     if wasUnavailable, isConnected, !isEnding, let path, nativeStreamHealth.zeroFrameStreak >= 2 {
-                        Task { [weak self] in
-                            guard let self else { return }
+                        Task {
                             if await !self.attemptInPlaceReconnect(path: path, reason: "network path restored") {
                                 _ = await self.finish(reason: .failed, message: NativeNVSTStreamHealthFailure.streamStalled.message)
                             }

@@ -32,6 +32,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State var restorePointerLockOnHUDHide = false
     @State var quitMenuVisible = false
     @State var showingControllerMapping = false
+    @State var showingControllerOrder = false
     @State var isEndingStream = false
     @State var didEndStream = false
     @State var latestStats: OPNStreamStatsSnapshot?
@@ -134,8 +135,17 @@ public struct WebRTCMediaStreamSurface: View {
         .onDisappear { stopStream() }
         .onChange(of: preventDisplaySleep) { _, _ in refreshStreamingPerformanceMode() }
         .sheet(isPresented: $showingControllerMapping) {
-            SteamControllerMappingView()
+            ControllerMappingView()
         }
+        .sheet(isPresented: $showingControllerOrder) {
+            ControllerOrderView()
+        }
+    }
+
+    func openControllerOrder() {
+        nativeView?.releasePressedInputs()
+        setUnifiedHUDVisible(false)
+        showingControllerOrder = true
     }
 
     func openControllerMapping() {
