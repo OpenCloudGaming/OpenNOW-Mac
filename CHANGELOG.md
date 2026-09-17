@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.9.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.8.0...v0.9.0) (2026-09-17)
+
+
+### Features
+
+* add controller mapping ([#37](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/37)) ([d681f07](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d681f071d7d314e0b50166109a3b2128be2dc67b))
+* add device code sign in ([#32](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/32)) ([e1fb965](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e1fb965d211c03b71575e1dc442a428b260f1014))
+* add jump back in ([9fdb91e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/9fdb91e70c6b1bfdde961b84ead28487a52283e0))
+* add manage account url ([a4ee6a8](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a4ee6a834130b1a1a006a9a0ad8a7690da9ca82e))
+* add persistant in game settings ([cd3145d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cd3145d07e2377c4dd2c79421218271e43135c3d))
+* add reflex option ([e8a7a3a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e8a7a3accac24f0b9d7d697d5a318fc5a963059f))
+* add theme settings ([#30](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/30)) ([3512c47](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3512c475a8757b4046cd12dcaab9a3d3f7080cbf))
+* add vsync options ([cd58357](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cd58357e96f787f85b10546e91af5cf437329a9f))
+* improve stream starting ui ([#34](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/34)) ([7327dd7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/7327dd7addaf9ab968dc99875c4ce83f9c1f43f3))
+* improve update check button state feedback ([9a0a7be](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/9a0a7be173f55f39770b86fb6676a1703105ed6f))
+* **nvst:** add fullscreen on hud ([0943e2f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0943e2ff386d0dcd7bfdb77a34b8f23f1a9a16ce))
+* slide stream HUDs in and out ([ace7cd3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/ace7cd34eafad5ddddd53f741cd47509a1006c92))
+* **stream:** add full screen session-ready action ([#31](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/31)) ([3d0bf17](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3d0bf1747a6e72d5cf7dc2023ff839f42676e9a9))
+* surface GOG store connection in Settings ([fc735b3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/fc735b3bb8d1649b15bbf3aa00cd6bb4990fe7a5))
+
+
+### Bug Fixes
+
+* battle net store variation ([#33](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/33)) ([cf7d2f2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cf7d2f2b1261f14829c7936611ee82cf0175d80f))
+* deliver updates to beta channel subscribers ([d799b28](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d799b28290cab8d66f1c62e2b0b8ef0846c8e3b5))
+* exclude Vendor from the SPM target to repair package builds ([5a99fd1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5a99fd1534595dde3aa1dcdbda3edb1fcc3a4d14))
+* restore dropdown panel minimum width ([67dd584](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/67dd58454cd9e647be539f31785eccf4efb09b5a))
+* stats hud animation ([8ac834d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8ac834d45fa6b02899fd301c388b15e086714e74))
+* steam controller shell colors ([cef386f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cef386fe206a7b2a436d87ae6016778e4ea0acf7))
+
 ## [0.8.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.7.1...v0.8.0) (2026-09-12)
 
 
