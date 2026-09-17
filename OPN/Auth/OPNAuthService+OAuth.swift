@@ -134,7 +134,9 @@ extension OPNAuthService {
     }
 
     private static func receiveRequest(_ clientSocket: Int32, timeout: TimeInterval) -> String? {
-        var receiveTimeout = timeval(tv_sec: Int(timeout), tv_usec: 0)
+        let wholeSeconds = Int(timeout)
+        let fractionalMicroseconds = Int(timeout.truncatingRemainder(dividingBy: 1) * 1_000_000)
+        var receiveTimeout = timeval(tv_sec: wholeSeconds, tv_usec: Int32(fractionalMicroseconds))
         setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout, socklen_t(MemoryLayout<timeval>.size))
         var buffer = [UInt8](repeating: 0, count: 4096)
         let byteCount = recv(clientSocket, &buffer, buffer.count - 1, 0)
