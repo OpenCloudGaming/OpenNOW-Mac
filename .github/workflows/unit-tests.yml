@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      run_benchmarks:
+        description: 'Run the OpenNOW benchmark audits'
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -47,10 +52,13 @@ jobs:
       - name: Build package workspace
         run: |
           set -euo pipefail
-          swift build --scratch-path .build/shared || {
+          # The benchmark tool is an executable product, decoupled from the unit tests. Build the
+          # library only here so `swift test` below reuses it; the benchmark builds and runs in its
+          # own, opt-in job (App/ is part of the library target, so nothing is unbuilt).
+          swift build --product OpenNOW --scratch-path .build/shared || {
             echo "swift build failed; clearing scratch path and retrying with a clean build graph"
             rm -rf .build/shared
-            swift build --scratch-path .build/shared
+            swift build --product OpenNOW --scratch-path .build/shared
           }
         shell: bash
 
@@ -138,4 +146,43 @@ jobs:
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_COMPILATION_MODE=singlefile
+        shell: bash
+
+  # The benchmark audits measure things tests deliberately do not assert on and ship numbers as
+  # JSON (see Benchmarks/). Kept out of the packages job so their compile-and-run time and the
+  # relay-conversion regression thresholds never gate routine PRs. Opt in by running CI manually
+  # and checking "Run the OpenNOW benchmark audits".
+  benchmarks:
+    name: Benchmark Audits
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_benchmarks == 'true' }}
+    runs-on: blacksmith-6vcpu-macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up environment
+        run: |
+          echo "Using macOS runner"
+          uname -a
+          swift --version
+        shell: bash
+
+      - name: Cache SwiftPM build graph
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            !.build/shared/artifacts
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-v2-${{ github.event.repository.name }}-${{ hashFiles('Package.resolved', '**/Package.swift', '**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-v2-${{ github.event.repository.name }}-
+
+      - name: Run benchmark audits
+        run: |
+          set -euo pipefail
+          swift run --scratch-path .build/benchmarks OpenNOWBenchmarks all
         shell: bash
