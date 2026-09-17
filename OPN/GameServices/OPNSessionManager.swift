@@ -38,6 +38,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let effectiveSettings = settingsByApplyingCloudVariables(settings, capabilities: capabilities)
+        logInGameSettingsPersistenceRequest(effectiveSettings)
         let hdrEnabled = bool(effectiveSettings["enableHdr"]) && capabilities.hdrDisplaySupported
         let transportMode = streamTransportMode(effectiveSettings)
         let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
@@ -174,6 +175,9 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
         if let limitedModeMessage = CloudMatchResponseParser.limitedModeStreamingMessage(data) {
             return (false, [:], limitedModeMessage)
+        }
+        if let requestLimitMessage = CloudMatchResponseParser.requestLimitExceededMessage(data) {
+            return (false, [:], requestLimitMessage)
         }
         guard let json = CloudMatchResponseParser.jsonDictionary(data),
               CloudMatchResponseParser.isSessionLimitExceededResponse(json),

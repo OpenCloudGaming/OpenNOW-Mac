@@ -450,7 +450,9 @@ public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSig
             capabilities: webRTCMediaCapabilities(from: capabilities),
             cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
-        return resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
+        var settings = resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
+        settings["enablePersistingInGameSettings"] = bool(settings["enablePersistingInGameSettings"]) && OPNStreamPreferences.loadEntitledInGameSettingsPersistence()
+        return settings
     }
 
     private func normalizedConfiguration(_ configuration: StreamLaunchConfiguration, appId: String) -> StreamLaunchConfiguration {

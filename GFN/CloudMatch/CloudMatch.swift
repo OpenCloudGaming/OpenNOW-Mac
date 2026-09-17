@@ -564,6 +564,17 @@ public enum CloudMatchResponseParser {
         return isLimitedModeFailure ? "GeForce NOW says this game is out of limited playtime. Add playtime or try another game." : nil
     }
 
+    /// The vendor throttles session creation (`statusCode` 10, `REQUEST_LIMIT_EXCEEDED_STATUS`)
+    /// after a burst of launches. It clears on its own, so this names the wait rather than echoing
+    /// the raw body.
+    public static func requestLimitExceededMessage(_ data: Data?) -> String? {
+        guard let data, let json = jsonDictionary(data) else { return nil }
+        let status = requestStatus(from: json)
+        let description = status.statusDescription.uppercased()
+        let isThrottled = status.statusCode == 10 || description.contains("REQUEST_LIMIT_EXCEEDED") || description.contains("4A8C2024")
+        return isThrottled ? "GeForce NOW is temporarily limiting session requests. Wait a moment, then try again." : nil
+    }
+
     public static func staleActiveSessionClaimMessage(_ data: Data?) -> String? {
         guard let data, let json = jsonDictionary(data) else { return nil }
         let status = requestStatus(from: json)

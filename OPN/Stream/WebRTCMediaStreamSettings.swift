@@ -99,6 +99,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var transportMode: String
     public var streamingQualityProfile: Int
     public var enableCloudGsync: Bool
+    public var enablePersistingInGameSettings: Bool
     /// `NvstVsyncMode` raw value (0 = Off, 1 = On, 2 = Adaptive). Defaults to Adaptive, the
     /// captured official baseline.
     public var vsyncMode: Int
@@ -148,6 +149,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 transportMode: String = "webrtc",
                 streamingQualityProfile: Int = 0,
                 enableCloudGsync: Bool = false,
+                enablePersistingInGameSettings: Bool = false,
                 vsyncMode: Int = 2,
                 fallbackToLogicalResolution: Bool = false,
                 hudStreamingMode: Int = 0,
@@ -194,6 +196,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.transportMode = transportMode
         self.streamingQualityProfile = streamingQualityProfile
         self.enableCloudGsync = enableCloudGsync
+        self.enablePersistingInGameSettings = enablePersistingInGameSettings
         self.vsyncMode = vsyncMode
         self.fallbackToLogicalResolution = fallbackToLogicalResolution
         self.hudStreamingMode = hudStreamingMode
@@ -242,6 +245,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var transportMode: String
     public var streamingQualityProfile: Int
     public var enableCloudGsync: Bool
+    public var enablePersistingInGameSettings: Bool
     /// The resolved `NvstVsyncMode` raw value, passed on to the announce (`framePacing.mode`).
     public var vsyncMode: Int
     public var fallbackToLogicalResolution: Bool
@@ -298,6 +302,7 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "transportMode": transportMode,
             "streamingQualityProfile": streamingQualityProfile,
             "enableCloudGsync": enableCloudGsync,
+            "enablePersistingInGameSettings": enablePersistingInGameSettings,
             "vsyncMode": vsyncMode,
             "fallbackToLogicalResolution": fallbackToLogicalResolution,
             "hudStreamingMode": hudStreamingMode,
@@ -358,7 +363,6 @@ public enum WebRTCMediaStreamSettingsResolver {
         let enableHdr = cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr && (codec == "H265" || codec == "AV1")
         var colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
         if enableHdr, !colorQuality.lowercased().hasPrefix("10bit") { colorQuality = "10bit_420" }
-        let controllerCount = capabilities.connectedGamepadCount
         let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables)
         let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
         let negotiatedAudioChannels = audioChannelCount(surroundMode: profile.surroundMode,
@@ -380,6 +384,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             transportMode: normalizedTransportMode(profile.transportMode),
             streamingQualityProfile: min(max(profile.streamingQualityProfile, 0), 4),
             enableCloudGsync: profile.enableCloudGsync,
+            enablePersistingInGameSettings: profile.enablePersistingInGameSettings,
             vsyncMode: min(max(profile.vsyncMode, 0), 2),
             fallbackToLogicalResolution: profile.fallbackToLogicalResolution,
             hudStreamingMode: min(max(profile.hudStreamingMode, 0), 2),
@@ -408,7 +413,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
-            remoteControllersBitmap: controllerBitmap(count: controllerCount),
+            remoteControllersBitmap: controllerBitmap(count: capabilities.connectedGamepadCount),
             supportedHidDevices: 0,
             availableSupportedControllers: [],
             audioChannelCount: negotiatedAudioChannels,

@@ -113,6 +113,22 @@ extension OPNGameService {
         }
     }
 
+    /// Walks a membership payload for a feature object with this key and a true value. The nesting
+    /// around it is not part of any documented contract, so this does not depend on it.
+    nonisolated static func featureIsEnabled(_ value: Any?, key: String) -> Bool {
+        if let dictionary = value as? NSDictionary {
+            if let featureKey = dictionary["key"] as? String, featureKey == key {
+                if let flag = dictionary["value"] as? Bool { return flag }
+                let text = (dictionary["textValue"] as? String) ?? (dictionary["value"] as? String) ?? ""
+                return ["true", "1", "yes"].contains(text.lowercased())
+            }
+            for nested in dictionary.allValues where featureIsEnabled(nested, key: key) { return true }
+            return false
+        }
+        guard let array = value as? [Any] else { return false }
+        return array.contains { featureIsEnabled($0, key: key) }
+    }
+
     func fetchStoreDefinitions(completion: @escaping OPNStoreDefinitionsCallback) {
         let query = """
         query GetStoreDefinitions($locale: String!) {
@@ -214,24 +230,54 @@ extension OPNGameService {
     }
 
     func parseSubscriptionInfo(_ json: NSDictionary) -> OPNSubscriptionInfo {
+        // The payload is flat but its `features` is an object wrapping the real list under a second
+        // `features`. Accept a bare array, that nest, or a `subscription` wrapper, rather than
+        // reading an empty membership the way a fixed-shape assumption did before.
+        let root = (json["subscription"] as? NSDictionary) ?? json
         var info = OPNSubscriptionInfo()
-        info.membershipTier = safeString(json["membershipTier"]).flatMap { $0.isEmpty ? nil : $0 } ?? "Free"
-        info.subscriptionType = safeString(json["type"]) ?? ""
-        info.subscriptionSubType = safeString(json["subType"]) ?? ""
-        info.allottedHours = safeMinutesAsHours(json["allottedTimeInMinutes"])
-        info.purchasedHours = safeMinutesAsHours(json["purchasedTimeInMinutes"])
-        info.rolledOverHours = safeMinutesAsHours(json["rolledOverTimeInMinutes"])
+        info.membershipTier = safeString(root["membershipTier"]).flatMap { $0.isEmpty ? nil : $0 } ?? "Free"
+        info.subscriptionType = safeString(root["type"]) ?? ""
+        info.subscriptionSubType = safeString(root["subType"]) ?? ""
+        info.allottedHours = safeMinutesAsHours(root["allottedTimeInMinutes"])
+        info.purchasedHours = safeMinutesAsHours(root["purchasedTimeInMinutes"])
+        info.rolledOverHours = safeMinutesAsHours(root["rolledOverTimeInMinutes"])
         let fallbackTotal = info.allottedHours + info.purchasedHours + info.rolledOverHours
-        info.totalHours = safeMinutesAsHours(json["totalTimeInMinutes"])
+        info.totalHours = safeMinutesAsHours(root["totalTimeInMinutes"])
         if info.totalHours <= 0 { info.totalHours = fallbackTotal }
-        info.remainingHours = safeMinutesAsHours(json["remainingTimeInMinutes"])
+        info.remainingHours = safeMinutesAsHours(root["remainingTimeInMinutes"])
         info.usedHours = max(0, info.totalHours - info.remainingHours)
         info.isUnlimited = info.subscriptionSubType == "UNLIMITED"
-        if let state = json["currentSubscriptionState"] as? NSDictionary {
+        if let state = root["currentSubscriptionState"] as? NSDictionary {
             info.isGamePlayAllowed = state["isGamePlayAllowed"] as? Bool ?? true
         }
-        info.entitledAudioChannelCount = entitledAudioChannelCount(features: json["features"])
+        let features = subscriptionFeatureList(root["features"])
+        info.entitledAudioChannelCount = entitledAudioChannelCount(features: features)
+        info.isInGameSettingsPersistenceEntitled = Self.featureListIsEnabled(features, key: "IN_GAME_SETTINGS_PERSISTENCE_ENABLED")
+        logSubscriptionShape(json, featureCount: features.count, entitled: info.isInGameSettingsPersistenceEntitled)
         return info
+    }
+
+    /// The membership feature list arrives either as a bare array or nested one level under an
+    /// object that also carries unrelated keys (e.g. `resolutions`).
+    func subscriptionFeatureList(_ rawValue: Any?) -> [Any] {
+        if let array = rawValue as? [Any] { return array }
+        guard let dictionary = rawValue as? NSDictionary else { return [] }
+        if let nested = dictionary["features"] as? [Any] { return nested }
+        for value in dictionary.allValues {
+            if let array = value as? [Any] { return array }
+        }
+        return []
+    }
+
+    /// True when a feature list (already unwrapped) carries this key with a true value.
+    nonisolated static func featureListIsEnabled(_ features: [Any], key: String) -> Bool {
+        features.contains { featureIsEnabled($0, key: key) }
+    }
+
+    /// Records what the membership entitled, so a missing persistence flag can be told apart from a
+    /// parser that read the wrong nesting. Nothing but the entitlement leaves this call.
+    func logSubscriptionShape(_ json: NSDictionary, featureCount: Int, entitled: Bool) {
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Account", message: "Membership features=\(featureCount) inGameSettingsPersistence=\(entitled ? "entitled" : "not-entitled")"))
     }
 
     /// The `SUPPORTED_AUDIO_FORMATS` feature as a channel count, using the official client's own

@@ -357,6 +357,17 @@ struct StreamingPathTests {
         #expect(settings.maxBitrateMbps == 50)
     }
 
+    @Test("in-game settings persistence reaches the session payload")
+    func inGameSettingsPersistenceReachesSessionPayload() {
+        let settings = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(enablePersistingInGameSettings: true),
+            capabilities: WebRTCMediaDeviceCapabilities()
+        )
+
+        #expect(settings.enablePersistingInGameSettings == true)
+        #expect(settings.dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "steam")["enablePersistingInGameSettings"] as? Bool == true)
+    }
+
     @Test("decoded stats resolution is not overwritten by renderer diagnostics")
     func decodedStatsResolutionWinsOverRendererDiagnostics() {
         let session = OPNLibWebRTCStreamSession()

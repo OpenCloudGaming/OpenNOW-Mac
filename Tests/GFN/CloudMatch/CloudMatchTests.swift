@@ -164,6 +164,14 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
         "session": ["sessionRequestData": ["appId": 0]],
     ])
     #expect(CloudMatchResponseParser.staleActiveSessionClaimMessage(staleData) == "This GeForce NOW session is no longer resumable. End it and launch again.")
+
+    let throttledData = try JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 10, "statusDescription": "REQUEST_LIMIT_EXCEEDED_STATUS 4A8C2024"]])
+    #expect(CloudMatchResponseParser.requestLimitExceededMessage(throttledData) == "GeForce NOW is temporarily limiting session requests. Wait a moment, then try again.")
+    #expect(CloudMatchResponseParser.requestLimitExceededMessage(successData()) == nil)
+}
+
+private func successData() -> Data {
+    (try? JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"]])) ?? Data()
 }
 
 @Test func cloudMatchActiveSessionParserPreservesControlAndSignalingHosts() {

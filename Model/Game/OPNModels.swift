@@ -26,6 +26,8 @@ public struct OPNSubscriptionInfo: Equatable, Sendable {
     /// Playback channels the membership streams: 2, 6 or 8 from `SUPPORTED_AUDIO_FORMATS`;
     /// 0 when the subscription payload named none.
     public var entitledAudioChannelCount = 0
+    /// Whether the membership includes NVIDIA's in-game settings persistence feature.
+    public var isInGameSettingsPersistenceEntitled = false
 }
 
 public struct OPNGameVariant: Codable, Equatable, Sendable {

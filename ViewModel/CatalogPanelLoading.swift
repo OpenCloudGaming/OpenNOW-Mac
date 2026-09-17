@@ -299,6 +299,7 @@ extension CatalogViewModel {
             if success {
                 self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
                 OPNStreamPreferences.saveEntitledAudioChannelCount(subscription.entitledAudioChannelCount)
+                OPNStreamPreferences.saveEntitledInGameSettingsPersistence(subscription.isInGameSettingsPersistenceEntitled)
                 let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !membershipTier.isEmpty {
                     self.account.membershipTier = membershipTier

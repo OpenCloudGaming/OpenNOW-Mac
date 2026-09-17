@@ -144,6 +144,7 @@ extension OPNSessionManager {
         let hdrEnabled = bool(settings["enableHdr"]) && capabilities.hdrDisplaySupported
         let transportMode = streamTransportMode(settings)
         let selectedStore = string(settings["selectedStore"]).isEmpty ? "unknown" : string(settings["selectedStore"])
+        logInGameSettingsPersistenceRequest(settings)
         // A claim sends the same session request the create path does — the seat resumes against
         // it — with the title left out, since the session it belongs to already named one.
         let payload: [String: Any] = [

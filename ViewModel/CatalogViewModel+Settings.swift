@@ -138,6 +138,11 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setPersistInGameSettings(_ enabled: Bool) {
+        OPNStreamPreferences.savePersistInGameSettings(enabled)
+        loadSettingsPreferences()
+    }
+
     func setVsyncModeIndex(_ index: Int) {
         guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveVsyncModeIndex(index)

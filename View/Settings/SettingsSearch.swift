@@ -47,6 +47,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("VSync", .video, "advanced", keywords: ["adaptive", "tearing", "refresh", "frame pacing", "sync"]),
         SettingsSearchEntry("Cloud G-Sync", .video, "advanced", keywords: ["vsync", "tearing", "variable refresh"]),
         SettingsSearchEntry("Reflex", .video, "advanced", keywords: ["latency", "input lag", "nvidia", "responsive"]),
+        SettingsSearchEntry("In-Game Settings Persistence", .general, "game-launch", keywords: ["in game", "graphics", "nvidia", "save settings", "persist", "game settings", "membership"]),
         SettingsSearchEntry("Logical Resolution Fallback", .video, "advanced", keywords: ["scaling", "retina"]),
         SettingsSearchEntry("HUD Stream", .video, "advanced", keywords: ["overlay", "metadata"]),
         SettingsSearchEntry("Power Saver", .video, "advanced", keywords: ["battery", "efficiency", "thermal"]),

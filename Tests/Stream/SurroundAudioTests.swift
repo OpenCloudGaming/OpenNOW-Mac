@@ -213,6 +213,35 @@ import Testing
         #expect(service.entitledAudioChannelCount(features: [["key": "SUPPORTED_AUDIO_FORMATS", "textValue": "UP_TO_7_1_SURROUND_PCM"]]) == 8)
     }
 
+    @Test func theMembershipReadsItsFeaturesFromTheNestedShape() {
+        let service = OPNGameService()
+        let payload: NSDictionary = [
+            "membershipTier": "ULTIMATE",
+            "autoPaymentState": "ON",
+            "features": ["features": [
+                ["key": "HDR_ENABLED", "textValue": "true"],
+                ["key": "SUPPORTED_AUDIO_FORMATS", "textValue": "UP_TO_7_1_SURROUND_PCM"],
+                ["key": "IN_GAME_SETTINGS_PERSISTENCE_ENABLED", "textValue": "true"],
+            ]],
+        ]
+
+        let info = service.parseSubscriptionInfo(payload)
+
+        #expect(info.membershipTier == "ULTIMATE")
+        #expect(info.entitledAudioChannelCount == 8)
+        #expect(info.isInGameSettingsPersistenceEntitled)
+    }
+
+    @Test func theMembershipEntitlesInGameSettingsPersistence() {
+        let key = "IN_GAME_SETTINGS_PERSISTENCE_ENABLED"
+        #expect(OPNGameService.featureIsEnabled(nil, key: key) == false)
+        #expect(OPNGameService.featureIsEnabled(["key": "HDR_ENABLED", "textValue": "true"], key: key) == false)
+        #expect(OPNGameService.featureIsEnabled([["key": key, "textValue": "true"]], key: key) == true)
+        #expect(OPNGameService.featureIsEnabled([["key": key, "value": "true"]], key: key) == true)
+        #expect(OPNGameService.featureIsEnabled([["features": [["key": key, "value": true]]]], key: key) == true)
+        #expect(OPNGameService.featureIsEnabled([["key": key, "textValue": "false"]], key: key) == false)
+    }
+
     @Test func hdrLiftsTheColourTierAndNeedsAModernCodec() {
         let capabilities = WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true, hdrDisplaySupported: true)
         let hevc = Resolver.resolve(profile: WebRTCMediaStreamProfile(codec: "H265", colorQuality: "8bit_420", enableHdr: true), capabilities: capabilities)

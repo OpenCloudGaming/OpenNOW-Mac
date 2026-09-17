@@ -120,6 +120,17 @@ struct GameLaunchSettingsPage: View {
                 OPNNewSettings.acknowledge(.steamBigPictureMode)
                 viewModel.setSteamBigPictureMode(newValue)
             }
+            SettingsDivider(uiScale: uiScale)
+            SettingsToggleRow(
+                title: "In-Game Settings Persistence",
+                subtitle: "Save graphics options changed inside games during a stream. Sent when your membership includes NVIDIA's in-game settings persistence.",
+                isOn: viewModel.streamProfile.enablePersistingInGameSettings,
+                isNew: OPNNewSettings.isNew(.inGameSettingsPersistence),
+                uiScale: uiScale
+            ) { newValue in
+                OPNNewSettings.acknowledge(.inGameSettingsPersistence)
+                viewModel.setPersistInGameSettings(newValue)
+            }
         }
     }
 }

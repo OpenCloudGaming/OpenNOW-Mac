@@ -108,6 +108,8 @@ extension OPNStreamPreferences {
         storage.synchronize()
     }
     public static func saveCloudGsyncEnabled(_ value: Bool) { storage.set(value, forKey: k.cloudGsyncEnabled) }
+    public static func savePersistInGameSettings(_ value: Bool) { storage.set(value, forKey: k.persistInGameSettings) }
+    public static func loadPersistInGameSettings() -> Bool { bool(storage.object(forKey: k.persistInGameSettings), false) }
     public static func saveFallbackToLogicalResolution(_ value: Bool) { storage.set(value, forKey: k.fallbackToLogicalResolution) }
     public static func saveHudStreamingModeIndex(_ value: Int) { storage.set(clamp(value, 0, hudStreamingModeOptions.count - 1), forKey: k.hudStreamingModeIndex) }
     public static func saveSDRColorSpaceIndex(_ value: Int) { storage.set(clamp(value, 0, colorSpaceOptions.count - 1), forKey: k.sdrColorSpaceIndex) }
@@ -144,6 +146,8 @@ extension OPNStreamPreferences {
     /// capped by it without a subscription fetch on the launch path.
     public static func saveEntitledAudioChannelCount(_ value: Int) { storage.set(clamp(value, 0, 8), forKey: k.entitledAudioChannelCount) }
     public static func loadEntitledAudioChannelCount() -> Int { clamp((storage.object(forKey: k.entitledAudioChannelCount) as? NSNumber)?.intValue ?? 0, 0, 8) }
+    public static func saveEntitledInGameSettingsPersistence(_ value: Bool) { storage.set(value, forKey: k.entitledInGameSettingsPersistence) }
+    public static func loadEntitledInGameSettingsPersistence() -> Bool { bool(storage.object(forKey: k.entitledInGameSettingsPersistence), false) }
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
     public static func saveReflexEnabled(_ value: Bool) { storage.set(value, forKey: k.reflexEnabled) }
@@ -226,6 +230,7 @@ extension OPNStreamPreferences {
         profile.streamingQualityProfileOption = streamingQualityProfileOptions[profile.streamingQualityProfileIndex]
         profile.streamingQualityProfile = profile.streamingQualityProfileOption.value
         profile.enableCloudGsync = bool(value(dictionary, k.cloudGsyncEnabled), false)
+        profile.enablePersistingInGameSettings = bool(value(dictionary, k.persistInGameSettings), false)
         profile.fallbackToLogicalResolution = bool(value(dictionary, k.fallbackToLogicalResolution), false)
         profile.hudStreamingModeIndex = clampedInt(dictionary, k.hudStreamingModeIndex, 0, hudStreamingModeOptions.count)
         profile.hudStreamingModeOption = hudStreamingModeOptions[profile.hudStreamingModeIndex]

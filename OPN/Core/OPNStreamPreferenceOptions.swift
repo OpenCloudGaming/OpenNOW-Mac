@@ -329,6 +329,8 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var streamingQualityProfile = 0
     public var streamingQualityProfileOption = OPNStreamPreferences.streamingQualityProfileOptions[0]
     public var enableCloudGsync = false
+    /// NVIDIA's per-game in-game graphics/settings persistence. Sent only for games that advertise support.
+    public var enablePersistingInGameSettings = false
     public var fallbackToLogicalResolution = false
     public var hudStreamingMode = 0
     public var hudStreamingModeOption = OPNStreamPreferences.hudStreamingModeOptions[0]

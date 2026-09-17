@@ -86,7 +86,7 @@ enum SettingsNewBadges {
     static func group(for row: OPNNewSettings.Row) -> CatalogSettingsGroup {
         switch row {
         case .surroundSound: .audio
-        case .sessionReadyAction, .steamBigPictureMode: .general
+        case .sessionReadyAction, .steamBigPictureMode, .inGameSettingsPersistence: .general
         case .vsyncMode, .reflex: .video
         case .controllerOrder: .input
         case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme

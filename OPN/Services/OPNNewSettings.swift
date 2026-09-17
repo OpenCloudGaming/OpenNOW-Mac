@@ -22,13 +22,14 @@ enum OPNNewSettings {
         case accentColor
         case appearance
         case jumpBackIn
+        case inGameSettingsPersistence
 
         /// The marketing version the row shipped in.
         nonisolated var introducedIn: String {
             switch self {
             case .surroundSound, .sessionReadyAction: "0.6.0"
             case .steamBigPictureMode: "0.8.0"
-            case .vsyncMode, .reflex, .controllerOrder, .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: "0.9.0"
+            case .vsyncMode, .reflex, .controllerOrder, .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn, .inGameSettingsPersistence: "0.9.0"
             }
         }
     }

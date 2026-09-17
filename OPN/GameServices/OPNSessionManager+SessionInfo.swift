@@ -52,6 +52,15 @@ extension OPNSessionManager {
         return info
     }
 
+    /// One line per session request saying whether in-game settings persistence was sent, and why,
+    /// so a stream that looks like it forgot the setting can be told apart from an unsent one.
+    func logInGameSettingsPersistenceRequest(_ settings: [String: Any]) {
+        let toggle = OPNStreamPreferences.loadPersistInGameSettings()
+        let entitled = OPNStreamPreferences.loadEntitledInGameSettingsPersistence()
+        let sent = bool(settings["enablePersistingInGameSettings"])
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "In-game settings persistence sent=\(sent ? "on" : "off") toggle=\(toggle ? "on" : "off") membership=\(entitled ? "entitled" : "not-entitled")"))
+    }
+
     func rawSessionJSON(_ session: [String: Any]) -> String {
         guard JSONSerialization.isValidJSONObject(session),
               let data = try? JSONSerialization.data(withJSONObject: session),
