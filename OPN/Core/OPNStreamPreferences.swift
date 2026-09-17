@@ -124,58 +124,10 @@ public enum OPNStreamPreferences {
         let sdrColorSpaceIndex: Int
         let hdrColorSpaceIndex: Int
         let l4sEnabled: Bool
+        let reflexEnabled: Bool
         let hdrEnabled: Bool
         let powerSaverEnabled: Bool
     }
-    static let streamingProfileKeys = [
-        Keys.aspectIndex,
-        Keys.resolutionIndex,
-        Keys.fpsIndex,
-        Keys.codecIndex,
-        Keys.bitrateIndex,
-        Keys.colorQualityIndex,
-        Keys.transportModeIndex,
-        Keys.streamingQualityProfileIndex,
-        Keys.hudStreamingModeIndex,
-        Keys.sdrColorSpaceIndex,
-        Keys.hdrColorSpaceIndex,
-        Keys.prefilterModeIndex,
-        Keys.prefilterSharpness,
-        Keys.prefilterDenoise,
-        Keys.upscalingModeIndex,
-        Keys.upscalingTargetIndex,
-        Keys.upscalingSharpness,
-        Keys.upscalingDenoise,
-        Keys.pillarboxFillModeIndex,
-        Keys.pillarboxFillColor,
-        Keys.pillarboxFillDim,
-        Keys.presentationModeIndex,
-        Keys.vsyncModeIndex,
-        Keys.recordingVideoBitrateMbps,
-        Keys.recordingAudioBitrateKbps,
-        Keys.recordingEnhancedVideoEnabled,
-        Keys.cloudGsyncEnabled,
-        Keys.fallbackToLogicalResolution,
-        Keys.l4sEnabled,
-        Keys.hdrEnabled,
-        Keys.powerSaverEnabled,
-        Keys.suppressInputWhenInactive,
-        Keys.directMouseInput,
-        Keys.rawMouseInput,
-        Keys.cursorPolicyIndex,
-        Keys.mouseSensitivityPercent,
-        Keys.antiAFKMouseMovementEnabled,
-        Keys.preventDisplaySleepWhileStreaming,
-        Keys.gameVolume,
-        Keys.microphoneVolume,
-        Keys.microphoneShortcutEnabled,
-        Keys.microphoneMode,
-        Keys.microphoneDeviceId,
-        Keys.microphonePushToTalkKeyCode,
-        Keys.microphonePushToTalkModifierMask,
-        Keys.surroundModeIndex
-    ]
-
     public static func resolutionOptions(forAspect aspectIndex: Int) -> [OPNStreamResolutionOption] {
         switch aspectIndex {
         case 0: return [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160)].map(OPNStreamResolutionOption.init)

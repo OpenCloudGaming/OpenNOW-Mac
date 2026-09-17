@@ -168,16 +168,17 @@ struct InputSettingsPage: View {
     private var controllerOrderRow: some View {
         HStack(spacing: 12 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text("Controller Order")
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
+                SettingsRowTitle(title: "Controller Order", isNew: OPNNewSettings.isNew(.controllerOrder), uiScale: uiScale)
                 Text("Choose which connected controllers are Player 1–4. Mapping profiles stay with each controller.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            Button("Reorder Controllers") { showingControllerOrder = true }
+            Button("Reorder Controllers") {
+                OPNNewSettings.acknowledge(.controllerOrder)
+                showingControllerOrder = true
+            }
                 .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
         }
     }

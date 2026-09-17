@@ -146,6 +146,7 @@ extension OPNStreamPreferences {
     public static func loadEntitledAudioChannelCount() -> Int { clamp((storage.object(forKey: k.entitledAudioChannelCount) as? NSNumber)?.intValue ?? 0, 0, 8) }
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
+    public static func saveReflexEnabled(_ value: Bool) { storage.set(value, forKey: k.reflexEnabled) }
     public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
     public static func savePowerSaverEnabled(_ value: Bool) { storage.set(value, forKey: k.powerSaverEnabled) }
     public static func saveSteamBigPictureMode(_ value: Bool) { storage.set(value, forKey: k.steamBigPictureMode) }
@@ -272,6 +273,7 @@ extension OPNStreamPreferences {
         profile.recordingAudioBitrateKbps = Int(clampedDouble(dictionary, k.recordingAudioBitrateKbps, 160, 64, 320).rounded())
         profile.recordingEnhancedVideoEnabled = bool(value(dictionary, k.recordingEnhancedVideoEnabled), true)
         profile.enableL4S = bool(value(dictionary, k.l4sEnabled), false)
+        profile.enableReflex = bool(value(dictionary, k.reflexEnabled), true)
         profile.enableHdr = bool(value(dictionary, k.hdrEnabled), false)
         profile.enablePowerSaver = bool(value(dictionary, k.powerSaverEnabled), false)
         profile.steamBigPictureMode = bool(value(dictionary, k.steamBigPictureMode), false)
@@ -334,6 +336,7 @@ extension OPNStreamPreferences {
             k.surroundModeIndex: profile.surroundModeIndex,
             k.recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
             k.l4sEnabled: profile.enableL4S,
+            k.reflexEnabled: profile.enableReflex,
             k.hdrEnabled: profile.enableHdr,
             k.powerSaverEnabled: profile.enablePowerSaver,
             k.steamBigPictureMode: profile.steamBigPictureMode,
@@ -374,13 +377,13 @@ extension OPNStreamPreferences {
     static func streamingQualityPreset(for index: Int) -> StreamingQualityPreset? {
         switch index {
         case 1:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 1, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: false)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 1, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, reflexEnabled: true, hdrEnabled: false, powerSaverEnabled: false)
         case 2:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 2, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: true, hdrEnabled: false, powerSaverEnabled: false)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 3, fpsIndex: 2, codecIndex: 0, bitrateIndex: 2, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: true, reflexEnabled: true, hdrEnabled: false, powerSaverEnabled: false)
         case 3:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 0, fpsIndex: 0, codecIndex: 0, bitrateIndex: 0, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, hdrEnabled: false, powerSaverEnabled: true)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 0, fpsIndex: 0, codecIndex: 0, bitrateIndex: 0, colorQualityIndex: 0, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 0, l4sEnabled: false, reflexEnabled: true, hdrEnabled: false, powerSaverEnabled: true)
         case 4:
-            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 5, fpsIndex: 1, codecIndex: 3, bitrateIndex: 3, colorQualityIndex: 2, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 2, l4sEnabled: false, hdrEnabled: true, powerSaverEnabled: false)
+            return StreamingQualityPreset(aspectIndex: 1, resolutionIndex: 5, fpsIndex: 1, codecIndex: 3, bitrateIndex: 3, colorQualityIndex: 2, cloudGsyncEnabled: false, fallbackToLogicalResolution: false, hudStreamingModeIndex: 0, sdrColorSpaceIndex: 2, hdrColorSpaceIndex: 2, l4sEnabled: false, reflexEnabled: true, hdrEnabled: true, powerSaverEnabled: false)
         default:
             return nil
         }
@@ -413,6 +416,7 @@ extension OPNStreamPreferences {
         profile.hdrColorSpaceOption = colorSpaceOptions[profile.hdrColorSpaceIndex]
         profile.hdrColorSpace = profile.hdrColorSpaceOption.value
         profile.enableL4S = preset.l4sEnabled
+        profile.enableReflex = preset.reflexEnabled
         profile.enableHdr = preset.hdrEnabled
         profile.enablePowerSaver = preset.powerSaverEnabled
     }
@@ -432,6 +436,7 @@ extension OPNStreamPreferences {
         storage.set(clamp(preset.sdrColorSpaceIndex, 0, colorSpaceOptions.count - 1), forKey: k.sdrColorSpaceIndex)
         storage.set(clamp(preset.hdrColorSpaceIndex, 0, colorSpaceOptions.count - 1), forKey: k.hdrColorSpaceIndex)
         storage.set(preset.l4sEnabled, forKey: k.l4sEnabled)
+        storage.set(preset.reflexEnabled, forKey: k.reflexEnabled)
         storage.set(preset.hdrEnabled, forKey: k.hdrEnabled)
         storage.set(preset.powerSaverEnabled, forKey: k.powerSaverEnabled)
     }

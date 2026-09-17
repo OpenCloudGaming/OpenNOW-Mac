@@ -95,6 +95,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var prefilterModel: Int
     public var enableL4S: Bool
     public var enableHdr: Bool
+    public var enableReflex: Bool
     public var transportMode: String
     public var streamingQualityProfile: Int
     public var enableCloudGsync: Bool
@@ -143,6 +144,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 prefilterModel: Int = 0,
                 enableL4S: Bool = false,
                 enableHdr: Bool = false,
+                enableReflex: Bool = true,
                 transportMode: String = "webrtc",
                 streamingQualityProfile: Int = 0,
                 enableCloudGsync: Bool = false,
@@ -188,6 +190,7 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.prefilterModel = prefilterModel
         self.enableL4S = enableL4S
         self.enableHdr = enableHdr
+        self.enableReflex = enableReflex
         self.transportMode = transportMode
         self.streamingQualityProfile = streamingQualityProfile
         self.enableCloudGsync = enableCloudGsync
@@ -373,7 +376,7 @@ public enum WebRTCMediaStreamSettingsResolver {
             prefilterModel: prefilterMode == 0 ? 0 : profile.prefilterModel,
             enableL4S: cloudVariables.allowL4S && profile.enableL4S,
             enableHdr: enableHdr,
-            enableReflex: cloudVariables.allowReflex,
+            enableReflex: cloudVariables.allowReflex && profile.enableReflex,
             transportMode: normalizedTransportMode(profile.transportMode),
             streamingQualityProfile: min(max(profile.streamingQualityProfile, 0), 4),
             enableCloudGsync: profile.enableCloudGsync,

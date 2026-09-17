@@ -224,6 +224,12 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setReflexEnabled(_ enabled: Bool) {
+        guard canEditStreamingQualitySettings() else { return }
+        OPNStreamPreferences.saveReflexEnabled(enabled)
+        loadSettingsPreferences()
+    }
+
     func setHDREnabled(_ enabled: Bool) {
         guard canEditStreamingQualitySettings() else { return }
         OPNStreamPreferences.saveHDREnabled(enabled)

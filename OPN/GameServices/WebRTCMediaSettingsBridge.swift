@@ -45,6 +45,7 @@ func webRTCMediaProfile(from profile: OPNStreamPreferenceProfile) -> WebRTCMedia
         prefilterModel: profile.prefilterModel,
         enableL4S: profile.enableL4S,
         enableHdr: profile.enableHdr,
+        enableReflex: profile.enableReflex,
         transportMode: profile.transportMode.value,
         streamingQualityProfile: profile.streamingQualityProfile,
         enableCloudGsync: profile.enableCloudGsync,
@@ -95,6 +96,8 @@ func webRTCMediaProfile(from settings: [String: Any]) -> WebRTCMediaStreamProfil
         prefilterModel: bridgeInt(settings["prefilterModel"]),
         enableL4S: bridgeBool(settings["enableL4S"]),
         enableHdr: bridgeBool(settings["enableHdr"]),
+        // Profiles persisted before Reflex was configurable never stored the key; they streamed with it on.
+        enableReflex: bridgeBool(settings["enableReflex"], fallback: true),
         transportMode: bridgeString(settings["transportMode"], fallback: "webrtc"),
         streamingQualityProfile: bridgeInt(settings["streamingQualityProfile"]),
         enableCloudGsync: bridgeBool(settings["enableCloudGsync"]),

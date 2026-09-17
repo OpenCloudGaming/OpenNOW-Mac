@@ -449,6 +449,37 @@ struct StreamingPathTests {
         #expect(webRTCMediaProfile(from: dictionary).steamBigPictureMode)
     }
 
+    @Test("reflex follows the profile toggle only when the seat allows it")
+    func reflexFollowsTheProfileToggleOnlyWhenTheSeatAllowsIt() {
+        let allowed = WebRTCMediaCloudVariables(allowReflex: true)
+        let blocked = WebRTCMediaCloudVariables(allowReflex: false)
+        let capabilities = WebRTCMediaDeviceCapabilities()
+
+        let on = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(),
+            capabilities: capabilities,
+            cloudVariables: allowed
+        )
+        let off = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(enableReflex: false),
+            capabilities: capabilities,
+            cloudVariables: allowed
+        )
+        let seatBlocked = WebRTCMediaStreamSettingsResolver.resolve(
+            profile: WebRTCMediaStreamProfile(),
+            capabilities: capabilities,
+            cloudVariables: blocked
+        )
+        let offDictionary = off.dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "steam")
+
+        #expect(on.enableReflex)
+        #expect(!off.enableReflex)
+        #expect(!seatBlocked.enableReflex, "the seat entitlement gates the profile toggle")
+        #expect(offDictionary["enableReflex"] as? Bool == false)
+        // The snapshot is re-resolved from the dictionary before the request goes out.
+        #expect(!webRTCMediaProfile(from: offDictionary).enableReflex)
+    }
+
     @Test("keeps H265 for native WebRTC")
     func keepsH265ForNativeWebRTC() {
         let settings = WebRTCMediaStreamSettingsResolver.resolve(

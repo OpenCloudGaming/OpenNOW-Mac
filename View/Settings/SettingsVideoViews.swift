@@ -125,19 +125,27 @@ struct VideoSettingsPage: View {
     }
 
     private var advancedCard: some View {
-        SettingsDisclosureCard(title: "Advanced", summary: "VSync, Cloud G-Sync, HUD stream, colour fallback, power saver", storageKey: "video-advanced", uiScale: uiScale) {
+        SettingsDisclosureCard(title: "Advanced", summary: "VSync, Cloud G-Sync, Reflex, HUD stream, colour fallback, power saver", storageKey: "video-advanced", uiScale: uiScale) {
             SettingsOptionRow(title: "VSync",
                               subtitle: vsyncSubtitle,
                               options: OPNStreamPreferences.vsyncModeOptions.map(\.label),
                               selectedIndex: viewModel.streamProfile.vsyncModeIndex,
-                              uiScale: uiScale,
-                              action: viewModel.setVsyncModeIndex)
+                              isNew: OPNNewSettings.isNew(.vsyncMode),
+                              uiScale: uiScale) { index in
+                OPNNewSettings.acknowledge(.vsyncMode)
+                viewModel.setVsyncModeIndex(index)
+            }
             if let tip = cloudGsyncInterplayTip {
                 SettingsDivider(uiScale: uiScale)
                 SettingsInfoRow(label: "Cloud G-Sync", value: tip, uiScale: uiScale)
             }
             SettingsDivider(uiScale: uiScale)
             SettingsToggleRow(title: "Cloud G-Sync", subtitle: "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isCompact: true, uiScale: uiScale, action: viewModel.setCloudGsyncEnabled)
+            SettingsDivider(uiScale: uiScale)
+            SettingsToggleRow(title: "Reflex", subtitle: "Low-latency pacing for supported games when the seat allows it.", isOn: viewModel.streamProfile.enableReflex, isNew: OPNNewSettings.isNew(.reflex), isCompact: true, uiScale: uiScale) { enabled in
+                OPNNewSettings.acknowledge(.reflex)
+                viewModel.setReflexEnabled(enabled)
+            }
             SettingsDivider(uiScale: uiScale)
             SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, isCompact: true, uiScale: uiScale, action: viewModel.setFallbackToLogicalResolution)
             SettingsDivider(uiScale: uiScale)

@@ -337,6 +337,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var hdrColorSpace = 0
     public var hdrColorSpaceOption = OPNStreamPreferences.colorSpaceOptions[0]
     public var enableL4S = false
+    public var enableReflex = true
     public var enableHdr = false
     public var enablePowerSaver = false
     public var steamBigPictureMode = false

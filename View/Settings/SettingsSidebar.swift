@@ -87,6 +87,8 @@ enum SettingsNewBadges {
         switch row {
         case .surroundSound: .audio
         case .sessionReadyAction, .steamBigPictureMode: .general
+        case .vsyncMode, .reflex: .video
+        case .controllerOrder: .input
         case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme
         }
     }

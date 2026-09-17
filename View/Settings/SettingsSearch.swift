@@ -46,6 +46,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Maximum Bitrate", .video, "bandwidth", keywords: ["mbps", "bandwidth", "data", "quality"]),
         SettingsSearchEntry("VSync", .video, "advanced", keywords: ["adaptive", "tearing", "refresh", "frame pacing", "sync"]),
         SettingsSearchEntry("Cloud G-Sync", .video, "advanced", keywords: ["vsync", "tearing", "variable refresh"]),
+        SettingsSearchEntry("Reflex", .video, "advanced", keywords: ["latency", "input lag", "nvidia", "responsive"]),
         SettingsSearchEntry("Logical Resolution Fallback", .video, "advanced", keywords: ["scaling", "retina"]),
         SettingsSearchEntry("HUD Stream", .video, "advanced", keywords: ["overlay", "metadata"]),
         SettingsSearchEntry("Power Saver", .video, "advanced", keywords: ["battery", "efficiency", "thermal"]),

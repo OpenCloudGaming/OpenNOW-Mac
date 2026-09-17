@@ -9,6 +9,57 @@ import Foundation
 import VideoToolbox
 
 extension OPNStreamPreferences {
+    /// Every preference key captured in a per-game profile dictionary.
+    static let streamingProfileKeys = [
+        Keys.aspectIndex,
+        Keys.resolutionIndex,
+        Keys.fpsIndex,
+        Keys.codecIndex,
+        Keys.bitrateIndex,
+        Keys.colorQualityIndex,
+        Keys.transportModeIndex,
+        Keys.streamingQualityProfileIndex,
+        Keys.hudStreamingModeIndex,
+        Keys.sdrColorSpaceIndex,
+        Keys.hdrColorSpaceIndex,
+        Keys.prefilterModeIndex,
+        Keys.prefilterSharpness,
+        Keys.prefilterDenoise,
+        Keys.upscalingModeIndex,
+        Keys.upscalingTargetIndex,
+        Keys.upscalingSharpness,
+        Keys.upscalingDenoise,
+        Keys.pillarboxFillModeIndex,
+        Keys.pillarboxFillColor,
+        Keys.pillarboxFillDim,
+        Keys.presentationModeIndex,
+        Keys.vsyncModeIndex,
+        Keys.recordingVideoBitrateMbps,
+        Keys.recordingAudioBitrateKbps,
+        Keys.recordingEnhancedVideoEnabled,
+        Keys.cloudGsyncEnabled,
+        Keys.fallbackToLogicalResolution,
+        Keys.l4sEnabled,
+        Keys.reflexEnabled,
+        Keys.hdrEnabled,
+        Keys.powerSaverEnabled,
+        Keys.suppressInputWhenInactive,
+        Keys.directMouseInput,
+        Keys.rawMouseInput,
+        Keys.cursorPolicyIndex,
+        Keys.mouseSensitivityPercent,
+        Keys.antiAFKMouseMovementEnabled,
+        Keys.preventDisplaySleepWhileStreaming,
+        Keys.gameVolume,
+        Keys.microphoneVolume,
+        Keys.microphoneShortcutEnabled,
+        Keys.microphoneMode,
+        Keys.microphoneDeviceId,
+        Keys.microphonePushToTalkKeyCode,
+        Keys.microphonePushToTalkModifierMask,
+        Keys.surroundModeIndex
+    ]
+
     static func gameProfileDictionary(for appId: String) -> [String: Any]? {
         guard !appId.isEmpty, let profiles = storage.dictionary(forKey: k.gameProfiles) else { return nil }
         return profiles[appId] as? [String: Any]
@@ -481,6 +532,7 @@ extension OPNStreamPreferences {
         static let recordingAudioBitrateKbps = "OpenNOW.Stream.RecordingAudioBitrateKbps"
         static let recordingEnhancedVideoEnabled = "OpenNOW.Stream.RecordingEnhancedVideoEnabled"
         static let l4sEnabled = "OpenNOW.Stream.L4SEnabled"
+        static let reflexEnabled = "OpenNOW.Stream.ReflexEnabled"
         static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"
         static let steamBigPictureMode = "OpenNOW.Stream.SteamBigPictureMode"
         static let legacyTransportNoticeDismissed = "OpenNOW.Stream.LegacyTransportNoticeDismissed"
