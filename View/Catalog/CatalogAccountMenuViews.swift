@@ -74,6 +74,19 @@ struct CatalogAccountDropdownPanel: View {
             .padding(.horizontal, OPNDesign.Spacing.contentVertical(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
 
+            CatalogAccountDropdownRow(
+                title: "Manage Account",
+                subtitle: nil,
+                systemImage: "arrow.up.right.square",
+                isActive: false,
+                role: nil
+            ) {
+                isPresented = false
+                viewModel.openAccountManagementPage()
+            }
+            .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
+            .padding(.bottom, OPNDesign.Spacing.xSmall(scale: uiScale))
+
             Rectangle()
                 .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)

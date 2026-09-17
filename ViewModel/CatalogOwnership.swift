@@ -33,6 +33,15 @@ extension CatalogViewModel {
         }
     }
 
+    /// Subscription tier, billing and playtime live on NVIDIA's site, not in the app, so the account
+    /// panel links out instead of pretending to manage them locally.
+    private static let accountManagementURLString = "https://www.nvidia.com/account/gfn/"
+
+    func openAccountManagementPage() {
+        guard let url = URL(string: Self.accountManagementURLString) else { return }
+        systemIntegration.open(url)
+    }
+
     func shareSelectedGame() {
         guard let selectedGame else { return }
         let title = selectedGame.title.isEmpty ? "GeForce NOW game" : selectedGame.title
