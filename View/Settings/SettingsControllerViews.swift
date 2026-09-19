@@ -167,17 +167,16 @@ struct SteamControllerSettingsPage: View {
                 }
             }
         }
-        .alert(
-            "Reset Failed",
+        .opnConfirmation(
             isPresented: Binding(
                 get: { permissionResetError != nil },
                 set: { presented in if !presented { permissionResetError = nil } }
-            )
-        ) {
-            Button("OK") { permissionResetError = nil }
-        } message: {
-            Text(permissionResetError ?? "")
-        }
+            ),
+            eyebrow: "INPUT MONITORING",
+            title: "Reset Failed",
+            message: permissionResetError ?? "The request to reset the Input Monitoring permission did not complete.",
+            actions: [OPNConfirmationAction("OK") { permissionResetError = nil }]
+        )
     }
 
     private func setSteamControllerSupportEnabled(_ enabled: Bool) {

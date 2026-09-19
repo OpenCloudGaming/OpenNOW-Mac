@@ -195,6 +195,10 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   16 horizontal padding, square corners. Pressed: accent @ 0.76.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
   13–14pt bold text, square corners.
+- **Destructive Modal** (`OPNModalDestructiveButtonStyle`): a modal footer's destructive
+  action, sized to sit beside the secondary modal button. 36 high, 13pt bold
+  `Semantic.destructive` label, destructive @ 0.10 fill (0.18 pressed), destructive @ 0.36
+  stroke. Never the default action.
 - **Compact Row Action** (`OPNCompactButtonStyle`): settings/inline row
   actions. Height 28, Hanken Grotesk 12pt bold, 14 horizontal padding, square corners.
   Primary: accent background (0.78 pressed), black text, accent stroke. Destructive:
@@ -261,9 +265,26 @@ scroll indicator clears the row text. When the panel would extend past the
 window's bottom edge it constrains to the available space below and scrolls.
 Rows: full width, height 30, 12
 (Control Row) horizontal padding, Hanken Grotesk 12pt bold — Text Secondary resting,
-Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
+Text Primary + #FFFFFF @ 0.08 fill on hover. A destructive row (`isDestructive`) reads
+`Semantic.destructive` in every state; a row that `startsGroup` carries a 1px Stroke Subtle
+rule above it, spaced by 4 (X-Small) above and below. The selected row carries an accent
 checkmark. Dismisses on outside click, Escape, or selection, and closes when the
 underlying item set changes.
+
+### Context Menu (`OPNContextMenuOverlay`)
+
+The custom replacement for SwiftUI's `.contextMenu`, which renders rounded macOS menu chrome
+(`View/Components/OPNContextMenu.swift`). The surface that owns the rows registers itself as the
+anchor (`OPNContextMenuHost`) in an `OPNContextSurface` and each row registers its view
+(`OPNContextRowAnchor`). One local event monitor on the host catches right-clicks and
+Control-clicks — a monitor, not a hit-testing view, so left clicks, drags, and hover are untouched.
+It resolves the click to a row and the surface coordinate only when a click happens, so there is no
+per-scroll-frame measurement, and a click inside the surface that misses every row dismisses while
+one outside it dismisses and is passed through. The owner then presents `OPNContextMenuOverlay` as
+an overlay on that surface, so a row's scroll view cannot clip it. The menu is an `OPNDropdownPanel`
+at its 208 minimum width, anchored at the pointer, clamped to the surface, and flipped above the
+pointer when it would not fit below. Outside click or Escape dismisses; there is no scrim, matching
+the Dropdown Menu.
 
 The sign-in modal's provider picker renders `OPNDropdownPanel` inline instead
 (expanding below the trigger, uncapped), because an overlay panel inside the
@@ -538,6 +559,22 @@ segment at full width only, an 8pt caption repeats that step's title. Cancel
 row, its 36pt row height reserved even when no cancel action is offered.
 
 The screen renders at 100 % interface scale like every other transient splash.
+
+### Confirmation Modal (`OPNConfirmationModal`)
+
+The app-shell replacement for the native `.confirmationDialog` and `.alert`, which render rounded
+macOS system chrome. Raised through the `opnConfirmation` modifier and rendered once at the app root
+by `OPNConfirmationOverlay` — above the update prompt, below the splash — so it covers the whole
+surface even when the page that raised it lives inside a scroll view. Full-cover Scrim behind a
+centered panel following the modal spec (Panel background, 1px Stroke Regular, 2px accent top bar,
+modal shadow #000000 @ 0.58, radius 28, y 20), up to 440 wide and shrinking to the window minus
+2 × 40 (Page Horizontal) with a 280 floor. The App Bar header block holds the eyebrow (10pt bold accent, tracking 1.1), a 20pt bold
+title, and the square 28×28 close control (shared `OPNModalCloseButton`). 1px Divider, an 18-padded
+12pt medium Text Secondary message, 1px Divider, then the footer (18 horizontal, 12 vertical) with
+actions trailing. Actions are `OPNConfirmationAction`s in visual order: `.cancel` (Escape,
+`OPNModalSecondaryButtonStyle`), `.standard` (Enter, secondary), and `.destructive`
+(`OPNModalDestructiveButtonStyle`, never the default). The scrim tap, close control, Escape, and
+`.cancel` all dismiss.
 
 ### Controller Sheets (test / mapping)
 

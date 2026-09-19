@@ -5,12 +5,16 @@ struct OPNDropdownItem: Identifiable {
     let id: String
     let title: String
     var isSelected = false
+    var isDestructive = false
+    /// Draws a 1px Stroke Subtle rule above this row, separating it from the group before it.
+    var startsGroup = false
     let action: () -> Void
 }
 
 struct OPNDropdownRow: View {
     let title: String
     var isSelected = false
+    var isDestructive = false
     let action: () -> Void
 
     @Environment(\.opnUIScale) private var uiScale
@@ -21,7 +25,7 @@ struct OPNDropdownRow: View {
             HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 Text(title)
                     .catalogFont(size: 12, weight: .bold)
-                    .foregroundStyle(isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
+                    .foregroundStyle(foreground)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if isSelected {
@@ -38,6 +42,11 @@ struct OPNDropdownRow: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var foreground: Color {
+        if isDestructive { return OPNDesign.Semantic.destructive }
+        return isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary
     }
 }
 
@@ -82,7 +91,18 @@ struct OPNDropdownPanel: View {
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(items) { item in
-                OPNDropdownRow(title: item.title, isSelected: item.isSelected, action: item.action)
+                if item.startsGroup {
+                    Rectangle()
+                        .fill(OPNDesign.Stroke.subtle)
+                        .frame(height: 1)
+                        .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
+                }
+                OPNDropdownRow(
+                    title: item.title,
+                    isSelected: item.isSelected,
+                    isDestructive: item.isDestructive,
+                    action: item.action
+                )
             }
         }
     }
@@ -170,7 +190,13 @@ struct OPNDropdownMenu<Label: View>: View {
 
     private var dismissingItems: [OPNDropdownItem] {
         items.map { item in
-            OPNDropdownItem(id: item.id, title: item.title, isSelected: item.isSelected) {
+            OPNDropdownItem(
+                id: item.id,
+                title: item.title,
+                isSelected: item.isSelected,
+                isDestructive: item.isDestructive,
+                startsGroup: item.startsGroup
+            ) {
                 isPresented = false
                 item.action()
             }

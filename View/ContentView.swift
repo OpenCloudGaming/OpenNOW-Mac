@@ -53,6 +53,13 @@ struct ContentView: View {
                 .id(themeIdentity)
                 .zIndex(90)
 
+            // A confirmation outranks an update prompt but still yields to the splash, and it is
+            // hosted at the window root so it covers the whole surface even when the page that
+            // raised it lives inside a scroll view.
+            OPNConfirmationOverlay()
+                .id(themeIdentity)
+                .zIndex(95)
+
             if root.isShowingStartupLoading {
                 StartupLoadingView(duration: root.startupAnimationDuration)
                     .transition(.opacity)

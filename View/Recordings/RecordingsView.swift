@@ -31,6 +31,11 @@ struct RecordingsView: View {
     @StateObject private var model = RecordingsViewModel()
     /// Set only when controller mode embeds this page; nil on the desktop surface.
     @Environment(\.controllerPageCommand) private var controllerPageCommand
+    /// The row whose custom right-click menu is open, if any, and where to anchor it.
+    @State private var contextMenuRecording: StreamRecording?
+    @State private var contextMenuAnchor: CGPoint = .zero
+    /// The list's frame of reference for resolving a row's right-click into list coordinates.
+    @State private var contextSurface = OPNContextSurface()
 
     private var visibleRecordings: [StreamRecording] { model.visibleRecordings }
 
@@ -66,18 +71,26 @@ struct RecordingsView: View {
         .onChange(of: visibleRecordings.map(\.id)) { _, ids in
             model.reconcileSelection(withVisibleIDs: ids)
         }
-        .confirmationDialog("Discard the edits to this recording?", isPresented: discardEditsDialogPresented) {
-            Button("Discard Edits", role: .destructive) { model.confirmPendingEditorDiscard() }
-            Button("Keep Editing", role: .cancel) { model.cancelPendingEditorDiscard() }
-        } message: {
-            Text("The edit has not been exported. Nothing is written to disk until you save it as a new video.")
-        }
-        .confirmationDialog(model.deleteDialogTitle, isPresented: deleteDialogPresented) {
-            Button("Delete Recording", role: .destructive) { model.deletePendingRecording() }
-            Button("Cancel", role: .cancel) { model.pendingDelete = nil }
-        } message: {
-            Text("This permanently removes the video file and metadata from OpenNOW recordings.")
-        }
+        .opnConfirmation(
+            isPresented: discardEditsDialogPresented,
+            eyebrow: "UNSAVED EDITS",
+            title: "Discard the edits to this recording?",
+            message: "The edit has not been exported. Nothing is written to disk until you save it as a new video.",
+            actions: [
+                OPNConfirmationAction("KEEP EDITING", role: .cancel) { model.cancelPendingEditorDiscard() },
+                OPNConfirmationAction("DISCARD EDITS", role: .destructive) { model.confirmPendingEditorDiscard() }
+            ]
+        )
+        .opnConfirmation(
+            isPresented: deleteDialogPresented,
+            eyebrow: "DELETE RECORDING",
+            title: model.deleteDialogTitle,
+            message: "This permanently removes the video file and metadata from OpenNOW recordings.",
+            actions: [
+                OPNConfirmationAction("CANCEL", role: .cancel) { model.pendingDelete = nil },
+                OPNConfirmationAction("DELETE RECORDING", role: .destructive) { model.deletePendingRecording() }
+            ]
+        )
         .onDisappear {
             model.cancelEditorPreview()
             model.removePlayerTimeObserver()
@@ -111,15 +124,9 @@ struct RecordingsView: View {
                             RecordingRow(recording: recording, isSelected: model.selectedRecording?.id == recording.id, uiScale: uiScale) {
                                 model.requestSelect(recording, autoplay: true)
                             }
-                            .contextMenu {
-                                Button("Open Recording") { model.open(recording) }
-                                Button("Edit Recording") { model.startEditing(recording) }
-                                Button("Reveal in Finder") { model.reveal(recording) }
-                                Button("Copy File Path") { model.copyPath(recording) }
-                                // DESIGN.md divider exception: native context-menu separator, rendered by AppKit.
-                                // swiftlint:disable:next design_no_native_divider
-                                Divider()
-                                Button("Delete", role: .destructive) { model.pendingDelete = recording }
+                            .background {
+                                OPNContextRowAnchor(surface: contextSurface, id: recording.id)
+                                    .allowsHitTesting(false)
                             }
                         }
                     }
@@ -129,7 +136,51 @@ struct RecordingsView: View {
             }
         }
         .background(RecordingsLayout.sidebar)
+        .background {
+            OPNContextMenuHost(
+                surface: contextSurface,
+                onContextClick: { id, point in
+                    guard let recording = visibleRecordings.first(where: { $0.id == id }) else { return }
+                    presentContextMenu(for: recording, at: point)
+                },
+                onDismiss: dismissContextMenu
+            )
+            .allowsHitTesting(false)
+        }
         .overlay(alignment: .trailing) { Rectangle().fill(RecordingsLayout.stroke).frame(width: 1) }
+        .overlay { contextMenuOverlay }
+    }
+
+    @ViewBuilder
+    private var contextMenuOverlay: some View {
+        if let recording = contextMenuRecording {
+            OPNContextMenuOverlay(
+                items: contextMenuItems(for: recording),
+                anchor: contextMenuAnchor,
+                dismiss: dismissContextMenu
+            )
+        }
+    }
+
+    private func presentContextMenu(for recording: StreamRecording, at point: CGPoint) {
+        contextMenuRecording = recording
+        contextMenuAnchor = point
+    }
+
+    private func dismissContextMenu() {
+        contextMenuRecording = nil
+    }
+
+    private func contextMenuItems(for recording: StreamRecording) -> [OPNDropdownItem] {
+        [
+            OPNDropdownItem(id: "open", title: "Open Recording") { model.open(recording) },
+            OPNDropdownItem(id: "edit", title: "Edit Recording") { model.startEditing(recording) },
+            OPNDropdownItem(id: "reveal", title: "Reveal in Finder") { model.reveal(recording) },
+            OPNDropdownItem(id: "copy", title: "Copy File Path") { model.copyPath(recording) },
+            OPNDropdownItem(id: "delete", title: "Delete", isDestructive: true, startsGroup: true) {
+                model.pendingDelete = recording
+            }
+        ]
     }
 
     private var libraryHeader: some View {

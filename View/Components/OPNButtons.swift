@@ -55,6 +55,24 @@ struct OPNModalSecondaryButtonStyle: ButtonStyle {
     }
 }
 
+/// Destructive action inside an app-shell modal footer, sized to sit beside
+/// `OPNModalSecondaryButtonStyle` and `VendorGetInButtonStyle(.regular)`. Same geometry as the
+/// secondary style; the destructive tone carries the state.
+struct OPNModalDestructiveButtonStyle: ButtonStyle {
+    var uiScale: CGFloat = 1
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(OPNUIFont.font(size: 13 * uiScale, weight: .bold))
+            .foregroundStyle(OPNDesign.Semantic.destructive)
+            .tracking(0.3)
+            .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
+            .frame(height: 36 * uiScale)
+            .background(OPNDesign.Semantic.destructive.opacity(configuration.isPressed ? 0.18 : 0.10))
+            .overlay { Rectangle().strokeBorder(OPNDesign.Semantic.destructive.opacity(0.36), lineWidth: 1) }
+    }
+}
+
 struct OPNCompactButtonStyle: ButtonStyle {
     enum Role {
         case primary
