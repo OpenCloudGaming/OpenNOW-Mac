@@ -98,6 +98,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case remoteCoOp
     case theme
     case general
+    case system
     case labs
 
     var id: String { rawValue }
@@ -128,6 +129,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .remoteCoOp: return "Remote Co-Op"
         case .theme: return "Look"
         case .general: return "General"
+        case .system: return "System"
         case .labs: return "Labs"
         }
     }
@@ -143,7 +145,8 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .network: return "Server location, stream transport, and proxy routing."
         case .remoteCoOp: return "Invite a friend into your session from a browser."
         case .theme: return "How OpenNOW looks: interface scale, accent, and the rails the home page draws its games in."
-        case .general: return "Alerts, game launch, Discord, updates, privacy, and what this Mac can do."
+        case .general: return "Alerts, game launch, Discord, privacy, and maintenance."
+        case .system: return "Product identity, updates, release notes, and what this Mac can do."
         case .labs: return "Features on trial. Off by default, and liable to change or vanish."
         }
     }
@@ -160,6 +163,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .remoteCoOp: return "person.2.fill"
         case .theme: return "paintpalette.fill"
         case .general: return "gearshape.2.fill"
+        case .system: return "info.circle.fill"
         case .labs: return "flask.fill"
         }
     }

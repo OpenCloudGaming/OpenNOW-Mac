@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Renders parsed release notes for both update surfaces: the update modal and the What's New card
-/// in Settings → About. The two differ only by `Metrics`, so the densities cannot drift apart.
+/// in Settings → System. The two differ only by `Metrics`, so the densities cannot drift apart.
 struct OPNReleaseNotesView: View {
     struct Metrics {
         let sectionSpacing: CGFloat

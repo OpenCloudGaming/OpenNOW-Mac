@@ -85,9 +85,10 @@ struct GeneralSettingsGroup: View {
         + [
             SettingsSection("game-launch", "Game Launch"),
             SettingsSection("discord", "Discord"),
-            SettingsSection("about", "About"),
-            SettingsSection("system", "This Mac"),
         ]
+        + PrivacySettingsPage.sections
+        + CacheSettingsPage.sections
+        + DiagnosticsSettingsPage.sections
 
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
@@ -96,10 +97,34 @@ struct GeneralSettingsGroup: View {
                 .settingsSection("game-launch")
             DiscordSettingsPage(uiScale: uiScale)
                 .settingsSection("discord")
-            AboutSettingsPage(viewModel: viewModel, uiScale: uiScale)
-                .settingsSection("about")
+            PrivacySettingsPage(uiScale: uiScale)
+            CacheSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            DiagnosticsSettingsPage(viewModel: viewModel, uiScale: uiScale)
+        }
+    }
+}
+
+/// Identity, updates, and machine facts: what OpenNOW is, what it is running, what changed, and what
+/// this Mac can do. The updater lives here with the release history it produces.
+struct SystemSettingsGroup: View {
+    let viewModel: CatalogViewModel
+    @Environment(\.opnUIScale) private var uiScale
+
+    static let sections: [SettingsSection] =
+        ProductSettingsPage.sections
+        + RuntimeSettingsPage.sections
+        + SystemSettingsPage.sections
+        + UpdatesSettingsPage.sections
+        + [SettingsSection("whats-new", "What's New")]
+
+    var body: some View {
+        SettingsStack(spacing: 16 * uiScale) {
+            ProductSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            RuntimeSettingsPage(uiScale: uiScale)
             SystemSettingsPage(viewModel: viewModel, uiScale: uiScale)
-                .settingsSection("system")
+            UpdatesSettingsPage(uiScale: uiScale)
+            WhatsNewCard(uiScale: uiScale)
+                .settingsSection("whats-new")
         }
     }
 }

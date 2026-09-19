@@ -394,6 +394,15 @@ the rail narrows to 60, glyphs only, each row keeping its title as a tooltip. Th
 only: controller mode renders `SettingsTabBar` instead, because its shell already carries a
 horizontal row of destination pills and pad focus is a single top-to-bottom list.
 
+### Settings Destinations (`GeneralSettingsGroup`, `SystemSettingsGroup`)
+
+General carries the editable catches - Session Ready, Game Launch, Discord, Privacy, Cache, and
+Support Diagnostics. System carries identity, updates, and machine facts: Product, Runtime, This
+Mac, Updates, and What's New last. The updater deliberately lives on System rather than General, so
+its preferences and the manual check sit beside the release history they produce. When one card
+mixes read-only and editable content, it splits: Runtime keeps its version rows on System while its
+update rows live in Updates.
+
 ### Settings Card Columns (`SettingsColumns`)
 
 Two independent card columns, 16 gutter, above `narrowRowWidth * 2 + gutter` of card width per
@@ -466,7 +475,7 @@ tint (compact) for shipped-but-rough features. **NEW** is black text on solid ac
 added in the current release; rows opt in with `isNew:` and declare their release in
 `OPNNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
 
-### What's New Card (Settings → About)
+### What's New Card (Settings → System)
 
 `SettingsCard` holding release history (`View/Settings/SettingsWhatsNewViews.swift`). When an
 update is pending, a strip leads the card: 4×32 accent bar, version with an accent AVAILABLE

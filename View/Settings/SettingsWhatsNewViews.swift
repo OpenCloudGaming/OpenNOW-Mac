@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Release history for Settings → About, rendered from the same parsed notes and the same pending
+/// Release history for Settings → System, rendered from the same parsed notes and the same pending
 /// release as the update modal.
 struct WhatsNewCard: View {
     let uiScale: CGFloat

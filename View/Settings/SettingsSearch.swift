@@ -123,9 +123,9 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("When the Stream Is Ready", .general, "session-ready", keywords: ["notification", "alert", "queue", "bring to front", "focus", "off", "disable"]),
         SettingsSearchEntry("Steam Big Picture Mode", .general, "game-launch", keywords: ["launcher", "gamepad friendly", "steam", "tv", "couch"]),
         SettingsSearchEntry("Rich Presence", .general, "discord", keywords: ["discord", "status", "friends", "profile"]),
-        SettingsSearchEntry("Automatic Update Checks", .general, "about", keywords: ["update", "version", "release", "upgrade"]),
-        SettingsSearchEntry("Update Channel", .general, "about", keywords: ["beta", "stable", "pre-release", "update", "channel"]),
-        SettingsSearchEntry("Disable Telemetry", .general, "about", keywords: ["privacy", "analytics", "sentry", "tracking", "diagnostics"]),
+        SettingsSearchEntry("Automatic Update Checks", .system, "updates", keywords: ["update", "version", "release", "upgrade"]),
+        SettingsSearchEntry("Update Channel", .system, "updates", keywords: ["beta", "stable", "pre-release", "update", "channel"]),
+        SettingsSearchEntry("Disable Telemetry", .general, "privacy", keywords: ["privacy", "analytics", "sentry", "tracking", "diagnostics"]),
     ]
 
     private static let recordingEntries: [SettingsSearchEntry] = [
@@ -182,6 +182,7 @@ enum SettingsSearchIndex {
         case .remoteCoOp: []
         case .theme: ThemeSettingsPage.sections
         case .general: GeneralSettingsGroup.sections
+        case .system: SystemSettingsGroup.sections
         case .labs: LabsSettingsPage.sections
         }
     }

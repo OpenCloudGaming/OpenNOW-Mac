@@ -8,6 +8,10 @@ struct SystemSettingsPage: View {
     @State private var revealSensitive = false
     @State private var copiedKey = ""
 
+    static let sections: [SettingsSection] = [
+        SettingsSection("system", "This Mac"),
+    ]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
             readinessCard
@@ -24,6 +28,7 @@ struct SystemSettingsPage: View {
                 identifiersCard
             }
         }
+        .settingsSection("system")
     }
 
     /// The one line worth seeing without asking: whether this Mac can stream what the settings ask

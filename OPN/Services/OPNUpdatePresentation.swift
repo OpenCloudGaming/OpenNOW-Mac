@@ -2,8 +2,8 @@ import Combine
 import Foundation
 
 /// Shared state behind every update surface: the modal the app delegate raises, and the What's New
-/// card in Settings → About. Both read the same pending release, so a dismissed prompt still leaves
-/// About showing that an update is waiting, and the install action behaves identically on both.
+/// card in Settings → System. Both read the same pending release, so a dismissed prompt still leaves
+/// System showing that an update is waiting, and the install action behaves identically on both.
 @MainActor
 final class OPNUpdatePresentation: ObservableObject {
     static let shared = OPNUpdatePresentation()
@@ -41,7 +41,7 @@ final class OPNUpdatePresentation: ObservableObject {
     private(set) var isPreviewingSample = false
     private var simulatedInstallTask: Task<Void, Never>?
 
-    /// Debug-only lens for the Settings → About CHECK FOR UPDATES row, so each button state can be
+    /// Debug-only lens for the Settings → System CHECK FOR UPDATES row, so each button state can be
     /// previewed without a real check (which is suspended in debug builds anyway). `nil` renders the
     /// live status. Set from the OpenNOW ▸ Preview Button Status menu.
     nonisolated enum ButtonStatusPreview: Equatable {

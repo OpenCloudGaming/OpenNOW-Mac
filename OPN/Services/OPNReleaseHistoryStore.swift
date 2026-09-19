@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Session cache for the release history behind Settings → About → What's New.
+/// Session cache for the release history behind Settings → System → What's New.
 ///
 /// Fetched once per app run rather than on every visit to the page: the update check already spends
 /// one call an hour against the unauthenticated GitHub rate limit, and release history does not

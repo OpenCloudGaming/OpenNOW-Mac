@@ -2,134 +2,77 @@ import AppKit
 import CryptoKit
 import SwiftUI
 
-struct AboutSettingsPage: View {
+struct ProductSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    @State private var copiedKey = ""
-    @AppStorage(OPNUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OPNUpdatePreferences.defaultAutomaticUpdateChecksEnabled
-    @AppStorage(OPNUpdatePreferences.updateChannelKey) private var updateChannelRawValue = OPNUpdatePreferences.defaultUpdateChannel.rawValue
     @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
-    @ObservedObject private var updatePresentation = OPNUpdatePresentation.shared
+
+    static let sections: [SettingsSection] = [
+        SettingsSection("product", "Product"),
+    ]
 
     var body: some View {
-        ZStack {
-            VStack(alignment: .leading, spacing: 16 * uiScale) {
-            SettingsCard(title: "Product", uiScale: uiScale) {
-                HStack(alignment: .center, spacing: 20 * uiScale) {
-                    VendorResourceImage(name: "logo", fileExtension: "png")
-                        .scaledToFit()
-                        .frame(width: 88 * uiScale, height: 88 * uiScale)
-                        .accessibilityLabel(Text("\(SettingsAppMetadata.displayName) icon"))
+        SettingsCard(title: "Product", uiScale: uiScale) {
+            HStack(alignment: .center, spacing: 20 * uiScale) {
+                VendorResourceImage(name: "logo", fileExtension: "png")
+                    .scaledToFit()
+                    .frame(width: 88 * uiScale, height: 88 * uiScale)
+                    .accessibilityLabel(Text("\(SettingsAppMetadata.displayName) icon"))
 
-                    VStack(alignment: .leading, spacing: 12 * uiScale) {
-                        HStack(alignment: .center, spacing: 10 * uiScale) {
-                            Text(SettingsAppMetadata.displayName)
-                                .font(.settingsFont(size: 25 * uiScale, weight: .bold))
-                                .foregroundStyle(OPNDesign.Text.primary)
-                            Text("UNOFFICIAL CLIENT SHELL")
-                                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                                .foregroundStyle(OPNDesign.onAccent)
-                                .tracking(0.8)
-                                .padding(.horizontal, 8 * uiScale)
-                                .frame(height: 20 * uiScale)
-                                .background(OPNDesign.accent)
-                        }
-                        Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
-                            .font(.settingsFont(size: 13 * uiScale, weight: .medium))
-                            .foregroundStyle(OPNDesign.Text.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        HStack(spacing: 8 * uiScale) {
-                            AboutStatusPill(title: "Stream", value: viewModel.streamProfile.transportMode.label, uiScale: uiScale)
-                            AboutStatusPill(title: "Route", value: route.summary, uiScale: uiScale)
-                            AboutStatusPill(title: "Telemetry", value: telemetryDisabled ? "Off" : "On", uiScale: uiScale)
-                        }
+                VStack(alignment: .leading, spacing: 12 * uiScale) {
+                    HStack(alignment: .center, spacing: 10 * uiScale) {
+                        Text(SettingsAppMetadata.displayName)
+                            .font(.settingsFont(size: 25 * uiScale, weight: .bold))
+                            .foregroundStyle(OPNDesign.Text.primary)
+                        Text("UNOFFICIAL CLIENT SHELL")
+                            .font(.settingsFont(size: 10 * uiScale, weight: .bold))
+                            .foregroundStyle(OPNDesign.onAccent)
+                            .tracking(0.8)
+                            .padding(.horizontal, 8 * uiScale)
+                            .frame(height: 20 * uiScale)
+                            .background(OPNDesign.accent)
                     }
-                    Spacer(minLength: 0)
-                }
-            }
-
-            SettingsCard(title: "Runtime", uiScale: uiScale) {
-                AboutDetailRow(label: "Version", value: SettingsAppMetadata.version, copyValue: SettingsAppMetadata.version, copiedKey: $copiedKey, uiScale: uiScale)
-                SettingsDivider(uiScale: uiScale)
-                AboutDetailRow(label: "Build", value: SettingsAppMetadata.build, copyValue: SettingsAppMetadata.build, copiedKey: $copiedKey, uiScale: uiScale)
-                SettingsDivider(uiScale: uiScale)
-                AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey, uiScale: uiScale)
-                SettingsDivider(uiScale: uiScale)
-                AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey, uiScale: uiScale)
-                SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(title: "Automatic Update Checks", subtitle: automaticUpdateChecksSubtitle, isOn: automaticUpdateChecksEnabled, uiScale: uiScale) { enabled in
-                    OPNAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
-                }
-                SettingsDivider(uiScale: uiScale)
-                SettingsOptionRow(
-                    title: "Update Channel",
-                    subtitle: "Beta builds come from GitHub pre-releases and may be less stable.",
-                    options: ["Stable", "Beta"],
-                    selectedIndex: updateChannel == .beta ? 1 : 0,
-                    uiScale: uiScale
-                ) { index in
-                    updateChannelRawValue = (index == 1 ? OPNUpdateChannel.beta : .stable).rawValue
-                    OPNAppDelegate.requestApplicationUpdateCheck()
-                }
-                SettingsDivider(uiScale: uiScale)
-                HStack(spacing: 10 * uiScale) {
-                    SettingsActionButton(title: isButtonChecking ? "CHECKING…" : "CHECK FOR UPDATES", uiScale: uiScale) {
-                        OPNAppDelegate.requestApplicationUpdateCheck()
-                    }
-                    .disabled(isButtonChecking)
-                    Text(updateCheckStatusText)
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
+                    Text("A macOS runtime for launching and streaming OpenNOW sessions with local catalog, account, and diagnostics surfaces.")
+                        .font(.settingsFont(size: 13 * uiScale, weight: .medium))
+                        .foregroundStyle(OPNDesign.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            WhatsNewCard(uiScale: uiScale)
-
-            SettingsCard(title: "Cache", uiScale: uiScale) {
-                AboutDetailRow(label: "Catalog Images", value: viewModel.catalogImageCacheSummary, copyValue: viewModel.catalogImageCacheSummary, copiedKey: $copiedKey, uiScale: uiScale)
-                SettingsDivider(uiScale: uiScale)
-                HStack(spacing: 10 * uiScale) {
-                    SettingsActionButton(title: "CLEAR IMAGE CACHE", uiScale: uiScale) {
-                        viewModel.clearCatalogImageCache()
+                    HStack(spacing: 8 * uiScale) {
+                        AboutStatusPill(title: "Stream", value: viewModel.streamProfile.transportMode.label, uiScale: uiScale)
+                        AboutStatusPill(title: "Route", value: route.summary, uiScale: uiScale)
+                        AboutStatusPill(title: "Telemetry", value: telemetryDisabled ? "Off" : "On", uiScale: uiScale)
                     }
-                    Text("Removes cached catalog artwork from disk and memory. Images will download again as needed.")
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
                 }
-            }
-
-            SettingsCard(title: "Privacy", uiScale: uiScale) {
-                SettingsToggleRow(title: "Disable Telemetry", subtitle: "Stops Sentry, trace headers, metrics, and automatic diagnostics logging.", isOn: telemetryDisabled, uiScale: uiScale, action: setTelemetryDisabled)
-            }
-
-            SettingsCard(title: "Support Diagnostics", uiScale: uiScale) {
-                VStack(alignment: .leading, spacing: 10 * uiScale) {
-                    HStack(spacing: 10 * uiScale) {
-                        SettingsActionButton(title: diagnosticsButtonTitle, uiScale: uiScale) {
-                            viewModel.presentDiagnosticsUploadConfirmation()
-                        }
-                        .disabled(viewModel.diagnosticsState.isWorking)
-                        Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
-                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OPNDesign.Text.tertiary)
-                    }
-                    Text(viewModel.diagnosticsState.message)
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(viewModel.diagnosticsState.isError ? OPNDesign.Semantic.destructive : OPNDesign.Text.secondary)
-                }
+                Spacer(minLength: 0)
             }
         }
-            .disabled(viewModel.isDiagnosticsUploadConfirmationVisible)
-        }
-        .onAppear {
-            viewModel.refreshCatalogImageCacheSummary()
-            telemetryDisabled = OPNSentry.isTelemetryDisabled()
-        }
+        .settingsSection("product")
+        .onAppear { telemetryDisabled = OPNSentry.isTelemetryDisabled() }
     }
 
     private var route: SettingsRouteSnapshot {
         SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: false)
+    }
+}
+
+struct RuntimeSettingsPage: View {
+    let uiScale: CGFloat
+    @State private var copiedKey = ""
+
+    static let sections: [SettingsSection] = [
+        SettingsSection("runtime", "Runtime"),
+    ]
+
+    var body: some View {
+        SettingsCard(title: "Runtime", uiScale: uiScale) {
+            AboutDetailRow(label: "Version", value: SettingsAppMetadata.version, copyValue: SettingsAppMetadata.version, copiedKey: $copiedKey, uiScale: uiScale)
+            SettingsDivider(uiScale: uiScale)
+            AboutDetailRow(label: "Build", value: SettingsAppMetadata.build, copyValue: SettingsAppMetadata.build, copiedKey: $copiedKey, uiScale: uiScale)
+            SettingsDivider(uiScale: uiScale)
+            AboutDetailRow(label: "Bundle", value: bundleIdentifier, copyValue: bundleIdentifier, copiedKey: $copiedKey, uiScale: uiScale)
+            SettingsDivider(uiScale: uiScale)
+            AboutDetailRow(label: "macOS", value: operatingSystemVersion, copyValue: operatingSystemVersion, copiedKey: $copiedKey, uiScale: uiScale)
+        }
+        .settingsSection("runtime")
     }
 
     private var bundleIdentifier: String {
@@ -138,6 +81,50 @@ struct AboutSettingsPage: View {
 
     private var operatingSystemVersion: String {
         ProcessInfo.processInfo.operatingSystemVersionString
+    }
+}
+
+/// Update preferences and the manual check in one card: everything that touches the updater lives
+/// on System beside the What's New history it produces.
+struct UpdatesSettingsPage: View {
+    let uiScale: CGFloat
+    @AppStorage(OPNUpdatePreferences.automaticUpdateChecksEnabledKey) private var automaticUpdateChecksEnabled = OPNUpdatePreferences.defaultAutomaticUpdateChecksEnabled
+    @AppStorage(OPNUpdatePreferences.updateChannelKey) private var updateChannelRawValue = OPNUpdatePreferences.defaultUpdateChannel.rawValue
+    @ObservedObject private var updatePresentation = OPNUpdatePresentation.shared
+
+    static let sections: [SettingsSection] = [
+        SettingsSection("updates", "Updates"),
+    ]
+
+    var body: some View {
+        SettingsCard(title: "Updates", uiScale: uiScale) {
+            SettingsToggleRow(title: "Automatic Update Checks", subtitle: automaticUpdateChecksSubtitle, isOn: automaticUpdateChecksEnabled, uiScale: uiScale) { enabled in
+                OPNAppDelegate.setAutomaticApplicationUpdateChecksEnabled(enabled)
+            }
+            SettingsDivider(uiScale: uiScale)
+            SettingsOptionRow(
+                title: "Update Channel",
+                subtitle: "Beta builds come from GitHub pre-releases and may be less stable.",
+                options: ["Stable", "Beta"],
+                selectedIndex: updateChannel == .beta ? 1 : 0,
+                uiScale: uiScale
+            ) { index in
+                updateChannelRawValue = (index == 1 ? OPNUpdateChannel.beta : .stable).rawValue
+                OPNAppDelegate.requestApplicationUpdateCheck()
+            }
+            SettingsDivider(uiScale: uiScale)
+            HStack(spacing: 10 * uiScale) {
+                SettingsActionButton(title: isButtonChecking ? "CHECKING…" : "CHECK FOR UPDATES", uiScale: uiScale) {
+                    OPNAppDelegate.requestApplicationUpdateCheck()
+                }
+                .disabled(isButtonChecking)
+                Text(updateCheckStatusText)
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .settingsSection("updates")
     }
 
     private var updateChannel: OPNUpdateChannel {
@@ -165,7 +152,7 @@ struct AboutSettingsPage: View {
         }
         #endif
         if OPNUpdatePreferences.updateChecksAreSuspendedForDebugging {
-            return updateSuspendedMessage
+            return "Update checks are suspended in debug builds, which report version 0.0.0. Test the update dialogs with OpenNOW ▸ Preview Update Dialog."
         }
         guard !updatePresentation.isCheckingForUpdate else {
             return "Checking GitHub for a newer release…"
@@ -174,10 +161,6 @@ struct AboutSettingsPage: View {
             return "OpenNOW has not checked for updates yet."
         }
         return "Last checked \(date.formatted(.relative(presentation: .named)))"
-    }
-
-    private var updateSuspendedMessage: String {
-        "Update checks are suspended in debug builds, which report version 0.0.0. Test the update dialogs with OpenNOW ▸ Preview Update Dialog."
     }
 
     private var automaticUpdateChecksSubtitle: String {
@@ -189,6 +172,85 @@ struct AboutSettingsPage: View {
         }
         return "OpenNOW will not check for new releases automatically. Manual checks remain available."
     }
+}
+
+struct PrivacySettingsPage: View {
+    let uiScale: CGFloat
+    @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
+
+    static let sections: [SettingsSection] = [
+        SettingsSection("privacy", "Privacy"),
+    ]
+
+    var body: some View {
+        SettingsCard(title: "Privacy", uiScale: uiScale) {
+            SettingsToggleRow(title: "Disable Telemetry", subtitle: "Stops Sentry, trace headers, metrics, and automatic diagnostics logging.", isOn: telemetryDisabled, uiScale: uiScale, action: setTelemetryDisabled)
+        }
+        .settingsSection("privacy")
+        .onAppear { telemetryDisabled = OPNSentry.isTelemetryDisabled() }
+    }
+
+    private func setTelemetryDisabled(_ disabled: Bool) {
+        telemetryDisabled = disabled
+        OPNSentry.setTelemetryDisabled(disabled)
+    }
+}
+
+struct CacheSettingsPage: View {
+    let viewModel: CatalogViewModel
+    let uiScale: CGFloat
+    @State private var copiedKey = ""
+
+    static let sections: [SettingsSection] = [
+        SettingsSection("cache", "Cache"),
+    ]
+
+    var body: some View {
+        SettingsCard(title: "Cache", uiScale: uiScale) {
+            AboutDetailRow(label: "Catalog Images", value: viewModel.catalogImageCacheSummary, copyValue: viewModel.catalogImageCacheSummary, copiedKey: $copiedKey, uiScale: uiScale)
+            SettingsDivider(uiScale: uiScale)
+            HStack(spacing: 10 * uiScale) {
+                SettingsActionButton(title: "CLEAR IMAGE CACHE", uiScale: uiScale) {
+                    viewModel.clearCatalogImageCache()
+                }
+                Text("Removes cached catalog artwork from disk and memory. Images will download again as needed.")
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+            }
+        }
+        .settingsSection("cache")
+        .onAppear { viewModel.refreshCatalogImageCacheSummary() }
+    }
+}
+
+struct DiagnosticsSettingsPage: View {
+    let viewModel: CatalogViewModel
+    let uiScale: CGFloat
+
+    static let sections: [SettingsSection] = [
+        SettingsSection("diagnostics", "Support Diagnostics"),
+    ]
+
+    var body: some View {
+        SettingsCard(title: "Support Diagnostics", uiScale: uiScale) {
+            VStack(alignment: .leading, spacing: 10 * uiScale) {
+                HStack(spacing: 10 * uiScale) {
+                    SettingsActionButton(title: diagnosticsButtonTitle, uiScale: uiScale) {
+                        viewModel.presentDiagnosticsUploadConfirmation()
+                    }
+                    .disabled(viewModel.diagnosticsState.isWorking)
+                    Text("Uploads the recent sanitized current-run log, then copies diagnostics with the link.")
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(OPNDesign.Text.tertiary)
+                }
+                Text(viewModel.diagnosticsState.message)
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(viewModel.diagnosticsState.isError ? OPNDesign.Semantic.destructive : OPNDesign.Text.secondary)
+            }
+        }
+        .settingsSection("diagnostics")
+        .disabled(viewModel.isDiagnosticsUploadConfirmationVisible)
+    }
 
     private var diagnosticsButtonTitle: String {
         switch viewModel.diagnosticsState {
@@ -197,12 +259,6 @@ struct AboutSettingsPage: View {
         case .copied: return "COPIED"
         }
     }
-
-    private func setTelemetryDisabled(_ disabled: Bool) {
-        telemetryDisabled = disabled
-        OPNSentry.setTelemetryDisabled(disabled)
-    }
-
 }
 
 struct DiagnosticsUploadConfirmationDialog: View {
