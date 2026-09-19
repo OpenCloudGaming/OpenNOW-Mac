@@ -7,6 +7,15 @@ struct OPNApp: App {
     @NSApplicationDelegateAdaptor(OPNAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
     @ObservedObject private var keybindings = OPNKeybindingsObserver.shared
+    /// Owns what the status item shows. Read here as well as in its own views because `isInserted`
+    /// is a scene argument: whether the item exists at all is decided in this body.
+    @ObservedObject private var menuBarSession = OPNMenuBarSessionModel.shared
+    /// The scene argument for `MenuBarExtra(isInserted:)`, mirrored from the surface instead of
+    /// handing SwiftUI the published property itself: SwiftUI writes this binding back on every
+    /// graph change, and a `@Published` write invalidates the body even when the value is unchanged
+    /// — a feedback loop that crashed the app on launch. Plain scene state ignores a write that
+    /// changes nothing, which is what breaks the loop.
+    @State private var isMenuBarStatusItemInserted = OPNMenuBarSessionModel.shared.isStatusItemInserted
 
     let sharedModelContainer: ModelContainer
 
@@ -145,37 +154,6 @@ struct OPNApp: App {
                 } label: {
                     Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
                 }
-                #if DEBUG
-                Menu("Preview Update Dialog") {
-                    Button("Update Available") {
-                        OPNUpdatePresentation.shared.presentSampleUpdate()
-                    }
-                    Button("Up To Date") {
-                        OPNUpdatePresentation.shared.presentSampleStatus(.upToDate(version: SettingsAppMetadata.version))
-                    }
-                    Button("Check Failed") {
-                        OPNUpdatePresentation.shared.presentSampleStatus(.checkFailed(message: "The Internet connection appears to be offline."))
-                    }
-                    Button("Install Failed") {
-                        OPNUpdatePresentation.shared.presentSampleStatus(.installFailed(message: "The downloaded app bundle did not pass macOS code-signature verification."))
-                    }
-                }
-                Menu("Preview Button Status") {
-                    Button(buttonStatusItemName("CHECKING…", matches: .checking)) {
-                        OPNUpdatePresentation.shared.previewButtonStatus(.checking)
-                    }
-                    Button(buttonStatusItemName("JUST CHECKED", matches: .lastChecked(Date()))) {
-                        OPNUpdatePresentation.shared.previewButtonStatus(.lastChecked(Date()))
-                    }
-                    Button(buttonStatusItemName("NEVER CHECKED", matches: .neverChecked)) {
-                        OPNUpdatePresentation.shared.previewButtonStatus(.neverChecked)
-                    }
-                    Divider()
-                    Button(buttonStatusItemName("LIVE BEHAVIOR", matches: nil)) {
-                        OPNUpdatePresentation.shared.previewButtonStatus(nil)
-                    }
-                }
-                #endif
             }
             CommandMenu("Stream") {
                 Button("Join Remote Co-Op as Guest…") {
@@ -196,30 +174,31 @@ struct OPNApp: App {
             }
         }
 
+        #if DEBUG
+        // Dev-only preview menus, in their own `Commands` value rather than written out here, so the
+        // shipping scene body stays small: see `OPNUpdatePreviewCommands`.
+        .commands {
+            OPNUpdatePreviewCommands()
+        }
+        #endif
+
+        // Deliberately no activation-policy switch with this scene: the app stays a regular app, so
+        // the main and settings windows keep their ordinary focus, activation, and Dock behaviour,
+        // and the status item is purely additive.
+        MenuBarExtra(isInserted: $isMenuBarStatusItemInserted) {
+            OPNMenuBarPanel(session: menuBarSession)
+        } label: {
+            OPNMenuBarStatusLabel(session: menuBarSession)
+        }
+        .menuBarExtraStyle(.window)
+        .onChange(of: menuBarSession.isStatusItemInserted) { @MainActor _, isInserted in
+            isMenuBarStatusItemInserted = isInserted
+        }
+
         Window("Join Remote Co-Op", id: "remote-coop-guest") {
             RemoteCoOpGuestView()
         }
         .defaultSize(width: 1280, height: 800)
     }
 
-    #if DEBUG
-    /// Labels a Preview Button Status item with a leading checkmark when it is the currently active
-    /// preview, so picking one gives visible feedback. Matching ignores the `lastChecked` date, since
-    /// each press stores a fresh `Date()`.
-    private func buttonStatusItemName(_ name: String, matches target: OPNUpdatePresentation.ButtonStatusPreview?) -> String {
-        guard let preview = OPNUpdatePresentation.shared.buttonStatusPreview else {
-            return target == nil ? "✓ \(name)" : name
-        }
-        let isActive: Bool
-        switch (preview, target) {
-        case (.checking, .some(.checking)),
-             (.lastChecked, .some(.lastChecked)),
-             (.neverChecked, .some(.neverChecked)):
-            isActive = true
-        default:
-            isActive = false
-        }
-        return isActive ? "✓ \(name)" : name
-    }
-    #endif
 }

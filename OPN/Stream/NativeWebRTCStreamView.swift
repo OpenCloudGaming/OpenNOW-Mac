@@ -34,6 +34,9 @@ public enum StreamCommand: Equatable, Sendable {
     case toggleAntiAFK
     case togglePointerCapture
     case showQuitMenu
+    /// Ends the session through the stream surface's own end path, so a menu bar action tears down
+    /// exactly what the in-stream quit menu tears down.
+    case endSession
     case toggleOnScreenKeyboard
 
     static var shortcutGuide: String {

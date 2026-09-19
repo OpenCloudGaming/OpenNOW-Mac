@@ -91,6 +91,7 @@ enum SettingsNewBadges {
         case .controllerOrder: .input
         case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme
         case .keybindings: .keybindings
+        case .menuBar: .general
         }
     }
 

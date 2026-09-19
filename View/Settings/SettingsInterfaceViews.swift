@@ -6,6 +6,21 @@ struct InterfaceSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
     @AppStorage(OPNSessionReadyAction.modeKey) private var sessionReadyActionRawValue = OPNSessionReadyAction.Mode.notification.rawValue
+    @AppStorage(OPNWindowClosePreferences.behaviorKey) private var windowCloseBehaviorRawValue = OPNWindowClosePreferences.defaultBehavior.rawValue
+    @AppStorage(OPNMenuBarPreferences.showsStatusItemKey) private var showsMenuBarItem = OPNMenuBarPreferences.defaultShowsStatusItem
+
+    /// The windowless choice has nothing to be reached by without the status item, so it is offered
+    /// as unavailable and the row says why rather than silently disagreeing with it.
+    private var windowCloseSubtitle: String {
+        let base = "What the close button does with the last window. Minimizing drops the window into the Dock and keeps a session running; keeping running with no window leaves only the menu bar, and reopening builds the window again. Quit OpenNOW closes the app with its window."
+        guard !showsMenuBarItem else { return base }
+        return base + " Keeping running with no window needs the menu bar item, so it stays unavailable while that is off."
+    }
+
+    private var selectedWindowCloseBehaviorIndex: Int {
+        let behavior = OPNWindowCloseBehavior(rawValue: windowCloseBehaviorRawValue) ?? OPNWindowClosePreferences.defaultBehavior
+        return OPNWindowCloseBehavior.allCases.firstIndex(of: behavior) ?? 0
+    }
 
     private var selectedSessionReadyActionIndex: Int {
         let mode = OPNSessionReadyAction.Mode(rawValue: sessionReadyActionRawValue) ?? .notification
@@ -14,6 +29,7 @@ struct InterfaceSettingsPage: View {
 
     static let sections: [SettingsSection] = [
         SettingsSection("session-ready", "Session Ready"),
+        SettingsSection("window-closing", "Window & Menu Bar"),
     ]
 
     var body: some View {
@@ -27,6 +43,33 @@ struct InterfaceSettingsPage: View {
                 }
             }
             .settingsSection("session-ready")
+            SettingsCard(title: "Window & Menu Bar", uiScale: uiScale) {
+                SettingsToggleRow(
+                    title: "Menu Bar Item",
+                    subtitle: "Show the session in the menu bar. With this off OpenNOW puts nothing in the menu bar at all, even while a session is running, and the window is the only place to see or end one.",
+                    isOn: showsMenuBarItem,
+                    isNew: OPNNewSettings.isNew(.menuBar),
+                    uiScale: uiScale
+                ) { newValue in
+                    OPNNewSettings.acknowledge(.menuBar)
+                    OPNMenuBarPreferences.showsStatusItem = newValue
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsOptionRow(
+                    title: "When the Last Window Closes",
+                    subtitle: windowCloseSubtitle,
+                    options: OPNWindowCloseBehavior.allCases.map(\.label),
+                    selectedIndex: selectedWindowCloseBehaviorIndex,
+                    enabled: OPNWindowCloseBehavior.allCases.map { !$0.requiresStatusItem || showsMenuBarItem },
+                    isNew: OPNNewSettings.isNew(.menuBar),
+                    uiScale: uiScale
+                ) { index in
+                    OPNNewSettings.acknowledge(.menuBar)
+                    guard OPNWindowCloseBehavior.allCases.indices.contains(index) else { return }
+                    OPNWindowClosePreferences.behavior = OPNWindowCloseBehavior.allCases[index]
+                }
+            }
+            .settingsSection("window-closing")
         }
     }
 }

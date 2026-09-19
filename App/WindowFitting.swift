@@ -11,7 +11,6 @@ enum WindowFitting {
     /// Floor for the fitted size when AppKit has not adopted SwiftUI's minimum content size yet,
     /// which is the case this early. Matches the root's `frame(minWidth:minHeight:)`.
     private static let fallbackMinimumContentSize = CGSize(width: 640, height: 480)
-    private static let mainWindowIdentifier = "main"
 
     @MainActor private static var earlyFittingObserver: NSObjectProtocol?
 
@@ -35,7 +34,7 @@ enum WindowFitting {
 
     @MainActor
     private static func fitPendingMainWindow() {
-        guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == mainWindowIdentifier }) else { return }
+        guard let window = OPNMainWindow.existing() else { return }
         enableFullScreen(for: window)
         let fitted = fittedFrame(for: window)
         // Once it is on screen there is nothing left to fix quietly, and resizing then is the flash

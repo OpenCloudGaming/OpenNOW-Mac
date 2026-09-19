@@ -314,6 +314,33 @@ subtitle (white @ 0.52). Active row: accent @ 0.095 fill + 3px accent leading ba
 Destructive rows tint icon and title #FF8A80. Sign Out is pinned below a divider
 with 10 (Section) horizontal / 12 (Small) vertical padding.
 
+### Status Item (`OPNMenuBarStatusLabel`, `OPNMenuBarPanel`)
+
+The status item's *label* is system chrome: macOS draws it in the status bar, and it takes no
+`uiScale`, `OPNDesign` fills, or 1px-stroke treatment. It carries an SF Symbol, the game, and either
+a phase detail or a ticking elapsed clock, which uses `.monospacedDigit()` rather than a monospaced
+system face.
+
+The popover is app-drawn, because `MenuBarExtra`'s `.window` style hands SwiftUI the whole panel.
+It matches the Control Center popovers it sits beside — stacked cards with their own controls —
+rather than this document's panel system, so its corner radii carry a documented
+`design_no_corner_radius` exception at each site.
+
+How it is drawn depends on the OS:
+
+- **macOS 26 and later** — the popover is the system's own Liquid Glass. Inside it, the session
+  controls (Microphone / Record / End) are Liquid Glass elements in a `GlassEffectContainer`, while
+  the cards and their list rows stay in the content layer as translucent fills. That split is Apple's
+  guidance, not a preference: Liquid Glass is "a distinct functional layer for controls and
+  navigation elements", it should be applied "sparingly" to "the most important functional elements",
+  and it must not be stacked on itself — the popover is already glass, so a glass card inside it
+  would be two layers of the same material.
+- **macOS 15.6 – 25** — the app's floor, unchanged: no glass to draw, so everything above is the same
+  translucent fill (`OPNDesign.Fill.neutral` + a 1px stroke) over a `.ultraThinMaterial` panel.
+
+Everything else applies to both paths: `.opnUI` sizes and weights, `OPNDesign` text tokens,
+destructive ink from `OPNDesign.Semantic`, and no native `Menu` or `Divider` in the panel.
+
 ### Login Wall Layout
 
 The login panel is marketing-only: logo, eyebrow, headline, marketing bullets, and a

@@ -121,6 +121,8 @@ enum SettingsSearchIndex {
 
     private static let generalEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("When the Stream Is Ready", .general, "session-ready", keywords: ["notification", "alert", "queue", "bring to front", "focus", "off", "disable"]),
+        SettingsSearchEntry("Menu Bar Item", .general, "window-closing", keywords: ["menu bar", "status item", "hide", "opt out", "turn off", "background", "icon"]),
+        SettingsSearchEntry("When the Last Window Closes", .general, "window-closing", keywords: ["menu bar", "status item", "background", "windowless", "close button", "close window", "minimize", "dock", "stay running", "quit"]),
         SettingsSearchEntry("Steam Big Picture Mode", .general, "game-launch", keywords: ["launcher", "gamepad friendly", "steam", "tv", "couch"]),
         SettingsSearchEntry("Rich Presence", .general, "discord", keywords: ["discord", "status", "friends", "profile"]),
         SettingsSearchEntry("Automatic Update Checks", .system, "updates", keywords: ["update", "version", "release", "upgrade"]),
