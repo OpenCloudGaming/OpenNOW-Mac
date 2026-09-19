@@ -6,14 +6,46 @@ struct InterfaceSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
     @AppStorage(OPNSessionReadyAction.modeKey) private var sessionReadyActionRawValue = OPNSessionReadyAction.Mode.notification.rawValue
+    @AppStorage(OPNWindowClosePreferences.behaviorKey) private var windowCloseBehaviorRawValue = OPNWindowClosePreferences.defaultBehavior.rawValue
+    @AppStorage(OPNMenuBarPreferences.showsStatusItemKey) private var showsMenuBarItem = OPNMenuBarPreferences.defaultShowsStatusItem
+    @AppStorage(OPNLaunchPreferences.startupPresentationKey) private var startupPresentationRawValue = OPNLaunchPreferences.defaultStartupPresentation.rawValue
+    @State private var launchesAtLogin = OPNLoginItemController.isEnabled
+
+    /// Menu-bar-only mode hides the Dock icon, so without the status item it has nothing to be
+    /// reached by. It is offered as unavailable and the row says why rather than silently
+    /// disagreeing with it.
+    private var windowCloseSubtitle: String {
+        let base = "What the close button does with the last window. Quit on Close ends the app with its window. Close, Keep Dock Icon leaves OpenNOW running with its Dock icon and no window, so the Dock brings it back. Close, Menu Bar Only hides the Dock icon and leaves only the menu bar item, and reopening builds the window again."
+        guard !showsMenuBarItem else { return base }
+        return base + " Menu Bar Only needs the menu bar item, so it stays unavailable while that is off."
+    }
+
+    private var selectedWindowCloseBehaviorIndex: Int {
+        // Resolved, not raw: a menu-bar-only choice the menu bar item switch has withheld must show as
+        // the fallback that actually applies, not as a selected chip that cannot run.
+        let behavior = OPNWindowClosePreferences.resolvedBehavior(storedRawValue: windowCloseBehaviorRawValue)
+        return OPNWindowCloseBehavior.allCases.firstIndex(of: behavior) ?? 0
+    }
 
     private var selectedSessionReadyActionIndex: Int {
         let mode = OPNSessionReadyAction.Mode(rawValue: sessionReadyActionRawValue) ?? .notification
         return OPNSessionReadyAction.Mode.allCases.firstIndex(of: mode) ?? 0
     }
 
+    private var selectedStartupPresentationIndex: Int {
+        let presentation = OPNStartupPresentation(rawValue: startupPresentationRawValue) ?? OPNLaunchPreferences.defaultStartupPresentation
+        return OPNStartupPresentation.allCases.firstIndex(of: presentation) ?? 0
+    }
+
+    private var launchAtLoginSubtitle: String {
+        let base = "Start OpenNOW automatically when you log in to this Mac. macOS lists it under Login Items in System Settings."
+        guard OPNLoginItemController.requiresApproval else { return base }
+        return base + " macOS is waiting for you to approve it there."
+    }
+
     static let sections: [SettingsSection] = [
         SettingsSection("session-ready", "Session Ready"),
+        SettingsSection("window-closing", "Window & Menu Bar"),
     ]
 
     var body: some View {
@@ -27,7 +59,60 @@ struct InterfaceSettingsPage: View {
                 }
             }
             .settingsSection("session-ready")
+            SettingsCard(title: "Window & Menu Bar", uiScale: uiScale) {
+                SettingsToggleRow(
+                    title: "Menu Bar Item",
+                    subtitle: "Show the session in the menu bar. With this off OpenNOW puts nothing in the menu bar at all, even while a session is running, and the window is the only place to see or end one.",
+                    isOn: showsMenuBarItem,
+                    isNew: OPNNewSettings.isNew(.menuBar),
+                    uiScale: uiScale
+                ) { newValue in
+                    OPNNewSettings.acknowledge(.menuBar)
+                    OPNMenuBarPreferences.showsStatusItem = newValue
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsOptionRow(
+                    title: "When the Last Window Closes",
+                    subtitle: windowCloseSubtitle,
+                    options: OPNWindowCloseBehavior.allCases.map(\.label),
+                    selectedIndex: selectedWindowCloseBehaviorIndex,
+                    enabled: OPNWindowCloseBehavior.allCases.map { !$0.requiresStatusItem || showsMenuBarItem },
+                    isNew: OPNNewSettings.isNew(.menuBar),
+                    uiScale: uiScale
+                ) { index in
+                    OPNNewSettings.acknowledge(.menuBar)
+                    guard OPNWindowCloseBehavior.allCases.indices.contains(index) else { return }
+                    OPNWindowClosePreferences.behavior = OPNWindowCloseBehavior.allCases[index]
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsToggleRow(
+                    title: "Launch at Login",
+                    subtitle: launchAtLoginSubtitle,
+                    isOn: launchesAtLogin,
+                    isNew: OPNNewSettings.isNew(.launchAtLogin),
+                    uiScale: uiScale
+                ) { newValue in
+                    OPNNewSettings.acknowledge(.launchAtLogin)
+                    launchesAtLogin = OPNLoginItemController.setEnabled(newValue)
+                    OPNLaunchPreferences.launchesAtLogin = launchesAtLogin
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsOptionRow(
+                    title: "At Launch, Show",
+                    subtitle: "Open the main window, or start with only the menu bar item and no window. Opening the window later is always one click away in the menu bar.",
+                    options: OPNStartupPresentation.allCases.map(\.label),
+                    selectedIndex: selectedStartupPresentationIndex,
+                    isNew: OPNNewSettings.isNew(.startupPresentation),
+                    uiScale: uiScale
+                ) { index in
+                    OPNNewSettings.acknowledge(.startupPresentation)
+                    guard OPNStartupPresentation.allCases.indices.contains(index) else { return }
+                    startupPresentationRawValue = OPNStartupPresentation.allCases[index].rawValue
+                }
+            }
+            .settingsSection("window-closing")
         }
+        .onAppear { launchesAtLogin = OPNLoginItemController.isEnabled }
     }
 }
 

@@ -42,6 +42,7 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | ⚡ **Native NVST transport** | Stream over NVIDIA's NVST protocol on OpenNOW's own native stack - RTSPS control, raw-SRTP video, VideoToolbox decode - with no vendor runtime in the bundle. [More ↓](#native-nvst-transport) |
 | ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. [More ↓](#record-your-runs) |
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, persistent Library and Favorites - plus a live banner that drops you straight back into an active session. |
+| ☁️ **Menu bar control** | Track and drive the session from the menu bar - live status, elapsed clock, Resume / Pause / End, and Continue Playing - and keep the app running with no window at all. [More ↓](#menu-bar--windowless) |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - hosted by OpenNOW itself, no server to deploy, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 🔊 **5.1 / 7.1 surround** | Multi-channel Opus on both transports, negotiated from your output device and membership, with a stereo fold for recordings and Remote Co-Op. |
@@ -172,6 +173,29 @@ Struct layouts for all three formats are documented in SDL's [`controller_struct
 ![Recordings library beside the Quick Edit timeline: a saved Streets of Rage 4 capture, its 5120x2160 thumbnail and size, and a filmstrip timeline with trim, split, and set in/out controls](docs/screenshots/recordings.png)
 
 **Quick Edit** is opt-in and non-destructive - trim the ends, split and cut a middle section, join what is left, then save as a new video. The advanced pass adds crop, rotate, flip, speed, and audio. The original file is never rewritten.
+
+## Menu Bar & Windowless
+
+OpenNOW lives in the menu bar, so a session survives its window. The status item is the OpenNOW cloud
+- hollow when idle, filled while streaming - and the popover is a compact control surface over
+whatever you're already doing.
+
+![Menu bar popover during a stream: the game title and elapsed clock, Resume/Pause/End controls, and Continue Playing rows with box art](docs/screenshots/menu-bar-streaming.png)
+
+- **Session at a glance** - the game, what it is doing, and a live elapsed clock, with no window open.
+- **Resume, Pause, End** - Pause tears down the local stream but keeps the cloud seat alive, and Resume rejoins it. A session running on another device shows up here too; the menu re-checks every time you open it.
+- **Continue Playing** - your three most recent games, with box art, ready to launch without opening the window.
+
+![Menu bar popover offering Resume for a session that is available but not streaming locally](docs/screenshots/menu-bar-resume.png)
+
+Settings → General → **Window & Menu Bar** decides what happens when the window goes away:
+
+![Window & Menu Bar settings: the menu bar item toggle, what the last-window close does, launch at login, and whether to start on the window or the menu bar only](docs/screenshots/settings-window-menu-bar.png)
+
+- **Menu bar item** - show the session in the menu bar, or keep OpenNOW out of it entirely.
+- **When the last window closes** - quit on close, close and keep the Dock icon (the default, so the close button just closes the window and the Dock brings it back), or close and hide from the Dock so only the menu bar item remains.
+- **Launch at login** - start OpenNOW automatically, registered as a macOS Login Item.
+- **At launch, show** - open the main window, or start with only the menu bar item and no window.
 
 ## Settings You Can Find
 

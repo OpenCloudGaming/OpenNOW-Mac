@@ -45,6 +45,8 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         installStreamShortcutMonitor()
         bindUpdatePresentation()
         startApplicationUpdateChecks()
+        OPNMainWindowCloseGuard.install()
+        OPNDockIconController.install()
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
     }
 
@@ -52,11 +54,20 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         OPNLog.info(.app, "NSApplication will terminate")
         removeStreamShortcutMonitor()
         stopApplicationUpdateChecks()
+        OPNMainWindowCloseGuard.uninstall()
+        OPNDockIconController.uninstall()
     }
 
+    /// The backstop behind `OPNMainWindowCloseGuard`: whichever way a window was closed — the close
+    /// button the guard intercepts, the Window menu, `performClose:` — this is what decides whether
+    /// the app goes with it. It is also what makes "keep running" true for a window the guard never
+    /// saw, such as the guest window being the last one open.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        OPNLog.info(.app, "Application will terminate after last window closes")
-        return true
+        let terminates = !OPNWindowClosePreferences.keepsApplicationRunning
+        OPNLog.info(.app, terminates
+            ? "Application will terminate after last window closes"
+            : "Application will keep running after last window closes for the menu bar")
+        return terminates
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

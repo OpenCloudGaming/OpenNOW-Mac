@@ -341,12 +341,15 @@ extension CatalogViewModel {
             previousGameSession = session
             session.save()
             if success {
+                let recordedGame = recentlyPlayedCatalogGame(forApplicationID: finishedConfiguration.applicationID)
+                let recordedIdentity = recordedGame.map { Self.identity(for: $0) } ?? ""
                 var recentlyPlayed = self.recentlyPlayed
                 recentlyPlayed.record(
                     title: session.title,
-                    appId: finishedConfiguration.applicationID,
+                    appId: recordedIdentity.isEmpty ? finishedConfiguration.applicationID : recordedIdentity,
                     store: finishedConfiguration.selectedStore,
-                    playedAt: session.endedAt
+                    playedAt: session.endedAt,
+                    artworkURL: recordedGame?.imageUrl
                 )
                 self.recentlyPlayed = recentlyPlayed
                 recentlyPlayed.save(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: self.session))
@@ -538,6 +541,13 @@ extension CatalogViewModel {
         launchFlowError = ""
         errorMessage = ""
         launchFlowState = .activeSessionPrompt
+    }
+
+    /// The catalog game a finished session belongs to, when the catalog knows it. Its identity lets
+    /// the entry merge with the vendor's server-side history for the same game instead of doubling it
+    /// under the numeric launch app id, and its box art lets the windowless menu bar show a thumbnail.
+    private func recentlyPlayedCatalogGame(forApplicationID applicationID: String) -> OPNCatalogGameObject? {
+        allKnownGames.first { Self.game($0, matchesApplicationID: applicationID) }
     }
 
     func clearLaunchFlow() {

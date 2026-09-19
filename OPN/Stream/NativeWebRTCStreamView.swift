@@ -34,6 +34,12 @@ public enum StreamCommand: Equatable, Sendable {
     case toggleAntiAFK
     case togglePointerCapture
     case showQuitMenu
+    /// Ends the session through the stream surface's own end path, so a menu bar action tears down
+    /// exactly what the in-stream quit menu tears down.
+    case endSession
+    /// Pauses the session without ending it: the local transport tears down, but the cloud seat stays
+    /// alive and resumable, the same action the in-stream controls offer.
+    case pauseSession
     case toggleOnScreenKeyboard
 
     static var shortcutGuide: String {

@@ -256,6 +256,10 @@ extension WebRTCMediaStreamSurface {
             togglePointerLockFromHUD()
         case .showQuitMenu:
             showQuitMenu()
+        case .endSession:
+            quitStreamFromMenu()
+        case .pauseSession:
+            pauseFromQuitMenu()
         case .toggleOnScreenKeyboard:
             toggleOnScreenKeyboard()
         }

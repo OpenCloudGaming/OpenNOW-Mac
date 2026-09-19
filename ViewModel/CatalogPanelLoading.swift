@@ -267,7 +267,8 @@ extension CatalogViewModel {
                 title: game.title,
                 appId: Self.identity(for: game),
                 store: "",
-                playedAt: playedAt
+                playedAt: playedAt,
+                artworkURL: game.imageUrl
             )
         }
         guard !entries.isEmpty else { return }

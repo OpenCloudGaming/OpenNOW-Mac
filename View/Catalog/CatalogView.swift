@@ -333,6 +333,9 @@ struct CatalogView: View {
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
             updateWindowTitleForActiveStream()
+            // Bound for as long as this window is on screen: the menu bar surface follows the
+            // launch flow through it, and can hand a launch back to it while it exists.
+            viewModel.attachMenuBarSurface()
         }
         // Reported from the view rather than from the fetch callbacks: the point of the signal is
         // that a frame carrying real content has been built, not that bytes arrived.
@@ -350,7 +353,10 @@ struct CatalogView: View {
             guard isCatalogPageActive else { return }
             appliedCatalogThemeIdentity = themeIdentity
         }
-        .onDisappear { @MainActor in onWindowTitleChange(nil) }
+        .onDisappear { @MainActor in
+            viewModel.detachMenuBarSurface()
+            onWindowTitleChange(nil)
+        }
         .preferredColorScheme(preferredColorScheme)
     }
 

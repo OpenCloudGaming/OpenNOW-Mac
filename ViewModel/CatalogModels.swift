@@ -171,6 +171,17 @@ struct CatalogRecentlyPlayedGame: Codable, Equatable {
     let appId: String
     let store: String
     let playedAt: Date
+    /// The catalog's box art, carried so the windowless menu bar can show a thumbnail without the
+    /// catalog loaded. Optional: older records and vendor-history rows may not have one.
+    var artworkURL: String?
+
+    init(title: String, appId: String, store: String, playedAt: Date, artworkURL: String? = nil) {
+        self.title = title
+        self.appId = appId
+        self.store = store
+        self.playedAt = playedAt
+        self.artworkURL = artworkURL
+    }
 }
 
 /// The games this account played most recently, newest first, for the home page's Jump Back In
@@ -185,7 +196,7 @@ struct CatalogRecentlyPlayed: Codable, Equatable {
 
     private(set) var games: [CatalogRecentlyPlayedGame] = []
 
-    mutating func record(title: String, appId: String, store: String, playedAt: Date) {
+    mutating func record(title: String, appId: String, store: String, playedAt: Date, artworkURL: String? = nil) {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedAppId = appId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty || !trimmedAppId.isEmpty else { return }
@@ -193,16 +204,25 @@ struct CatalogRecentlyPlayed: Codable, Equatable {
             title: trimmedTitle,
             appId: trimmedAppId,
             store: store.trimmingCharacters(in: .whitespacesAndNewlines),
-            playedAt: playedAt
+            playedAt: playedAt,
+            artworkURL: Self.trimmedArtwork(artworkURL)
         )])
     }
 
     /// Folds new entries in; a game already present keeps whichever timestamp is newer, so a
-    /// session that just ended locally beats the vendor's last sync. Newest first, capped.
+    /// session that just ended locally beats the vendor's last sync. Box art is backfilled in
+    /// either direction: a row that already has art keeps it, and a row without picks up what the
+    /// other side has, so whichever source knows the artwork wins. Newest first, capped.
     mutating func merge(_ entries: [CatalogRecentlyPlayedGame]) {
         for entry in entries {
             if let index = games.firstIndex(where: { Self.matches($0, entry) }) {
-                if games[index].playedAt < entry.playedAt { games[index] = entry }
+                if games[index].playedAt < entry.playedAt {
+                    var updated = entry
+                    if updated.artworkURL == nil { updated.artworkURL = games[index].artworkURL }
+                    games[index] = updated
+                } else if games[index].artworkURL == nil, let artworkURL = entry.artworkURL {
+                    games[index].artworkURL = artworkURL
+                }
             } else {
                 games.append(entry)
             }
@@ -211,6 +231,11 @@ struct CatalogRecentlyPlayed: Codable, Equatable {
         if games.count > Self.maximumGameCount {
             games.removeLast(games.count - Self.maximumGameCount)
         }
+    }
+
+    private static func trimmedArtwork(_ artworkURL: String?) -> String? {
+        let trimmed = artworkURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// A replayed game moves to the front rather than appearing twice. The app id wins when both

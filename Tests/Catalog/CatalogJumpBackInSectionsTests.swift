@@ -67,6 +67,27 @@ import Foundation
         #expect(model.catalogSections.first?.id == "jump-back-in")
     }
 
+    @Test func finishingAStreamRecordsTheGameUnderItsCatalogIdentity() {
+        let model = makeModel()
+        model.catalogGames = [OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))]
+        model.startPreparedStream(
+            StreamLaunchConfiguration(
+                title: "Manor Lords",
+                applicationID: "app-1",
+                accessToken: "t",
+                accountLinked: false,
+                selectedStore: "steam"
+            ),
+            message: "Starting..."
+        )
+
+        model.finishActiveStream(success: true, message: "", report: nil)
+
+        // The catalog identity, not the numeric launch app id, so the entry merges with the vendor's
+        // server-side history for the same game instead of doubling it.
+        #expect(model.recentlyPlayed.games.first?.appId == "id-1")
+    }
+
     @Test func aFailedLaunchDoesNotClaimTheRail() {
         let model = makeModel()
         model.catalogGames = [OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))]

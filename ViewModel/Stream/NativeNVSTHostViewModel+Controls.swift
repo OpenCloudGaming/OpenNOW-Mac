@@ -196,6 +196,10 @@ extension NativeNVSTHostViewModel {
             toggleNativePointerLock()
         case .showQuitMenu:
             if !streamControlsVisible { showStreamControls() }
+        case .endSession:
+            endFromStreamControls()
+        case .pauseSession:
+            pauseFromStreamControls()
         case .toggleOnScreenKeyboard:
             toggleOnScreenKeyboard()
         }
