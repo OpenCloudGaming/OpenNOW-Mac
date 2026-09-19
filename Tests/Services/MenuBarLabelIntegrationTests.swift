@@ -18,7 +18,7 @@ import Testing
             NotificationCenter.default.post(name: OPNMenuBarPreferences.didChangeNotification, object: nil)
         }
         OPNMenuBarPreferences.showsStatusItem = true
-        OPNWindowClosePreferences.behavior = .keepRunningWindowless
+        OPNWindowClosePreferences.behavior = .keepRunningInDock
 
         try await Task.sleep(for: .seconds(1))
         let session = OPNMenuBarSessionModel.shared

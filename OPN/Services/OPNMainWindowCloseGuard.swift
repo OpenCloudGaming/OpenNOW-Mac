@@ -126,25 +126,11 @@ final class OPNMainWindowCloseDelegateProxy: NSObject, NSWindowDelegate {
             // not merely losing its window. The stream quit-decision path is inside this call.
             OPNMainWindowCloseGuard.terminateApplication()
             return true
-        case .keepRunningWindowless:
+        case .keepRunningInDock, .menuBarOnly:
             // The window closes; `applicationShouldTerminateAfterLastWindowClosed` refuses the quit,
-            // which is what keeps the app alive for the menu bar.
+            // which is what keeps the app alive. Whether it then sits in the Dock or withdraws to the
+            // menu bar is `OPNDockIconController`'s decision, not the close button's.
             return true
-        case .minimizeToDock:
-            // Refusing the close is the point — the window has to stay alive for the app to keep the
-            // session and the window's place.
-            minimize(sender)
-            return false
         }
-    }
-
-    /// A full-screen window cannot minimize, and closing it would end the session it is showing, so
-    /// the close button leaves full screen instead. The next close minimizes.
-    private func minimize(_ window: NSWindow) {
-        guard !window.styleMask.contains(.fullScreen) else {
-            window.toggleFullScreen(nil)
-            return
-        }
-        window.miniaturize(nil)
     }
 }

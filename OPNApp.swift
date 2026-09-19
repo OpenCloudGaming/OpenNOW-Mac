@@ -196,9 +196,9 @@ struct OPNApp: App {
         }
         #endif
 
-        // Deliberately no activation-policy switch with this scene: the app stays a regular app, so
-        // the main and settings windows keep their ordinary focus, activation, and Dock behaviour,
-        // and the status item is purely additive.
+        // The app stays a regular app — with its ordinary focus, activation, and Dock behaviour — for
+        // every close choice except menu bar only. `OPNDockIconController` is the single place that
+        // trades the Dock icon away, and only while no window is on screen.
         MenuBarExtra(isInserted: $isMenuBarStatusItemInserted) {
             OPNMenuBarSceneContent(session: menuBarSession)
         } label: {

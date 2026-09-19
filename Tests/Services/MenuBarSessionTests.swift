@@ -49,21 +49,21 @@ import Testing
         try await Task.sleep(for: .milliseconds(50))
     }
 
-    @Test func unsetCloseBehaviorMinimizesToTheDock() {
+    @Test func unsetCloseBehaviorClosesTheWindowAndKeepsRunning() {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
 
         UserDefaults.standard.removeObject(forKey: preferencesKey)
-        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
+        #expect(OPNWindowClosePreferences.behavior == .keepRunningInDock)
         #expect(OPNWindowClosePreferences.keepsApplicationRunning)
     }
 
-    @Test func unknownStoredCloseBehaviorFallsBackToMinimizing() {
+    @Test func unknownStoredCloseBehaviorFallsBackToKeepingRunning() {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
 
         UserDefaults.standard.set("hide-everywhere", forKey: preferencesKey)
-        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
+        #expect(OPNWindowClosePreferences.behavior == .keepRunningInDock)
     }
 
     @Test func closeBehaviorRoundTripsAndAnnouncesItself() {
@@ -79,17 +79,17 @@ import Testing
         ) { _ in counter.count += 1 }
         defer { NotificationCenter.default.removeObserver(observer) }
 
-        OPNWindowClosePreferences.behavior = .minimizeToDock
-        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
+        OPNWindowClosePreferences.behavior = .keepRunningInDock
+        #expect(OPNWindowClosePreferences.behavior == .keepRunningInDock)
         #expect(OPNWindowClosePreferences.keepsApplicationRunning)
         #expect(counter.count == 1)
 
         // Writing the same value again is not a change and must not republish it.
-        OPNWindowClosePreferences.behavior = .minimizeToDock
+        OPNWindowClosePreferences.behavior = .keepRunningInDock
         #expect(counter.count == 1)
 
-        OPNWindowClosePreferences.behavior = .keepRunningWindowless
-        #expect(OPNWindowClosePreferences.keepsApplicationRunning)
+        OPNWindowClosePreferences.behavior = .quitApplication
+        #expect(!OPNWindowClosePreferences.keepsApplicationRunning)
         #expect(counter.count == 2)
     }
 
@@ -231,7 +231,7 @@ import Testing
         #expect(model.isStatusItemInserted)
     }
 
-    @Test func windowlessChoiceIsUnavailableWhileTheMenuBarItemIsOff() {
+    @Test func menuBarOnlyChoiceIsUnavailableWhileTheMenuBarItemIsOff() {
         let closeExisting = preserveCloseBehavior()
         let menuBarExisting = preserveMenuBarItem()
         defer {
@@ -239,19 +239,21 @@ import Testing
             restoreMenuBarItem(menuBarExisting)
         }
 
-        storeCloseBehavior(.keepRunningWindowless)
+        // Menu-bar-only mode withdraws the app from the Dock, so the menu bar item is the only way
+        // back to it; the combination that has neither is not offered.
+        storeCloseBehavior(.menuBarOnly)
         OPNMenuBarPreferences.showsStatusItem = false
-        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
+        #expect(OPNWindowClosePreferences.behavior == .keepRunningInDock)
         #expect(OPNWindowClosePreferences.keepsApplicationRunning)
 
         // The stored choice is only withheld, not rewritten: turning the item back on restores it.
         OPNMenuBarPreferences.showsStatusItem = true
-        #expect(OPNWindowClosePreferences.behavior == .keepRunningWindowless)
+        #expect(OPNWindowClosePreferences.behavior == .menuBarOnly)
 
-        // Minimizing keeps its window in the Dock, so it never needs the menu bar.
-        storeCloseBehavior(.minimizeToDock)
+        // Keeping the Dock icon needs nothing, so it stands with the menu bar item off.
+        storeCloseBehavior(.keepRunningInDock)
         OPNMenuBarPreferences.showsStatusItem = false
-        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
+        #expect(OPNWindowClosePreferences.behavior == .keepRunningInDock)
     }
 
     @Test func lastWindowCloseFollowsTheCloseBehavior() {
@@ -320,20 +322,19 @@ import Testing
         let proxy = window.delegate as? OPNMainWindowCloseDelegateProxy
         #expect(proxy != nil)
 
-        // The quit choice closes the window and asks the app to go with it; the windowless choice
+        // The quit choice closes the window and asks the app to go with it; each keep-running choice
         // closes the window and leaves the app running (the application delegate refuses the quit).
         OPNWindowClosePreferences.behavior = .quitApplication
         #expect(proxy?.windowShouldClose(window) == true)
         #expect(quitRequests == 1)
 
-        OPNWindowClosePreferences.behavior = .keepRunningWindowless
+        OPNWindowClosePreferences.behavior = .keepRunningInDock
         #expect(proxy?.windowShouldClose(window) == true)
         #expect(quitRequests == 1)
 
-        // Minimizing refuses the close, which is what keeps the window (and a running session) in
-        // the app's hands instead of in the window server's.
-        OPNWindowClosePreferences.behavior = .minimizeToDock
-        #expect(proxy?.windowShouldClose(window) == false)
+        OPNWindowClosePreferences.behavior = .menuBarOnly
+        #expect(proxy?.windowShouldClose(window) == true)
+        #expect(quitRequests == 1)
     }
 
     @Test func guardLeavesEveryOtherWindowAlone() {
@@ -478,7 +479,7 @@ import Testing
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
 
-        storeCloseBehavior(.minimizeToDock)
+        storeCloseBehavior(.keepRunningInDock)
         let model = OPNMenuBarSessionModel()
         let source = StubMenuBarSource()
         let game = OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-1")
@@ -635,6 +636,30 @@ import Testing
 }
 
 extension MenuBarSessionTests {
+    @Test func resolvedBehaviorShowsTheFallbackForAWithheldChoice() {
+        let menuBarExisting = preserveMenuBarItem()
+        defer { restoreMenuBarItem(menuBarExisting) }
+
+        // The settings row resolves the stored raw value rather than reading it directly, so a
+        // menu-bar-only choice the item switch has withheld shows as the Dock fallback.
+        OPNMenuBarPreferences.showsStatusItem = false
+        #expect(OPNWindowClosePreferences.resolvedBehavior(storedRawValue: OPNWindowCloseBehavior.menuBarOnly.rawValue) == .keepRunningInDock)
+        OPNMenuBarPreferences.showsStatusItem = true
+        #expect(OPNWindowClosePreferences.resolvedBehavior(storedRawValue: OPNWindowCloseBehavior.menuBarOnly.rawValue) == .menuBarOnly)
+        #expect(OPNWindowClosePreferences.resolvedBehavior(storedRawValue: nil) == .keepRunningInDock)
+        #expect(OPNWindowClosePreferences.resolvedBehavior(storedRawValue: "minimize-to-dock") == .keepRunningInDock)
+    }
+
+    @Test func dockIconHidesOnlyForTheMenuBarOnlyChoiceWithNoWindowOnScreen() {
+        // Only menu-bar-only, only with the item that replaces the Dock icon, and only while nothing
+        // is on screen to keep a Dock presence for.
+        #expect(OPNDockIconController.shouldHideDockIcon(behavior: .menuBarOnly, showsStatusItem: true, hasVisibleAppWindow: false))
+        #expect(!OPNDockIconController.shouldHideDockIcon(behavior: .menuBarOnly, showsStatusItem: true, hasVisibleAppWindow: true))
+        #expect(!OPNDockIconController.shouldHideDockIcon(behavior: .menuBarOnly, showsStatusItem: false, hasVisibleAppWindow: false))
+        #expect(!OPNDockIconController.shouldHideDockIcon(behavior: .keepRunningInDock, showsStatusItem: true, hasVisibleAppWindow: false))
+        #expect(!OPNDockIconController.shouldHideDockIcon(behavior: .quitApplication, showsStatusItem: true, hasVisibleAppWindow: false))
+    }
+
     private func makeMainWindow() -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),

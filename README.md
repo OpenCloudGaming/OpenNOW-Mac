@@ -193,7 +193,7 @@ Settings → General → **Window & Menu Bar** decides what happens when the win
 ![Window & Menu Bar settings: the menu bar item toggle, what the last-window close does, launch at login, and whether to start on the window or the menu bar only](docs/screenshots/settings-window-menu-bar.png)
 
 - **Menu bar item** - show the session in the menu bar, or keep OpenNOW out of it entirely.
-- **When the last window closes** - quit, minimize to the Dock, or keep running with no window.
+- **When the last window closes** - quit on close, close and keep the Dock icon (the default, so the close button just closes the window and the Dock brings it back), or close and hide from the Dock so only the menu bar item remains.
 - **Launch at login** - start OpenNOW automatically, registered as a macOS Login Item.
 - **At launch, show** - open the main window, or start with only the menu bar item and no window.
 

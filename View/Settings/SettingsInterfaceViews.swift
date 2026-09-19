@@ -11,16 +11,19 @@ struct InterfaceSettingsPage: View {
     @AppStorage(OPNLaunchPreferences.startupPresentationKey) private var startupPresentationRawValue = OPNLaunchPreferences.defaultStartupPresentation.rawValue
     @State private var launchesAtLogin = OPNLoginItemController.isEnabled
 
-    /// The windowless choice has nothing to be reached by without the status item, so it is offered
-    /// as unavailable and the row says why rather than silently disagreeing with it.
+    /// Menu-bar-only mode hides the Dock icon, so without the status item it has nothing to be
+    /// reached by. It is offered as unavailable and the row says why rather than silently
+    /// disagreeing with it.
     private var windowCloseSubtitle: String {
-        let base = "What the close button does with the last window. Minimizing drops the window into the Dock and keeps a session running; keeping running with no window leaves only the menu bar, and reopening builds the window again. Quit OpenNOW closes the app with its window."
+        let base = "What the close button does with the last window. Quit on Close ends the app with its window. Close, Keep Dock Icon leaves OpenNOW running with its Dock icon and no window, so the Dock brings it back. Close, Menu Bar Only hides the Dock icon and leaves only the menu bar item, and reopening builds the window again."
         guard !showsMenuBarItem else { return base }
-        return base + " Keeping running with no window needs the menu bar item, so it stays unavailable while that is off."
+        return base + " Menu Bar Only needs the menu bar item, so it stays unavailable while that is off."
     }
 
     private var selectedWindowCloseBehaviorIndex: Int {
-        let behavior = OPNWindowCloseBehavior(rawValue: windowCloseBehaviorRawValue) ?? OPNWindowClosePreferences.defaultBehavior
+        // Resolved, not raw: a menu-bar-only choice the menu bar item switch has withheld must show as
+        // the fallback that actually applies, not as a selected chip that cannot run.
+        let behavior = OPNWindowClosePreferences.resolvedBehavior(storedRawValue: windowCloseBehaviorRawValue)
         return OPNWindowCloseBehavior.allCases.firstIndex(of: behavior) ?? 0
     }
 

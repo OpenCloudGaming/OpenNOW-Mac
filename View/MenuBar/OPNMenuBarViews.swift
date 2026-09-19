@@ -219,7 +219,12 @@ struct OPNMenuBarPanel: View {
     /// in the Dock when it was minimized. What happens once the session is ready is the Session
     /// Ready preference's decision, exactly as it is for a launch from the catalog.
     private func launch(_ game: OPNMenuBarRecentGame) {
-        if OPNMainWindow.existing() == nil { openWindow(id: "main") }
+        if OPNMainWindow.existing() == nil {
+            // A window is about to exist again, so it comes with its Dock icon even though the launch
+            // itself leaves it behind whatever the user is doing.
+            OPNDockIconController.showDockIcon()
+            openWindow(id: "main")
+        }
         session.requestLaunch(game)
     }
 
@@ -256,6 +261,8 @@ struct OPNMenuBarPanel: View {
     /// frontmost, and a window opened behind it looks like nothing happened. A window sitting in the
     /// Dock is brought back with its place kept; a closed one is rebuilt by the scene above it.
     private func openMainWindow() {
+        // The window comes back with its Dock icon: menu-bar-only mode is a trade made while closed.
+        OPNDockIconController.showDockIcon()
         openWindow(id: "main")
         OPNMainWindow.reveal()
         NSApplication.shared.activate(ignoringOtherApps: true)

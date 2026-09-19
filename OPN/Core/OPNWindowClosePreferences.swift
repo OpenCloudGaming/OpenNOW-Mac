@@ -7,52 +7,58 @@ import Foundation
 enum OPNWindowCloseBehavior: String, CaseIterable, Sendable {
     /// Closing the last window quits OpenNOW — an ordinary single-window Mac app.
     case quitApplication
-    /// The window drops into the Dock and OpenNOW keeps running, so an active session survives being
-    /// put out of the way and the menu bar stays reachable. The window keeps its place, so reopening
-    /// it is instant.
-    case minimizeToDock
-    /// The window closes outright and OpenNOW keeps running for the menu bar. Nothing is kept alive
-    /// behind it, so reopening builds the window from scratch.
-    case keepRunningWindowless
+    /// The window closes and OpenNOW keeps running with its Dock icon, the way a regular Mac app
+    /// stays in the Dock after its last window is closed. The Dock icon and the Window menu bring the
+    /// window back, so nothing is kept alive behind it and reopening builds it from scratch. This is
+    /// the default because it is what a close button does everywhere else on the system.
+    case keepRunningInDock
+    /// The window closes and OpenNOW leaves the Dock entirely, living only in the menu bar. The menu
+    /// bar item is the only way back to the window, so this choice needs it.
+    case menuBarOnly
 
     var label: String {
         switch self {
-        case .quitApplication: return "Quit OpenNOW"
-        case .minimizeToDock: return "Minimize to the Dock"
-        case .keepRunningWindowless: return "Keep Running, No Window"
+        case .quitApplication: return "Quit on Close"
+        case .keepRunningInDock: return "Close, Keep Dock Icon"
+        case .menuBarOnly: return "Close, Menu Bar Only"
         }
     }
 
     /// Whether OpenNOW outlives its last window. True for both keep-running choices, which is what
-    /// makes them different from the default and what keeps the menu bar surface alive.
+    /// separates them from quitting.
     var keepsApplicationRunning: Bool {
         self != .quitApplication
     }
 
-    /// True for the choice that leaves nothing on screen but the status item.
+    /// True for the choice that withdraws the app from the Dock and leaves nothing on screen but the
+    /// status item.
     var requiresStatusItem: Bool {
-        self == .keepRunningWindowless
+        self == .menuBarOnly
     }
 }
 
 enum OPNWindowClosePreferences {
     static let behaviorKey = "OpenNOW.Window.CloseBehavior"
-    static let defaultBehavior = OPNWindowCloseBehavior.minimizeToDock
+    static let defaultBehavior = OPNWindowCloseBehavior.keepRunningInDock
     static let didChangeNotification = Notification.Name("OPNWindowClosePreferencesDidChange")
+
+    /// The stored choice resolved against the menu bar item. Menu-bar-only mode hides the Dock icon,
+    /// so with the menu bar item off there would be nothing on screen to reach OpenNOW by. That
+    /// combination is not offered: the stored choice is withheld, not rewritten, and resolves to the
+    /// Dock-keeping fallback. Shared with the settings row so it shows the behavior actually in force.
+    static func resolvedBehavior(storedRawValue: String?) -> OPNWindowCloseBehavior {
+        guard let storedRawValue, let stored = OPNWindowCloseBehavior(rawValue: storedRawValue) else {
+            return defaultBehavior
+        }
+        guard !stored.requiresStatusItem || OPNMenuBarPreferences.showsStatusItem else {
+            return .keepRunningInDock
+        }
+        return stored
+    }
 
     static var behavior: OPNWindowCloseBehavior {
         get {
-            guard let rawValue = OPNAppPreferenceStorage.standard.string(forKey: behaviorKey),
-                  let stored = OPNWindowCloseBehavior(rawValue: rawValue) else {
-                return defaultBehavior
-            }
-            // A windowless app with the menu bar turned off would leave nothing on screen to see or
-            // end a session from, so that combination is not a choice this app offers. The stored
-            // value is kept as it was, so turning the menu bar item back on restores it.
-            guard !stored.requiresStatusItem || OPNMenuBarPreferences.showsStatusItem else {
-                return defaultBehavior
-            }
-            return stored
+            resolvedBehavior(storedRawValue: OPNAppPreferenceStorage.standard.string(forKey: behaviorKey))
         }
         set {
             guard newValue != behavior else { return }

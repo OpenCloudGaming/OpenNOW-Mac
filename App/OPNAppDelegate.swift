@@ -46,6 +46,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         bindUpdatePresentation()
         startApplicationUpdateChecks()
         OPNMainWindowCloseGuard.install()
+        OPNDockIconController.install()
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
     }
 
@@ -54,6 +55,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         removeStreamShortcutMonitor()
         stopApplicationUpdateChecks()
         OPNMainWindowCloseGuard.uninstall()
+        OPNDockIconController.uninstall()
     }
 
     /// The backstop behind `OPNMainWindowCloseGuard`: whichever way a window was closed — the close
