@@ -127,6 +127,14 @@ final class OPNMenuBarSessionModel: ObservableObject {
         drainPendingLaunch()
     }
 
+    /// Seeds the play history from persistence, for a launch that never built a window to push it.
+    /// Skipped once a source owns the surface, because that source's list carries the artwork the
+    /// seeder cannot resolve without the catalog.
+    func primeRecentGames(_ games: [OPNMenuBarRecentGame]) {
+        guard source == nil, recentGames.isEmpty, !games.isEmpty else { return }
+        recentGames = games
+    }
+
     /// Identity-checked: a window replacing another (an account switch, a window reopened) detaches
     /// after the replacement attaches often enough that a blind detach would leave the surface
     /// following nothing.

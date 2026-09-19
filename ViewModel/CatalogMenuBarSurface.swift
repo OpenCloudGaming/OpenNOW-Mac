@@ -46,6 +46,23 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         return candidate.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The three most recent games as persisted for an account, mapped for the menu bar without the
+    /// catalog. Used when no window exists to hand the live list over — a windowless launch — so the
+    /// rows still appear, with title-only placeholders for artwork until a window loads the catalog.
+    static func persistedMenuBarRecentGames(accountIdentifier: String) -> [OPNMenuBarRecentGame] {
+        guard !accountIdentifier.isEmpty else { return [] }
+        let entries = CatalogRecentlyPlayed.load(accountIdentifier: accountIdentifier).games
+        var rows: [OPNMenuBarRecentGame] = []
+        var seenTitles = Set<String>()
+        for entry in entries {
+            let key = entry.title.lowercased()
+            guard !key.isEmpty, seenTitles.insert(key).inserted else { continue }
+            rows.append(OPNMenuBarRecentGame(title: entry.title, appId: entry.appId, artworkURL: entry.artworkURL))
+            if rows.count == 3 { break }
+        }
+        return rows
+    }
+
     /// The three most recent games, with the box art the catalog can supply for them.
     ///
     /// The store keeps the same game under two id namespaces — the vendor history records the
@@ -70,7 +87,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
             rows.append(OPNMenuBarRecentGame(
                 title: game?.title ?? entry.title,
                 appId: identity.isEmpty ? entry.appId : identity,
-                artworkURL: Self.menuBarArtworkURL(for: game)
+                artworkURL: Self.menuBarArtworkURL(for: game) ?? entry.artworkURL
             ))
             if rows.count == 3 { break }
         }

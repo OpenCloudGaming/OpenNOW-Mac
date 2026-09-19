@@ -459,6 +459,21 @@ import Testing
         #expect(model.hasActiveStream)
     }
 
+    @Test func primeRecentGamesSeedsOnlyWithoutASource() {
+        let model = OPNMenuBarSessionModel()
+        let seeded = OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-1")
+        model.primeRecentGames([seeded])
+        #expect(model.recentGames == [seeded])
+
+        // A source owns the list once attached, and its rows carry artwork the seeder cannot resolve,
+        // so a later seed must not overwrite them.
+        let source = StubMenuBarSource()
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", recentGames: [])
+        model.attach(source: source)
+        model.primeRecentGames([OPNMenuBarRecentGame(title: "Hades", appId: "app-2")])
+        #expect(model.recentGames.isEmpty)
+    }
+
     @Test func detachKeepsThePlayHistoryForTheWindowlessSurface() async throws {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
@@ -582,6 +597,28 @@ import Testing
         let rows = model.menuBarSnapshot.recentGames
         #expect(rows.map(\.title) == ["Aniimo"])
         #expect(rows.first?.appId == "53a6c9f5-524c-4309-9d54-dda5a6cb10b9")
+    }
+
+    @Test func persistedRowsCollapseTheTwoNamespacesByTitle() {
+        let identifier = "menu-bar-persisted-test"
+        let key = "OpenNOW.Catalog.RecentlyPlayed.\(identifier)"
+        let existing = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let existing {
+                UserDefaults.standard.set(existing, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        var recent = CatalogRecentlyPlayed.empty
+        recent.record(title: "Aniimo", appId: "108118999", store: "STEAM", playedAt: Date(timeIntervalSince1970: 200), artworkURL: "https://cdn.example/aniimo.png")
+        recent.record(title: "Aniimo", appId: "53a6c9f5-524c-4309-9d54-dda5a6cb10b9", store: "", playedAt: Date(timeIntervalSince1970: 100))
+        recent.record(title: "Warcraft® III: Reforged", appId: "100508511", store: "BATTLENET", playedAt: Date(timeIntervalSince1970: 150))
+        recent.save(accountIdentifier: identifier)
+
+        let rows = CatalogViewModel.persistedMenuBarRecentGames(accountIdentifier: identifier)
+        #expect(rows.map(\.title) == ["Aniimo", "Warcraft® III: Reforged"])
+        #expect(rows.first?.artworkURL == "https://cdn.example/aniimo.png")
     }
 
     @Test func snapshotOffersTheThreeMostRecentGames() {

@@ -93,14 +93,27 @@ struct OPNApp: App {
             sessionDescriptor.fetchLimit = 8
             guard let sessions = try? context.fetch(sessionDescriptor),
                   let session = sessions.first(where: \.isActive) else { return }
-            var userId = session.userId
-            if userId.isEmpty {
-                let email = session.accountEmail
-                var accountDescriptor = FetchDescriptor<LoginAccount>(predicate: #Predicate { $0.email == email })
-                accountDescriptor.fetchLimit = 1
-                userId = (try? context.fetch(accountDescriptor))?.first?.userId ?? ""
-            }
+            let email = session.accountEmail
+            var accountDescriptor = FetchDescriptor<LoginAccount>(predicate: #Predicate { $0.email == email })
+            accountDescriptor.fetchLimit = 1
+            let account = (try? context.fetch(accountDescriptor))?.first
+            let userId = session.userId.isEmpty ? (account?.userId ?? "") : session.userId
             guard !userId.isEmpty else { return }
+            // The play history is keyed by the playtime identifier, which needs the account; seeding
+            // it here is what keeps the menu bar's Continue Playing list populated on a windowless
+            // launch, where no catalog view model ever attaches to push it.
+            if let account {
+                let playtimeIdentifier = CatalogViewModel.playtimeAccountIdentifier(account: account, session: session)
+                OPNMenuBarSessionModel.shared.primeRecentGames(
+                    CatalogViewModel.persistedMenuBarRecentGames(accountIdentifier: playtimeIdentifier)
+                )
+            }
+            // A launch with no window has no splash to hide and nothing to paint the catalog into, so
+            // the whole home prefetch is skipped: it runs when the window is first opened instead.
+            guard OPNLaunchPreferences.startupPresentation == .window else {
+                OPNLog.info(.catalog, "Catalog prefetch skipped: launching menu bar only")
+                return
+            }
             guard !session.isExpired else {
                 CatalogLaunchPrefetch.shared.primeFromCache(accountIdentifier: userId)
                 return
@@ -187,7 +200,7 @@ struct OPNApp: App {
         // the main and settings windows keep their ordinary focus, activation, and Dock behaviour,
         // and the status item is purely additive.
         MenuBarExtra(isInserted: $isMenuBarStatusItemInserted) {
-            OPNMenuBarPanel(session: menuBarSession)
+            OPNMenuBarSceneContent(session: menuBarSession)
         } label: {
             OPNMenuBarStatusLabel(session: menuBarSession)
         }

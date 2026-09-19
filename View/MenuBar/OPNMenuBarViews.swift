@@ -15,6 +15,24 @@ struct OPNMenuBarStatusLabel: View {
     }
 }
 
+/// The menu bar scene's content: the panel, plus the popover-window follower.
+///
+/// The follower is deliberately outside `OPNMenuBarPanel` so the panel stays a pure SwiftUI view the
+/// snapshot tests can render — `ImageRenderer` cannot rasterise an `NSViewRepresentable`, and a
+/// representable inside the panel intermittently produced no image at all.
+struct OPNMenuBarSceneContent: View {
+    @ObservedObject var session: OPNMenuBarSessionModel
+
+    var body: some View {
+        OPNMenuBarPanel(session: session)
+            .background {
+                // `MenuBarExtra` gives no per-open callback, so the panel reports its own window and
+                // the session model follows it: each open re-checks for a session started elsewhere.
+                MenuBarPopoverWindowReader { session.observePopoverWindow($0) }
+            }
+    }
+}
+
 /// The status item's popover.
 ///
 /// `MenuBarExtra`'s `.window` style hands SwiftUI the whole panel, which is what lets the surface
@@ -35,11 +53,6 @@ struct OPNMenuBarPanel: View {
             .padding(10)
             .frame(width: Self.width)
             .opnMenuBarPanelBackground()
-            .background {
-                // `MenuBarExtra` gives no per-open callback, so the panel reports its own window and
-                // the session model follows it: each open re-checks for a session started elsewhere.
-                MenuBarPopoverWindowReader { session.observePopoverWindow($0) }
-            }
     }
 
     private var cards: some View {

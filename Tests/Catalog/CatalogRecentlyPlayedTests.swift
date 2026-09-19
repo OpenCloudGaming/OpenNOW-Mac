@@ -13,6 +13,20 @@ import Foundation
     #expect(recentlyPlayed.games.first?.playedAt == Date(timeIntervalSince1970: 1_700_000_200))
 }
 
+@Test func artworkSurvivesAMergeFromASourceWithoutIt() {
+    var recentlyPlayed = CatalogRecentlyPlayed.empty
+
+    recentlyPlayed.record(title: "Manor Lords", appId: "app-1", store: "steam", playedAt: Date(timeIntervalSince1970: 100), artworkURL: "https://cdn.example/a.png")
+    // A newer server row for the same game without art must not drop the art already known.
+    recentlyPlayed.merge([CatalogRecentlyPlayedGame(title: "Manor Lords", appId: "app-1", store: "", playedAt: Date(timeIntervalSince1970: 200))])
+    #expect(recentlyPlayed.games.first?.artworkURL == "https://cdn.example/a.png")
+
+    // And a row that has art backfills one that does not.
+    recentlyPlayed.merge([CatalogRecentlyPlayedGame(title: "Hades", appId: "app-2", store: "", playedAt: Date(timeIntervalSince1970: 50))])
+    recentlyPlayed.merge([CatalogRecentlyPlayedGame(title: "Hades", appId: "app-2", store: "", playedAt: Date(timeIntervalSince1970: 40), artworkURL: "https://cdn.example/h.png")])
+    #expect(recentlyPlayed.games.first { $0.appId == "app-2" }?.artworkURL == "https://cdn.example/h.png")
+}
+
 @Test func duplicatesMatchWithoutTheAppIdWhenTitlesCaseInsensitive() {
     var recentlyPlayed = CatalogRecentlyPlayed.empty
 
