@@ -344,7 +344,7 @@ extension CatalogViewModel {
                 var recentlyPlayed = self.recentlyPlayed
                 recentlyPlayed.record(
                     title: session.title,
-                    appId: finishedConfiguration.applicationID,
+                    appId: recentlyPlayedIdentity(forApplicationID: finishedConfiguration.applicationID),
                     store: finishedConfiguration.selectedStore,
                     playedAt: session.endedAt
                 )
@@ -538,6 +538,17 @@ extension CatalogViewModel {
         launchFlowError = ""
         errorMessage = ""
         launchFlowState = .activeSessionPrompt
+    }
+
+    /// A finished session records the game under its catalog identity when the catalog knows it, so
+    /// a locally-recorded entry merges with the vendor's server-side history for the same game
+    /// instead of doubling it under the numeric launch app id.
+    private func recentlyPlayedIdentity(forApplicationID applicationID: String) -> String {
+        guard let game = allKnownGames.first(where: { Self.game($0, matchesApplicationID: applicationID) }) else {
+            return applicationID
+        }
+        let identity = Self.identity(for: game)
+        return identity.isEmpty ? applicationID : identity
     }
 
     func clearLaunchFlow() {

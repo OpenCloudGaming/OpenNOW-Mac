@@ -145,6 +145,7 @@ struct OPNApp: App {
                 .environmentObject(systemAppearance)
         }
         .defaultSize(width: 1100, height: 680)
+        .defaultLaunchBehavior(OPNLaunchPreferences.startupPresentation == .menuBarOnly ? .suppressed : .automatic)
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}

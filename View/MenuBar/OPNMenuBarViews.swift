@@ -1,40 +1,17 @@
 import AppKit
 import SwiftUI
 
-/// The status item's label: the game, what the session is doing, and a ticking elapsed clock.
+/// The status item's label: the OpenNOW cloud mark, and nothing else.
+///
+/// The game, the phase detail, and the elapsed clock live in the popover. Keeping the label to the
+/// mark alone means the status item never resizes while a session runs, which is also what keeps the
+/// native status-button renderer from being driven by per-second text updates.
 struct OPNMenuBarStatusLabel: View {
     @ObservedObject var session: OPNMenuBarSessionModel
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: symbolName)
-            Text(OPNMenuBarReadout.titleText(session.gameTitle))
-            if let detail = session.statusDetailText() {
-                Text(detail)
-            }
-            if let startedAt = session.streamStartedAt {
-                // The system clock view ticks on its own; nothing here polls for it.
-                Text(startedAt, style: .timer)
-                    .monospacedDigit()
-            }
-        }
-        .id(labelIdentity)
-        .accessibilityLabel(session.accessibilityLabel())
-    }
-
-    /// Rebuilt when the surface changes what it is showing, so the status item cannot get stuck on
-    /// a stale first render. Deliberately independent of the elapsed clock: recreating the label
-    /// would restart the timer.
-    private var labelIdentity: String {
-        "\(session.phase)/\(session.gameTitle)"
-    }
-
-    private var symbolName: String {
-        switch session.phase {
-        case .idle: return "gamecontroller"
-        case .queued, .connecting: return "hourglass"
-        case .streaming: return "gamecontroller.fill"
-        }
+        Image(systemName: session.phase.symbolName)
+            .accessibilityLabel(session.accessibilityLabel())
     }
 }
 
@@ -58,6 +35,11 @@ struct OPNMenuBarPanel: View {
             .padding(10)
             .frame(width: Self.width)
             .opnMenuBarPanelBackground()
+            .background {
+                // `MenuBarExtra` gives no per-open callback, so the panel reports its own window and
+                // the session model follows it: each open re-checks for a session started elsewhere.
+                MenuBarPopoverWindowReader { session.observePopoverWindow($0) }
+            }
     }
 
     private var cards: some View {
@@ -73,14 +55,24 @@ struct OPNMenuBarPanel: View {
     private var sessionCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: sessionSymbolName)
+                Image(systemName: session.phase.symbolName)
                     .font(.opnUI(size: 15, weight: .bold))
                     .foregroundStyle(session.hasActiveStream ? OPNDesign.accent : OPNDesign.Text.secondary)
                     .frame(width: 20)
                 VStack(alignment: .leading, spacing: 2) {
-                    // With no game to name, the status line is the card's headline rather than a
-                    // subtitle under a redundant "OpenNOW".
-                    if let title = OPNMenuBarReadout.panelTitleText(session.gameTitle) {
+                    // A session this Mac can rejoin is named first, so Resume says what it resumes.
+                    if let resumableTitle = session.resumableSessionTitle {
+                        Text(resumableTitle)
+                            .font(.opnUI(size: 14, weight: .bold))
+                            .foregroundStyle(OPNDesign.Text.primary)
+                            .lineLimit(1)
+                        Text(OPNMenuBarReadout.resumableStatusText)
+                            .font(.opnUI(size: 11.5, weight: .medium))
+                            .foregroundStyle(OPNDesign.Text.secondary)
+                            .lineLimit(1)
+                    } else if let title = OPNMenuBarReadout.panelTitleText(session.gameTitle) {
+                        // With no game to name, the status line is the card's headline rather than a
+                        // subtitle under a redundant "OpenNOW".
                         Text(title)
                             .font(.opnUI(size: 14, weight: .bold))
                             .foregroundStyle(OPNDesign.Text.primary)
@@ -97,8 +89,8 @@ struct OPNMenuBarPanel: View {
                     }
                 }
                 Spacer(minLength: 6)
-                if let startedAt = session.streamStartedAt {
-                    Text(startedAt, style: .timer)
+                if let elapsedText = session.streamElapsedText {
+                    Text(verbatim: elapsedText)
                         .font(.opnUI(size: 13, weight: .bold))
                         .monospacedDigit()
                         .foregroundStyle(OPNDesign.Text.primary)
@@ -122,23 +114,15 @@ struct OPNMenuBarPanel: View {
 
     private var controlTiles: some View {
         HStack(spacing: 8) {
-            controlTile("Microphone", systemImage: "mic.fill", isEnabled: session.hasActiveStream) {
-                session.toggleMicrophone()
+            controlTile("Resume", systemImage: "play.fill", isEnabled: session.canResumeSession) {
+                session.resumeSession()
             }
-            controlTile("Record", systemImage: "record.circle", isEnabled: session.hasActiveStream) {
-                session.toggleRecording()
+            controlTile("Pause", systemImage: "pause.fill", isEnabled: session.hasActiveStream) {
+                session.pauseSession()
             }
             controlTile("End", systemImage: "stop.fill", tint: OPNDesign.Semantic.destructive, isEnabled: session.hasActiveStream) {
                 session.endSession()
             }
-        }
-    }
-
-    private var sessionSymbolName: String {
-        switch session.phase {
-        case .idle: return "gamecontroller"
-        case .queued, .connecting: return "hourglass"
-        case .streaming: return "gamecontroller.fill"
         }
     }
 
@@ -298,5 +282,33 @@ private struct OPNMenuBarArtwork: View {
         guard let url, let parsed = URL(string: url) else { return }
         let cached = await CatalogImageCache.shared.image(for: parsed, maxPixelSize: 96)
         image = cached?.image
+    }
+}
+
+/// Reports the window the status item's popover is hosted in, so the session model can follow it.
+///
+/// `MenuBarExtra` exposes no per-open callback, and the popover window is ordered in and out rather
+/// than torn down, so `.onAppear` fires once. The hosted window is the reliable handle, and the
+/// model owns the notification lifecycle.
+private struct MenuBarPopoverWindowReader: NSViewRepresentable {
+    let onWindowChanged: @MainActor (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> MenuBarPopoverWindowReaderView {
+        let view = MenuBarPopoverWindowReaderView()
+        view.onWindowChanged = onWindowChanged
+        return view
+    }
+
+    func updateNSView(_ nsView: MenuBarPopoverWindowReaderView, context: Context) {
+        nsView.onWindowChanged = onWindowChanged
+    }
+}
+
+private final class MenuBarPopoverWindowReaderView: NSView {
+    var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        onWindowChanged?(window)
     }
 }

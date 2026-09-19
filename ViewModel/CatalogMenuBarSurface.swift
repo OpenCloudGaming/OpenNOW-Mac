@@ -16,7 +16,8 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         OPNMenuBarSessionSnapshot(
             phase: menuBarPhase,
             title: menuBarTitle,
-            recentGames: menuBarRecentGames
+            recentGames: menuBarRecentGames,
+            resumableSessionTitle: menuBarResumableSessionTitle
         )
     }
 
@@ -30,6 +31,14 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         return launchFlowState == .idle ? .idle : .connecting
     }
 
+    /// The title of a resumable session while nothing streams locally: a seat this Mac paused, or one
+    /// another device is holding. Nil when the launch flow is busy or there is nothing to resume.
+    private var menuBarResumableSessionTitle: String? {
+        guard isActiveHomeSessionVisible, activeHomeSession?.isResumable == true else { return nil }
+        let title = activeHomeSessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "Current Stream" : title
+    }
+
     private var menuBarTitle: String {
         let configurationTitle = activeStreamConfiguration?.title ?? ""
         let progressTitle = activeStreamProgress?.title ?? ""
@@ -39,28 +48,44 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
 
     /// The three most recent games, with the box art the catalog can supply for them.
     ///
+    /// The store keeps the same game under two id namespaces — the vendor history records the
+    /// catalog identity, while a locally-finished session records the numeric launch app id — so the
+    /// rows are deduped by the resolved catalog game rather than by the raw entry, exactly as the
+    /// Jump Back In rail already does. A title-only entry the catalog cannot resolve falls back to
+    /// its title as the dedupe key.
+    ///
     /// `allKnownGames` rebuilds a concatenated array on every access, and this snapshot is read on
     /// every change the surface tracks — including each poll of a launch in flight — so the catalog
     /// is read once here and searched for all three rows, rather than once per row.
     private var menuBarRecentGames: [OPNMenuBarRecentGame] {
-        let entries = recentlyPlayed.games.prefix(3)
-        guard !entries.isEmpty else { return [] }
+        guard !recentlyPlayed.games.isEmpty else { return [] }
         let known = allKnownGames
-        return entries.map { entry in
-            OPNMenuBarRecentGame(
-                title: entry.title,
-                appId: entry.appId,
-                artworkURL: Self.menuBarArtworkURL(forRecentGame: entry, in: known)
-            )
+        var rows: [OPNMenuBarRecentGame] = []
+        var seenIdentities = Set<String>()
+        for entry in recentlyPlayed.games {
+            let game = Self.menuBarGame(matching: entry, in: known)
+            let identity = game.map { Self.identity(for: $0) } ?? ""
+            let dedupeKey = (identity.isEmpty ? entry.title : identity).lowercased()
+            guard !dedupeKey.isEmpty, seenIdentities.insert(dedupeKey).inserted else { continue }
+            rows.append(OPNMenuBarRecentGame(
+                title: game?.title ?? entry.title,
+                appId: identity.isEmpty ? entry.appId : identity,
+                artworkURL: Self.menuBarArtworkURL(for: game)
+            ))
+            if rows.count == 3 { break }
         }
+        return rows
+    }
+
+    private static func menuBarGame(matching entry: CatalogRecentlyPlayedGame, in known: [OPNCatalogGameObject]) -> OPNCatalogGameObject? {
+        known.first { Self.game($0, matchesApplicationID: entry.appId) }
+            ?? known.first { !$0.title.isEmpty && $0.title.caseInsensitiveCompare(entry.title) == .orderedSame }
     }
 
     /// Box art for the menu's game rows. The catalog only knows a game it has loaded, so a list built
     /// before the catalog arrives simply has no artwork and the row falls back to its placeholder.
-    private static func menuBarArtworkURL(forRecentGame entry: CatalogRecentlyPlayedGame, in known: [OPNCatalogGameObject]) -> String? {
-        let match = known.first { Self.game($0, matchesApplicationID: entry.appId) }
-            ?? known.first { $0.title.caseInsensitiveCompare(entry.title) == .orderedSame }
-        let artwork = match?.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    private static func menuBarArtworkURL(for game: OPNCatalogGameObject?) -> String? {
+        let artwork = game?.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return artwork.isEmpty ? nil : artwork
     }
 
@@ -75,6 +100,19 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
     /// Launching a game the menu bar offered. The catalog it came from may not be loaded — a window
     /// reopened from the menu bar starts fetching as it appears — so an unknown game is resolved by
     /// browsing for its title, the same way an unresolved shortcut is.
+    /// Resuming a session the menu bar detected but is not streaming locally. The vendor session is
+    /// already allocated, so this hands the resume to the same home-page path, with the same guard.
+    func resumeSession() {
+        OPNLog.info(.launch, "Menu bar resuming the resumable session")
+        resumeActiveHomeSession()
+    }
+
+    /// Opening the menu is the moment a session started on another device becomes relevant, so the
+    /// active-session lookup runs again rather than waiting for the next launch or session end.
+    func refreshActiveSession() {
+        checkActiveHomeSession()
+    }
+
     func launchRecentGame(_ game: OPNMenuBarRecentGame) {
         configureCatalogService()
         let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)

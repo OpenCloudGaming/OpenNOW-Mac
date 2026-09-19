@@ -317,9 +317,13 @@ with 10 (Section) horizontal / 12 (Small) vertical padding.
 ### Status Item (`OPNMenuBarStatusLabel`, `OPNMenuBarPanel`)
 
 The status item's *label* is system chrome: macOS draws it in the status bar, and it takes no
-`uiScale`, `OPNDesign` fills, or 1px-stroke treatment. It carries an SF Symbol, the game, and either
-a phase detail or a ticking elapsed clock, which uses `.monospacedDigit()` rather than a monospaced
-system face.
+`uiScale`, `OPNDesign` fills, or 1px-stroke treatment. It is the cloud SF Symbol alone — hollow when
+idle, filled while streaming, the OpenNOW mark — with the game and the elapsed clock living in the
+popover instead, so the status item never resizes while a session runs.
+
+The native label receives one plain-text readout. Its elapsed clock is refreshed once per second
+by the session model and stopped on stream teardown; a self-updating `Text(date, style: .timer)`
+in the `MenuBarExtra` label can trap the native status-button renderer in a continuous update loop.
 
 The popover is app-drawn, because `MenuBarExtra`'s `.window` style hands SwiftUI the whole panel.
 It matches the Control Center popovers it sits beside — stacked cards with their own controls —
@@ -329,7 +333,7 @@ rather than this document's panel system, so its corner radii carry a documented
 How it is drawn depends on the OS:
 
 - **macOS 26 and later** — the popover is the system's own Liquid Glass. Inside it, the session
-  controls (Microphone / Record / End) are Liquid Glass elements in a `GlassEffectContainer`, while
+  controls (Resume / Pause / End) are Liquid Glass elements in a `GlassEffectContainer`, while
   the cards and their list rows stay in the content layer as translucent fills. That split is Apple's
   guidance, not a preference: Liquid Glass is "a distinct functional layer for controls and
   navigation elements", it should be applied "sparingly" to "the most important functional elements",

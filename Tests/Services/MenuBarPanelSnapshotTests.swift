@@ -261,4 +261,6 @@ private struct GlassEvidenceBackdrop: View {
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }
 
     func launchRecentGame(_ game: OPNMenuBarRecentGame) {}
+    func resumeSession() {}
+    func refreshActiveSession() {}
 }

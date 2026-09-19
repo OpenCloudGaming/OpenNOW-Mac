@@ -49,21 +49,21 @@ import Testing
         try await Task.sleep(for: .milliseconds(50))
     }
 
-    @Test func unsetCloseBehaviorQuitsWithTheWindow() {
+    @Test func unsetCloseBehaviorMinimizesToTheDock() {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
 
         UserDefaults.standard.removeObject(forKey: preferencesKey)
-        #expect(OPNWindowClosePreferences.behavior == .quitApplication)
-        #expect(!OPNWindowClosePreferences.keepsApplicationRunning)
+        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
+        #expect(OPNWindowClosePreferences.keepsApplicationRunning)
     }
 
-    @Test func unknownStoredCloseBehaviorFallsBackToQuitting() {
+    @Test func unknownStoredCloseBehaviorFallsBackToMinimizing() {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
 
         UserDefaults.standard.set("hide-everywhere", forKey: preferencesKey)
-        #expect(OPNWindowClosePreferences.behavior == .quitApplication)
+        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
     }
 
     @Test func closeBehaviorRoundTripsAndAnnouncesItself() {
@@ -241,8 +241,8 @@ import Testing
 
         storeCloseBehavior(.keepRunningWindowless)
         OPNMenuBarPreferences.showsStatusItem = false
-        #expect(OPNWindowClosePreferences.behavior == .quitApplication)
-        #expect(!OPNWindowClosePreferences.keepsApplicationRunning)
+        #expect(OPNWindowClosePreferences.behavior == .minimizeToDock)
+        #expect(OPNWindowClosePreferences.keepsApplicationRunning)
 
         // The stored choice is only withheld, not rewritten: turning the item back on restores it.
         OPNMenuBarPreferences.showsStatusItem = true
@@ -309,7 +309,9 @@ import Testing
         defer { restoreCloseBehavior(existing) }
 
         let window = makeMainWindow()
-        window.delegate = RecordingWindowDelegate()
+        let owner = RecordingWindowDelegate()
+        window.delegate = owner
+        defer { withExtendedLifetime(owner) {} }
         OPNMainWindowCloseGuard.install(on: window)
         defer { OPNMainWindowCloseGuard.uninstall() }
         var quitRequests = 0
@@ -359,7 +361,7 @@ import Testing
 
         // A delegate message the guard does not answer is forwarded, so the window keeps behaving
         // the way SwiftUI set it up to.
-        (window.delegate as? NSWindowDelegate)?.windowWillClose?(Notification(name: NSWindow.willCloseNotification, object: window))
+        window.delegate?.windowWillClose?(Notification(name: NSWindow.willCloseNotification, object: window))
         #expect(displaced.closedCount == 1)
     }
 
@@ -368,7 +370,9 @@ import Testing
         defer { restoreCloseBehavior(existing) }
 
         let window = makeMainWindow()
-        window.delegate = VetoingWindowDelegate()
+        let owner = VetoingWindowDelegate()
+        window.delegate = owner
+        defer { withExtendedLifetime(owner) {} }
         OPNMainWindowCloseGuard.install(on: window)
         defer { OPNMainWindowCloseGuard.uninstall() }
         OPNWindowClosePreferences.behavior = .quitApplication
@@ -397,7 +401,7 @@ import Testing
         try await waitForQueuedDelivery()
         #expect(model.phase == .queued(position: 2))
         #expect(model.estimatedRemainingSeconds == 90)
-        #expect(model.statusDetailText() == "Queue #2 · ~2 min")
+        #expect(model.panelStatusText() == "Queue #2 · ~2 min")
 
         source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "")
         try await waitForQueuedDelivery()
@@ -419,12 +423,14 @@ import Testing
         try await waitForQueuedDelivery()
         #expect(model.phase == .streaming)
         #expect(model.streamStartedAt != nil)
+        #expect(model.streamElapsedText == "0:00")
         #expect(model.isStatusItemInserted)
 
         StreamSessionLifecycle.deactivate(id)
         try await waitForQueuedDelivery()
         #expect(model.phase == .idle)
         #expect(model.streamStartedAt == nil)
+        #expect(model.streamElapsedText == nil)
         #expect(!model.isStatusItemInserted)
     }
 
@@ -435,8 +441,7 @@ import Testing
 
         // With no session there is nothing behind the command; the lifecycle reports that rather
         // than the surface keeping a second copy of the state.
-        model.toggleMicrophone()
-        model.toggleRecording()
+        model.pauseSession()
         model.endSession()
         #expect(recorder.commands.isEmpty)
         #expect(!model.hasActiveStream)
@@ -448,11 +453,32 @@ import Testing
         )
         defer { StreamSessionLifecycle.deactivate(id) }
 
-        model.toggleMicrophone()
-        model.toggleRecording()
+        model.pauseSession()
         model.endSession()
-        #expect(recorder.commands == [.toggleMicrophone, .toggleRecording, .endSession])
+        #expect(recorder.commands == [.pauseSession, .endSession])
         #expect(model.hasActiveStream)
+    }
+
+    @Test func detachKeepsThePlayHistoryForTheWindowlessSurface() async throws {
+        let existing = preserveCloseBehavior()
+        defer { restoreCloseBehavior(existing) }
+
+        storeCloseBehavior(.minimizeToDock)
+        let model = OPNMenuBarSessionModel()
+        let source = StubMenuBarSource()
+        let game = OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-1")
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", recentGames: [game])
+
+        model.attach(source: source)
+        try await waitForQueuedDelivery()
+        #expect(model.recentGames == [game])
+
+        // Closing the window to the tray detaches the source; the play history must survive so the
+        // windowless menu still offers the games.
+        model.detachSource(source)
+        #expect(model.recentGames == [game])
+        #expect(model.phase == .idle)
+        #expect(model.canLaunchRecentGames)
     }
 
     @Test func quickLaunchWaitsForAWindowAndThenRuns() async throws {
@@ -479,11 +505,12 @@ import Testing
         model.detachSource(offline)
         #expect(model.canLaunchRecentGames)
 
-        // A window that goes away first parks the launch instead of dropping it…
+        // A window that goes away first parks the launch instead of dropping it, and the play history
+        // it had already handed over stays on the menu for the windowless surface…
         model.detachSource(online)
         model.requestLaunch(OPNMenuBarRecentGame(title: "Cyberpunk 2077", appId: "app-2"))
         #expect(online.launchedGames.count == 1)
-        #expect(!model.canLaunchRecentGames)
+        #expect(model.canLaunchRecentGames)
 
         // …and the next window to attach acts on it, exactly once.
         model.attach(source: offline)
@@ -537,6 +564,26 @@ import Testing
         #expect(model.menuBarSnapshot.title == "Cyberpunk 2077")
     }
 
+    @Test func snapshotCollapsesTheVendorAndLocalIdentitiesToOneRowPerGame() {
+        let model = makeCatalogViewModelForTesting()
+        let game = OPNCatalogGameObject()
+        game.id = "53a6c9f5-524c-4309-9d54-dda5a6cb10b9"
+        game.title = "Aniimo"
+        game.launchAppId = "108118999"
+        model.catalogGames = [game]
+
+        var recent = CatalogRecentlyPlayed.empty
+        // A locally-finished session recorded the numeric launch app id…
+        recent.record(title: "Aniimo", appId: "108118999", store: "STEAM", playedAt: Date(timeIntervalSince1970: 200))
+        // …and the vendor history reported the same game under its catalog identity.
+        recent.record(title: "Aniimo", appId: "53a6c9f5-524c-4309-9d54-dda5a6cb10b9", store: "", playedAt: Date(timeIntervalSince1970: 100))
+        model.recentlyPlayed = recent
+
+        let rows = model.menuBarSnapshot.recentGames
+        #expect(rows.map(\.title) == ["Aniimo"])
+        #expect(rows.first?.appId == "53a6c9f5-524c-4309-9d54-dda5a6cb10b9")
+    }
+
     @Test func snapshotOffersTheThreeMostRecentGames() {
         let model = makeCatalogViewModelForTesting()
         var recent = CatalogRecentlyPlayed.empty
@@ -580,14 +627,24 @@ extension MenuBarSessionTests {
 }
 
 /// A stand-in launch flow: the surface follows whatever it publishes, and hands launches back to it.
-@MainActor @Observable private final class StubMenuBarSource: OPNMenuBarSessionSource {
+@MainActor @Observable final class StubMenuBarSource: OPNMenuBarSessionSource {
     var snapshot = OPNMenuBarSessionSnapshot()
     private(set) var launchedGames: [OPNMenuBarRecentGame] = []
+    private(set) var resumeRequests = 0
+    private(set) var refreshRequests = 0
 
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }
 
     func launchRecentGame(_ game: OPNMenuBarRecentGame) {
         launchedGames.append(game)
+    }
+
+    func resumeSession() {
+        resumeRequests += 1
+    }
+
+    func refreshActiveSession() {
+        refreshRequests += 1
     }
 }
 

@@ -258,6 +258,8 @@ extension WebRTCMediaStreamSurface {
             showQuitMenu()
         case .endSession:
             quitStreamFromMenu()
+        case .pauseSession:
+            pauseFromQuitMenu()
         case .toggleOnScreenKeyboard:
             toggleOnScreenKeyboard()
         }

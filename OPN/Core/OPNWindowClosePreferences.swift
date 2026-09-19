@@ -37,7 +37,7 @@ enum OPNWindowCloseBehavior: String, CaseIterable, Sendable {
 
 enum OPNWindowClosePreferences {
     static let behaviorKey = "OpenNOW.Window.CloseBehavior"
-    static let defaultBehavior = OPNWindowCloseBehavior.quitApplication
+    static let defaultBehavior = OPNWindowCloseBehavior.minimizeToDock
     static let didChangeNotification = Notification.Name("OPNWindowClosePreferencesDidChange")
 
     static var behavior: OPNWindowCloseBehavior {

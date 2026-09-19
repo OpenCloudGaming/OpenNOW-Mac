@@ -21,6 +21,11 @@ final class OPNMenuBarSessionModel: ObservableObject {
     /// The moment the active stream reported itself. Held here rather than derived from the launch
     /// flow, so a session resumed by another surface still counts from when it actually started.
     @Published private(set) var streamStartedAt: Date?
+    @Published private(set) var streamElapsedText: String?
+    /// A resumable session this Mac can rejoin while nothing streams locally, named so the Resume tile
+    /// can say what it would resume. Kept across a source detach, like the recent games, so closing
+    /// the window to the tray does not lose it.
+    @Published private(set) var resumableSessionTitle: String?
 
     /// A status item exists while windowless mode keeps the app reachable, and while there is a
     /// session to show — never as an idle decoration.
@@ -39,12 +44,17 @@ final class OPNMenuBarSessionModel: ObservableObject {
     private nonisolated(unsafe) var streamLifecycleObserver: NSObjectProtocol?
     private nonisolated(unsafe) var preferencesObserver: NSObjectProtocol?
     private nonisolated(unsafe) var menuBarPreferencesObserver: NSObjectProtocol?
+    /// Tokens for the popover window this session follows; released in `deinit`.
+    private nonisolated(unsafe) var popoverObserverTokens: [NSObjectProtocol] = []
     private weak var source: (any OPNMenuBarSessionSource)?
 
     private var snapshotPhase: OPNMenuBarSessionPhase = .idle
     private var queueEstimate = OPNMenuBarQueueEstimate()
     private var trackingGeneration = 0
     private var pendingLaunch: OPNMenuBarRecentGame?
+    /// A Resume asked for while no window can perform it, drained when the next source attaches.
+    private var isResumePending = false
+    private var elapsedClockTask: Task<Void, Never>?
 
     init(notificationCenter: NotificationCenter = .default) {
         self.notificationCenter = notificationCenter
@@ -80,6 +90,8 @@ final class OPNMenuBarSessionModel: ObservableObject {
     }
 
     deinit {
+        elapsedClockTask?.cancel()
+        for token in popoverObserverTokens { notificationCenter.removeObserver(token) }
         if let streamLifecycleObserver { notificationCenter.removeObserver(streamLifecycleObserver) }
         if let preferencesObserver { notificationCenter.removeObserver(preferencesObserver) }
         if let menuBarPreferencesObserver { notificationCenter.removeObserver(menuBarPreferencesObserver) }
@@ -93,10 +105,6 @@ final class OPNMenuBarSessionModel: ObservableObject {
 
     var canLaunchRecentGames: Bool {
         phase == .idle && !recentGames.isEmpty
-    }
-
-    func statusDetailText() -> String? {
-        OPNMenuBarReadout.detailText(for: phase, estimatedSeconds: estimatedRemainingSeconds)
     }
 
     func panelStatusText() -> String {
@@ -122,36 +130,74 @@ final class OPNMenuBarSessionModel: ObservableObject {
     /// Identity-checked: a window replacing another (an account switch, a window reopened) detaches
     /// after the replacement attaches often enough that a blind detach would leave the surface
     /// following nothing.
+    ///
+    /// The recent games are deliberately kept: they describe play history rather than the session, so
+    /// closing the window to the tray must not empty the menu. The next source to attach overwrites
+    /// them with its own account's list.
     func detachSource(_ source: any OPNMenuBarSessionSource) {
         guard self.source === source else { return }
         self.source = nil
         snapshotPhase = .idle
         gameTitle = ""
-        recentGames = []
         resolvePhase()
     }
 
     // MARK: - Commands
 
     /// Every control routes through `StreamSessionLifecycle`, exactly as the in-app shortcuts do, so
-    /// a microphone or recording state cannot drift between the two surfaces.
+    /// a session state cannot drift between the two surfaces.
     func send(_ command: StreamCommand) {
         _ = StreamSessionLifecycle.sendCommand(command)
     }
 
-    func toggleMicrophone() {
-        OPNLog.info(.app, "Menu bar toggled the stream microphone")
-        send(.toggleMicrophone)
-    }
-
-    func toggleRecording() {
-        OPNLog.info(.app, "Menu bar toggled stream recording")
-        send(.toggleRecording)
+    func pauseSession() {
+        OPNLog.info(.app, "Menu bar requested a pause of the active session")
+        send(.pauseSession)
     }
 
     func endSession() {
         OPNLog.info(.app, "Menu bar requested the end of the active session")
         send(.endSession)
+    }
+
+    /// Whether the Resume tile has something to resume: a cloud seat detected while nothing streams.
+    var canResumeSession: Bool {
+        resumableSessionTitle != nil
+    }
+
+    /// Resuming asks the window that owns the launch flow, because the resume has to reach the vendor.
+    /// With no window it is parked until one attaches, exactly like a recent-game launch.
+    func resumeSession() {
+        guard let source else {
+            OPNLog.info(.app, "Menu bar parked a resume until a window exists")
+            isResumePending = true
+            return
+        }
+        source.resumeSession()
+    }
+
+    /// Opening the menu re-checks for a session started elsewhere; it is a no-op with no window, since
+    /// the retained title is the best information available until a source attaches again.
+    func refreshActiveSession() {
+        source?.refreshActiveSession()
+    }
+
+    /// Follows the popover's window so each open re-checks for a resumable session. `MenuBarExtra`
+    /// offers no per-open callback, and the popover window is reused rather than recreated, so the
+    /// window itself is the signal. Called with the window the panel is hosted in.
+    func observePopoverWindow(_ window: NSWindow?) {
+        for token in popoverObserverTokens { notificationCenter.removeObserver(token) }
+        popoverObserverTokens.removeAll()
+        guard let window else { return }
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didChangeOcclusionStateNotification] {
+            let token = notificationCenter.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, window.occlusionState.contains(.visible) else { return }
+                    self.refreshActiveSession()
+                }
+            }
+            popoverObserverTokens.append(token)
+        }
     }
 
     func quitApplication() {
@@ -178,6 +224,15 @@ final class OPNMenuBarSessionModel: ObservableObject {
         source.launchRecentGame(game)
     }
 
+    /// Drained from `apply` rather than from `attach`: a window reopening from a parked resume has not
+    /// fetched the active session yet, so the resume only becomes actionable once the snapshot names
+    /// one.
+    private func drainPendingResumeIfReady() {
+        guard isResumePending, resumableSessionTitle != nil, let source else { return }
+        isResumePending = false
+        source.resumeSession()
+    }
+
     // MARK: - State resolution
 
     private func trackSource() {
@@ -198,18 +253,20 @@ final class OPNMenuBarSessionModel: ObservableObject {
         snapshotPhase = snapshot.phase
         gameTitle = snapshot.title
         recentGames = snapshot.recentGames
+        resumableSessionTitle = snapshot.resumableSessionTitle
         resolvePhase()
+        drainPendingResumeIfReady()
     }
 
     private func resolvePhase(now: Date = Date()) {
         if hasActiveStream {
-            if streamStartedAt == nil { streamStartedAt = now }
+            startElapsedClock(at: now)
             queueEstimate.reset()
             estimatedRemainingSeconds = nil
             setPhase(.streaming)
             return
         }
-        streamStartedAt = nil
+        stopElapsedClock()
         switch snapshotPhase {
         case let .queued(position):
             queueEstimate.observe(position: position, now: now)
@@ -221,6 +278,38 @@ final class OPNMenuBarSessionModel: ObservableObject {
         // A source never claims `streaming` — that comes from the lifecycle above — so a snapshot
         // that somehow did would describe a session this surface cannot reach, and reads as idle.
         setPhase(snapshotPhase == .streaming ? .idle : snapshotPhase)
+    }
+
+    private func startElapsedClock(at start: Date) {
+        guard streamStartedAt == nil else { return }
+        streamStartedAt = start
+        updateElapsedText(now: start)
+        elapsedClockTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+                guard let self, !Task.isCancelled else { return }
+                self.updateElapsedText(now: Date())
+            }
+        }
+    }
+
+    private func updateElapsedText(now: Date) {
+        guard let streamStartedAt else { return }
+        let elapsedText = OPNMenuBarReadout.elapsedText(since: streamStartedAt, now: now)
+        guard streamElapsedText != elapsedText else { return }
+        streamElapsedText = elapsedText
+    }
+
+    private func stopElapsedClock() {
+        guard streamStartedAt != nil else { return }
+        elapsedClockTask?.cancel()
+        elapsedClockTask = nil
+        streamStartedAt = nil
+        streamElapsedText = nil
     }
 
     private func setPhase(_ newPhase: OPNMenuBarSessionPhase) {

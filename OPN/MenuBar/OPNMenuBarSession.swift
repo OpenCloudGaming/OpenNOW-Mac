@@ -8,6 +8,16 @@ enum OPNMenuBarSessionPhase: Equatable, Sendable {
     case queued(position: Int)
     case connecting
     case streaming
+
+    /// The cloud mark: hollow when nothing streams, the hourglass while a seat is being acquired,
+    /// filled once a stream is running.
+    var symbolName: String {
+        switch self {
+        case .idle: return "cloud"
+        case .queued, .connecting: return "hourglass"
+        case .streaming: return "cloud.fill"
+        }
+    }
 }
 
 /// A recently played game, reduced to what the menu shows and what launching one needs. The
@@ -28,12 +38,15 @@ struct OPNMenuBarRecentGame: Equatable, Sendable, Identifiable {
 }
 
 /// Everything the surface needs from the window that owns the launch: the phase, the game it is
-/// about, and the games the menu can relaunch. Pushed by the catalog view model; the menu bar owns
-/// no launch state of its own.
+/// about, the games the menu can relaunch, and the title of a cloud session that exists but is not
+/// streaming locally. Pushed by the catalog view model; the menu bar owns no launch state of its own.
 struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
     var phase: OPNMenuBarSessionPhase = .idle
     var title = ""
     var recentGames: [OPNMenuBarRecentGame] = []
+    /// A resumable session detected while nothing streams locally — a seat this Mac paused, or one
+    /// another device is holding. Nil when there is nothing to resume.
+    var resumableSessionTitle: String?
 }
 
 /// A window that owns the launch flow: it describes an in-flight launch (so the menu bar can follow
@@ -43,6 +56,11 @@ struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
 protocol OPNMenuBarSessionSource: AnyObject {
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { get }
     func launchRecentGame(_ game: OPNMenuBarRecentGame)
+    /// Resumes the resumable session the snapshot named, the same action the home page offers.
+    func resumeSession()
+    /// Re-checks for a resumable session, so opening the menu reflects a session started elsewhere
+    /// since the catalog last looked.
+    func refreshActiveSession()
 }
 
 /// How long the seat queue is likely to take from here.
@@ -108,6 +126,9 @@ enum OPNMenuBarReadout {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    /// The popover's status line while a resumable session is offered but nothing streams locally.
+    static let resumableStatusText = "Available to resume"
 
     /// The popover's status line. Unlike the compressed status item it has room to say what idle and
     /// streaming mean, so it never falls back to an empty line.
