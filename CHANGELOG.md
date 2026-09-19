@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.9.0...v0.10.0) (2026-09-19)
+
+
+### Features
+
+* add custom keybindings ([bb17126](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/bb1712650ec6f44a8b6264eaa23cc3b6da437bb7))
+* add menubar ([#39](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/39)) ([6237432](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6237432897715ea6d770bb9ffd2e6e26792da357))
+* align dialogs design ([5051dbd](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5051dbde4ad50b6e4b766bfa670ded12e168c66b))
+* reorganize system settings ([6f39fd7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6f39fd706e4c58e4024727cee2e88fbf25145487))
+
 ## [0.9.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.8.0...v0.9.0) (2026-09-17)
 
 
