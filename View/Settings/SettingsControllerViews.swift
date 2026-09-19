@@ -32,7 +32,7 @@ struct SteamControllerSettingsPage: View {
                     rumbleIntensityPercent = Int(value.rounded())
                     ControllerRumblePreference.saveIntensityPercent(rumbleIntensityPercent)
                 }
-                Text("Ceiling for every rumble the game sends, on every controller. Games scale only some of their effects with their own vibration setting; this scales all of them. Also on the stream HUD (⌘G) under Controllers.")
+                Text("Ceiling for every rumble the game sends, on every controller. Games scale only some of their effects with their own vibration setting; this scales all of them. Also on the stream HUD (\(OPNKeybindings.standard.combo(for: .toggleUnifiedHUD).label)) under Controllers.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.tertiary)
 

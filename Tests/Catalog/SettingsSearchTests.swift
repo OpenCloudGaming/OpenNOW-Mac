@@ -86,9 +86,12 @@ import Testing
             "Microphone Test", "Cloudmatch Region", "Your recordings", "Test Controller", "Controller Mapping",
             "Controller Order",
         ]
+        // Keybinding rows draw their title from `KeybindingAction`, which the literal source scan
+        // cannot read; the index builds those same titles from that same enum.
+        let keybindingRows = Set(KeybindingAction.allCases.map(\.title))
         let stale = SettingsSearchIndex.entries
             .map(\.title)
-            .filter { !rendered.contains($0) && !unscannable.contains($0) }
+            .filter { !rendered.contains($0) && !unscannable.contains($0) && !keybindingRows.contains($0) }
         #expect(stale.isEmpty, "indexed but no longer rendered: \(stale.sorted().joined(separator: ", "))")
     }
 

@@ -90,6 +90,7 @@ enum SettingsNewBadges {
         case .vsyncMode, .reflex: .video
         case .controllerOrder: .input
         case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme
+        case .keybindings: .keybindings
         }
     }
 

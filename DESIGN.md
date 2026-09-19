@@ -437,6 +437,17 @@ take the rail's place until the field is cleared. Each result is a 12.5pt title 
 Desktop only: it is absent from the icons-only rail and from controller mode, where nothing on
 screen may be unreachable by a pad.
 
+### Keybindings Settings (`KeybindingsSettingsPage`, `KeybindingRecorderRow`)
+
+Its own destination, grouped into exactly two cards - Stream and Catalog - one per shortcut surface,
+each tagged with its section id so search can land on it. Every row is a 15pt title with a one-line
+subtitle, a muted `Default ⌘X` line, and a trailing 190-wide recorder beside a Reset button that is
+disabled until the binding is customised. A chord two actions in the same section share replaces the
+default line with a warning-coloured "Also used by …" note; the same chord across sections is not a
+conflict, because only one surface is active. Capture reuses `ControllerBindingRecorder`, so recording
+a shortcut reads the same here as in Controller Mapping, and a bare modifier key is rejected rather
+than stored. A Reset card appears only while something is customised.
+
 ### Settings Card Badge (`SettingsCardBadge`, `SettingsCardTag`)
 
 `SettingsCard(title:badge:uiScale:)` renders BETA or EXPERIMENTAL beside the card title, 8pt bold,

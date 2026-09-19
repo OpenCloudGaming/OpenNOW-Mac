@@ -15,6 +15,7 @@ struct CatalogTopBar: View {
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.openWindow) private var openWindow
     @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
+    @ObservedObject private var keybindings = OPNKeybindingsObserver.shared
 
     /// The collapsed button and the expanded field are one element to SwiftUI, so the trip between
     /// the trailing icon row and the centre of the bar is a single interpolated frame change
@@ -83,7 +84,7 @@ struct CatalogTopBar: View {
                                 isSearchFieldFocused = true
                             } label: { Color.clear.frame(width: 0, height: 0) }
                             .buttonStyle(.plain)
-                            .keyboardShortcut("k", modifiers: .command)
+                            .opnKeyboardShortcut(keybindings.combo(for: .openSearch))
                             .frame(width: 0, height: 0)
                             .opacity(0)
                             .accessibilityHidden(true)
@@ -94,7 +95,7 @@ struct CatalogTopBar: View {
                             }
                             .buttonStyle(.opnPressable(scale: 0.90))
                             .accessibilityLabel("Search games")
-                            .help("Search games (⌘K)")
+                            .help("Search games (\(keybindings.combo(for: .openSearch).label))")
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                         }
                         Button { controllerModeEnabled = true } label: {

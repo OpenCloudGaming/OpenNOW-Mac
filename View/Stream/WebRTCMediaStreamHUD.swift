@@ -279,7 +279,7 @@ extension WebRTCMediaStreamSurface {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(Date(), style: .time))
-            Text("⌘G HUD   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘Q Quit")
+            Text(StreamCommand.shortcutGuide)
                 .font(.streamFont(size: 10, weight: .bold))
                 .tracking(0.8)
                 .foregroundStyle(StreamHUDTheme.textTertiary)

@@ -36,21 +36,23 @@ public enum StreamCommand: Equatable, Sendable {
     case showQuitMenu
     case toggleOnScreenKeyboard
 
-    static let shortcutGuide = "⌘G HUD   ⌘N Stats   ⌘M Mic   ⌘R Rec   ⌘K AFK   ⌘P Capture   ⌘Q Quit"
+    static var shortcutGuide: String {
+        let bindings = OPNKeybindings.standard
+        return [
+            "\(bindings.combo(for: .toggleUnifiedHUD).label) HUD",
+            "\(bindings.combo(for: .toggleStatsHUD).label) Stats",
+            "\(bindings.combo(for: .toggleMicrophone).label) Mic",
+            "\(bindings.combo(for: .toggleRecording).label) Rec",
+            "\(bindings.combo(for: .toggleAntiAFK).label) AFK",
+            "\(bindings.combo(for: .togglePointerCapture).label) Capture",
+            "\(bindings.combo(for: .showQuitMenu).label) Quit",
+        ].joined(separator: "   ")
+    }
 
     static func shortcutCommand(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> StreamCommand? {
-        let modifiers = modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad])
-        guard modifiers == .command else { return nil }
-        switch keyCode {
-        case 46: return .toggleMicrophone
-        case 15: return .toggleRecording
-        case 40: return .toggleAntiAFK
-        case 45: return .toggleStatsHUD
-        case 5: return .toggleUnifiedHUD
-        case 35: return .togglePointerCapture
-        case 12: return .showQuitMenu
-        default: return nil
-        }
+        OPNKeybindings.standard
+            .resolvedAction(keyCode: keyCode, modifierFlags: modifierFlags, in: .stream)?
+            .streamCommand
     }
 }
 

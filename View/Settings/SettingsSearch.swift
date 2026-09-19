@@ -31,7 +31,11 @@ enum SettingsSearchIndex {
     /// lies about where the setting is: rows that exist only inside a modal wizard, and rows that
     /// appear only once another setting is switched on. The second kind hands its words to the
     /// control that gates it, so searching "socks" still reaches the session proxy.
-    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + recordingEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries
+    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + keybindingEntries + recordingEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries
+
+    private static let keybindingEntries: [SettingsSearchEntry] = KeybindingAction.allCases.map { action in
+        SettingsSearchEntry(action.title, .keybindings, action.section.rawValue, keywords: ["shortcut", "hotkey", "keyboard", "binding", "rebind"])
+    }
 
     private static let videoEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Quality Preset", .video, "display", keywords: ["profile", "balanced", "competitive", "cinematic", "custom", "data saver"]),
@@ -172,6 +176,7 @@ enum SettingsSearchIndex {
         case .video: VideoSettingsGroup.sections
         case .audio: AudioSettingsPage.sections
         case .input: InputSettingsGroup.sections
+        case .keybindings: KeybindingsSettingsPage.sections
         case .recording: RecordingSettingsGroup.sections
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []

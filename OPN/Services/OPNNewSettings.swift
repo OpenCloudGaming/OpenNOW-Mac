@@ -23,6 +23,7 @@ enum OPNNewSettings {
         case appearance
         case jumpBackIn
         case inGameSettingsPersistence
+        case keybindings
 
         /// The marketing version the row shipped in.
         nonisolated var introducedIn: String {
@@ -30,6 +31,7 @@ enum OPNNewSettings {
             case .surroundSound, .sessionReadyAction: "0.6.0"
             case .steamBigPictureMode: "0.8.0"
             case .vsyncMode, .reflex, .controllerOrder, .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn, .inGameSettingsPersistence: "0.9.0"
+            case .keybindings: "1.0.0"
             }
         }
     }

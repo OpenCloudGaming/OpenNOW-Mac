@@ -54,7 +54,7 @@ struct InputSettingsPage: View {
             SettingsDivider(uiScale: uiScale)
             SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, isCompact: true, uiScale: uiScale, action: viewModel.setSuppressInputWhenInactive)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. Cmd-K toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, isCompact: true, uiScale: uiScale, action: viewModel.setAntiAFKMouseMovementEnabled)
+            SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. \(OPNKeybindings.standard.combo(for: .toggleAntiAFK).label) toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, isCompact: true, uiScale: uiScale, action: viewModel.setAntiAFKMouseMovementEnabled)
         }
         .settingsSection("mouse")
     }
@@ -218,7 +218,9 @@ extension InputSettingsPage {
     /// whether an absolute cursor is held inside the window. Following the seat into mouselook is
     /// deliberately not gated on it (`NativeWebRTCStreamView.allowsRelativeCapture`), and the
     /// release shortcut is Command-P (`StreamCommand.togglePointerCapture`, keyCode 35).
-    nonisolated static let directMouseInputSubtitle = "Let a click on the video take the pointer for relative aiming, and keep an absolute game cursor inside the stream window. Command-P gives the pointer back. Games that hide their own cursor still switch to relative aiming with this off."
+    nonisolated static var directMouseInputSubtitle: String {
+        "Let a click on the video take the pointer for relative aiming, and keep an absolute game cursor inside the stream window. \(OPNKeybindings.standard.combo(for: .togglePointerCapture).spokenLabel) gives the pointer back. Games that hide their own cursor still switch to relative aiming with this off."
+    }
 
     static let sections: [SettingsSection] = [
         SettingsSection("mouse", "Mouse & Keyboard"),

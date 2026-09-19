@@ -6,6 +6,7 @@ import SwiftData
 struct OPNApp: App {
     @NSApplicationDelegateAdaptor(OPNAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var keybindings = OPNKeybindingsObserver.shared
 
     let sharedModelContainer: ModelContainer
 
@@ -183,15 +184,15 @@ struct OPNApp: App {
                 Button("Toggle Microphone") {
                     _ = StreamSessionLifecycle.sendCommand(.toggleMicrophone)
                 }
-                .keyboardShortcut("m", modifiers: .command)
+                .opnKeyboardShortcut(keybindings.combo(for: .toggleMicrophone))
                 Button("Toggle Recording") {
                     _ = StreamSessionLifecycle.sendCommand(.toggleRecording)
                 }
-                .keyboardShortcut("r", modifiers: .command)
+                .opnKeyboardShortcut(keybindings.combo(for: .toggleRecording))
                 Button("Toggle Anti-AFK") {
                     _ = StreamSessionLifecycle.sendCommand(.toggleAntiAFK)
                 }
-                .keyboardShortcut("k", modifiers: .command)
+                .opnKeyboardShortcut(keybindings.combo(for: .toggleAntiAFK))
             }
         }
 

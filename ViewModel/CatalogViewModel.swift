@@ -92,6 +92,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case video
     case audio
     case input
+    case keybindings
     case recording
     case network
     case remoteCoOp
@@ -121,6 +122,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .video: return "Video"
         case .audio: return "Audio"
         case .input: return "Input"
+        case .keybindings: return "Keybindings"
         case .recording: return "Recording"
         case .network: return "Network"
         case .remoteCoOp: return "Remote Co-Op"
@@ -136,7 +138,8 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .video: return "Resolution, frame rate, codec, colour, and the picture the stream arrives with."
         case .audio: return "Game output, surround, and the microphone the stream sends."
         case .input: return "Mouse, keyboard, and every controller OpenNOW speaks to."
-        case .recording: return "What Command-R writes to disk, and where to find it afterwards."
+        case .keybindings: return "Every shortcut OpenNOW owns, for controlling a stream or browsing the catalog."
+        case .recording: return "What \(OPNKeybindings.standard.combo(for: .toggleRecording).spokenLabel) writes to disk, and where to find it afterwards."
         case .network: return "Server location, stream transport, and proxy routing."
         case .remoteCoOp: return "Invite a friend into your session from a browser."
         case .theme: return "How OpenNOW looks: interface scale, accent, and the rails the home page draws its games in."
@@ -151,6 +154,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .video: return "play.tv.fill"
         case .audio: return "speaker.wave.2.fill"
         case .input: return "gamecontroller.fill"
+        case .keybindings: return "keyboard"
         case .recording: return "record.circle"
         case .network: return "network"
         case .remoteCoOp: return "person.2.fill"

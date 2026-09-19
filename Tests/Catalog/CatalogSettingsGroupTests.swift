@@ -35,7 +35,7 @@ import Foundation
 
 @Test func theTabsAreOneDestinationPerConcernInAFixedOrder() {
     // One destination per concern, and the case order is the order the sidebar and pad walk.
-    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .recording, .network, .remoteCoOp, .theme, .general, .labs])
+    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .keybindings, .recording, .network, .remoteCoOp, .theme, .general, .labs])
 }
 
 @Test func everySettingsGroupNamesItself() {
@@ -63,6 +63,7 @@ import Foundation
         (.video, VideoSettingsGroup.sections),
         (.audio, AudioSettingsPage.sections),
         (.input, InputSettingsGroup.sections),
+        (.keybindings, KeybindingsSettingsPage.sections),
         (.recording, RecordingSettingsGroup.sections),
         (.network, NetworkSettingsGroup.sections),
         (.theme, ThemeSettingsPage.sections),
