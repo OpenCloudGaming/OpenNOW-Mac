@@ -291,6 +291,28 @@ final class OPNMenuBarSessionModel: ObservableObject {
     }
 
     private func resolvePhase(now: Date = Date()) {
+        // A launch in flight outranks the lifecycle's active flag. The stream surface registers with
+        // `StreamSessionLifecycle` as soon as it is mounted — which is before allocation finishes and
+        // before the first frame — so the lifecycle reports a session while the launch is still
+        // finding a server and while it sits in a queue. A queue position and the starting phase are
+        // therefore drawn from the snapshot first, and only a quiet snapshot lets a live stream claim
+        // the surface.
+        switch snapshotPhase {
+        case let .queued(position):
+            stopElapsedClock()
+            queueEstimate.observe(position: position, now: now)
+            estimatedRemainingSeconds = queueEstimate.remainingSeconds(for: position)
+            setPhase(.queued(position: position))
+            return
+        case .starting:
+            stopElapsedClock()
+            queueEstimate.reset()
+            estimatedRemainingSeconds = nil
+            setPhase(.starting)
+            return
+        case .idle, .connecting, .streaming:
+            break
+        }
         if hasActiveStream {
             startElapsedClock(at: now)
             queueEstimate.reset()
@@ -299,17 +321,12 @@ final class OPNMenuBarSessionModel: ObservableObject {
             return
         }
         stopElapsedClock()
-        switch snapshotPhase {
-        case let .queued(position):
-            queueEstimate.observe(position: position, now: now)
-            estimatedRemainingSeconds = queueEstimate.remainingSeconds(for: position)
-        case .idle, .connecting, .streaming:
-            queueEstimate.reset()
-            estimatedRemainingSeconds = nil
-        }
-        // A source never claims `streaming` — that comes from the lifecycle above — so a snapshot
-        // that somehow did would describe a session this surface cannot reach, and reads as idle.
-        setPhase(snapshotPhase == .streaming ? .idle : snapshotPhase)
+        queueEstimate.reset()
+        estimatedRemainingSeconds = nil
+        // A source never claims `starting` or `streaming` — those come from the launch in flight or
+        // the lifecycle above — so a snapshot that somehow did has nothing behind it and reads as
+        // idle. `connecting` is the launch flow's own pre-overlay state and stands on its own.
+        setPhase(snapshotPhase == .connecting ? .connecting : .idle)
     }
 
     private func startElapsedClock(at start: Date) {

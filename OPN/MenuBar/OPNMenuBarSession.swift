@@ -3,10 +3,17 @@ import Foundation
 /// What the status item is showing. `streaming` carries nothing but the fact of the stream: the
 /// start of a session is the moment `StreamSessionLifecycle` reported it, and the model holds that
 /// stamp, so the elapsed readout cannot disagree with the session that is actually running.
+///
+/// `starting` is the window between a launch and its first frame — the launch overlay's allocate,
+/// offer, and negotiate steps. It is deliberately separate from `queued`, which is a measured wait
+/// with a position to report, and from `streaming`, which means frames are arriving. The stream
+/// surface registers itself with the lifecycle as soon as it is mounted, so the lifecycle alone
+/// cannot draw that line; the launch flow's snapshot can.
 enum OPNMenuBarSessionPhase: Equatable, Sendable {
     case idle
     case queued(position: Int)
     case connecting
+    case starting
     case streaming
 
     /// Whether a seat is being acquired right now, rather than merely being connected to.
@@ -15,12 +22,25 @@ enum OPNMenuBarSessionPhase: Equatable, Sendable {
         return false
     }
 
+    /// The queue position as it appears beside the status item's mark, or nil when there is no queue.
+    ///
+    /// The number only, deliberately: the ETA is a projection that changes on every queue poll —
+    /// six seconds apart at the vendor's cadence — and text that changes that often is exactly what
+    /// the status item's native renderer must not be driven by. A position that changes only when
+    /// the seat advances is cheap to redraw. The ETA stays in the popover, where it can be read
+    /// without resizing the status item.
+    var menuBarQueueCountText: String? {
+        guard case let .queued(position) = self, position > 0 else { return nil }
+        return String(position)
+    }
+
     /// The cloud mark: hollow when nothing streams, the hourglass while a seat is being acquired,
-    /// filled once a stream is running.
+    /// the spinner while the stream itself is starting, filled once a stream is running.
     var symbolName: String {
         switch self {
         case .idle: return "cloud"
         case .queued, .connecting: return "hourglass"
+        case .starting: return "arrow.triangle.2.circlepath"
         case .streaming: return "cloud.fill"
         }
     }
@@ -33,13 +53,17 @@ struct OPNMenuBarRecentGame: Equatable, Sendable, Identifiable {
     let title: String
     let appId: String
     let artworkURL: String?
+    /// When this account last played the game, for the row's subtitle. Nil when the local history
+    /// carries no timestamp for it, which renders as a title-only row rather than a placeholder.
+    let lastPlayedAt: Date?
 
     var id: String { appId.isEmpty ? title : appId }
 
-    init(title: String, appId: String, artworkURL: String? = nil) {
+    init(title: String, appId: String, artworkURL: String? = nil, lastPlayedAt: Date? = nil) {
         self.title = title
         self.appId = appId
         self.artworkURL = artworkURL
+        self.lastPlayedAt = lastPlayedAt
     }
 }
 
@@ -161,6 +185,8 @@ enum OPNMenuBarReadout {
             return "No session running"
         case .streaming:
             return "Streaming now"
+        case .starting:
+            return "Starting stream…"
         case .queued, .connecting:
             return detailText(for: phase, estimatedSeconds: estimatedSeconds) ?? "Connecting…"
         }
@@ -176,9 +202,22 @@ enum OPNMenuBarReadout {
             return "\(positionText) · \(durationText(seconds: estimatedSeconds))"
         case .connecting:
             return "Connecting…"
+        case .starting:
+            return "Starting…"
         case .streaming:
             return nil
         }
+    }
+
+    /// The subtitle under a Continue Playing row: how long ago the game was last played, or nil when
+    /// the history has no date for it. Named style, so a game just left reads "now" rather than
+    /// "0 seconds ago" and yesterday reads "yesterday" rather than "1 day ago".
+    static func lastPlayedText(for date: Date?, now: Date = Date()) -> String? {
+        guard let date else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        formatter.dateTimeStyle = .named
+        return formatter.localizedString(for: date, relativeTo: now)
     }
 
     static func elapsedText(since start: Date, now: Date) -> String {
@@ -214,6 +253,8 @@ enum OPNMenuBarReadout {
             return "\(game), in queue at position \(position), about \(spokenDuration(seconds: estimatedSeconds)) to go"
         case .connecting:
             return "\(game), connecting"
+        case .starting:
+            return "\(game), starting"
         case .streaming:
             guard let startedAt else { return "\(game), streaming" }
             return "\(game), streaming, \(spokenDuration(seconds: now.timeIntervalSince(startedAt))) elapsed"

@@ -176,7 +176,7 @@ enum OPNDockIconController {
                 isQueued: phase.isQueued,
                 hasResumableSession: resumableSessionTitle != nil
             ),
-            progressFraction: OPNDockTileContent.progressFraction(queue: queueFraction, export: exportFraction)
+            progress: OPNDockTileContent.progress(queue: queueFraction, isStarting: phase == .starting, export: exportFraction)
         ))
     }
 
@@ -184,7 +184,7 @@ enum OPNDockIconController {
         guard content != appliedContent else { return }
         appliedContent = content
         applyBadge(content.badgeLabel)
-        applyProgress(content.progressFraction)
+        applyProgress(content.progress)
     }
 
     private static func applyBadge(_ label: String?) {
@@ -193,9 +193,9 @@ enum OPNDockIconController {
         tile.display()
     }
 
-    private static func applyProgress(_ fraction: Double?) {
+    private static func applyProgress(_ progress: OPNDockProgress?) {
         guard let tile = NSApp?.dockTile else { return }
-        guard let fraction else {
+        guard let progress else {
             // Clearing hands the tile back its own icon. Left installed, a finished wait would sit on
             // the Dock icon until the app quit.
             guard progressView != nil else { return }
@@ -205,7 +205,7 @@ enum OPNDockIconController {
             return
         }
         let view = progressView ?? installProgressView(on: tile)
-        view.fraction = fraction
+        view.progress = progress
         tile.display()
     }
 
@@ -224,6 +224,6 @@ enum OPNDockIconController {
         NSApp?.dockTile.contentView = nil
         progressView = nil
         applyBadge(appliedContent.badgeLabel)
-        applyProgress(appliedContent.progressFraction)
+        applyProgress(appliedContent.progress)
     }
 }

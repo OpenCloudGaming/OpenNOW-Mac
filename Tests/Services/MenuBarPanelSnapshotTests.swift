@@ -28,9 +28,9 @@ import Testing
     }
 
     private static let games = [
-        OPNMenuBarRecentGame(title: "Cyberpunk 2077", appId: "app-1"),
-        OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-2"),
-        OPNMenuBarRecentGame(title: "Elden Ring: Shadow of the Erdtree", appId: "app-3"),
+        OPNMenuBarRecentGame(title: "Cyberpunk 2077", appId: "app-1", lastPlayedAt: Date().addingTimeInterval(-2 * 3600)),
+        OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-2", lastPlayedAt: Date().addingTimeInterval(-26 * 3600)),
+        OPNMenuBarRecentGame(title: "Elden Ring: Shadow of the Erdtree", appId: "app-3", lastPlayedAt: Date().addingTimeInterval(-3 * 86_400)),
     ]
 
     // MARK: - Layout
@@ -40,6 +40,7 @@ import Testing
             ("idle", .idle, ""),
             ("streaming", .streaming, "Cyberpunk 2077"),
             ("queued", .queued(position: 4), "Cyberpunk 2077"),
+            ("starting", .starting, "Cyberpunk 2077"),
             ("connecting", .connecting, "Manor Lords"),
         ]
         for (name, phase, title) in states {

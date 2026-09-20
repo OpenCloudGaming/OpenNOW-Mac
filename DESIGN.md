@@ -317,9 +317,21 @@ with 10 (Section) horizontal / 12 (Small) vertical padding.
 ### Status Item (`OPNMenuBarStatusLabel`, `OPNMenuBarPanel`)
 
 The status item's *label* is system chrome: macOS draws it in the status bar, and it takes no
-`uiScale`, `OPNDesign` fills, or 1px-stroke treatment. It is the cloud SF Symbol alone — hollow when
-idle, filled while streaming, the OpenNOW mark — with the game and the elapsed clock living in the
-popover instead, so the status item never resizes while a session runs.
+`uiScale`, `OPNDesign` fills, or 1px-stroke treatment. It is one cloud SF Symbol alone — hollow when
+idle, the hourglass for a queue or the launch flow's pre-overlay states, a spinner
+(`arrow.triangle.2.circlepath`) while the allocated stream has not produced a frame yet, filled while
+streaming, the OpenNOW mark — with the game and the elapsed clock living in the popover instead, so
+the status item never resizes while a session runs.
+
+The label's one addition is the **queue position**: while queued, the mark is followed by the bare
+number (`4`, not `Queue #4`). It is the state a user parked behind a seat most wants to see without
+opening anything, and a position changes only when the seat advances — cheap to redraw, unlike the
+elapsed clock. The ETA stays in the popover, where it can change on every vendor poll without
+driving the native status-button renderer.
+
+The popover's Continue Playing rows name the game and **when it was last played** ("2 hours ago",
+"yesterday") rather than repeating "Continue playing" under a header that already says it. A row the
+history carries no timestamp for is title-only.
 
 The native label receives one plain-text readout. Its elapsed clock is refreshed once per second
 by the session model and stopped on stream teardown; a self-updating `Text(date, style: .timer)`
@@ -359,6 +371,10 @@ it is drawn by the app except the one thing the system does not offer:
   outside the window, so it is also the only one outside `View/`: the bar takes its colour from
   `OPNThemePreferences.AccentColor.components`, the same values the in-app palette is built from, and
   deliberately not the page-contrast variant — the background here is the app icon, not a page.
+  The bar is `determinate` for the queue and the recording export, and `indeterminate` for a stream
+  that has been allocated but has not produced a frame: that state has no fraction to measure, so it
+  draws a segment sweeping across the well instead of an empty bar that reads as a stalled wait.
+  Reduce Motion parks the segment centered and stops the timer.
 - **The menu's wording.** `OPNDockMenu` supplies titles and actions only: a disabled *Continue Playing*
   header, the three most recent games, then *New Session* and *Open Recordings*. The Dock renders it
   in its own chrome, so no `NSMenu` styling belongs in the code either.

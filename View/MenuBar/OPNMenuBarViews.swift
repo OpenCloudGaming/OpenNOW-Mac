@@ -1,17 +1,25 @@
 import AppKit
 import SwiftUI
 
-/// The status item's label: the OpenNOW cloud mark, and nothing else.
+/// The status item's label: the OpenNOW cloud mark, and the queue position while there is one.
 ///
-/// The game, the phase detail, and the elapsed clock live in the popover. Keeping the label to the
-/// mark alone means the status item never resizes while a session runs, which is also what keeps the
-/// native status-button renderer from being driven by per-second text updates.
+/// The game, the phase detail, and the elapsed clock live in the popover. The one thing the label
+/// adds is the queue number — the state a user parked behind a seat most wants to see without
+/// opening anything. The ETA stays out: it changes on every vendor poll, and driving the native
+/// status-button renderer with text that changes that often is what this label avoids. A position
+/// changes only when the seat advances, so the label stays quiet while a session runs.
 struct OPNMenuBarStatusLabel: View {
     @ObservedObject var session: OPNMenuBarSessionModel
 
     var body: some View {
-        Image(systemName: session.phase.symbolName)
-            .accessibilityLabel(session.accessibilityLabel())
+        HStack(spacing: 3) {
+            Image(systemName: session.phase.symbolName)
+            if let queueCountText = session.phase.menuBarQueueCountText {
+                Text(queueCountText)
+                    .monospacedDigit()
+            }
+        }
+        .accessibilityLabel(session.accessibilityLabel())
     }
 }
 
@@ -199,9 +207,14 @@ struct OPNMenuBarPanel: View {
                     .font(.opnUI(size: 12.5, weight: .semibold))
                     .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
-                Text("Continue playing")
-                    .font(.opnUI(size: 10.5, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
+                // The card's header already says this list is Continue Playing; repeating it under
+                // every title says nothing. When the game was last played is what the row can add.
+                if let lastPlayedText = OPNMenuBarReadout.lastPlayedText(for: game.lastPlayedAt) {
+                    Text(lastPlayedText)
+                        .font(.opnUI(size: 10.5, weight: .medium))
+                        .foregroundStyle(OPNDesign.Text.tertiary)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 6)
             Image(systemName: "play.fill")

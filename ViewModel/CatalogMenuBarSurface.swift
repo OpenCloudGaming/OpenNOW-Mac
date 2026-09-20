@@ -26,7 +26,10 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
             if let queuePosition = activeStreamProgress?.queuePosition, queuePosition > 0 {
                 return .queued(position: queuePosition)
             }
-            return .connecting
+            // The overlay lingers for a beat after the stream reports ready. Idle from there lets the
+            // lifecycle claim the surface, rather than holding it on `starting` past the first frame.
+            if activeStreamProgress?.isReady == true { return .idle }
+            return .starting
         }
         return launchFlowState == .idle ? .idle : .connecting
     }
@@ -57,7 +60,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         for entry in entries {
             let key = entry.title.lowercased()
             guard !key.isEmpty, seenTitles.insert(key).inserted else { continue }
-            rows.append(OPNMenuBarRecentGame(title: entry.title, appId: entry.appId, artworkURL: entry.artworkURL))
+            rows.append(OPNMenuBarRecentGame(title: entry.title, appId: entry.appId, artworkURL: entry.artworkURL, lastPlayedAt: entry.playedAt))
             if rows.count == 3 { break }
         }
         return rows
@@ -87,7 +90,8 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
             rows.append(OPNMenuBarRecentGame(
                 title: game?.title ?? entry.title,
                 appId: identity.isEmpty ? entry.appId : identity,
-                artworkURL: Self.menuBarArtworkURL(for: game) ?? entry.artworkURL
+                artworkURL: Self.menuBarArtworkURL(for: game) ?? entry.artworkURL,
+                lastPlayedAt: entry.playedAt
             ))
             if rows.count == 3 { break }
         }

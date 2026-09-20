@@ -14,8 +14,8 @@ import Testing
 
     @Test func nothingPendingDrawsNoBadge() {
         #expect(OPNDockTileContent.pendingSessionCount(isQueued: false, hasResumableSession: false) == nil)
-        #expect(OPNDockTileContent(pendingSessions: nil, progressFraction: nil).badgeLabel == nil)
-        #expect(OPNDockTileContent(pendingSessions: 0, progressFraction: nil).badgeLabel == nil)
+        #expect(OPNDockTileContent(pendingSessions: nil, progress: nil).badgeLabel == nil)
+        #expect(OPNDockTileContent(pendingSessions: 0, progress: nil).badgeLabel == nil)
     }
 
     @Test func aQueuedOrResumableSessionIsCounted() {
@@ -24,31 +24,62 @@ import Testing
         // A seat being acquired and a seat waiting to be rejoined are two separate things the user
         // has to act on, so they are counted rather than merged away.
         #expect(OPNDockTileContent.pendingSessionCount(isQueued: true, hasResumableSession: true) == 2)
-        #expect(OPNDockTileContent(pendingSessions: 1, progressFraction: nil).badgeLabel == "1")
+        #expect(OPNDockTileContent(pendingSessions: 1, progress: nil).badgeLabel == "1")
     }
 
     @Test func aBadgeTooWideForTheTileIsCapped() {
-        #expect(OPNDockTileContent(pendingSessions: 99, progressFraction: nil).badgeLabel == "99")
-        #expect(OPNDockTileContent(pendingSessions: 100, progressFraction: nil).badgeLabel == "99+")
+        #expect(OPNDockTileContent(pendingSessions: 99, progress: nil).badgeLabel == "99")
+        #expect(OPNDockTileContent(pendingSessions: 100, progress: nil).badgeLabel == "99+")
     }
 
     // MARK: - Progress
 
     @Test func noWaitDrawsNoProgress() {
-        #expect(OPNDockTileContent.progressFraction(queue: nil, export: nil) == nil)
+        #expect(OPNDockTileContent.progress(queue: nil, isStarting: false, export: nil) == nil)
     }
 
     @Test func theQueueWinsTheTileWhenBothWaitsAreRunning() {
-        #expect(OPNDockTileContent.progressFraction(queue: 0.4, export: 0.9) == 0.4)
-        #expect(OPNDockTileContent.progressFraction(queue: nil, export: 0.9) == 0.9)
+        #expect(OPNDockTileContent.progress(queue: 0.4, isStarting: false, export: 0.9) == .determinate(0.4))
+        #expect(OPNDockTileContent.progress(queue: nil, isStarting: false, export: 0.9) == .determinate(0.9))
     }
 
     @Test func progressIsClampedAndQuantizedToTheDisplayedPercent() {
-        #expect(OPNDockTileContent.progressFraction(queue: 1.4, export: nil) == 1)
-        #expect(OPNDockTileContent.progressFraction(queue: -0.3, export: nil) == 0)
+        #expect(OPNDockTileContent.progress(queue: 1.4, isStarting: false, export: nil) == .determinate(1))
+        #expect(OPNDockTileContent.progress(queue: -0.3, isStarting: false, export: nil) == .determinate(0))
         // 0.4321 is a new value every encoder callback; the tile shows one percent at a time.
-        #expect(OPNDockTileContent.progressFraction(queue: nil, export: 0.4321) == 0.43)
-        #expect(OPNDockTileContent.progressFraction(queue: nil, export: 0.4349) == 0.43)
+        #expect(OPNDockTileContent.progress(queue: nil, isStarting: false, export: 0.4321) == .determinate(0.43))
+        #expect(OPNDockTileContent.progress(queue: nil, isStarting: false, export: 0.4349) == .determinate(0.43))
+    }
+
+    @Test func aStreamBeingStartedSweepsTheBar() {
+        // No fraction to report — the session is allocated but no frame has arrived — so the bar is
+        // indeterminate rather than an empty one.
+        #expect(OPNDockTileContent.progress(queue: nil, isStarting: true, export: nil) == .indeterminate)
+        // The queue still outranks it: the queue is the wait the user is blocked behind.
+        #expect(OPNDockTileContent.progress(queue: 0.4, isStarting: true, export: nil) == .determinate(0.4))
+        // Starting outranks an export: it ends in a game with nothing else to watch, and the export
+        // gets its determinate bar back once the stream is ready.
+        #expect(OPNDockTileContent.progress(queue: nil, isStarting: true, export: 0.9) == .indeterminate)
+    }
+
+    @Test func theStartingBadgeStaysOffTheTile() {
+        // Starting is passive — nothing for the user to act on — so it draws no badge even though it
+        // owns the progress bar.
+        #expect(OPNDockTileContent.pendingSessionCount(isQueued: false, hasResumableSession: false) == nil)
+    }
+
+    @Test func theIndeterminateSweepTurnsAroundAtTheEnds() {
+        // Leading edge only: the segment never leaves the well.
+        #expect(OPNDockTileProgressView.indeterminatePosition(phase: 0, isReduceMotionEnabled: false) == 0)
+        #expect(OPNDockTileProgressView.indeterminatePosition(phase: 1, isReduceMotionEnabled: false) == 1)
+        // Past the end it comes back rather than wrapping to the start.
+        #expect(OPNDockTileProgressView.indeterminatePosition(phase: 1.5, isReduceMotionEnabled: false) == 0.5)
+        #expect(OPNDockTileProgressView.indeterminatePosition(phase: 2, isReduceMotionEnabled: false) == 0)
+    }
+
+    @Test func reduceMotionParksTheSweep() {
+        #expect(OPNDockTileProgressView.indeterminatePosition(phase: 0.4, isReduceMotionEnabled: true) == 0.5)
+        #expect(OPNDockTileProgressView.indeterminatePosition(phase: 1.9, isReduceMotionEnabled: true) == 0.5)
     }
 
     // MARK: - Queue wait

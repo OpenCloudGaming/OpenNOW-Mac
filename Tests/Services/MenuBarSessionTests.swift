@@ -561,7 +561,8 @@ import Testing
             selectedStore: "steam"
         )
         model.isActiveStreamLaunchOverlayVisible = true
-        #expect(model.menuBarSnapshot.phase == .connecting)
+        // Allocated but no frame yet: the launch is starting, not queued and not streaming.
+        #expect(model.menuBarSnapshot.phase == .starting)
 
         model.activeStreamProgress = StreamProgress(
             title: "Cyberpunk 2077",
@@ -572,6 +573,17 @@ import Testing
             queuePosition: 4
         )
         #expect(model.menuBarSnapshot.phase == .queued(position: 4))
+
+        // The overlay lingers for a beat after the stream reports ready; from there the surface
+        // yields to the lifecycle rather than holding `starting` past the first frame.
+        model.activeStreamProgress = StreamProgress(
+            title: "Cyberpunk 2077",
+            message: "",
+            steps: StreamLaunchStep.allCases.map(\.title),
+            currentStepIndex: StreamLaunchStep.connected.rawValue,
+            isReady: true
+        )
+        #expect(model.menuBarSnapshot.phase == .idle)
 
         // A running stream belongs to the lifecycle, not to this snapshot: claiming a phase here
         // would let a teardown that has not reached the view model keep a dead session on screen.
@@ -598,6 +610,8 @@ import Testing
         let rows = model.menuBarSnapshot.recentGames
         #expect(rows.map(\.title) == ["Aniimo"])
         #expect(rows.first?.appId == "53a6c9f5-524c-4309-9d54-dda5a6cb10b9")
+        // The row keeps the newer of the two timestamps, so the subtitle says when it was last played.
+        #expect(rows.first?.lastPlayedAt == Date(timeIntervalSince1970: 200))
     }
 
     @Test func persistedRowsCollapseTheTwoNamespacesByTitle() {
@@ -620,6 +634,8 @@ import Testing
         let rows = CatalogViewModel.persistedMenuBarRecentGames(accountIdentifier: identifier)
         #expect(rows.map(\.title) == ["Aniimo", "Warcraft® III: Reforged"])
         #expect(rows.first?.artworkURL == "https://cdn.example/aniimo.png")
+        // The windowless path carries the timestamp too, so its rows get the same subtitle.
+        #expect(rows.first?.lastPlayedAt == Date(timeIntervalSince1970: 200))
     }
 
     @Test func snapshotOffersTheThreeMostRecentGames() {
