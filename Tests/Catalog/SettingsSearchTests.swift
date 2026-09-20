@@ -85,6 +85,9 @@ import Testing
         let unscannable: Set<String> = [
             "Microphone Test", "Cloudmatch Region", "Your recordings", "Test Controller", "Controller Mapping",
             "Controller Order",
+            // The Report an Issue card is a SettingsCard + SettingsActionButton, which the row source
+            // scan does not read; the card and its section are rendered all the same.
+            "Report an Issue",
         ]
         // Keybinding rows draw their title from `KeybindingAction`, which the literal source scan
         // cannot read; the index builds those same titles from that same enum.

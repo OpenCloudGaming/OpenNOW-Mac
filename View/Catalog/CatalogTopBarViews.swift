@@ -98,6 +98,12 @@ struct CatalogTopBar: View {
                             .help("Search games (\(keybindings.combo(for: .openSearch).label))")
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                         }
+                        Button { OPNReportIssuePresentation.shared.present(context: .current(viewModel: viewModel)) } label: {
+                            CatalogTopBarIconLabel(systemName: "exclamationmark.bubble")
+                        }
+                        .buttonStyle(.opnPressable(scale: 0.90))
+                        .accessibilityLabel("Report an issue")
+                        .help("Report an issue")
                         Button { controllerModeEnabled = true } label: {
                             CatalogTopBarIconLabel(systemName: "gamecontroller")
                         }

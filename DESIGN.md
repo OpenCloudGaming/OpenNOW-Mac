@@ -664,6 +664,57 @@ actions trailing. Actions are `OPNConfirmationAction`s in visual order: `.cancel
 (`OPNModalDestructiveButtonStyle`, never the default). The scrim tap, close control, Escape, and
 `.cancel` all dismiss.
 
+### Report an Issue Modal (`OPNReportIssueModal`)
+
+The two-channel support form, raised through `OPNReportIssuePresentation.shared.present(context:)`
+and rendered once at the app root by `OPNReportIssueOverlay` — above the update prompt, below the
+confirmation modal — so it covers the whole surface even when the page that raised it lives inside a
+scroll view. It reuses the confirmation modal's shell exactly (Panel background, 1px Stroke Regular,
+2px accent top bar, modal shadow #000000 @ 0.58 radius 28 y 20, App Bar header with a 10pt bold
+accent "SUPPORT" eyebrow, a 20pt bold "Feedback" title, and the shared 28×28 close control).
+The panel is up to 520 wide and shrinks to the window minus 2 × 40 (Page Horizontal) with a 340
+floor; the body is the only part that scrolls, capped to 62 % of the window height so the header and
+footer stay put at a high interface scale.
+
+The body opens on two square target cards side by side (`OPNReportIssueTargetPicker`): selected is
+accent @ 0.14 fill with a 2px accent strokeBorder and the accent-ink label, the other is the Row
+Fill (0.045) with a 1px Stroke Subtle border. The cards choose between two different forms, not one
+form with two destinations:
+
+- **OpenNOW Client** collects a GitHub report. It opens on a row of square category chips
+  (`OPNReportIssueCategoryPicker`: 28 high, 12 (Small) horizontal padding, accent fill with an
+  on-accent label when selected and the neutral Row Fill otherwise) for Bug / Feature Request —
+  the category is required, and it becomes both the GitHub label (`bug` / `feature`) and a body
+  section. Below it sit labelled fields (`OPNReportIssueInput`) on Surface Field, 1px Stroke Regular
+  and a 2px accent strokeBorder while focused, 12 (Small) horizontal / 10 vertical padding, with the
+  placeholder drawn rather than handed to the field so no system prompt colour leaks in: a
+  single-line Summary, a multiline Description, and a square diagnostics checkbox
+  (`OPNReportIssueCheckbox`: 18×18, accent fill with an on-accent checkmark when on). The footer carries CANCEL (`OPNModalSecondaryButtonStyle`, Escape) and SEND
+  REPORT (`VendorGetInButtonStyle`, disabled at 0.62 until both fields are filled); after submission
+  it becomes a single CLOSE button over a confirmation that names GitHub and says the full report is
+  on the clipboard.
+
+- **GeForce NOW Stream** collects no summary of its own — NVIDIA's survey has its own text field.
+  Selecting the card loads the survey immediately and draws its questions natively
+  (`OPNFeedbackSurveyForm`): numbered 14pt bold question text; a 22pt star row
+  (`star`/`star.fill`, accent when selected) for CSAT/NPS; a multiline Surface Field for free text,
+  placeholder "Do not include any personal information"; and 18×18 square selection indicators for
+  choice questions — accent fill with an on-accent checkmark for multi-select, an on-accent inner
+  square for single-select. The footer carries CANCEL and SUBMIT FEEDBACK (`VendorGetInButtonStyle`,
+  disabled at 0.62 until every required question is answered). SUBMIT FEEDBACK first opens an
+  agreement step in place of the questions: an accent-bar notice stating the answers go directly to
+  NVIDIA and OpenNOW is unaffiliated and cannot follow up, plus a required `OPNReportIssueCheckbox`
+  ("I understand and agree") that gates AGREE & SEND. Confirming sends the answers to NVIDIA's
+  `/survey/v1`; CANCEL returns to the questions with the answers intact. A questionnaire the native form cannot draw (DDL/INFO) falls back to
+  `OPNFeedbackSurveyView`, an embedded `WKWebView` of NVIDIA's own survey, up to 74 % of the window
+  height with a 320 floor and an OPEN IN BROWSER / DONE footer. If the survey cannot be reached at
+  all, an accent-bar notice (`OPNReportIssueNotice`) explains it and the footer offers OPEN GEFORCE
+  NOW. The centered loading state uses `VendorIndeterminateProgressBar`; the embedded page's chrome
+  is NVIDIA's and is not restyled.
+
+Scrim tap, close control, and Escape all dismiss; the centered picker stays above whichever form the
+channel draws.
+
 ### Controller Sheets (test / mapping)
 
 The controller tester (`SteamControllerTestView`) opens from Settings → Input → Controller

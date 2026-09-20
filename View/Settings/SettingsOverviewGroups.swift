@@ -89,6 +89,7 @@ struct GeneralSettingsGroup: View {
         + PrivacySettingsPage.sections
         + CacheSettingsPage.sections
         + DiagnosticsSettingsPage.sections
+        + ReportIssueSettingsPage.sections
 
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
@@ -100,6 +101,7 @@ struct GeneralSettingsGroup: View {
             PrivacySettingsPage(uiScale: uiScale)
             CacheSettingsPage(viewModel: viewModel, uiScale: uiScale)
             DiagnosticsSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            ReportIssueSettingsPage(viewModel: viewModel, uiScale: uiScale)
         }
     }
 }

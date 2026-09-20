@@ -130,6 +130,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Automatic Update Checks", .system, "updates", keywords: ["update", "version", "release", "upgrade"]),
         SettingsSearchEntry("Update Channel", .system, "updates", keywords: ["beta", "stable", "pre-release", "update", "channel"]),
         SettingsSearchEntry("Disable Telemetry", .general, "privacy", keywords: ["privacy", "analytics", "sentry", "tracking", "diagnostics"]),
+        SettingsSearchEntry("Report an Issue", .general, "report-issue", keywords: ["bug", "feedback", "support", "problem", "crash", "nvidia", "stream quality", "contact", "diagnostics"]),
     ]
 
     private static let recordingEntries: [SettingsSearchEntry] = [

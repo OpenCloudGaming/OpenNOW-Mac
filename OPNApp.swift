@@ -169,6 +169,13 @@ struct OPNApp: App {
                     Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
                 }
             }
+            CommandGroup(replacing: .help) {
+                Button {
+                    OPNReportIssuePresentation.shared.present(context: .appEnvironment())
+                } label: {
+                    Label("Report an Issue…", systemImage: "exclamationmark.bubble")
+                }
+            }
             CommandMenu("Stream") {
                 Button("Join Remote Co-Op as Guest…") {
                     openWindow(id: "remote-coop-guest")
