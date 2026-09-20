@@ -285,6 +285,21 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(parsed.remainingSessionLimitSeconds == 1794)
 }
 
+@Test func queuePositionDiagnosticReportsWinningContainer() {
+    let topLevel: [String: Any] = ["queuePosition": 436, "seatSetupInfo": ["queuePosition": 1]]
+    #expect(OPNSessionJSONParser.queuePositionDiagnostic(from: topLevel as NSDictionary)
+        == "queueSource=session queueCandidates=[session=436 seatSetupInfo=1 sessionProgress=- progressInfo=-]")
+    #expect(OPNSessionJSONParser.parseSessionProgress(from: topLevel as NSDictionary).queuePosition == 436)
+
+    let nested: [String: Any] = ["seatSetupInfo": ["queuePosition": 4]]
+    #expect(OPNSessionJSONParser.queuePositionDiagnostic(from: nested as NSDictionary)
+        == "queueSource=seatSetupInfo queueCandidates=[session=- seatSetupInfo=4 sessionProgress=- progressInfo=-]")
+    #expect(OPNSessionJSONParser.parseSessionProgress(from: nested as NSDictionary).queuePosition == 4)
+
+    #expect(OPNSessionJSONParser.queuePositionDiagnostic(from: [:] as NSDictionary)
+        == "queueSource=none queueCandidates=[session=- seatSetupInfo=- sessionProgress=- progressInfo=-]")
+}
+
 @Test func streamSessionLimitUpdateParsesVendorClientMessage() throws {
     let data = try JSONSerialization.data(withJSONObject: [
         "event": "STREAMING_CLIENT_MESSAGE",

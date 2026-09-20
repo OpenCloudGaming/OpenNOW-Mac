@@ -187,11 +187,7 @@ public final class OPNSessionJSONParser: NSObject {
         let progressInfo = dictionary(session["progressInfo"])
         let controlInfo = dictionary(session["sessionControlInfo"])
 
-        let queuePosition = positiveInt(session["queuePosition"])
-            ?? positiveInt(seatSetupInfo?["queuePosition"])
-            ?? positiveInt(sessionProgress?["queuePosition"])
-            ?? positiveInt(progressInfo?["queuePosition"])
-            ?? 0
+        let queuePosition = queuePositionCandidates(session: session).first { ($0.value ?? 0) > 0 }?.value ?? 0
         let seatSetupStep = intValue(seatSetupInfo?["seatSetupStep"])
             ?? intValue(sessionProgress?["seatSetupStep"])
             ?? intValue(progressInfo?["seatSetupStep"])
@@ -217,6 +213,20 @@ public final class OPNSessionJSONParser: NSObject {
             remainingPlaytimeAvailable: remaining.available,
             remainingSessionLimitSeconds: remainingSessionLimitSeconds(containers: containers)
         )
+    }
+
+    /// Renders every `queuePosition` the wire offered and which container actually supplied the
+    /// displayed value, so a queue that appears to move between polls can be told apart from the
+    /// parser reading a different container than the top-level one.
+    @objc(queuePositionDiagnosticFromSession:)
+    public static func queuePositionDiagnostic(from session: NSDictionary?) -> String {
+        let session = session as? [String: Any] ?? [:]
+        let candidates = queuePositionCandidates(session: session)
+        let source = candidates.first { ($0.value ?? 0) > 0 }?.source ?? "none"
+        let rendered = candidates.map { candidate in
+            "\(candidate.source)=\(candidate.value.map(String.init) ?? "-")"
+        }.joined(separator: " ")
+        return "queueSource=\(source) queueCandidates=[\(rendered)]"
     }
 
     @objc(parseSessionAdStateFromSession:)
@@ -282,6 +292,18 @@ public final class OPNSessionJSONParser: NSObject {
     private static func positiveInt(_ value: Any?) -> Int? {
         guard let parsed = intValue(value), parsed > 0 else { return nil }
         return parsed
+    }
+
+    private static func queuePositionCandidates(session: [String: Any]) -> [(source: String, value: Int?)] {
+        let seatSetupInfo = dictionary(session["seatSetupInfo"])
+        let sessionProgress = dictionary(session["sessionProgress"])
+        let progressInfo = dictionary(session["progressInfo"])
+        return [
+            ("session", intValue(session["queuePosition"])),
+            ("seatSetupInfo", intValue(seatSetupInfo?["queuePosition"])),
+            ("sessionProgress", intValue(sessionProgress?["queuePosition"])),
+            ("progressInfo", intValue(progressInfo?["queuePosition"])),
+        ]
     }
 
     private static func dictionary(_ value: Any?) -> [String: Any]? {

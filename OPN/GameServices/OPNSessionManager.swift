@@ -229,7 +229,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             return (false, [:], "SESSION_ID_MISMATCH: requested \(escapedLogString(sessionId)) but response contained \(escapedLogString(string(info["sessionId"])))")
         }
         mergeAndStoreAdState(&info)
-        logPollSessionSummary(httpStatus: http.statusCode, info: info)
+        logPollSessionSummary(httpStatus: http.statusCode, info: info, session: session)
         return (true, info, "")
     }
 

@@ -288,11 +288,13 @@ extension OPNSessionManager {
         attempt <= 12 ? 0.3 : (attempt <= 20 ? 0.5 : 1.0)
     }
 
-    func logPollSessionSummary(httpStatus: Int, info: [String: Any]) {
+    func logPollSessionSummary(httpStatus: Int, info: [String: Any], session: [String: Any]) {
         var summary = "status=\(int(info["status"])) sessionId=\(string(info["sessionId"]).prefix(8))"
         if httpStatus != 200 { summary += " http=\(httpStatus)" }
         let queuePosition = int(info["queuePosition"])
-        if queuePosition > 0 { summary += " queue=\(queuePosition)" }
+        if queuePosition > 0 {
+            summary += " queue=\(queuePosition) \(OPNSessionJSONParser.queuePositionDiagnostic(from: session as NSDictionary))"
+        }
         if let adState = info["adState"] as? [String: Any], bool(adState["isAdsRequired"]) { summary += " ads=required" }
         OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "PollSession", message: summary))
     }
