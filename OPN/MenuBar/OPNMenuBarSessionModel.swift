@@ -52,6 +52,8 @@ final class OPNMenuBarSessionModel: ObservableObject {
     private var queueEstimate = OPNMenuBarQueueEstimate()
     private var trackingGeneration = 0
     private var pendingLaunch: OPNMenuBarRecentGame?
+    /// A page asked for while no window can show it, drained when the next source attaches.
+    private var pendingMainPage: OPNMainWindowPage?
     /// A Resume asked for while no window can perform it, drained when the next source attaches.
     private var isResumePending = false
     private var elapsedClockTask: Task<Void, Never>?
@@ -124,6 +126,9 @@ final class OPNMenuBarSessionModel: ObservableObject {
     func attach(source: any OPNMenuBarSessionSource) {
         self.source = source
         trackSource()
+        // The page first: a window built to answer a request opens where the request asked, and a
+        // launch handed over beside it switches pages anyway.
+        drainPendingMainPage()
         drainPendingLaunch()
     }
 
@@ -230,6 +235,25 @@ final class OPNMenuBarSessionModel: ObservableObject {
         guard let game = pendingLaunch, let source else { return }
         pendingLaunch = nil
         source.launchRecentGame(game)
+    }
+
+    // MARK: - Pages
+
+    /// A page asked for from outside the window, parked until a window can show it — the same way a
+    /// launch asked for from the Dock or the menu bar is.
+    func requestMainPage(_ page: OPNMainWindowPage) {
+        guard let source else {
+            OPNLog.info(.app, "A surface parked a request for the \(page) page until a window exists")
+            pendingMainPage = page
+            return
+        }
+        source.showMainPage(page)
+    }
+
+    private func drainPendingMainPage() {
+        guard let page = pendingMainPage, let source else { return }
+        pendingMainPage = nil
+        source.showMainPage(page)
     }
 
     /// Drained from `apply` rather than from `attach`: a window reopening from a parked resume has not

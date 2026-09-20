@@ -70,6 +70,16 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         return terminates
     }
 
+    /// The Dock icon's menu, rebuilt every time the Dock asks for it — which is on each right-click,
+    /// and is also what keeps the games in it current.
+    ///
+    /// Only reachable while the app has a Dock icon: `Close, Menu Bar Only` with nothing on screen
+    /// hands the Dock away, and the menu, the badge, and the progress bar go with it. The menu bar is
+    /// the surface that answers there.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        OPNDockMenu.make(recentGames: OPNMenuBarSessionModel.shared.recentGames)
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if isCompletingUserApprovedTermination {
             OPNLog.info(.app, "Completing user-approved application termination")

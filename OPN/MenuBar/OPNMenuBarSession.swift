@@ -9,6 +9,12 @@ enum OPNMenuBarSessionPhase: Equatable, Sendable {
     case connecting
     case streaming
 
+    /// Whether a seat is being acquired right now, rather than merely being connected to.
+    var isQueued: Bool {
+        if case .queued = self { return true }
+        return false
+    }
+
     /// The cloud mark: hollow when nothing streams, the hourglass while a seat is being acquired,
     /// filled once a stream is running.
     var symbolName: String {
@@ -49,9 +55,23 @@ struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
     var resumableSessionTitle: String?
 }
 
+/// One of the main window's pages, for a surface outside the window to ask for by name. A reduction
+/// of `CatalogMainPage` rather than that type itself: the surfaces that ask are in the service layer,
+/// and only the two pages they can reach are worth naming here.
+enum OPNMainWindowPage: Equatable, Sendable {
+    /// Where a session is started: the catalog home.
+    case home
+    /// The recording library, where an export the Dock reported progress for can be found again.
+    case recordings
+}
+
 /// A window that owns the launch flow: it describes an in-flight launch (so the menu bar can follow
 /// it without the launch flow having to remember to notify anyone) and it can act on a launch
 /// handed to it, which is the only way a game chosen from the menu reaches the vendor.
+///
+/// Every surface outside the window goes through this bridge — the menu bar and the Dock menu both —
+/// so there is one answer to "where does a request from outside the window land", and one place that
+/// parks it while no window can act on it.
 @MainActor
 protocol OPNMenuBarSessionSource: AnyObject {
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { get }
@@ -61,6 +81,9 @@ protocol OPNMenuBarSessionSource: AnyObject {
     /// Re-checks for a resumable session, so opening the menu reflects a session started elsewhere
     /// since the catalog last looked.
     func refreshActiveSession()
+    /// Brings one of the window's own pages forward. A page belongs to the window and nothing outside
+    /// it can put one on screen, so the surface asks rather than acts.
+    func showMainPage(_ page: OPNMainWindowPage)
 }
 
 /// How long the seat queue is likely to take from here.

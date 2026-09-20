@@ -692,6 +692,10 @@ extension MenuBarSessionTests {
 @MainActor @Observable final class StubMenuBarSource: OPNMenuBarSessionSource {
     var snapshot = OPNMenuBarSessionSnapshot()
     private(set) var launchedGames: [OPNMenuBarRecentGame] = []
+    private(set) var shownPages: [OPNMainWindowPage] = []
+    /// Every request in the order it arrived, for the one thing the separate lists cannot show: which
+    /// of two parked requests a window acts on first.
+    private(set) var calls: [String] = []
     private(set) var resumeRequests = 0
     private(set) var refreshRequests = 0
 
@@ -699,6 +703,7 @@ extension MenuBarSessionTests {
 
     func launchRecentGame(_ game: OPNMenuBarRecentGame) {
         launchedGames.append(game)
+        calls.append("launch:\(game.title)")
     }
 
     func resumeSession() {
@@ -707,6 +712,11 @@ extension MenuBarSessionTests {
 
     func refreshActiveSession() {
         refreshRequests += 1
+    }
+
+    func showMainPage(_ page: OPNMainWindowPage) {
+        shownPages.append(page)
+        calls.append("page:\(page)")
     }
 }
 

@@ -615,6 +615,12 @@ final class RecordingEditorViewModel: ObservableObject {
         isExporting = true
         exportProgress = 0
         errorMessage = nil
+        // The Dock reports the same export the editor does, and stops reporting it on every way out
+        // of here - finished, failed, or cancelled. `exportProgress` is deliberately left where it
+        // stopped on the failure path, so the Dock's indicator keys off this rather than off a
+        // fraction that outlives the export.
+        OPNDockIconController.setExportProgress(0)
+        defer { OPNDockIconController.setExportProgress(nil) }
         do {
             let request = request()
             let recording = try await StreamRecordingLibrary.exportEditedRecording(request) { [weak self] progress in
@@ -624,6 +630,7 @@ final class RecordingEditorViewModel: ObservableObject {
                 guard let self else { return }
                 guard Int(progress * 100) != Int(self.exportProgress * 100) else { return }
                 self.exportProgress = progress
+                OPNDockIconController.setExportProgress(progress)
             }
             isExporting = false
             exportProgress = 1

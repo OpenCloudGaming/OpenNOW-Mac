@@ -16,6 +16,50 @@ enum OPNMainWindow {
         guard let window = existing(), window.isMiniaturized else { return }
         window.deminiaturize(nil)
     }
+
+    /// Whether a surface outside the window has to bring it up before handing it work.
+    ///
+    /// A closed window is still in `NSApp.windows` — the close button hides the scene's window rather
+    /// than destroying it — so `existing()` answering is not the question. A closed window has no view
+    /// on screen and its surface has detached, so work handed to it would be parked with nothing to
+    /// act on it; a window sitting in the Dock does not: its view stays mounted, and `reveal()` brings
+    /// it back with its place kept.
+    ///
+    /// Pure enough to test: the window is looked up by the caller.
+    static func needsPresentation(for window: NSWindow?) -> Bool {
+        guard let window else { return true }
+        return !window.isVisible && !window.isMiniaturized
+    }
+
+    static var needsPresentation: Bool {
+        needsPresentation(for: existing())
+    }
+
+    /// Brings the window up for a caller with no `openWindow` action at hand — the Dock menu, which is
+    /// AppKit — whether it was closed, minimized, or is simply behind another app.
+    ///
+    /// A closed window is still here, view hierarchy intact, so ordering it front is what reopens it:
+    /// live-verified against the running app, where after the close button `existing()` still answers
+    /// with a window whose `isVisible` is false, and ordering it front puts it back on screen — and
+    /// SwiftUI re-runs the scene's `task`, so the surface detached by the close attaches again.
+    ///
+    /// `activating` is the difference between the two things a surface can want. A session launch
+    /// leaves it false, so the window appears behind whatever the user is doing and the Session Ready
+    /// preference keeps the only say over whether the app comes forward; a request to *see* the window
+    /// — the Dock's New Session and Open Recordings — passes true.
+    static func present(activating: Bool = true) {
+        guard let window = existing() else {
+            OPNLog.warning(.app, "Main window was brought forward before the app had built one")
+            return
+        }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        if activating {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            window.orderFront(nil)
+        }
+    }
 }
 
 /// Enforces `OPNWindowClosePreferences.behavior` on the main window's close button.

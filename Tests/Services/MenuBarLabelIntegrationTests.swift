@@ -85,4 +85,5 @@ import Testing
 
     func resumeSession() {}
     func refreshActiveSession() {}
+    func showMainPage(_ page: OPNMainWindowPage) {}
 }

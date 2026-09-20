@@ -214,14 +214,18 @@ struct OPNMenuBarPanel: View {
         .opnMenuBarRow()
     }
 
-    /// A game started here does not bring the window forward: the window only has to exist to run
-    /// the launch, so it is recreated behind whatever the user is doing when it was closed, and left
-    /// in the Dock when it was minimized. What happens once the session is ready is the Session
+    /// A game started here does not bring the window forward: the window only has to be on screen to
+    /// run the launch, so it comes back behind whatever the user is doing when it was closed, and is
+    /// left in the Dock when it was minimized. What happens once the session is ready is the Session
     /// Ready preference's decision, exactly as it is for a launch from the catalog.
+    ///
+    /// On screen, not merely existing: closing the window hides the scene's window, its surface
+    /// detaches with it, and a launch handed to a window that is not showing is parked with nothing to
+    /// act on it — which is what happened here before `needsPresentation` asked the right question.
     private func launch(_ game: OPNMenuBarRecentGame) {
-        if OPNMainWindow.existing() == nil {
-            // A window is about to exist again, so it comes with its Dock icon even though the launch
-            // itself leaves it behind whatever the user is doing.
+        if OPNMainWindow.needsPresentation {
+            // A window is about to be on screen again, so it comes with its Dock icon even though the
+            // launch itself leaves it behind whatever the user is doing.
             OPNDockIconController.showDockIcon()
             openWindow(id: "main")
         }

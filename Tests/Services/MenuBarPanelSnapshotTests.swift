@@ -263,4 +263,5 @@ private struct GlassEvidenceBackdrop: View {
     func launchRecentGame(_ game: OPNMenuBarRecentGame) {}
     func resumeSession() {}
     func refreshActiveSession() {}
+    func showMainPage(_ page: OPNMainWindowPage) {}
 }

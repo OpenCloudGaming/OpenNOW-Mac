@@ -345,6 +345,27 @@ How it is drawn depends on the OS:
 Everything else applies to both paths: `.opnUI` sizes and weights, `OPNDesign` text tokens,
 destructive ink from `OPNDesign.Semantic`, and no native `Menu` or `Divider` in the panel.
 
+### Dock Tile (`OPNDockTileProgressView`, `OPNDockMenu`, `OPNDockIconController`)
+
+The Dock tile is system chrome. The icon, the badge, and the drawing of the Dock's menu all belong to
+macOS, so nothing here carries `uiScale`, an `OPNDesign` panel fill, or a corner radius — and none of
+it is drawn by the app except the one thing the system does not offer:
+
+- **The progress bar.** `NSDockTile` has no progress API: drawing one means becoming the tile's
+  `contentView`, and a content view *replaces* the icon instead of overlaying it. `OPNDockTileProgressView`
+  therefore draws `NSApp.applicationIconImage` back in and lays the bar over its lower edge, with the
+  geometry taken as a fraction of the tile rather than a pixel size, because the Dock draws the tile
+  at whatever size the display and the user's Dock settings ask for. It is the only app-painted surface
+  outside the window, so it is also the only one outside `View/`: the bar takes its colour from
+  `OPNThemePreferences.AccentColor.components`, the same values the in-app palette is built from, and
+  deliberately not the page-contrast variant — the background here is the app icon, not a page.
+- **The menu's wording.** `OPNDockMenu` supplies titles and actions only: a disabled *Continue Playing*
+  header, the three most recent games, then *New Session* and *Open Recordings*. The Dock renders it
+  in its own chrome, so no `NSMenu` styling belongs in the code either.
+
+A badge is one system-drawn label — the count of sessions waiting on the user, capped at `99+` — and
+is cleared by the same rule that set it: nothing pending, no badge.
+
 ### Login Wall Layout
 
 The login panel is marketing-only: logo, eyebrow, headline, marketing bullets, and a

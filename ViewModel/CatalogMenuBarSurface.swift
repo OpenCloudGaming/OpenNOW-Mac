@@ -130,6 +130,18 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         checkActiveHomeSession()
     }
 
+    /// The window's own pages, asked for from outside it. Both of the actions behind this exist here
+    /// and nowhere else: what "a new session" and "the recordings" mean is the catalog's question,
+    /// not the surface's.
+    func showMainPage(_ page: OPNMainWindowPage) {
+        switch page {
+        case .home:
+            showGames()
+        case .recordings:
+            showRecordings()
+        }
+    }
+
     func launchRecentGame(_ game: OPNMenuBarRecentGame) {
         configureCatalogService()
         let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)

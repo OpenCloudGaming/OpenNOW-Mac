@@ -43,6 +43,7 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. [More ↓](#record-your-runs) |
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, persistent Library and Favorites - plus a live banner that drops you straight back into an active session. |
 | ☁️ **Menu bar control** | Track and drive the session from the menu bar - live status, elapsed clock, Resume / Pause / End, and Continue Playing - and keep the app running with no window at all. [More ↓](#menu-bar--windowless) |
+| ⚓ **Dock integration** | Right-click the Dock icon for your three most recent games, New Session, and Open Recordings - with a badge while a seat is waiting and a progress bar for a queue or an export. [More ↓](#menu-bar--windowless) |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - hosted by OpenNOW itself, no server to deploy, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
 | 🔊 **5.1 / 7.1 surround** | Multi-channel Opus on both transports, negotiated from your output device and membership, with a stereo fold for recordings and Remote Co-Op. |
@@ -196,6 +197,12 @@ Settings → General → **Window & Menu Bar** decides what happens when the win
 - **When the last window closes** - quit on close, close and keep the Dock icon (the default, so the close button just closes the window and the Dock brings it back), or close and hide from the Dock so only the menu bar item remains.
 - **Launch at login** - start OpenNOW automatically, registered as a macOS Login Item.
 - **At launch, show** - open the main window, or start with only the menu bar item and no window.
+
+The Dock is the other surface over the same state. Right-click the icon for the same three most recent
+games, plus **New Session** and **Open Recordings**, and the icon wears a badge while a seat is queued
+or waiting to be resumed. A queue wait and a recording export each draw their progress on the tile,
+so a long wait is visible with the window closed. Choose *Close, Menu Bar Only* and the app leaves the
+Dock entirely - there the menu bar is the surface that answers instead.
 
 ## Settings You Can Find
 
