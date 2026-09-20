@@ -97,6 +97,9 @@ struct OPNApp: App {
             var accountDescriptor = FetchDescriptor<LoginAccount>(predicate: #Predicate { $0.email == email })
             accountDescriptor.fetchLimit = 1
             let account = (try? context.fetch(accountDescriptor))?.first
+            // The account list is seeded before the launch prefetch: a windowless launch has no
+            // catalog to push it, and the menu bar shows who is signed in from the first open.
+            seedMenuBarAccounts(context: context, activeEmail: email)
             let userId = session.userId.isEmpty ? (account?.userId ?? "") : session.userId
             guard !userId.isEmpty else { return }
             // The play history is keyed by the playtime identifier, which needs the account; seeding
@@ -120,6 +123,26 @@ struct OPNApp: App {
             }
             CatalogLaunchPrefetch.shared.start(accountIdentifier: userId, accessToken: session.accessToken, idToken: session.idToken)
         }
+    }
+
+    /// Seeds the menu bar's account list from persistence. A windowless launch has no catalog view
+    /// model to push the live list, so this is what names the signed-in user and offers the others.
+    /// The list is later overwritten by the catalog's own snapshot once a window attaches.
+    @MainActor
+    private static func seedMenuBarAccounts(context: ModelContext, activeEmail: String) {
+        let accounts = (try? context.fetch(FetchDescriptor<LoginAccount>(sortBy: [SortDescriptor(\LoginAccount.lastLoginAt, order: .reverse)]))) ?? []
+        guard !accounts.isEmpty else { return }
+        let sessions = (try? context.fetch(FetchDescriptor<LoginSession>())) ?? []
+        let usableEmails = Set(sessions.filter { !$0.accessToken.isEmpty }.map(\.accountEmail))
+        OPNMenuBarSessionModel.shared.primeAccounts(accounts.map { account in
+            OPNMenuBarAccount(
+                email: account.email,
+                displayName: account.displayName,
+                membershipTier: account.membershipTier,
+                isSignedOut: !usableEmails.contains(account.email),
+                isActive: account.email == activeEmail
+            )
+        })
     }
 
     // The catalog image cache store backs the first frame's artwork, so it is opened at

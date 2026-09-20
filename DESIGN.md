@@ -333,6 +333,14 @@ The popover's Continue Playing rows name the game and **when it was last played*
 "yesterday") rather than repeating "Continue playing" under a header that already says it. A row the
 history carries no timestamp for is title-only.
 
+The popover's first card names the **signed-in account**: avatar, display name, and membership tier.
+When more than one account is saved the header becomes a disclosure — a chevron and a tap reveal the
+account rows, each with a checkmark on the active one and a "Signed out — sign in again" subtitle for
+one whose tokens are gone, followed by an Add Account row. Switching is a window action (it re-points
+the shared auth session), so the card presents the window and parks the request on the session model
+the same way a recent-game launch does; the account rows are `.opnMenuBarRow` content, not extra
+glass.
+
 The native label receives one plain-text readout. Its elapsed clock is refreshed once per second
 by the session model and stopped on stream teardown; a self-updating `Text(date, style: .timer)`
 in the `MenuBarExtra` label can trap the native status-button renderer in a continuous update loop.

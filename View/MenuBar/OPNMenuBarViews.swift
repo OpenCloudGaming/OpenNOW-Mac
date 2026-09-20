@@ -65,6 +65,7 @@ struct OPNMenuBarPanel: View {
 
     private var cards: some View {
         VStack(alignment: .leading, spacing: 10) {
+            OPNMenuBarAccountSection(session: session, onPresentMainWindow: openMainWindow)
             sessionCard
             continuePlayingCard
             footer

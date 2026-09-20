@@ -39,6 +39,12 @@ import Testing
         try await Task.sleep(for: .milliseconds(200))
         #expect(session.phase == .queued(position: 3))
 
+        // A queue position outranks the live stream: the launch flow owns the phase until it goes
+        // quiet, so it is cleared here rather than left for the lifecycle to fight.
+        source.snapshot = OPNMenuBarSessionSnapshot()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(session.phase == .idle)
+
         let streamID = UUID()
         StreamSessionLifecycle.activate(streamID, quitRequestHandler: { _ in true })
         defer { StreamSessionLifecycle.deactivate(streamID) }
@@ -86,4 +92,6 @@ import Testing
     func resumeSession() {}
     func refreshActiveSession() {}
     func showMainPage(_ page: OPNMainWindowPage) {}
+    func switchAccount(_ account: OPNMenuBarAccount) {}
+    func addAccount() {}
 }

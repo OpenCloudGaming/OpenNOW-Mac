@@ -56,6 +56,44 @@ import Testing
         }
     }
 
+    /// The account card is the first thing in the popover, so it is rendered over seeded accounts —
+    /// more than one, which is the case that grows the header into a disclosure.
+    @Test func thePanelRendersWithAccounts() throws {
+        let model = OPNMenuBarSessionModel()
+        model.primeAccounts([
+            OPNMenuBarAccount(email: "anderson@example.com", displayName: "Anderson", membershipTier: "Ultimate", isSignedOut: false, isActive: true),
+            OPNMenuBarAccount(email: "player2@example.com", displayName: "Player Two", membershipTier: "Free", isSignedOut: true, isActive: false),
+        ])
+        try render(OPNMenuBarPanel(session: model), named: "menu-bar-panel-accounts.png", minimumHeight: 140)
+    }
+
+    /// The account dropdown open. The popover only shows it after a click, so it is rendered on its
+    /// own with the section started expanded.
+    @Test func theAccountDropdownRendersExpanded() throws {
+        let model = OPNMenuBarSessionModel()
+        model.primeAccounts([
+            OPNMenuBarAccount(email: "anderson@example.com", displayName: "Anderson", membershipTier: "Ultimate", isSignedOut: false, isActive: true),
+            OPNMenuBarAccount(email: "player2@example.com", displayName: "Player Two", membershipTier: "Free", isSignedOut: false, isActive: false),
+            OPNMenuBarAccount(email: "player3@example.com", displayName: "Player Three", membershipTier: "Free", isSignedOut: true, isActive: false),
+        ])
+        let content = OPNMenuBarAccountSection(session: model, startsExpanded: true, onPresentMainWindow: {})
+            .padding(10)
+            .frame(width: OPNMenuBarPanel.width)
+            .opnMenuBarPanelBackground()
+            .background(Color.black)
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = 2
+        let image = try #require(renderer.nsImage, "the expanded account dropdown did not render")
+        #expect(image.size.width >= OPNMenuBarPanel.width, "the dropdown collapsed horizontally")
+        #expect(image.size.height > 180, "the dropdown collapsed vertically")
+
+        guard let directory = Self.captureDirectory,
+              let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: URL(fileURLWithPath: directory).appendingPathComponent("menu-bar-account-dropdown.png"))
+    }
+
     /// `streaming` is not something a source can claim — the surface takes it from the stream
     /// lifecycle — so a streaming panel is rendered over a real activated session, ended again
     /// before the next state so nothing leaks between renders.
@@ -265,4 +303,6 @@ private struct GlassEvidenceBackdrop: View {
     func resumeSession() {}
     func refreshActiveSession() {}
     func showMainPage(_ page: OPNMainWindowPage) {}
+    func switchAccount(_ account: OPNMenuBarAccount) {}
+    func addAccount() {}
 }

@@ -17,6 +17,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
             phase: menuBarPhase,
             title: menuBarTitle,
             recentGames: menuBarRecentGames,
+            accounts: menuBarAccounts,
             resumableSessionTitle: menuBarResumableSessionTitle
         )
     }
@@ -118,9 +119,6 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         OPNMenuBarSessionModel.shared.detachSource(self)
     }
 
-    /// Launching a game the menu bar offered. The catalog it came from may not be loaded — a window
-    /// reopened from the menu bar starts fetching as it appears — so an unknown game is resolved by
-    /// browsing for its title, the same way an unresolved shortcut is.
     /// Resuming a session the menu bar detected but is not streaming locally. The vendor session is
     /// already allocated, so this hands the resume to the same home-page path, with the same guard.
     func resumeSession() {
@@ -146,6 +144,26 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         }
     }
 
+    /// Switches the signed-in account from the menu bar: the same path the catalog's dropdown runs,
+    /// because the switch re-points the auth session the whole app shares. The account list reaches
+    /// this model from the view, so a request that arrives first is held rather than dropped.
+    func switchAccount(_ account: OPNMenuBarAccount) {
+        guard !account.isActive else { return }
+        guard let match = menuBarLoginAccounts.first(where: { $0.email == account.email }) else {
+            OPNLog.info(.app, "Menu bar account switch held until the account list loads")
+            pendingMenuBarAccountSwitchEmail = account.email
+            return
+        }
+        onSwitchAccount(match)
+    }
+
+    func addAccount() {
+        onAddAccount()
+    }
+
+    /// Launching a game the menu bar offered. The catalog it came from may not be loaded — a window
+    /// reopened from the menu bar starts fetching as it appears — so an unknown game is resolved by
+    /// browsing for its title, the same way an unresolved shortcut is.
     func launchRecentGame(_ game: OPNMenuBarRecentGame) {
         configureCatalogService()
         let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)

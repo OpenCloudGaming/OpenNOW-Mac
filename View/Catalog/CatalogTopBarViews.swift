@@ -268,11 +268,20 @@ struct CatalogTopBar: View {
 }
 
 struct CatalogAccountAvatar: View {
-    let account: LoginAccount
+    let email: String
     let size: CGFloat
 
+    init(account: LoginAccount, size: CGFloat) {
+        self.init(email: account.email, size: size)
+    }
+
+    init(email: String, size: CGFloat) {
+        self.email = email
+        self.size = size
+    }
+
     private var gravatarURL: URL? {
-        let normalizedEmail = account.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedEmail.isEmpty else { return nil }
         let digest = Insecure.MD5.hash(data: Data(normalizedEmail.utf8))
         let hash = digest.map { String(format: "%02x", $0) }.joined()

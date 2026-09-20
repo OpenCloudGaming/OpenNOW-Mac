@@ -717,6 +717,8 @@ extension MenuBarSessionTests {
     private(set) var calls: [String] = []
     private(set) var resumeRequests = 0
     private(set) var refreshRequests = 0
+    private(set) var switchedAccounts: [OPNMenuBarAccount] = []
+    private(set) var addAccountRequests = 0
 
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }
 
@@ -736,6 +738,16 @@ extension MenuBarSessionTests {
     func showMainPage(_ page: OPNMainWindowPage) {
         shownPages.append(page)
         calls.append("page:\(page)")
+    }
+
+    func switchAccount(_ account: OPNMenuBarAccount) {
+        switchedAccounts.append(account)
+        calls.append("switch:\(account.email)")
+    }
+
+    func addAccount() {
+        addAccountRequests += 1
+        calls.append("addAccount")
     }
 }
 

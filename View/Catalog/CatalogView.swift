@@ -163,6 +163,20 @@ struct CatalogView: View {
 
     private var isCatalogPageActive: Bool { viewModel.selectedMainPage == .games }
 
+    /// The saved accounts reduced to the menu bar's snapshot shape, so a change the view's SwiftData
+    /// query reports — a rename, a new account, a sign-out — is something `onChange` can compare.
+    private var menuBarAccountsSignature: [OPNMenuBarAccount] {
+        accounts.map { account in
+            OPNMenuBarAccount(
+                email: account.email,
+                displayName: account.displayName,
+                membershipTier: account.membershipTier,
+                isSignedOut: signedOutAccountEmails.contains(account.email),
+                isActive: account.email == viewModel.account.email
+            )
+        }
+    }
+
     private var tileDensity: CGFloat {
         (OPNThemePreferences.TileDensity(rawValue: tileDensityRawValue) ?? .comfortable).tileScale
     }
@@ -209,7 +223,7 @@ struct CatalogView: View {
         self.onRefreshAuth = onRefreshAuth
         self.onWindowTitleChange = onWindowTitleChange
         _pendingGameShortcut = pendingGameShortcut
-        _viewModel = State(initialValue: CatalogViewModel(account: account, session: session, onRefreshAuth: onRefreshAuth))
+        _viewModel = State(initialValue: CatalogViewModel(account: account, session: session, onSwitchAccount: onSwitch, onAddAccount: onAddAccount, onRefreshAuth: onRefreshAuth))
     }
 
     var body: some View {
@@ -347,6 +361,9 @@ struct CatalogView: View {
             StartupReadiness.shared.markContentReady()
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
+        .onChange(of: menuBarAccountsSignature, initial: true) { @MainActor _, _ in
+            viewModel.updateMenuBarAccounts(accounts, signedOutAccountEmails: signedOutAccountEmails)
+        }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
         .onChange(of: themeIdentity, initial: true) { @MainActor _, newIdentity in
             guard isCatalogPageActive else { return }

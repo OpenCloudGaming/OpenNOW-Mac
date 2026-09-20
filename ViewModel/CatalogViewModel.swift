@@ -320,6 +320,18 @@ final class CatalogViewModel {
     let account: LoginAccount
     let session: LoginSession
     let onRefreshAuth: () async -> Bool
+    /// The catalog's own account actions, handed in by `CatalogView`, so a switch asked for from the
+    /// menu bar runs the identical path the on-screen dropdown does.
+    let onSwitchAccount: (LoginAccount) -> Void
+    let onAddAccount: () -> Void
+    /// The saved accounts and which of them are signed out, fed from the view's SwiftData query. The
+    /// menu bar snapshot is derived from these rather than from the live models.
+    var menuBarLoginAccounts: [LoginAccount] = []
+    var menuBarSignedOutEmails: Set<String> = []
+    /// A switch the menu bar asked for before the account list reached this model, held until the
+    /// list arrives. Opening the window from the menu bar parks the request, and the list is pushed
+    /// by the view a beat after it attaches, so a dropped request would look like a dead button.
+    var pendingMenuBarAccountSwitchEmail: String?
 
     private var hasLoaded = false
     var browseGeneration = 0
@@ -351,7 +363,7 @@ final class CatalogViewModel {
 
     private var hasStarted = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
@@ -359,7 +371,33 @@ final class CatalogViewModel {
         self.imageCache = imageCache
         self.discordPresence = discordPresence
         self.systemIntegration = systemIntegration
+        self.onSwitchAccount = onSwitchAccount
+        self.onAddAccount = onAddAccount
         self.onRefreshAuth = onRefreshAuth
+    }
+
+    /// Records the saved accounts the menu bar can show and switch, and settles a switch that was
+    /// asked for before this list existed.
+    func updateMenuBarAccounts(_ accounts: [LoginAccount], signedOutAccountEmails: Set<String>) {
+        menuBarLoginAccounts = accounts
+        menuBarSignedOutEmails = signedOutAccountEmails
+        guard let email = pendingMenuBarAccountSwitchEmail,
+              let match = accounts.first(where: { $0.email == email }) else { return }
+        pendingMenuBarAccountSwitchEmail = nil
+        onSwitchAccount(match)
+    }
+
+    /// The saved accounts as the menu bar snapshot carries them, the active one marked.
+    var menuBarAccounts: [OPNMenuBarAccount] {
+        menuBarLoginAccounts.map { login in
+            OPNMenuBarAccount(
+                email: login.email,
+                displayName: login.displayName,
+                membershipTier: login.membershipTier,
+                isSignedOut: menuBarSignedOutEmails.contains(login.email),
+                isActive: login.email == account.email
+            )
+        }
     }
 
     /// Narrow door onto the image cache for `CatalogImagePrefetch`, which lives in its own file and

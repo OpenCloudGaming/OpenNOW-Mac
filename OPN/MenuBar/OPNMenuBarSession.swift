@@ -67,13 +67,40 @@ struct OPNMenuBarRecentGame: Equatable, Sendable, Identifiable {
     }
 }
 
+/// A signed-in account, reduced to what the menu bar shows and what switching to it needs. A value
+/// snapshot rather than the SwiftData `LoginAccount`, so the surface stays sendable and can be seeded
+/// from persistence on a windowless launch.
+struct OPNMenuBarAccount: Equatable, Sendable, Identifiable {
+    let email: String
+    let displayName: String
+    let membershipTier: String
+    /// The account has no usable tokens left on this Mac: switching to it starts a fresh sign-in
+    /// instead of restoring a session.
+    let isSignedOut: Bool
+    /// The account the catalog is currently signed in as.
+    let isActive: Bool
+
+    var id: String { email }
+
+    init(email: String, displayName: String, membershipTier: String, isSignedOut: Bool, isActive: Bool) {
+        self.email = email
+        self.displayName = displayName
+        self.membershipTier = membershipTier
+        self.isSignedOut = isSignedOut
+        self.isActive = isActive
+    }
+}
+
 /// Everything the surface needs from the window that owns the launch: the phase, the game it is
-/// about, the games the menu can relaunch, and the title of a cloud session that exists but is not
-/// streaming locally. Pushed by the catalog view model; the menu bar owns no launch state of its own.
+/// about, the games the menu can relaunch, the signed-in accounts it can show and switch, and the
+/// title of a cloud session that exists but is not streaming locally. Pushed by the catalog view
+/// model; the menu bar owns no launch state of its own.
 struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
     var phase: OPNMenuBarSessionPhase = .idle
     var title = ""
     var recentGames: [OPNMenuBarRecentGame] = []
+    /// Every saved account, active one included. Empty until a window attaches or launch seeding runs.
+    var accounts: [OPNMenuBarAccount] = []
     /// A resumable session detected while nothing streams locally — a seat this Mac paused, or one
     /// another device is holding. Nil when there is nothing to resume.
     var resumableSessionTitle: String?
@@ -108,6 +135,11 @@ protocol OPNMenuBarSessionSource: AnyObject {
     /// Brings one of the window's own pages forward. A page belongs to the window and nothing outside
     /// it can put one on screen, so the surface asks rather than acts.
     func showMainPage(_ page: OPNMainWindowPage)
+    /// Switches the signed-in account, the same action the catalog's account dropdown offers. The
+    /// switch belongs to the window because it re-points the auth session the whole app shares.
+    func switchAccount(_ account: OPNMenuBarAccount)
+    /// Opens the window's add-account sign-in, which keeps the current account signed in.
+    func addAccount()
 }
 
 /// How long the seat queue is likely to take from here.

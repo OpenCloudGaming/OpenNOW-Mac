@@ -18,6 +18,9 @@ final class OPNMenuBarSessionModel: ObservableObject {
     @Published private(set) var gameTitle = ""
     @Published private(set) var estimatedRemainingSeconds: TimeInterval?
     @Published private(set) var recentGames: [OPNMenuBarRecentGame] = []
+    /// Every saved account the surface can show and switch to, active one included. Kept across a
+    /// source detach like the recent games, so closing the window to the tray does not empty it.
+    @Published private(set) var accounts: [OPNMenuBarAccount] = []
     /// The moment the active stream reported itself. Held here rather than derived from the launch
     /// flow, so a session resumed by another surface still counts from when it actually started.
     @Published private(set) var streamStartedAt: Date?
@@ -56,6 +59,10 @@ final class OPNMenuBarSessionModel: ObservableObject {
     private var pendingMainPage: OPNMainWindowPage?
     /// A Resume asked for while no window can perform it, drained when the next source attaches.
     private var isResumePending = false
+    /// An account switch or add-account sign-in asked for while no window can perform it, drained
+    /// when the next source attaches.
+    private var pendingAccountSwitch: OPNMenuBarAccount?
+    private var isAddAccountPending = false
     private var elapsedClockTask: Task<Void, Never>?
 
     init(notificationCenter: NotificationCenter = .default) {
@@ -130,6 +137,7 @@ final class OPNMenuBarSessionModel: ObservableObject {
         // launch handed over beside it switches pages anyway.
         drainPendingMainPage()
         drainPendingLaunch()
+        drainPendingAccountRequests()
     }
 
     /// Seeds the play history from persistence, for a launch that never built a window to push it.
@@ -140,13 +148,26 @@ final class OPNMenuBarSessionModel: ObservableObject {
         recentGames = games
     }
 
+    /// Seeds the account list from persistence, the windowless counterpart of the snapshot the
+    /// catalog pushes. Skipped once a source owns the list, so it cannot fight the live snapshot.
+    func primeAccounts(_ accounts: [OPNMenuBarAccount]) {
+        guard source == nil, self.accounts.isEmpty, !accounts.isEmpty else { return }
+        self.accounts = accounts
+    }
+
+    /// The account the popover names at its top. Falls back to the first entry so a list seeded
+    /// before an active mark lands still shows somebody rather than an empty header.
+    var activeAccount: OPNMenuBarAccount? {
+        accounts.first(where: \.isActive) ?? accounts.first
+    }
+
     /// Identity-checked: a window replacing another (an account switch, a window reopened) detaches
     /// after the replacement attaches often enough that a blind detach would leave the surface
     /// following nothing.
     ///
-    /// The recent games are deliberately kept: they describe play history rather than the session, so
-    /// closing the window to the tray must not empty the menu. The next source to attach overwrites
-    /// them with its own account's list.
+    /// The recent games and accounts are deliberately kept: they describe play history and the saved
+    /// accounts rather than the session, so closing the window to the tray must not empty the menu.
+    /// The next source to attach overwrites them with its own account's list.
     func detachSource(_ source: any OPNMenuBarSessionSource) {
         guard self.source === source else { return }
         self.source = nil
@@ -237,6 +258,42 @@ final class OPNMenuBarSessionModel: ObservableObject {
         source.launchRecentGame(game)
     }
 
+    // MARK: - Accounts
+
+    /// Switches the signed-in account. With no window to perform it the request is parked until one
+    /// attaches, exactly like a recent-game launch — the switch re-points the app-wide auth session,
+    /// which only the window owns.
+    func requestAccountSwitch(_ account: OPNMenuBarAccount) {
+        guard !account.isActive else { return }
+        guard let source else {
+            OPNLog.info(.app, "Menu bar parked an account switch to \(account.email) until a window exists")
+            pendingAccountSwitch = account
+            return
+        }
+        source.switchAccount(account)
+    }
+
+    /// Starts the add-account sign-in. Parked without a window for the same reason as a switch.
+    func requestAddAccount() {
+        guard let source else {
+            OPNLog.info(.app, "Menu bar parked an add-account sign-in until a window exists")
+            isAddAccountPending = true
+            return
+        }
+        source.addAccount()
+    }
+
+    private func drainPendingAccountRequests() {
+        if let account = pendingAccountSwitch, let source {
+            pendingAccountSwitch = nil
+            source.switchAccount(account)
+        }
+        if isAddAccountPending, let source {
+            isAddAccountPending = false
+            source.addAccount()
+        }
+    }
+
     // MARK: - Pages
 
     /// A page asked for from outside the window, parked until a window can show it — the same way a
@@ -285,6 +342,7 @@ final class OPNMenuBarSessionModel: ObservableObject {
         snapshotPhase = snapshot.phase
         gameTitle = snapshot.title
         recentGames = snapshot.recentGames
+        accounts = snapshot.accounts
         resumableSessionTitle = snapshot.resumableSessionTitle
         resolvePhase()
         drainPendingResumeIfReady()
