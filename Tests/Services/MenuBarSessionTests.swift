@@ -306,7 +306,7 @@ import Testing
         #expect(claimed.delegate is OPNMainWindowCloseDelegateProxy)
     }
 
-    @Test func guardAnswersTheCloseButtonForEachChoice() {
+    @Test func guardAnswersTheCloseButtonForEachChoice() async throws {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
 
@@ -319,21 +319,24 @@ import Testing
         var quitRequests = 0
         OPNMainWindowCloseGuard.terminateApplication = { quitRequests += 1 }
         defer { OPNMainWindowCloseGuard.terminateApplication = { NSApp.terminate(nil) } }
+        var hideRequests = 0
+        OPNMainWindowCloseGuard.hideMainWindow = { hideRequests += 1 }
+        defer { OPNMainWindowCloseGuard.hideMainWindow = { OPNMainWindow.existing()?.orderOut(nil); OPNDockIconController.apply() } }
         let proxy = window.delegate as? OPNMainWindowCloseDelegateProxy
         #expect(proxy != nil)
 
         // The quit choice closes the window and asks the app to go with it; each keep-running choice
-        // closes the window and leaves the app running (the application delegate refuses the quit).
+        // hides the window instead, so the scene's content — and any queue or stream in it — survives.
         OPNWindowClosePreferences.behavior = .quitApplication
         #expect(proxy?.windowShouldClose(window) == true)
         #expect(quitRequests == 1)
 
-        OPNWindowClosePreferences.behavior = .keepRunningInDock
-        #expect(proxy?.windowShouldClose(window) == true)
-        #expect(quitRequests == 1)
-
-        OPNWindowClosePreferences.behavior = .menuBarOnly
-        #expect(proxy?.windowShouldClose(window) == true)
+        for behavior in [OPNWindowCloseBehavior.keepRunningInDock, .menuBarOnly] {
+            OPNWindowClosePreferences.behavior = behavior
+            #expect(proxy?.windowShouldClose(window) == false)
+            try await waitForQueuedDelivery()
+        }
+        #expect(hideRequests == 2)
         #expect(quitRequests == 1)
     }
 

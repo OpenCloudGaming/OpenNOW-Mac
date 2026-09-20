@@ -8,12 +8,14 @@ enum OPNWindowCloseBehavior: String, CaseIterable, Sendable {
     /// Closing the last window quits OpenNOW — an ordinary single-window Mac app.
     case quitApplication
     /// The window closes and OpenNOW keeps running with its Dock icon, the way a regular Mac app
-    /// stays in the Dock after its last window is closed. The Dock icon and the Window menu bring the
-    /// window back, so nothing is kept alive behind it and reopening builds it from scratch. This is
-    /// the default because it is what a close button does everywhere else on the system.
+    /// stays in the Dock after its last window is closed. The window is hidden rather than torn down,
+    /// so an in-flight queue or stream survives it; the Dock icon and the Window menu bring the window
+    /// back with its place kept. This is the default because it is what a close button does everywhere
+    /// else on the system.
     case keepRunningInDock
-    /// The window closes and OpenNOW leaves the Dock entirely, living only in the menu bar. The menu
-    /// bar item is the only way back to the window, so this choice needs it.
+    /// The window closes and OpenNOW leaves the Dock entirely, living only in the menu bar. The window
+    /// is hidden rather than torn down, so an in-flight queue or stream survives it. The menu bar item
+    /// is the only way back to the window, so this choice needs it.
     case menuBarOnly
 
     var label: String {

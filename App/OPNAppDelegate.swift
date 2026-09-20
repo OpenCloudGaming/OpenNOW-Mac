@@ -70,6 +70,17 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         return terminates
     }
 
+    /// The Dock icon's own way back to the window. A hidden window is not re-presented by SwiftUI —
+    /// the scene never closed — so clicking the Dock icon orders the retained window front with its
+    /// place kept rather than leaving the app with no way back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !flag else { return true }
+        guard OPNMainWindow.existing() != nil else { return false }
+        OPNDockIconController.showDockIcon()
+        OPNMainWindow.present()
+        return true
+    }
+
     /// The Dock icon's menu, rebuilt every time the Dock asks for it — which is on each right-click,
     /// and is also what keeps the games in it current.
     ///

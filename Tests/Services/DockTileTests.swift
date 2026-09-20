@@ -169,15 +169,17 @@ import Testing
         #expect(source.calls == ["page:home", "launch:Parked"])
     }
 
-    @Test func aWindowWithNoSurfaceOnScreenHasToBeBroughtUp() {
-        // Closing the window hides it rather than tearing it down, so `existing()` answering is not
-        // the question a surface outside the window has to ask: a launch handed to a hidden window has
-        // no view on screen to run it, which is what the menu bar's quick launch used to do.
-        #expect(OPNMainWindow.needsPresentation(for: mainWindow()))
+    @Test func onlyAWindowTheSceneNeverBuiltHasToBeBroughtUp() {
+        // The close button hides the window rather than tearing the scene down, so a hidden or
+        // minimized window still has its surface mounted and a menu bar source attached — a launch
+        // handed to it lands. Only a window that has never been built leaves a surface nothing to act
+        // on it.
+        let hidden = mainWindow()
+        hidden.setIsVisible(false)
+        #expect(!OPNMainWindow.needsPresentation(for: hidden))
         let showing = mainWindow()
         showing.setIsVisible(true)
         #expect(!OPNMainWindow.needsPresentation(for: showing))
-        // Only a window that has never been built leaves a surface nothing to bring forward.
         #expect(OPNMainWindow.needsPresentation(for: nil))
     }
 

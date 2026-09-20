@@ -227,18 +227,17 @@ struct OPNMenuBarPanel: View {
         .opnMenuBarRow()
     }
 
-    /// A game started here does not bring the window forward: the window only has to be on screen to
-    /// run the launch, so it comes back behind whatever the user is doing when it was closed, and is
-    /// left in the Dock when it was minimized. What happens once the session is ready is the Session
-    /// Ready preference's decision, exactly as it is for a launch from the catalog.
+    /// A game started here does not bring the window forward: a window on screen, in the Dock, or
+    /// hidden by the close button all have their surface mounted, so the launch runs inside one of
+    /// them and the window is left exactly where the user put it. Only a launch with no window at all
+    /// — menu-bar-only startup — has to build one for the request to land in.
     ///
-    /// On screen, not merely existing: closing the window hides the scene's window, its surface
-    /// detaches with it, and a launch handed to a window that is not showing is parked with nothing to
-    /// act on it — which is what happened here before `needsPresentation` asked the right question.
+    /// On screen, not merely existing: a window the scene has never built has no surface to hand the
+    /// launch to, and a launch handed to it would be parked with nothing to act on it.
     private func launch(_ game: OPNMenuBarRecentGame) {
         if OPNMainWindow.needsPresentation {
-            // A window is about to be on screen again, so it comes with its Dock icon even though the
-            // launch itself leaves it behind whatever the user is doing.
+            // A window is about to be built, so it comes with its Dock icon even though the launch
+            // itself leaves it behind whatever the user is doing.
             OPNDockIconController.showDockIcon()
             openWindow(id: "main")
         }
@@ -276,9 +275,10 @@ struct OPNMenuBarPanel: View {
 
     /// Raising the app as well as the window: a menu bar action leaves another application
     /// frontmost, and a window opened behind it looks like nothing happened. A window sitting in the
-    /// Dock is brought back with its place kept; a closed one is rebuilt by the scene above it.
+    /// Dock is brought back with its place kept, and one the close button hid is ordered front again;
+    /// only a window the scene has never built is rebuilt by the scene above it.
     private func openMainWindow() {
-        // The window comes back with its Dock icon: menu-bar-only mode is a trade made while closed.
+        // The window comes back with its Dock icon: menu-bar-only mode is a trade made while hidden.
         OPNDockIconController.showDockIcon()
         openWindow(id: "main")
         OPNMainWindow.reveal()

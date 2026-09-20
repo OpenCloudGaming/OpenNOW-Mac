@@ -15,7 +15,7 @@ struct InterfaceSettingsPage: View {
     /// reached by. It is offered as unavailable and the row says why rather than silently
     /// disagreeing with it.
     private var windowCloseSubtitle: String {
-        let base = "What the close button does with the last window. Quit on Close ends the app with its window. Close, Keep Dock Icon leaves OpenNOW running with its Dock icon and no window, so the Dock brings it back. Close, Menu Bar Only hides the Dock icon and leaves only the menu bar item, and reopening builds the window again."
+        let base = "What the close button does with the last window. Quit on Close ends the app with its window. Close, Keep Dock Icon leaves OpenNOW running with its Dock icon and no window, so the Dock brings it back. Close, Menu Bar Only hides the Dock icon and leaves only the menu bar item. Either way the window is hidden, not torn down, so a queue or stream in flight keeps running."
         guard !showsMenuBarItem else { return base }
         return base + " Menu Bar Only needs the menu bar item, so it stays unavailable while that is off."
     }

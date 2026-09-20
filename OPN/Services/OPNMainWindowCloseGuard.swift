@@ -11,24 +11,27 @@ enum OPNMainWindow {
     }
 
     /// Brings the window up the way the menu bar asks for it: a window sitting in the Dock comes back
-    /// with its place kept, and one that was closed outright is rebuilt by the scene that owns it.
+    /// with its place kept, a window the close button hid is ordered front again, and one the scene
+    /// has never built is rebuilt by the scene that owns it.
     static func reveal() {
-        guard let window = existing(), window.isMiniaturized else { return }
-        window.deminiaturize(nil)
+        guard let window = existing() else { return }
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        } else if !window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
-    /// Whether a surface outside the window has to bring it up before handing it work.
+    /// Whether a surface outside the window has to build one before handing it work.
     ///
-    /// A closed window is still in `NSApp.windows` — the close button hides the scene's window rather
-    /// than destroying it — so `existing()` answering is not the question. A closed window has no view
-    /// on screen and its surface has detached, so work handed to it would be parked with nothing to
-    /// act on it; a window sitting in the Dock does not: its view stays mounted, and `reveal()` brings
-    /// it back with its place kept.
+    /// The close button hides the window rather than tearing the scene down, so a hidden or minimized
+    /// window still has its view mounted and a menu bar source attached — work handed to it lands.
+    /// Only a window the scene has never built leaves work with nowhere to go, which is the launch
+    /// with no window at all.
     ///
     /// Pure enough to test: the window is looked up by the caller.
     static func needsPresentation(for window: NSWindow?) -> Bool {
-        guard let window else { return true }
-        return !window.isVisible && !window.isMiniaturized
+        window == nil
     }
 
     static var needsPresentation: Bool {
@@ -36,12 +39,14 @@ enum OPNMainWindow {
     }
 
     /// Brings the window up for a caller with no `openWindow` action at hand — the Dock menu, which is
-    /// AppKit — whether it was closed, minimized, or is simply behind another app.
+    /// AppKit — whether it was closed to the Dock, hidden by the close button, or is simply behind
+    /// another app.
     ///
-    /// A closed window is still here, view hierarchy intact, so ordering it front is what reopens it:
-    /// live-verified against the running app, where after the close button `existing()` still answers
-    /// with a window whose `isVisible` is false, and ordering it front puts it back on screen — and
-    /// SwiftUI re-runs the scene's `task`, so the surface detached by the close attaches again.
+    /// A hidden window is still here, view hierarchy intact, so ordering it front is what brings it
+    /// back: live-verified against the running app, where after the close button `existing()` still
+    /// answers with a window whose `isVisible` is false, and ordering it front puts it back on screen.
+    /// The view was never torn down, so its surface is still attached and the session behind it keeps
+    /// running.
     ///
     /// `activating` is the difference between the two things a surface can want. A session launch
     /// leaves it false, so the window appears behind whatever the user is doing and the Session Ready
@@ -70,6 +75,12 @@ enum OPNMainWindow {
 /// therefore explicit, and still goes through `applicationShouldTerminate`, so the in-stream quit
 /// decision is asked exactly as it was.
 ///
+/// The two keep-running choices do not close the window at all: they order it out. SwiftUI tears a
+/// scene's content down when its window closes, and the launch flow and the stream session live in
+/// that content — a real close ends a queue the user is sitting in and detaches the menu bar surface
+/// that reports it. Hidden, the scene stays mounted, the wait keeps advancing, and the menu bar and
+/// Dock keep showing it; the Dock, the Window menu, and the menu bar item bring the window back.
+///
 /// `NSWindow.delegate` is a single slot and SwiftUI owns it, so this cannot simply *be* the delegate:
 /// the guard installs a proxy that answers `windowShouldClose` and forwards every other delegate
 /// message to whatever SwiftUI installed, which keeps the window's own behaviour (restoration, focus,
@@ -85,6 +96,17 @@ enum OPNMainWindowCloseGuard {
     /// The quit itself, as a seam: the tests assert that closing the button asks for termination
     /// without ending the process running them.
     static var terminateApplication: () -> Void = { NSApp.terminate(nil) }
+
+    /// Hides the main window on a keep-running close, as a seam: the tests assert the choice without
+    /// ordering a real window out of `NSApp.windows`.
+    ///
+    /// The policy is re-applied here because ordering the window out does not post a window
+    /// notification, and the Dock icon decision is `OPNDockIconController`'s: with nothing on screen
+    /// and the menu-bar-only choice in force, the app leaves the Dock.
+    static var hideMainWindow: @MainActor () -> Void = {
+        OPNMainWindow.existing()?.orderOut(nil)
+        OPNDockIconController.apply()
+    }
 
     static func install() {
         guard observerTokens.isEmpty else { return }
@@ -171,10 +193,14 @@ final class OPNMainWindowCloseDelegateProxy: NSObject, NSWindowDelegate {
             OPNMainWindowCloseGuard.terminateApplication()
             return true
         case .keepRunningInDock, .menuBarOnly:
-            // The window closes; `applicationShouldTerminateAfterLastWindowClosed` refuses the quit,
-            // which is what keeps the app alive. Whether it then sits in the Dock or withdraws to the
-            // menu bar is `OPNDockIconController`'s decision, not the close button's.
-            return true
+            // Hidden, not closed: a real close tears the scene's content down, which ends a queue in
+            // flight and detaches the menu bar surface. Deferred by one turn on purpose — ordering
+            // the window out from inside `windowShouldClose` tears the content down anyway
+            // (live-verified), which is the opposite of the point. Whether the app then sits in the
+            // Dock or withdraws to the menu bar is `OPNDockIconController`'s decision, not the close
+            // button's.
+            Task { @MainActor in OPNMainWindowCloseGuard.hideMainWindow() }
+            return false
         }
     }
 }
