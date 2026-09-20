@@ -13,6 +13,14 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
     case leftGrip, leftGrip2, rightGrip, rightGrip2
     case select, start
     case leftPadClick, rightPadClick, touchpadClick
+    /// The 2026 controller's capacitive handle sensors. Distinct hardware from the four rear
+    /// grip *buttons* (`leftGrip`…`rightGrip2`) — these sense contact, they do not click.
+    case leftGripSense, rightGripSense
+    /// Capacitive thumbstick touch, reported by the same controller.
+    case leftStickTouch, rightStickTouch
+    /// Not a control at all: the pseudo-control that opens the gyroscope panel, the same trick
+    /// `touchpadClick` uses to open the touchpad's behaviour block.
+    case gyro
 
     public var id: String { rawValue }
 
@@ -41,6 +49,11 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
         case .leftPadClick: "L. Pad Click"
         case .rightPadClick: "R. Pad Click"
         case .touchpadClick: "Touchpad"
+        case .leftGripSense: "Grip Sense L"
+        case .rightGripSense: "Grip Sense R"
+        case .leftStickTouch: "Stick Touch L"
+        case .rightStickTouch: "Stick Touch R"
+        case .gyro: "Gyro"
         }
     }
 
@@ -57,6 +70,8 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
             .joysticks
         case .leftPadClick, .rightPadClick, .touchpadClick:
             .trackpads
+        case .leftGripSense, .rightGripSense, .leftStickTouch, .rightStickTouch, .gyro:
+            .gyro
         }
     }
 
@@ -83,14 +98,15 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
         case .rightGrip2: .rightGrip2
         case .select: .select
         case .start: .start
-        case .leftTrigger, .rightTrigger, .leftPadClick, .rightPadClick, .touchpadClick:
+        case .leftTrigger, .rightTrigger, .leftPadClick, .rightPadClick, .touchpadClick,
+             .leftGripSense, .rightGripSense, .leftStickTouch, .rightStickTouch, .gyro:
             nil
         }
     }
 }
 
 public enum ControllerMappingCategory: String, CaseIterable, Identifiable, Sendable {
-    case buttons, dpad, triggers, joysticks, trackpads
+    case buttons, dpad, triggers, joysticks, trackpads, gyro
 
     public var id: String { rawValue }
 
@@ -101,6 +117,7 @@ public enum ControllerMappingCategory: String, CaseIterable, Identifiable, Senda
         case .triggers: "Triggers"
         case .joysticks: "Joysticks"
         case .trackpads: "Trackpads"
+        case .gyro: "Gyro"
         }
     }
 
@@ -111,6 +128,7 @@ public enum ControllerMappingCategory: String, CaseIterable, Identifiable, Senda
         case .triggers: "arrow.down.to.line"
         case .joysticks: "circle.circle"
         case .trackpads: "rectangle.on.rectangle"
+        case .gyro: "gyroscope"
         }
     }
 }
@@ -188,6 +206,12 @@ public enum ControllerPointerMode: String, Codable, Sendable, CaseIterable, Iden
     case mouse
     case scrollWheel
     case disabled
+    /// Flick stick: the stick's angle is an absolute heading, not a rate. Right stick only.
+    ///
+    /// There is deliberately no separate "flick stick plus gyro" case. Gyro output and the stick
+    /// behaviour are independent settings — flick stick turns, `profile.gyro.mode` aims — and a
+    /// combined case would be a second way to express one state.
+    case flickStick
 
     public var id: String { rawValue }
 
@@ -197,6 +221,7 @@ public enum ControllerPointerMode: String, Codable, Sendable, CaseIterable, Iden
         case .mouse: "Mouse"
         case .scrollWheel: "Scroll Wheel"
         case .disabled: "Disabled"
+        case .flickStick: "Flick Stick"
         }
     }
 }
@@ -223,6 +248,7 @@ public struct ControllerMappingProfile: Equatable, Identifiable, Sendable {
     public var rightPad: ControllerPadSettings
     public var leftStick: ControllerPadSettings
     public var rightStick: ControllerPadSettings
+    public var gyro: ControllerGyroSettings
 
     public init(id: UUID = UUID(),
                 name: String,
@@ -232,7 +258,8 @@ public struct ControllerMappingProfile: Equatable, Identifiable, Sendable {
                 leftPad: ControllerPadSettings = ControllerPadSettings(mode: .disabled),
                 rightPad: ControllerPadSettings = ControllerPadSettings(mode: .disabled),
                 leftStick: ControllerPadSettings = ControllerPadSettings(mode: .joystickPassthrough),
-                rightStick: ControllerPadSettings = ControllerPadSettings(mode: .joystickPassthrough)) {
+                rightStick: ControllerPadSettings = ControllerPadSettings(mode: .joystickPassthrough),
+                gyro: ControllerGyroSettings = ControllerGyroSettings()) {
         self.id = id
         self.name = name
         self.family = family
@@ -242,6 +269,7 @@ public struct ControllerMappingProfile: Equatable, Identifiable, Sendable {
         self.rightPad = rightPad
         self.leftStick = leftStick
         self.rightStick = rightStick
+        self.gyro = gyro
     }
 
     public func binding(for control: ControllerControl) -> ControllerBindingTarget {
@@ -291,7 +319,7 @@ extension SteamControllerGripButton {
 
 extension ControllerMappingProfile: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, name, family, touchpad, bindings, leftPad, rightPad, leftStick, rightStick
+        case id, name, family, touchpad, bindings, leftPad, rightPad, leftStick, rightStick, gyro
     }
 
     public init(from decoder: Decoder) throws {
@@ -309,6 +337,7 @@ extension ControllerMappingProfile: Codable {
         rightPad = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .rightPad) ?? ControllerPadSettings(mode: .disabled)
         leftStick = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .leftStick) ?? ControllerPadSettings(mode: .joystickPassthrough)
         rightStick = try container.decodeIfPresent(ControllerPadSettings.self, forKey: .rightStick) ?? ControllerPadSettings(mode: .joystickPassthrough)
+        gyro = try container.decodeIfPresent(ControllerGyroSettings.self, forKey: .gyro) ?? ControllerGyroSettings()
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -323,5 +352,6 @@ extension ControllerMappingProfile: Codable {
         try container.encode(rightPad, forKey: .rightPad)
         try container.encode(leftStick, forKey: .leftStick)
         try container.encode(rightStick, forKey: .rightStick)
+        try container.encode(gyro, forKey: .gyro)
     }
 }

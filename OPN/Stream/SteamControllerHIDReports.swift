@@ -93,6 +93,11 @@ extension SteamControllerHIDMonitor {
     func mergedSnapshot(for context: DeviceContext) -> ControllerInputSnapshot {
         var merged = context.snapshot
         merged.buttons.formUnion(context.deckSnapshot.buttons)
+        merged.leftGripSense = merged.leftGripSense || context.deckSnapshot.leftGripSense
+        merged.rightGripSense = merged.rightGripSense || context.deckSnapshot.rightGripSense
+        merged.leftStickTouched = merged.leftStickTouched || context.deckSnapshot.leftStickTouched
+        merged.rightStickTouched = merged.rightStickTouched || context.deckSnapshot.rightStickTouched
+        if merged.motion == nil { merged.motion = context.deckSnapshot.motion }
         return merged
     }
 

@@ -24,6 +24,7 @@ extension SteamControllerHIDMonitor {
             context.isSeized = false
             disableLizardMode(for: context)
         }
+        configureMotionReporting(for: context)
     }
 
     func restoreAfterCapture(for context: DeviceContext) {
@@ -32,6 +33,22 @@ extension SteamControllerHIDMonitor {
             _ = reopenVendorDevice(context, seize: false)
         } else {
             enableLizardMode(for: context)
+        }
+        configureMotionReporting(for: context, requested: false)
+    }
+
+    /// Switches the IMU on or off to match what the profiles ask for.
+    ///
+    /// Motion reporting is off in the controller's firmware and its accelerometer/gyro fields stay
+    /// bitwise identical until this command is sent, so a profile with gyro enabled that never
+    /// sends it would receive twelve bytes of nothing. Sending the off command when no profile
+    /// wants motion is not cosmetic — an enabled IMU is a continuous battery cost.
+    func configureMotionReporting(for context: DeviceContext, requested: Bool? = nil) {
+        guard SteamControllerReport.supportsMotionReporting(model: context.model) else { return }
+        let enabled = requested ?? mappingProvider.wantsGyroMotion
+        let attempts = context.isActive ? Self.featureReportAttempts : 1
+        for report in SteamControllerReport.tritonMotionReportingReports(enabled: enabled) {
+            sendFeatureReport(report, to: context.device, attempts: attempts)
         }
     }
 

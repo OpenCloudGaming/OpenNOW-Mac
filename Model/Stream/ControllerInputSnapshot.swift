@@ -31,6 +31,16 @@ public struct ControllerInputSnapshot: Equatable, Sendable {
     public var leftPad: ControllerTrackpadState
     public var rightPad: ControllerTrackpadState
     public var touchpad: ControllerTrackpadState?
+    /// Capacitive handle contact, from the 2026 controller's Grip Sense sensors. Not the rear
+    /// grip buttons: these never click, which is exactly why they make a good gyro hold.
+    public var leftGripSense: Bool
+    public var rightGripSense: Bool
+    /// Capacitive thumbstick contact.
+    public var leftStickTouched: Bool
+    public var rightStickTouched: Bool
+    /// Inertial data, when the pad reports it and motion reporting is switched on. `nil` means
+    /// "no gyro data available", which is different from "held perfectly still".
+    public var motion: ControllerMotionSample?
 
     public init(buttons: GamepadButtons = [],
                 leftTrigger: Float = 0,
@@ -41,7 +51,12 @@ public struct ControllerInputSnapshot: Equatable, Sendable {
                 rightStickY: Float = 0,
                 leftPad: ControllerTrackpadState = ControllerTrackpadState(),
                 rightPad: ControllerTrackpadState = ControllerTrackpadState(),
-                touchpad: ControllerTrackpadState? = nil) {
+                touchpad: ControllerTrackpadState? = nil,
+                leftGripSense: Bool = false,
+                rightGripSense: Bool = false,
+                leftStickTouched: Bool = false,
+                rightStickTouched: Bool = false,
+                motion: ControllerMotionSample? = nil) {
         self.buttons = buttons
         self.leftTrigger = leftTrigger
         self.rightTrigger = rightTrigger
@@ -52,6 +67,11 @@ public struct ControllerInputSnapshot: Equatable, Sendable {
         self.leftPad = leftPad
         self.rightPad = rightPad
         self.touchpad = touchpad
+        self.leftGripSense = leftGripSense
+        self.rightGripSense = rightGripSense
+        self.leftStickTouched = leftStickTouched
+        self.rightStickTouched = rightStickTouched
+        self.motion = motion
     }
 }
 

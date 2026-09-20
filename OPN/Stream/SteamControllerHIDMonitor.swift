@@ -200,6 +200,9 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         guard isInputCaptureActive else { return }
         let wantsRawTrackpadCapture = mappingProvider.requiresRawSteamTrackpads
         for context in devices.values {
+            // Ahead of the trackpad branch, which can `continue`: toggling gyro in the settings must
+            // reach every connected pad, not only the ones whose trackpads changed behaviour.
+            configureMotionReporting(for: context)
             if wantsRawTrackpadCapture {
                 guard !context.isSeized else { continue }
                 configureCapture(for: context)

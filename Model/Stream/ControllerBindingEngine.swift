@@ -12,7 +12,9 @@ public struct ControllerBindingResult: Sendable {
 public struct ControllerBindingEngine: Sendable {
     public static let modifierLeadTime: Duration = .milliseconds(50)
     private static let chordModifierButtons: GamepadButtons = [.leftShoulder, .rightShoulder]
-    private static let triggerActiveThreshold: Float = 0.5
+    static let triggerActiveThreshold: Float = 0.5
+    /// Report interval assumed for the very first gyro step, before two instants have been seen.
+    private static let assumedReportInterval: Float = 1.0 / 120.0
 
     private var previousActiveControls: Set<ControllerControl> = []
     private var holdInstants: [ControllerControl: ContinuousClock.Instant] = [:]
@@ -24,8 +26,15 @@ public struct ControllerBindingEngine: Sendable {
     private var previousProfile: ControllerMappingProfile?
     private var heldKeys: [UInt16: KeyboardModifiers] = [:]
     private var heldMouseButtons: Set<MouseButton> = []
+    private var gyroProcessor = GyroProcessor()
+    private var flickStickProcessor = FlickStickProcessor()
+    private var gyroActivation = GyroActivationState()
+    private var previousReportInstant: ContinuousClock.Instant?
 
     public init() {}
+
+    /// The bias the gyro pipeline is currently using, or `nil` before it has seen a sample.
+    public var gyroBias: SIMD3<Float> { gyroProcessor.currentBias }
 
     /// Buttons, triggers, sticks, chords, and keyboard/mouse-button bindings — everything
     /// except trackpad/stick continuous pointer motion (see `applyPointerMotion`). Split
@@ -36,14 +45,19 @@ public struct ControllerBindingEngine: Sendable {
                                                 deviceID: InputDeviceID,
                                                 playerIndex: Int,
                                                 now: ContinuousClock.Instant,
-                                                timestamp: MediaTimestamp) -> ControllerBindingResult {
+                                                timestamp: MediaTimestamp,
+                                                includePointerMotion: Bool = true) -> ControllerBindingResult {
         var releases: [UserInputEvent] = []
         if let previousProfile, previousProfile != profile {
             releases = reset(deviceID: deviceID, playerIndex: playerIndex, timestamp: timestamp)
         }
         previousProfile = profile
-        let active = Self.activeControls(snapshot: snapshot)
+        let active = ControllerControlState.active(in: snapshot)
         updateHoldInstants(active: active, now: now)
+        let gyroOutput = processGyroMotion(profile: profile,
+                                           snapshot: snapshot,
+                                           activeControls: active,
+                                           now: now)
 
         var pass = DiscretePass()
         let controlledButtons = profile.family.controls.reduce(into: GamepadButtons()) {
@@ -69,6 +83,16 @@ public struct ControllerBindingEngine: Sendable {
         let leftStickPassthrough = profile.leftStick.mode == .joystickPassthrough
         let rightStickPassthrough = profile.rightStick.mode == .joystickPassthrough
 
+        if includePointerMotion, !gyroOutput.pointer.isEmpty {
+            pass.events.append(contentsOf: Self.pointerEvents(gyroOutput.pointer, deviceID: deviceID, timestamp: timestamp))
+        }
+
+        // Gyro stick output is summed into the forwarded stick rather than replacing it: the two
+        // share one axis on the wire, so a game must see their combined deflection or a physical
+        // stick push would erase the gyro's contribution.
+        let forwardedRightStickX = rightStickPassthrough ? snapshot.rightStickX : 0
+        let forwardedRightStickY = rightStickPassthrough ? snapshot.rightStickY : 0
+
         pass.events.append(.gamepad(GamepadState(
             deviceID: deviceID,
             playerIndex: playerIndex,
@@ -77,8 +101,8 @@ public struct ControllerBindingEngine: Sendable {
             rightTrigger: rightTrigger,
             leftStickX: leftStickPassthrough ? snapshot.leftStickX : 0,
             leftStickY: leftStickPassthrough ? snapshot.leftStickY : 0,
-            rightStickX: rightStickPassthrough ? snapshot.rightStickX : 0,
-            rightStickY: rightStickPassthrough ? snapshot.rightStickY : 0,
+            rightStickX: Self.clampAxis(forwardedRightStickX + gyroOutput.stickX),
+            rightStickY: Self.clampAxis(forwardedRightStickY + gyroOutput.stickY),
             timestamp: timestamp
         )))
 
@@ -182,7 +206,17 @@ public struct ControllerBindingEngine: Sendable {
                 deviceID: deviceID, timestamp: timestamp
             ))
         }
-        if profile.rightStick.mode != .joystickPassthrough {
+        switch profile.rightStick.mode {
+        case .flickStick:
+            events.append(contentsOf: Self.pointerEvents(
+                flickStickProcessor.process(stickX: snapshot.rightStickX,
+                                            stickY: snapshot.rightStickY,
+                                            settings: profile.gyro),
+                deviceID: deviceID, timestamp: timestamp
+            ))
+        case .joystickPassthrough, .disabled:
+            break
+        case .mouse, .scrollWheel:
             events.append(contentsOf: Self.pointerEvents(
                 rightStickTranslator.translate(x: snapshot.rightStickX, y: snapshot.rightStickY, settings: profile.rightStick),
                 deviceID: deviceID, timestamp: timestamp
@@ -242,19 +276,37 @@ public struct ControllerBindingEngine: Sendable {
         }
     }
 
-    private static func activeControls(snapshot: ControllerInputSnapshot) -> Set<ControllerControl> {
-        var active: Set<ControllerControl> = []
-        for control in ControllerControl.allCases {
-            if let bit = control.gamepadButton, snapshot.buttons.contains(bit) {
-                active.insert(control)
-            }
-        }
-        if snapshot.leftTrigger > Self.triggerActiveThreshold { active.insert(.leftTrigger) }
-        if snapshot.rightTrigger > Self.triggerActiveThreshold { active.insert(.rightTrigger) }
-        if snapshot.leftPad.pressed { active.insert(.leftPadClick) }
-        if snapshot.rightPad.pressed { active.insert(.rightPadClick) }
-        if snapshot.touchpad?.pressed == true { active.insert(.touchpadClick) }
-        return active
+    /// Advances the gyro pipeline one report and returns both its halves.
+    ///
+    /// Runs even when gyro is off, because the activation latch and the filters must follow the
+    /// input either way — otherwise switching gyro on mid-session would start from a stale latch.
+    private mutating func processGyroMotion(profile: ControllerMappingProfile,
+                                            snapshot: ControllerInputSnapshot,
+                                            activeControls: Set<ControllerControl>,
+                                            now: ContinuousClock.Instant) -> GyroMotionOutput {
+        let settings = profile.gyro
+        let deltaTime = reportDeltaTime(now: now)
+        let isActive = gyroActivation.update(style: settings.activationStyle,
+                                             source: settings.activationSource,
+                                             snapshot: snapshot,
+                                             activeControls: activeControls,
+                                             deltaTime: deltaTime)
+        return gyroProcessor.process(snapshot.motion,
+                                     settings: settings,
+                                     isActive: isActive,
+                                     deltaTime: deltaTime)
+    }
+
+    private mutating func reportDeltaTime(now: ContinuousClock.Instant) -> Float {
+        defer { previousReportInstant = now }
+        guard let previous = previousReportInstant else { return Self.assumedReportInterval }
+        let elapsed = now - previous
+        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        return Float(min(max(seconds, 1.0 / 1000.0), 0.05))
+    }
+
+    private static func clampAxis(_ value: Float) -> Float {
+        min(1, max(-1, value))
     }
 
     private static func consumesTrigger(_ target: ControllerBindingTarget) -> Bool {
