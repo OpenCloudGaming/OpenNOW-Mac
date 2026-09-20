@@ -36,6 +36,10 @@ private struct OneEuroFilter: Sendable {
     private var filtered: Float?
     private var filteredDerivative: Float = 0
 
+    init(minCutoff: Float) {
+        self.minCutoff = minCutoff
+    }
+
     mutating func reset() {
         filtered = nil
         filteredDerivative = 0
