@@ -373,6 +373,19 @@ public final class OPNCatalogGameObject: NSObject {
     }
 }
 
+extension OPNCatalogGameObject {
+    /// The stable identity the app dedupes and looks a game up across the vendor's catalog identity
+    /// and the numeric launch app id: the catalog id, then the uuid, then the launch app id, and the
+    /// title only as a last resort. Lives on the model so the service layer — which reads catalog
+    /// games for the menu bar without a view model — resolves the same identity the catalog does.
+    public var catalogIdentity: String {
+        if !id.isEmpty { return id }
+        if !uuid.isEmpty { return uuid }
+        if !launchAppId.isEmpty { return launchAppId }
+        return title
+    }
+}
+
 @objc(OPNCatalogPanelSectionObject)
 @objcMembers
 public final class OPNCatalogPanelSectionObject: NSObject {

@@ -30,8 +30,6 @@ enum CatalogLogoArtwork {
 }
 
 extension OPNCatalogGameObject {
-    var catalogIdentity: String { CatalogViewModel.identity(for: self) }
-
     var cardBadgeLabel: String? {
         if isLaunchPatching { return patchStatusPrimaryDisplayText }
         return CatalogCardBadgeMapper.label(promoTag: promoTag, campaignIds: campaignIds, skuTags: skuTags, genres: genres, featureLabels: featureLabels)

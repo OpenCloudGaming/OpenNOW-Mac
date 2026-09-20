@@ -333,6 +333,22 @@ The popover's Continue Playing rows name the game and **when it was last played*
 "yesterday") rather than repeating "Continue playing" under a header that already says it. A row the
 history carries no timestamp for is title-only.
 
+Above the cards sits a compact **icon tab row** (`OPNMenuBarTab`): a game controller for the session
+surface the panel has always been, and a heart for the account's favorites. The tabs are the
+popover's navigation, one of the things Apple names Liquid Glass for, so on macOS 26 and later each
+tab is a glass element in its own `GlassEffectContainer` — the selected one tinted with the accent,
+the unselected one plain interactive glass — exactly as the session control row is gathered. On
+older systems they fall back to the translucent fill with an accent stroke on the selected tab. The
+selected tab's glyph uses `OPNDesign.onAccent`, the ink designed to be read on an accent fill: the
+ordinary text ink all but disappears on the tinted glass. The account card sits between the tab row
+and the tab content and is **fixed across switches** — who is signed in does not depend on which tab
+is showing, so the card, and the account dropdown's state, stay put. The Favorites tab lists the
+account's favorites in the catalog's order as title-only `.opnMenuBarRow` rows, and the list
+**grows with its contents up to five rows** before it starts to scroll, so a long list holds the
+popover at a comfortable size rather than stretching it. Favorites live on the vendor, so unlike the
+play history there is no local copy to seed a windowless surface from: the tab fills once a window
+has loaded the catalog.
+
 The popover's first card names the **signed-in account**: avatar, display name, and membership tier.
 When more than one account is saved the header becomes a disclosure — a chevron and a tap reveal the
 account rows, each with a checkmark on the active one and a "Signed out — sign in again" subtitle for
@@ -352,13 +368,13 @@ rather than this document's panel system, so its corner radii carry a documented
 
 How it is drawn depends on the OS:
 
-- **macOS 26 and later** — the popover is the system's own Liquid Glass. Inside it, the session
-  controls (Resume / Pause / End) are Liquid Glass elements in a `GlassEffectContainer`, while
-  the cards and their list rows stay in the content layer as translucent fills. That split is Apple's
-  guidance, not a preference: Liquid Glass is "a distinct functional layer for controls and
-  navigation elements", it should be applied "sparingly" to "the most important functional elements",
-  and it must not be stacked on itself — the popover is already glass, so a glass card inside it
-  would be two layers of the same material.
+- **macOS 26 and later** — the popover is the system's own Liquid Glass. Inside it, the tab row and
+  the session controls (Resume / Pause / End) are Liquid Glass elements, each set gathered in a
+  `GlassEffectContainer`, while the cards and their list rows stay in the content layer as
+  translucent fills. That split is Apple's guidance, not a preference: Liquid Glass is "a distinct
+  functional layer for controls and navigation elements", it should be applied "sparingly" to "the
+  most important functional elements", and it must not be stacked on itself — the popover is already
+  glass, so a glass card inside it would be two layers of the same material.
 - **macOS 15.6 – 25** — the app's floor, unchanged: no glass to draw, so everything above is the same
   translucent fill (`OPNDesign.Fill.neutral` + a 1px stroke) over a `.ultraThinMaterial` panel.
 

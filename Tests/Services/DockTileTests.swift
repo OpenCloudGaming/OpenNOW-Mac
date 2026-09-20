@@ -155,7 +155,7 @@ import Testing
 
     @Test func aWindowOpeningForAParkedRequestLandsOnThePageBeforeItLaunches() {
         let model = OPNMenuBarSessionModel()
-        model.requestLaunch(OPNMenuBarRecentGame(title: "Parked", appId: "parked"))
+        model.requestLaunch(OPNMenuBarGame(title: "Parked", appId: "parked"))
         model.requestMainPage(.home)
 
         let source = StubMenuBarSource()
@@ -197,8 +197,8 @@ import Testing
 
     // MARK: - Menu
 
-    private func game(_ title: String, appId: String = "") -> OPNMenuBarRecentGame {
-        OPNMenuBarRecentGame(title: title, appId: appId)
+    private func game(_ title: String, appId: String = "") -> OPNMenuBarGame {
+        OPNMenuBarGame(title: title, appId: appId)
     }
 
     /// The menu's rows without its rules, so where a row sits does not depend on where the separators

@@ -33,8 +33,28 @@ struct InterfaceSettingsPage: View {
     }
 
     private var selectedStartupPresentationIndex: Int {
-        let presentation = OPNStartupPresentation(rawValue: startupPresentationRawValue) ?? OPNLaunchPreferences.defaultStartupPresentation
+        // Resolved, not raw: a menu-bar-only choice the menu bar item switch or the close behavior
+        // has withheld must show as the presentation that actually applies, not as a selected chip
+        // that cannot run.
+        let presentation = OPNLaunchPreferences.resolvedStartupPresentation(
+            storedRawValue: startupPresentationRawValue,
+            canReachMenuBar: canLaunchMenuBarOnly
+        )
         return OPNStartupPresentation.allCases.firstIndex(of: presentation) ?? 0
+    }
+
+    /// A menu-bar-only launch suppresses the window, so it needs the status item to be the way back.
+    /// That needs both the menu bar item and a close behavior that keeps the app running.
+    private var canLaunchMenuBarOnly: Bool {
+        guard showsMenuBarItem else { return false }
+        let behavior = OPNWindowClosePreferences.resolvedBehavior(storedRawValue: windowCloseBehaviorRawValue)
+        return behavior.keepsApplicationRunning
+    }
+
+    private var startupSubtitle: String {
+        let base = "Open the main window, or start with only the menu bar item and no window. Opening the window later is always one click away in the menu bar."
+        guard !canLaunchMenuBarOnly else { return base }
+        return base + " Menu Bar Only starts with no window, so it needs the menu bar item and a close behavior that keeps OpenNOW running; it stays unavailable while either is off."
     }
 
     private var launchAtLoginSubtitle: String {
@@ -99,9 +119,10 @@ struct InterfaceSettingsPage: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(
                     title: "At Launch, Show",
-                    subtitle: "Open the main window, or start with only the menu bar item and no window. Opening the window later is always one click away in the menu bar.",
+                    subtitle: startupSubtitle,
                     options: OPNStartupPresentation.allCases.map(\.label),
                     selectedIndex: selectedStartupPresentationIndex,
+                    enabled: OPNStartupPresentation.allCases.map { $0 != .menuBarOnly || canLaunchMenuBarOnly },
                     isNew: OPNNewSettings.isNew(.startupPresentation),
                     uiScale: uiScale
                 ) { index in

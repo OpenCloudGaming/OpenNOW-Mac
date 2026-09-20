@@ -14,7 +14,7 @@ enum OPNDockMenu {
     static let newSessionTitle = "New Session"
     static let openRecordingsTitle = "Open Recordings"
 
-    static func make(recentGames: [OPNMenuBarRecentGame]) -> NSMenu {
+    static func make(recentGames: [OPNMenuBarGame]) -> NSMenu {
         let listed = Array(recentGames.prefix(3))
         OPNDockMenuActions.shared.recordListedGames(listed)
 
@@ -39,7 +39,7 @@ enum OPNDockMenu {
         return item
     }
 
-    private static func gameItem(_ game: OPNMenuBarRecentGame, at index: Int) -> NSMenuItem {
+    private static func gameItem(_ game: OPNMenuBarGame, at index: Int) -> NSMenuItem {
         let item = NSMenuItem(title: game.title, action: #selector(OPNDockMenuActions.launchRecentGame(_:)), keyEquivalent: "")
         item.target = OPNDockMenuActions.shared
         item.tag = index
@@ -63,19 +63,19 @@ final class OPNDockMenuActions: NSObject {
 
     /// The games the menu currently lists, in the order it lists them. An item carries its index in
     /// that list, so this is what turns a selection back into a game.
-    private var listedGames: [OPNMenuBarRecentGame] = []
+    private var listedGames: [OPNMenuBarGame] = []
 
     private override init() {
         super.init()
     }
 
-    func recordListedGames(_ games: [OPNMenuBarRecentGame]) {
+    func recordListedGames(_ games: [OPNMenuBarGame]) {
         listedGames = games
     }
 
     /// The game an item names, by the index it carries. Nil for an index this list no longer holds,
     /// which a menu built by an earlier right-click can still hand over.
-    func listedGame(at index: Int) -> OPNMenuBarRecentGame? {
+    func listedGame(at index: Int) -> OPNMenuBarGame? {
         listedGames.indices.contains(index) ? listedGames[index] : nil
     }
 

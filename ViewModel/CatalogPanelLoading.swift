@@ -256,6 +256,8 @@ extension CatalogViewModel {
         }
         favoriteGames = uniqueGames
         favoriteGameIdentities = identities
+        // Persisted for the menu bar's windowless launch, which has no catalog to push the list.
+        CatalogFavoritesCache(games: Self.menuBarGames(from: uniqueGames)).save(accountIdentifier: catalogAccountIdentifier)
     }
 
     /// Folds the vendor's server-side last-played history into the Jump Back In store, so the rail

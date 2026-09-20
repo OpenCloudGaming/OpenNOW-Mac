@@ -465,7 +465,7 @@ import Testing
 
     @Test func primeRecentGamesSeedsOnlyWithoutASource() {
         let model = OPNMenuBarSessionModel()
-        let seeded = OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-1")
+        let seeded = OPNMenuBarGame(title: "Manor Lords", appId: "app-1")
         model.primeRecentGames([seeded])
         #expect(model.recentGames == [seeded])
 
@@ -474,7 +474,7 @@ import Testing
         let source = StubMenuBarSource()
         source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", recentGames: [])
         model.attach(source: source)
-        model.primeRecentGames([OPNMenuBarRecentGame(title: "Hades", appId: "app-2")])
+        model.primeRecentGames([OPNMenuBarGame(title: "Hades", appId: "app-2")])
         #expect(model.recentGames.isEmpty)
     }
 
@@ -485,7 +485,7 @@ import Testing
         storeCloseBehavior(.keepRunningInDock)
         let model = OPNMenuBarSessionModel()
         let source = StubMenuBarSource()
-        let game = OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-1")
+        let game = OPNMenuBarGame(title: "Manor Lords", appId: "app-1")
         source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", recentGames: [game])
 
         model.attach(source: source)
@@ -508,7 +508,7 @@ import Testing
         let model = OPNMenuBarSessionModel()
         let online = StubMenuBarSource()
         let offline = StubMenuBarSource()
-        let game = OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-1")
+        let game = OPNMenuBarGame(title: "Manor Lords", appId: "app-1")
 
         online.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", recentGames: [game])
         model.attach(source: online)
@@ -527,7 +527,7 @@ import Testing
         // A window that goes away first parks the launch instead of dropping it, and the play history
         // it had already handed over stays on the menu for the windowless surface…
         model.detachSource(online)
-        model.requestLaunch(OPNMenuBarRecentGame(title: "Cyberpunk 2077", appId: "app-2"))
+        model.requestLaunch(OPNMenuBarGame(title: "Cyberpunk 2077", appId: "app-2"))
         #expect(online.launchedGames.count == 1)
         #expect(model.canLaunchRecentGames)
 
@@ -652,6 +652,25 @@ import Testing
         #expect(model.menuBarSnapshot.recentGames.map(\.title) == ["Elden Ring", "Hades", "Cyberpunk 2077"])
         #expect(model.menuBarSnapshot.recentGames.first?.appId == "app-3")
     }
+
+    @Test func snapshotOffersTheAccountsFavorites() {
+        let model = makeCatalogViewModelForTesting()
+        let first = OPNCatalogGameObject()
+        first.id = "53a6c9f5-524c-4309-9d54-dda5a6cb10b9"
+        first.title = "Hades"
+        first.imageUrl = "https://cdn.example/hades.png"
+        let second = OPNCatalogGameObject()
+        second.id = "fav-game-2"
+        second.title = "Manor Lords"
+        model.favoriteGames = [first, second]
+
+        let favorites = model.menuBarSnapshot.favorites
+        #expect(favorites.map(\.title) == ["Hades", "Manor Lords"])
+        #expect(favorites.first?.appId == "53a6c9f5-524c-4309-9d54-dda5a6cb10b9")
+        #expect(favorites.first?.artworkURL == "https://cdn.example/hades.png")
+        // A favorite has no play timestamp, so its row is title-only.
+        #expect(favorites.first?.lastPlayedAt == nil)
+    }
 }
 
 extension MenuBarSessionTests {
@@ -710,7 +729,7 @@ extension MenuBarSessionTests {
 /// A stand-in launch flow: the surface follows whatever it publishes, and hands launches back to it.
 @MainActor @Observable final class StubMenuBarSource: OPNMenuBarSessionSource {
     var snapshot = OPNMenuBarSessionSnapshot()
-    private(set) var launchedGames: [OPNMenuBarRecentGame] = []
+    private(set) var launchedGames: [OPNMenuBarGame] = []
     private(set) var shownPages: [OPNMainWindowPage] = []
     /// Every request in the order it arrived, for the one thing the separate lists cannot show: which
     /// of two parked requests a window acts on first.
@@ -722,7 +741,7 @@ extension MenuBarSessionTests {
 
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }
 
-    func launchRecentGame(_ game: OPNMenuBarRecentGame) {
+    func launchGame(_ game: OPNMenuBarGame) {
         launchedGames.append(game)
         calls.append("launch:\(game.title)")
     }

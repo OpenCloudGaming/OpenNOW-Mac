@@ -39,13 +39,32 @@ enum OPNLaunchPreferences {
         }
     }
 
+    /// The stored choice resolved against the surfaces that could be reached at launch. A
+    /// menu-bar-only launch suppresses the window, so it is only safe when the status item will
+    /// actually be inserted: the menu bar item must be on, and the app must outlive its window. With
+    /// either off there would be no window and no status item — nothing on screen at all — so the
+    /// stored choice is withheld, not rewritten, and resolves to opening the window. Shared with the
+    /// settings row so it shows the presentation actually in force.
+    static func resolvedStartupPresentation(storedRawValue: String?) -> OPNStartupPresentation {
+        resolvedStartupPresentation(
+            storedRawValue: storedRawValue,
+            canReachMenuBar: OPNMenuBarPreferences.showsStatusItem && OPNWindowClosePreferences.keepsApplicationRunning
+        )
+    }
+
+    /// The same resolution with the reachability supplied, so the rule is testable without touching
+    /// the preference store.
+    static func resolvedStartupPresentation(storedRawValue: String?, canReachMenuBar: Bool) -> OPNStartupPresentation {
+        guard let rawValue = storedRawValue, let presentation = OPNStartupPresentation(rawValue: rawValue) else {
+            return defaultStartupPresentation
+        }
+        guard presentation == .menuBarOnly else { return presentation }
+        return canReachMenuBar ? presentation : .window
+    }
+
     static var startupPresentation: OPNStartupPresentation {
         get {
-            guard let rawValue = OPNAppPreferenceStorage.standard.string(forKey: startupPresentationKey),
-                  let presentation = OPNStartupPresentation(rawValue: rawValue) else {
-                return defaultStartupPresentation
-            }
-            return presentation
+            resolvedStartupPresentation(storedRawValue: OPNAppPreferenceStorage.standard.string(forKey: startupPresentationKey))
         }
         set {
             guard newValue != startupPresentation else { return }

@@ -28,10 +28,13 @@ import Testing
     }
 
     private static let games = [
-        OPNMenuBarRecentGame(title: "Cyberpunk 2077", appId: "app-1", lastPlayedAt: Date().addingTimeInterval(-2 * 3600)),
-        OPNMenuBarRecentGame(title: "Manor Lords", appId: "app-2", lastPlayedAt: Date().addingTimeInterval(-26 * 3600)),
-        OPNMenuBarRecentGame(title: "Elden Ring: Shadow of the Erdtree", appId: "app-3", lastPlayedAt: Date().addingTimeInterval(-3 * 86_400)),
+        OPNMenuBarGame(title: "Cyberpunk 2077", appId: "app-1", lastPlayedAt: Date().addingTimeInterval(-2 * 3600)),
+        OPNMenuBarGame(title: "Manor Lords", appId: "app-2", lastPlayedAt: Date().addingTimeInterval(-26 * 3600)),
+        OPNMenuBarGame(title: "Elden Ring: Shadow of the Erdtree", appId: "app-3", lastPlayedAt: Date().addingTimeInterval(-3 * 86_400)),
     ]
+
+    /// Seven, so the Favorites tab renders past the five-row cap and exercises the scrolling path.
+    private static let favorites = (1...7).map { OPNMenuBarGame(title: "Favorite \($0)", appId: "fav-\($0)") }
 
     // MARK: - Layout
 
@@ -54,6 +57,40 @@ import Testing
         try await withPanel(phase: .idle, title: "", recentGames: []) { panel in
             try render(panel, named: "menu-bar-panel-empty.png", minimumHeight: 120)
         }
+    }
+
+    /// The Favorites tab with a list short of the cap: the panel takes its natural height and no
+    /// scroll view is introduced.
+    @Test func theFavoritesTabRendersAShortList() async throws {
+        try await withPanel(phase: .idle, title: "", favorites: Array(Self.favorites.prefix(3)), initialTab: .favorites) { panel in
+            try render(panel, named: "menu-bar-panel-favorites.png", minimumHeight: 160)
+        }
+    }
+
+    /// Seven favorites on the tab: the list holds the five-row cap and scrolls, rather than growing
+    /// the popover with every entry.
+    @Test func theFavoritesTabHoldsTheCapPastFiveRows() async throws {
+        try await withPanel(phase: .idle, title: "", favorites: Self.favorites, initialTab: .favorites) { panel in
+            try render(panel, named: "menu-bar-panel-favorites-scrolling.png", minimumHeight: 200)
+        }
+    }
+
+    /// The account card is fixed across tabs: it shows on Favorites too, above the list, rather than
+    /// appearing only on the session surface.
+    @Test func theAccountCardIsFixedOnTheFavoritesTab() async throws {
+        let model = OPNMenuBarSessionModel()
+        let source = PanelStubSource()
+        source.snapshot = OPNMenuBarSessionSnapshot(
+            phase: .idle,
+            title: "",
+            favorites: Array(Self.favorites.prefix(3)),
+            accounts: [OPNMenuBarAccount(email: "anderson@example.com", displayName: "Anderson", membershipTier: "Ultimate", isSignedOut: false, isActive: true)]
+        )
+        model.attach(source: source)
+        defer { model.detachSource(source) }
+        try? await Task.sleep(for: .milliseconds(60))
+
+        try render(OPNMenuBarPanel(session: model, initialTab: .favorites), named: "menu-bar-panel-favorites-accounts.png", minimumHeight: 240)
     }
 
     /// The account card is the first thing in the popover, so it is rendered over seeded accounts —
@@ -100,12 +137,14 @@ import Testing
     private func withPanel(
         phase: OPNMenuBarSessionPhase,
         title: String,
-        recentGames: [OPNMenuBarRecentGame] = MenuBarPanelSnapshotTests.games,
+        recentGames: [OPNMenuBarGame] = MenuBarPanelSnapshotTests.games,
+        favorites: [OPNMenuBarGame] = [],
+        initialTab: OPNMenuBarTab = .session,
         _ body: (OPNMenuBarPanel) throws -> Void
     ) async rethrows {
         let model = OPNMenuBarSessionModel()
         let source = PanelStubSource()
-        source.snapshot = OPNMenuBarSessionSnapshot(phase: phase, title: title, recentGames: recentGames)
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: phase, title: title, recentGames: recentGames, favorites: favorites)
         model.attach(source: source)
         defer { model.detachSource(source) }
 
@@ -120,7 +159,7 @@ import Testing
         // The surface follows its source by change, so the first applied snapshot needs the main
         // queue to turn before the render reads it.
         try? await Task.sleep(for: .milliseconds(60))
-        try body(OPNMenuBarPanel(session: model))
+        try body(OPNMenuBarPanel(session: model, initialTab: initialTab))
     }
 
     private func render(_ panel: OPNMenuBarPanel, named name: String, minimumHeight: CGFloat) throws {
@@ -299,7 +338,7 @@ private struct GlassEvidenceBackdrop: View {
     var snapshot = OPNMenuBarSessionSnapshot()
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }
 
-    func launchRecentGame(_ game: OPNMenuBarRecentGame) {}
+    func launchGame(_ game: OPNMenuBarGame) {}
     func resumeSession() {}
     func refreshActiveSession() {}
     func showMainPage(_ page: OPNMainWindowPage) {}

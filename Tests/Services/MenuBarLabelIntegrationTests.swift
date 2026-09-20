@@ -81,11 +81,11 @@ import Testing
 }
 
 @MainActor @Observable private final class MenuBarLabelTestSource: OPNMenuBarSessionSource {
-    let game = OPNMenuBarRecentGame(title: "Menu Bar Regression", appId: "menu-bar-regression")
+    let game = OPNMenuBarGame(title: "Menu Bar Regression", appId: "menu-bar-regression")
     var snapshot = OPNMenuBarSessionSnapshot()
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }
 
-    func launchRecentGame(_ game: OPNMenuBarRecentGame) {
+    func launchGame(_ game: OPNMenuBarGame) {
         snapshot = OPNMenuBarSessionSnapshot(phase: .connecting, title: game.title, recentGames: [game])
     }
 

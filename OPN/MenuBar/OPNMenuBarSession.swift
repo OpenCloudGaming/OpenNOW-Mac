@@ -46,15 +46,19 @@ enum OPNMenuBarSessionPhase: Equatable, Sendable {
     }
 }
 
-/// A recently played game, reduced to what the menu shows and what launching one needs. The
-/// artwork is the catalog's box art when the catalog knows this game, which it does whenever the
-/// window that produced the list has loaded.
-struct OPNMenuBarRecentGame: Equatable, Sendable, Identifiable {
+/// A game the menu bar offers to launch, reduced to what a row shows and what launching one needs.
+///
+/// The same reduction serves Continue Playing and Favorites — both are a title, an identity to look
+/// the game up by, and box art — so a favorited game launches through the identical path a recent
+/// one does. The artwork is the catalog's box art when the catalog knows this game, which it does
+/// whenever the window that produced the list has loaded.
+struct OPNMenuBarGame: Codable, Equatable, Sendable, Identifiable {
     let title: String
     let appId: String
     let artworkURL: String?
-    /// When this account last played the game, for the row's subtitle. Nil when the local history
-    /// carries no timestamp for it, which renders as a title-only row rather than a placeholder.
+    /// When this account last played the game, for a Continue Playing row's subtitle. Nil for a
+    /// favorite, which has no play timestamp, and for a history entry that carries none; either
+    /// renders as a title-only row rather than a placeholder.
     let lastPlayedAt: Date?
 
     var id: String { appId.isEmpty ? title : appId }
@@ -92,13 +96,17 @@ struct OPNMenuBarAccount: Equatable, Sendable, Identifiable {
 }
 
 /// Everything the surface needs from the window that owns the launch: the phase, the game it is
-/// about, the games the menu can relaunch, the signed-in accounts it can show and switch, and the
-/// title of a cloud session that exists but is not streaming locally. Pushed by the catalog view
-/// model; the menu bar owns no launch state of its own.
+/// about, the games the menu can relaunch, the signed-in accounts it can show and switch, the games
+/// the account has favorited, and the title of a cloud session that exists but is not streaming
+/// locally. Pushed by the catalog view model; the menu bar owns no launch state of its own.
 struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
     var phase: OPNMenuBarSessionPhase = .idle
     var title = ""
-    var recentGames: [OPNMenuBarRecentGame] = []
+    var recentGames: [OPNMenuBarGame] = []
+    /// The account's favorites, in the catalog's order. Empty until a window attaches and loads the
+    /// catalog: favorites live on the vendor, so unlike the play history there is no local copy to
+    /// seed a windowless surface from.
+    var favorites: [OPNMenuBarGame] = []
     /// Every saved account, active one included. Empty until a window attaches or launch seeding runs.
     var accounts: [OPNMenuBarAccount] = []
     /// A resumable session detected while nothing streams locally — a seat this Mac paused, or one
@@ -126,7 +134,8 @@ enum OPNMainWindowPage: Equatable, Sendable {
 @MainActor
 protocol OPNMenuBarSessionSource: AnyObject {
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { get }
-    func launchRecentGame(_ game: OPNMenuBarRecentGame)
+    /// Relaunches a game the surface offered, a Continue Playing row and a favorite alike.
+    func launchGame(_ game: OPNMenuBarGame)
     /// Resumes the resumable session the snapshot named, the same action the home page offers.
     func resumeSession()
     /// Re-checks for a resumable session, so opening the menu reflects a session started elsewhere

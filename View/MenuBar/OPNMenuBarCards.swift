@@ -53,6 +53,34 @@ extension View {
                 .fill(OPNDesign.Fill.neutral(fillOpacity))
         }
     }
+
+    /// An icon tab in the popover's top row. On macOS 26 and later the tabs are Liquid Glass
+    /// elements, the way the session controls are — Apple lists navigation among the things the
+    /// material is for — with the selected one tinted so the choice reads without a second layer of
+    /// chrome. A `GlassEffectContainer` in the panel gathers the row into one sampling region, the
+    /// same treatment the controls get. Before macOS 26 there is no glass to draw, so the tabs fall
+    /// back to the translucent fill the rest of the surface uses, accent-marked when selected.
+    @ViewBuilder
+    func opnMenuBarTab(isSelected: Bool, radius: CGFloat = 9) -> some View {
+        if #available(macOS 26.0, *) {
+            if isSelected {
+                glassEffect(.regular.tint(OPNDesign.accent).interactive(), in: popoverShape(radius: radius))
+            } else {
+                glassEffect(.regular.interactive(), in: popoverShape(radius: radius))
+            }
+        } else {
+            background {
+                // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center tab fills
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .fill(isSelected ? OPNDesign.accent.opacity(0.20) : OPNDesign.Fill.neutral(0.06))
+            }
+            .overlay {
+                // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center tab fills
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(isSelected ? OPNDesign.accent.opacity(0.55) : OPNDesign.Stroke.subtle, lineWidth: 1)
+            }
+        }
+    }
 }
 
 extension View {

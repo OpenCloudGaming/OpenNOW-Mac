@@ -41,6 +41,32 @@ struct OPNMenuBarSceneContent: View {
     }
 }
 
+/// The popover's top-level views, switched by the icon tabs above the cards.
+///
+/// Two destinations and no more: the session surface the panel has always been, and the account's
+/// favorites. Both are one tap away, so the compact icon row is all the affordance a popover this
+/// size needs — no label under an icon that the accessibility label already carries.
+enum OPNMenuBarTab: String, CaseIterable, Identifiable {
+    case session
+    case favorites
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .session: return "Session"
+        case .favorites: return "Favorites"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .session: return "gamecontroller.fill"
+        case .favorites: return "heart.fill"
+        }
+    }
+}
+
 /// The status item's popover.
 ///
 /// `MenuBarExtra`'s `.window` style hands SwiftUI the whole panel, which is what lets the surface
@@ -55,21 +81,94 @@ struct OPNMenuBarPanel: View {
 
     /// Wide enough for a game title beside its artwork, narrow enough to stay a popover.
     static let width: CGFloat = 316
+    /// How many rows the Favorites list shows before it starts to scroll. The panel grows with the
+    /// list up to this many, then holds the height — one tap of a favorite never resizes the popover
+    /// past a comfortable size, and a longer list scrolls inside it.
+    static let favoritesVisibleRows = 5
+    /// One game row's height: the 34pt artwork with 5pt above and below it. Fixed so the Favorites
+    /// list's height can be computed rather than measured.
+    static let gameRowHeight: CGFloat = 44
+    static let gameRowSpacing: CGFloat = 8
 
-    var body: some View {
-        cards
-            .padding(10)
-            .frame(width: Self.width)
-            .opnMenuBarPanelBackground()
+    @State private var selectedTab: OPNMenuBarTab
+
+    init(session: OPNMenuBarSessionModel, initialTab: OPNMenuBarTab = .session) {
+        self.session = session
+        _selectedTab = State(initialValue: initialTab)
     }
 
-    private var cards: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            tabBar
+            // Fixed above the switch: who is signed in does not depend on which tab is showing, so
+            // the account card stays put — and the account dropdown keeps its state — across a switch.
             OPNMenuBarAccountSection(session: session, onPresentMainWindow: openMainWindow)
-            sessionCard
-            continuePlayingCard
+            selectedTabContent
             footer
         }
+        .padding(10)
+        .frame(width: Self.width)
+        .opnMenuBarPanelBackground()
+    }
+
+    @ViewBuilder private var selectedTabContent: some View {
+        switch selectedTab {
+        case .session:
+            sessionCard
+            continuePlayingCard
+        case .favorites:
+            favoritesCard
+        }
+    }
+
+    // MARK: - Tabs
+
+    /// The tabs are glass on macOS 26 and later, so the row is gathered into one
+    /// `GlassEffectContainer` the same way the session controls are: one sampling region, and shapes
+    /// that can interact rather than sample each other.
+    @ViewBuilder private var tabBar: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 6) { tabTiles }
+        } else {
+            tabTiles
+        }
+    }
+
+    private var tabTiles: some View {
+        HStack(spacing: 6) {
+            ForEach(OPNMenuBarTab.allCases) { tab in
+                tabButton(tab)
+            }
+        }
+    }
+
+    private func tabButton(_ tab: OPNMenuBarTab) -> some View {
+        let isSelected = selectedTab == tab
+        return Button {
+            guard selectedTab != tab else { return }
+            withAnimation(OPNDesign.Motion.toggle) { selectedTab = tab }
+        } label: {
+            Image(systemName: tab.symbolName)
+                .font(.opnUI(size: 13, weight: .bold))
+                .foregroundStyle(tabIconInk(isSelected: isSelected))
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .opnMenuBarTab(isSelected: isSelected)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tab.title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    /// The selected tab's glyph sits on an accent-tinted glass, where the ordinary text ink all but
+    /// disappears. `OPNDesign.onAccent` is the ink designed to be read on an accent fill, so it keeps
+    /// the mark legible whatever the accent preset. The older, untinted fill path has no tint to
+    /// fight and keeps the primary ink.
+    private func tabIconInk(isSelected: Bool) -> Color {
+        guard isSelected else { return OPNDesign.Text.secondary }
+        if #available(macOS 26.0, *) { return OPNDesign.onAccent }
+        return OPNDesign.Text.primary
     }
 
     // MARK: - Session
@@ -176,31 +275,87 @@ struct OPNMenuBarPanel: View {
     // MARK: - Continue Playing
 
     private var continuePlayingCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CONTINUE PLAYING")
-                .font(.opnUI(size: 10, weight: .bold))
-                .tracking(0.8)
-                .foregroundStyle(OPNDesign.Text.muted)
+        VStack(alignment: .leading, spacing: Self.gameRowSpacing) {
+            cardEyebrow("CONTINUE PLAYING")
             if session.recentGames.isEmpty {
-                Text("Games you play show up here.")
-                    .font(.opnUI(size: 11.5, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .padding(.vertical, 2)
+                emptyListText("Games you play show up here.")
             } else {
                 ForEach(session.recentGames) { game in
-                    Button { launch(game) } label: {
-                        recentGameRow(game)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!session.canLaunchRecentGames)
-                    .accessibilityLabel("Launch \(game.title)")
+                    gameButton(game, isEnabled: session.canLaunchRecentGames)
                 }
             }
         }
         .opnMenuBarCard()
     }
 
-    private func recentGameRow(_ game: OPNMenuBarRecentGame) -> some View {
+    // MARK: - Favorites
+
+    private var favoritesCard: some View {
+        VStack(alignment: .leading, spacing: Self.gameRowSpacing) {
+            cardEyebrow("FAVORITES")
+            if session.favorites.isEmpty {
+                emptyListText("Games you favorite show up here.")
+            } else {
+                favoritesList
+            }
+        }
+        .opnMenuBarCard()
+    }
+
+    /// The favorites list grows with its contents and only starts scrolling past
+    /// `favoritesVisibleRows`: short lists keep the popover its natural size, a long one holds the
+    /// same height and scrolls. Constraining a `ScrollView` to `maxHeight` would not do that — it is
+    /// greedy and would take the cap even when the list is shorter — so the scroll view is only
+    /// introduced once the rows outgrow the cap, at the height they occupy there.
+    @ViewBuilder private var favoritesList: some View {
+        if session.favorites.count > Self.favoritesVisibleRows {
+            ScrollView(.vertical) {
+                favoritesRows
+            }
+            .scrollIndicators(.visible)
+            .frame(height: favoritesVisibleHeight)
+        } else {
+            favoritesRows
+        }
+    }
+
+    private var favoritesRows: some View {
+        VStack(alignment: .leading, spacing: Self.gameRowSpacing) {
+            ForEach(session.favorites) { game in
+                gameButton(game, isEnabled: session.canLaunchFavorites)
+            }
+        }
+    }
+
+    private var favoritesVisibleHeight: CGFloat {
+        let rows = CGFloat(Self.favoritesVisibleRows)
+        return rows * Self.gameRowHeight + (rows - 1) * Self.gameRowSpacing
+    }
+
+    private func cardEyebrow(_ text: String) -> some View {
+        Text(text)
+            .font(.opnUI(size: 10, weight: .bold))
+            .tracking(0.8)
+            .foregroundStyle(OPNDesign.Text.muted)
+    }
+
+    private func emptyListText(_ text: String) -> some View {
+        Text(text)
+            .font(.opnUI(size: 11.5, weight: .medium))
+            .foregroundStyle(OPNDesign.Text.tertiary)
+            .padding(.vertical, 2)
+    }
+
+    private func gameButton(_ game: OPNMenuBarGame, isEnabled: Bool) -> some View {
+        Button { launch(game) } label: {
+            gameRow(game, isEnabled: isEnabled)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityLabel("Launch \(game.title)")
+    }
+
+    private func gameRow(_ game: OPNMenuBarGame, isEnabled: Bool) -> some View {
         HStack(spacing: 9) {
             OPNMenuBarArtwork(url: game.artworkURL)
             VStack(alignment: .leading, spacing: 1) {
@@ -208,8 +363,9 @@ struct OPNMenuBarPanel: View {
                     .font(.opnUI(size: 12.5, weight: .semibold))
                     .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
-                // The card's header already says this list is Continue Playing; repeating it under
-                // every title says nothing. When the game was last played is what the row can add.
+                // The card's header already says what the list is; repeating it under every title
+                // says nothing. When the game was last played is what a Continue Playing row can add,
+                // so a favorite — which has no timestamp — is a title-only row.
                 if let lastPlayedText = OPNMenuBarReadout.lastPlayedText(for: game.lastPlayedAt) {
                     Text(lastPlayedText)
                         .font(.opnUI(size: 10.5, weight: .medium))
@@ -220,11 +376,11 @@ struct OPNMenuBarPanel: View {
             Spacer(minLength: 6)
             Image(systemName: "play.fill")
                 .font(.opnUI(size: 10, weight: .bold))
-                .foregroundStyle(session.canLaunchRecentGames ? OPNDesign.accent : OPNDesign.Text.muted)
+                .foregroundStyle(isEnabled ? OPNDesign.accent : OPNDesign.Text.muted)
         }
         .padding(.horizontal, 7)
-        .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: Self.gameRowHeight)
         .opnMenuBarRow()
     }
 
@@ -235,7 +391,7 @@ struct OPNMenuBarPanel: View {
     ///
     /// On screen, not merely existing: a window the scene has never built has no surface to hand the
     /// launch to, and a launch handed to it would be parked with nothing to act on it.
-    private func launch(_ game: OPNMenuBarRecentGame) {
+    private func launch(_ game: OPNMenuBarGame) {
         if OPNMainWindow.needsPresentation {
             // A window is about to be built, so it comes with its Dock icon even though the launch
             // itself leaves it behind whatever the user is doing.

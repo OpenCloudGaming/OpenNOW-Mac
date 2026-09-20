@@ -34,8 +34,18 @@ import Testing
 
     @Test func startupPresentationRoundTripsAndAnnouncesItself() {
         let existing = preserve(OPNLaunchPreferences.startupPresentationKey)
-        defer { restore(existing, forKey: OPNLaunchPreferences.startupPresentationKey) }
+        let menuBarItem = preserve(OPNMenuBarPreferences.showsStatusItemKey)
+        let closeBehavior = preserve(OPNWindowClosePreferences.behaviorKey)
+        defer {
+            restore(existing, forKey: OPNLaunchPreferences.startupPresentationKey)
+            restore(menuBarItem, forKey: OPNMenuBarPreferences.showsStatusItemKey)
+            restore(closeBehavior, forKey: OPNWindowClosePreferences.behaviorKey)
+        }
 
+        // The menu-bar-only choice only resolves while the status item can be reached, so the
+        // prerequisites are set explicitly rather than left to whatever another suite last wrote.
+        OPNMenuBarPreferences.showsStatusItem = true
+        OPNWindowClosePreferences.behavior = .keepRunningInDock
         OPNLaunchPreferences.startupPresentation = .window
         let counter = AnnouncementCounter()
         let observer = NotificationCenter.default.addObserver(
@@ -52,6 +62,18 @@ import Testing
         // Writing the same value again is not a change and must not republish it.
         OPNLaunchPreferences.startupPresentation = .menuBarOnly
         #expect(counter.count == 1)
+    }
+
+    /// A menu-bar-only launch suppresses the window, so with no status item to reach the app by it is
+    /// withheld and the window opens instead.
+    @Test func menuBarOnlyLaunchIsWithheldWhenTheStatusItemCannotBeReached() {
+        #expect(OPNLaunchPreferences.resolvedStartupPresentation(storedRawValue: "menuBarOnly", canReachMenuBar: false) == .window)
+        #expect(OPNLaunchPreferences.resolvedStartupPresentation(storedRawValue: "menuBarOnly", canReachMenuBar: true) == .menuBarOnly)
+        // Opening the window is always valid, reachable or not.
+        #expect(OPNLaunchPreferences.resolvedStartupPresentation(storedRawValue: "window", canReachMenuBar: false) == .window)
+        // An unknown or missing value falls back to the window.
+        #expect(OPNLaunchPreferences.resolvedStartupPresentation(storedRawValue: "picture-in-picture", canReachMenuBar: true) == .window)
+        #expect(OPNLaunchPreferences.resolvedStartupPresentation(storedRawValue: nil, canReachMenuBar: true) == .window)
     }
 
     @Test func unknownStoredPresentationFallsBackToTheWindow() {

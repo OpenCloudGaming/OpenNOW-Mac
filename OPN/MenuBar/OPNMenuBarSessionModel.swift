@@ -17,7 +17,11 @@ final class OPNMenuBarSessionModel: ObservableObject {
     @Published private(set) var phase: OPNMenuBarSessionPhase = .idle
     @Published private(set) var gameTitle = ""
     @Published private(set) var estimatedRemainingSeconds: TimeInterval?
-    @Published private(set) var recentGames: [OPNMenuBarRecentGame] = []
+    @Published private(set) var recentGames: [OPNMenuBarGame] = []
+    /// The account's favorites, in the catalog's order, for the surface's Favorites tab. Kept across
+    /// a source detach like the recent games, so closing the window to the tray does not empty the
+    /// tab; unlike them it cannot be seeded from persistence, because favorites live on the vendor.
+    @Published private(set) var favorites: [OPNMenuBarGame] = []
     /// Every saved account the surface can show and switch to, active one included. Kept across a
     /// source detach like the recent games, so closing the window to the tray does not empty it.
     @Published private(set) var accounts: [OPNMenuBarAccount] = []
@@ -54,7 +58,10 @@ final class OPNMenuBarSessionModel: ObservableObject {
     private var snapshotPhase: OPNMenuBarSessionPhase = .idle
     private var queueEstimate = OPNMenuBarQueueEstimate()
     private var trackingGeneration = 0
-    private var pendingLaunch: OPNMenuBarRecentGame?
+    private var pendingLaunch: OPNMenuBarGame?
+    /// The account the favorites on screen belong to, so a windowless fetch that lands after an
+    /// account change cannot replace a newer list.
+    private var favoritesAccountIdentifier = ""
     /// A page asked for while no window can show it, drained when the next source attaches.
     private var pendingMainPage: OPNMainWindowPage?
     /// A Resume asked for while no window can perform it, drained when the next source attaches.
@@ -116,6 +123,12 @@ final class OPNMenuBarSessionModel: ObservableObject {
         phase == .idle && !recentGames.isEmpty
     }
 
+    /// Whether the Favorites tab's rows can start a session. Gated the same way Continue Playing is:
+    /// a launch belongs to the catalog, which refuses one while a session is already running.
+    var canLaunchFavorites: Bool {
+        phase == .idle && !favorites.isEmpty
+    }
+
     func panelStatusText() -> String {
         OPNMenuBarReadout.panelStatusText(for: phase, estimatedSeconds: estimatedRemainingSeconds)
     }
@@ -143,7 +156,7 @@ final class OPNMenuBarSessionModel: ObservableObject {
     /// Seeds the play history from persistence, for a launch that never built a window to push it.
     /// Skipped once a source owns the surface, because that source's list carries the artwork the
     /// seeder cannot resolve without the catalog.
-    func primeRecentGames(_ games: [OPNMenuBarRecentGame]) {
+    func primeRecentGames(_ games: [OPNMenuBarGame]) {
         guard source == nil, recentGames.isEmpty, !games.isEmpty else { return }
         recentGames = games
     }
@@ -153,6 +166,24 @@ final class OPNMenuBarSessionModel: ObservableObject {
     func primeAccounts(_ accounts: [OPNMenuBarAccount]) {
         guard source == nil, self.accounts.isEmpty, !accounts.isEmpty else { return }
         self.accounts = accounts
+    }
+
+    /// Seeds the Favorites tab from the local cache before any window exists, so a menu-bar-only
+    /// launch shows the list immediately instead of an empty tab. The account identifier is recorded
+    /// even when the cache is empty, so the windowless server fetch that follows can match it. Skipped
+    /// once a source owns the surface, which pushes the live list instead.
+    func primeFavorites(_ games: [OPNMenuBarGame], accountIdentifier: String) {
+        guard source == nil else { return }
+        favoritesAccountIdentifier = accountIdentifier
+        guard favorites.isEmpty, !games.isEmpty else { return }
+        favorites = games
+    }
+
+    /// The windowless server fetch's result: the live list replaces the cache seed. Skipped once a
+    /// source owns the surface, and dropped when a newer account has taken over.
+    func applyFetchedFavorites(_ games: [OPNMenuBarGame], accountIdentifier: String) {
+        guard source == nil, accountIdentifier == favoritesAccountIdentifier else { return }
+        favorites = games
     }
 
     /// The account the popover names at its top. Falls back to the first entry so a list seeded
@@ -165,9 +196,10 @@ final class OPNMenuBarSessionModel: ObservableObject {
     /// after the replacement attaches often enough that a blind detach would leave the surface
     /// following nothing.
     ///
-    /// The recent games and accounts are deliberately kept: they describe play history and the saved
-    /// accounts rather than the session, so closing the window to the tray must not empty the menu.
-    /// The next source to attach overwrites them with its own account's list.
+    /// The recent games, favorites and accounts are deliberately kept: they describe play history,
+    /// the account's saved favorites, and the saved accounts rather than the session, so closing the
+    /// window to the tray must not empty the menu. The next source to attach overwrites them with its
+    /// own account's lists.
     func detachSource(_ source: any OPNMenuBarSessionSource) {
         guard self.source === source else { return }
         self.source = nil
@@ -243,19 +275,19 @@ final class OPNMenuBarSessionModel: ObservableObject {
 
     /// A launch asked for while no window can perform it is parked until one can: the menu opens
     /// the main window, and the catalog acts on the request as it attaches.
-    func requestLaunch(_ game: OPNMenuBarRecentGame) {
+    func requestLaunch(_ game: OPNMenuBarGame) {
         guard let source else {
             OPNLog.info(.app, "Menu bar parked a launch of \(game.title) until a window exists")
             pendingLaunch = game
             return
         }
-        source.launchRecentGame(game)
+        source.launchGame(game)
     }
 
     private func drainPendingLaunch() {
         guard let game = pendingLaunch, let source else { return }
         pendingLaunch = nil
-        source.launchRecentGame(game)
+        source.launchGame(game)
     }
 
     // MARK: - Accounts
@@ -342,6 +374,7 @@ final class OPNMenuBarSessionModel: ObservableObject {
         snapshotPhase = snapshot.phase
         gameTitle = snapshot.title
         recentGames = snapshot.recentGames
+        favorites = snapshot.favorites
         accounts = snapshot.accounts
         resumableSessionTitle = snapshot.resumableSessionTitle
         resolvePhase()

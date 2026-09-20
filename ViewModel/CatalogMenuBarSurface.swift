@@ -17,6 +17,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
             phase: menuBarPhase,
             title: menuBarTitle,
             recentGames: menuBarRecentGames,
+            favorites: menuBarFavorites,
             accounts: menuBarAccounts,
             resumableSessionTitle: menuBarResumableSessionTitle
         )
@@ -53,15 +54,15 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
     /// The three most recent games as persisted for an account, mapped for the menu bar without the
     /// catalog. Used when no window exists to hand the live list over — a windowless launch — so the
     /// rows still appear, with title-only placeholders for artwork until a window loads the catalog.
-    static func persistedMenuBarRecentGames(accountIdentifier: String) -> [OPNMenuBarRecentGame] {
+    static func persistedMenuBarRecentGames(accountIdentifier: String) -> [OPNMenuBarGame] {
         guard !accountIdentifier.isEmpty else { return [] }
         let entries = CatalogRecentlyPlayed.load(accountIdentifier: accountIdentifier).games
-        var rows: [OPNMenuBarRecentGame] = []
+        var rows: [OPNMenuBarGame] = []
         var seenTitles = Set<String>()
         for entry in entries {
             let key = entry.title.lowercased()
             guard !key.isEmpty, seenTitles.insert(key).inserted else { continue }
-            rows.append(OPNMenuBarRecentGame(title: entry.title, appId: entry.appId, artworkURL: entry.artworkURL, lastPlayedAt: entry.playedAt))
+            rows.append(OPNMenuBarGame(title: entry.title, appId: entry.appId, artworkURL: entry.artworkURL, lastPlayedAt: entry.playedAt))
             if rows.count == 3 { break }
         }
         return rows
@@ -78,17 +79,17 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
     /// `allKnownGames` rebuilds a concatenated array on every access, and this snapshot is read on
     /// every change the surface tracks — including each poll of a launch in flight — so the catalog
     /// is read once here and searched for all three rows, rather than once per row.
-    private var menuBarRecentGames: [OPNMenuBarRecentGame] {
+    private var menuBarRecentGames: [OPNMenuBarGame] {
         guard !recentlyPlayed.games.isEmpty else { return [] }
         let known = allKnownGames
-        var rows: [OPNMenuBarRecentGame] = []
+        var rows: [OPNMenuBarGame] = []
         var seenIdentities = Set<String>()
         for entry in recentlyPlayed.games {
             let game = Self.menuBarGame(matching: entry, in: known)
             let identity = game.map { Self.identity(for: $0) } ?? ""
             let dedupeKey = (identity.isEmpty ? entry.title : identity).lowercased()
             guard !dedupeKey.isEmpty, seenIdentities.insert(dedupeKey).inserted else { continue }
-            rows.append(OPNMenuBarRecentGame(
+            rows.append(OPNMenuBarGame(
                 title: game?.title ?? entry.title,
                 appId: identity.isEmpty ? entry.appId : identity,
                 artworkURL: Self.menuBarArtworkURL(for: game) ?? entry.artworkURL,
@@ -97,6 +98,26 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
             if rows.count == 3 { break }
         }
         return rows
+    }
+
+    /// The account's favorites, reduced for the menu bar. The catalog has already deduped them by
+    /// identity and holds their box art, so each maps straight across; a favorite with no launchable
+    /// identity is still listed, matched by title when it is launched.
+    private var menuBarFavorites: [OPNMenuBarGame] {
+        Self.menuBarGames(from: favoriteGames)
+    }
+
+    /// The menu bar's reduction of catalog games. Shared by the Favorites tab and the persisted
+    /// favorites cache, so the rows the surface shows and the rows the cache replays carry the same
+    /// identity and artwork.
+    static func menuBarGames(from games: [OPNCatalogGameObject]) -> [OPNMenuBarGame] {
+        games.map { game in
+            OPNMenuBarGame(
+                title: game.title,
+                appId: Self.identity(for: game),
+                artworkURL: Self.menuBarArtworkURL(for: game)
+            )
+        }
     }
 
     private static func menuBarGame(matching entry: CatalogRecentlyPlayedGame, in known: [OPNCatalogGameObject]) -> OPNCatalogGameObject? {
@@ -164,10 +185,10 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
     /// Launching a game the menu bar offered. The catalog it came from may not be loaded — a window
     /// reopened from the menu bar starts fetching as it appears — so an unknown game is resolved by
     /// browsing for its title, the same way an unresolved shortcut is.
-    func launchRecentGame(_ game: OPNMenuBarRecentGame) {
+    func launchGame(_ game: OPNMenuBarGame) {
         configureCatalogService()
         let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        OPNLog.info(.launch, "Menu bar launching recent game appId=\(game.appId) title=\(title)")
+        OPNLog.info(.launch, "Menu bar launching game appId=\(game.appId) title=\(title)")
         if let match = knownGame(matching: game, title: title) {
             selectGame(match)
             launch(game: match, variantIndex: Self.preferredVariantIndex(for: match))
@@ -177,7 +198,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         browseForRecentGame(title: title, appId: game.appId)
     }
 
-    private func knownGame(matching game: OPNMenuBarRecentGame, title: String) -> OPNCatalogGameObject? {
+    private func knownGame(matching game: OPNMenuBarGame, title: String) -> OPNCatalogGameObject? {
         if let match = allKnownGames.first(where: { Self.game($0, matchesApplicationID: game.appId) }) { return match }
         guard !title.isEmpty else { return nil }
         return allKnownGames.first { $0.title.caseInsensitiveCompare(title) == .orderedSame }

@@ -102,6 +102,10 @@ struct OPNApp: App {
             seedMenuBarAccounts(context: context, activeEmail: email)
             let userId = session.userId.isEmpty ? (account?.userId ?? "") : session.userId
             guard !userId.isEmpty else { return }
+            // Favorites are painted from the local cache before anything else: a windowless launch
+            // never builds a catalog to push them, and even a windowed one shows the tab before the
+            // catalog attaches. The account list is seeded above for the same reason.
+            OPNMenuBarFavorites.primeFromCache(accountIdentifier: userId)
             // The play history is keyed by the playtime identifier, which needs the account; seeding
             // it here is what keeps the menu bar's Continue Playing list populated on a windowless
             // launch, where no catalog view model ever attaches to push it.
@@ -112,9 +116,12 @@ struct OPNApp: App {
                 )
             }
             // A launch with no window has no splash to hide and nothing to paint the catalog into, so
-            // the whole home prefetch is skipped: it runs when the window is first opened instead.
+            // the home prefetch is skipped. Favorites are the exception: the menu bar's tab needs
+            // them, so they are fetched directly once the session is usable.
             guard OPNLaunchPreferences.startupPresentation == .window else {
                 OPNLog.info(.catalog, "Catalog prefetch skipped: launching menu bar only")
+                guard !session.isExpired else { return }
+                OPNMenuBarFavorites.start(accountIdentifier: userId, accessToken: session.accessToken, idToken: session.idToken)
                 return
             }
             guard !session.isExpired else {

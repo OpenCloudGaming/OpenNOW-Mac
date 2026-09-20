@@ -320,10 +320,7 @@ extension CatalogViewModel {
     }
 
     nonisolated static func identity(for game: OPNCatalogGameObject) -> String {
-        if !game.id.isEmpty { return game.id }
-        if !game.uuid.isEmpty { return game.uuid }
-        if !game.launchAppId.isEmpty { return game.launchAppId }
-        return game.title
+        game.catalogIdentity
     }
 
     static func favoriteAppId(for game: OPNCatalogGameObject) -> String {
