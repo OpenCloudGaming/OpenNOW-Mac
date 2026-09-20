@@ -250,6 +250,9 @@ struct CatalogView: View {
                         VStack(spacing: 0) {
                             CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
                                 .id(themeIdentity)
+                                // The bar's tooltips hang below its bounds, so it must outdraw the
+                                // content below it; the zIndexed overlays still cover it when open.
+                                .zIndex(1)
                             ZStack {
                                 // The catalog stays mounted underneath Settings and Recordings
                                 // rather than being swapped out for them. Tearing it down drops

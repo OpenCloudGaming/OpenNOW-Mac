@@ -95,7 +95,7 @@ struct CatalogTopBar: View {
                             }
                             .buttonStyle(.opnPressable(scale: 0.90))
                             .accessibilityLabel("Search games")
-                            .help("Search games (\(keybindings.combo(for: .openSearch).label))")
+                            .opnTooltip("Search games (\(keybindings.combo(for: .openSearch).label))")
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                         }
                         Button { OPNReportIssuePresentation.shared.present(context: .current(viewModel: viewModel)) } label: {
@@ -103,13 +103,13 @@ struct CatalogTopBar: View {
                         }
                         .buttonStyle(.opnPressable(scale: 0.90))
                         .accessibilityLabel("Report an issue")
-                        .help("Report an issue")
+                        .opnTooltip("Report an issue")
                         Button { controllerModeEnabled = true } label: {
                             CatalogTopBarIconLabel(systemName: "gamecontroller")
                         }
                         .buttonStyle(.opnPressable(scale: 0.90))
                         .accessibilityLabel("Switch to controller mode")
-                        .help("Controller mode")
+                        .opnTooltip("Controller mode")
                         // Joining someone else's session is a thing you do *instead* of browsing your
                         // own library, so it belongs where you already are rather than only in a menu.
                         //

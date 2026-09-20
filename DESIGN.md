@@ -543,6 +543,20 @@ tint (compact) for shipped-but-rough features. **NEW** is black text on solid ac
 added in the current release; rows opt in with `isNew:` and declare their release in
 `OPNNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
 
+### Tooltip (`opnTooltip`)
+
+A flat balloon annotation that drops below a control while the pointer rests on it, used where the
+system `.help` bubble's rounded, shadowed chrome would clash with the square, stroked plates around
+it (the catalog top bar's icon row). Raised panel surface, 1pt Stroke Regular border, 11pt bold Text
+Primary on one line, 8pt horizontal / 5pt vertical padding, plus a centred 12×5pt caret rising from
+the top edge and pointing back at the control. The caret is part of the bubble outline, filled and
+stroked with it, so the border traces the point rather than crossing its mouth — no shadow; depth
+comes from the stroke, per the flat-panel rule. Placement is measured, not assumed: the label is
+top-anchored and offset past the control's own height plus a 6pt gap, so it clears any control size.
+It is decoration only: `allowsHitTesting(false)` keeps it out of the hit area, and the control keeps
+its own `accessibilityLabel`. An ancestor that clips or draws after the control will occlude it, so
+the host must not be clipped and must sit above the content it overhangs.
+
 ### What's New Card (Settings → System)
 
 `SettingsCard` holding release history (`View/Settings/SettingsWhatsNewViews.swift`). When an
