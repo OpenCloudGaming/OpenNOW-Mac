@@ -16,7 +16,8 @@ public enum ControllerFamily: String, Codable, CaseIterable, Identifiable, Senda
     public var controls: [ControllerControl] {
         ControllerControl.allCases.filter { control in
             switch control {
-            case .leftGrip, .leftGrip2, .rightGrip, .rightGrip2, .leftPadClick, .rightPadClick:
+            case .leftGrip, .leftGrip2, .rightGrip, .rightGrip2, .leftPadClick, .rightPadClick,
+                 .leftGripSense, .rightGripSense, .leftStickTouch, .rightStickTouch, .gyro:
                 self == .steam
             case .touchpadClick:
                 self == .dualShock4

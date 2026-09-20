@@ -84,6 +84,8 @@ public enum SteamControllerReport {
     private static let tritonWirelessStatusReportID: UInt8 = 0x79
     private static let tritonFeatureReportID = 1
     private static let tritonLizardModeSetting: UInt8 = 0x09
+    private static let tritonIMUModeSetting: UInt8 = 48
+    private static let tritonIMUModeAccelerometerAndGyroscope: UInt16 = 0x18
     private static let tritonLizardModeOff: UInt8 = 0x00
     private static let tritonLizardModeOn: UInt8 = 0x01
     public static let deckStateReportID: UInt8 = 0x09
@@ -198,7 +200,51 @@ public enum SteamControllerReport {
                 pressed: buttons & TritonButtonMask.rightPadClick != 0
             )
         }
+        snapshot.leftGripSense = buttons & TritonButtonMask.leftGripTouch != 0
+        snapshot.rightGripSense = buttons & TritonButtonMask.rightGripTouch != 0
+        snapshot.leftStickTouched = buttons & TritonButtonMask.leftStickTouch != 0
+        snapshot.rightStickTouched = buttons & TritonButtonMask.rightStickTouch != 0
+        snapshot.motion = tritonMotion(from: report, motionOffset: padOffset + 12)
         return snapshot
+    }
+
+    /// The IMU block sits immediately after the trackpad block, so it shifts with it — the
+    /// timestamped report `0x47` inserts two bytes ahead of the pads and therefore two bytes ahead
+    /// of the accelerometer as well.
+    ///
+    /// Field order and offsets from the SC2 capture study's 0x42 layout (`imu.timestamp`
+    /// 0x1e..0x21, accel 0x22..0x27, gyro 0x28..0x2d, all empty unless motion reporting is on),
+    /// cross-checked against `scdsu-core`'s `triton.rs`, whose buffer excludes the report ID and
+    /// therefore starts each field one byte earlier.
+    private static func tritonMotion(from report: [UInt8], motionOffset: Int) -> ControllerMotionSample? {
+        guard report.count >= motionOffset + 16 else { return nil }
+        let timestamp = UInt32(report[motionOffset]) | (UInt32(report[motionOffset + 1]) << 8)
+            | (UInt32(report[motionOffset + 2]) << 16) | (UInt32(report[motionOffset + 3]) << 24)
+        return ControllerMotionSample(
+            gyroX: rate(report, at: motionOffset + 10),
+            gyroY: rate(report, at: motionOffset + 12),
+            gyroZ: rate(report, at: motionOffset + 14),
+            accelX: rawInt16(report, at: motionOffset + 4),
+            accelY: rawInt16(report, at: motionOffset + 6),
+            accelZ: rawInt16(report, at: motionOffset + 8),
+            timestampMicroseconds: timestamp
+        )
+    }
+
+    /// Raw signed 16-bit little-endian sample.
+    private static func rawInt16(_ report: [UInt8], at index: Int) -> Float {
+        Float(Int16(bitPattern: UInt16(report[index]) | (UInt16(report[index + 1]) << 8)))
+    }
+
+    /// A raw gyroscope sample as degrees per second.
+    ///
+    /// UNVERIFIED SCALE. Nothing public states the Ibex gyro's full-scale range; the Steam Deck's
+    /// ICM-42607 is configured for ±2000 °/s and SDL parses both reports through the same struct
+    /// shape, so that range is assumed. A wrong constant here shifts the *default* sensitivity
+    /// only — the pixels-per-360 calibration measures the real ratio at runtime and corrects it —
+    /// but the sign and axis assignment need the Phase 0 hardware pass regardless.
+    private static func rate(_ report: [UInt8], at index: Int) -> Float {
+        rawInt16(report, at: index) * (2000.0 / 32768.0)
     }
 
     /// Folds a report's button bits through a mask table.
@@ -356,19 +402,43 @@ public enum SteamControllerReport {
         return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
     }
 
-    private static func tritonLizardModeDisableReport() -> SteamControllerFeatureReport {
-        tritonLizardModeSettingReport(tritonLizardModeOff)
-    }
-
-    private static func tritonLizardModeSettingReport(_ value: UInt8) -> SteamControllerFeatureReport {
+    /// `SET_SETTINGS_VALUES`: `[0x01][0x87][0x03][register][value lo][value hi]`, zero-padded to
+    /// 64 bytes. The three register bytes are the shape every known setting uses, including the
+    /// one that switches the IMU on.
+    private static func tritonSettingReport(register: UInt8, value: UInt16) -> SteamControllerFeatureReport {
         var buffer = [UInt8](repeating: 0, count: reportLength)
         buffer[0] = UInt8(tritonFeatureReportID)
         buffer[1] = setSettingsCommand
         buffer[2] = 0x03
-        buffer[3] = tritonLizardModeSetting
-        buffer[4] = value
-        buffer[5] = 0x00
+        buffer[3] = register
+        buffer[4] = UInt8(value & 0xff)
+        buffer[5] = UInt8((value >> 8) & 0xff)
         return SteamControllerFeatureReport(reportID: tritonFeatureReportID, bytes: buffer)
+    }
+
+    private static func tritonLizardModeDisableReport() -> SteamControllerFeatureReport {
+        tritonSettingReport(register: tritonLizardModeSetting, value: UInt16(tritonLizardModeOff))
+    }
+
+    private static func tritonLizardModeSettingReport(_ value: UInt8) -> SteamControllerFeatureReport {
+        tritonSettingReport(register: tritonLizardModeSetting, value: UInt16(value))
+    }
+
+    /// Switches the 2026 controller's motion reporting on or off.
+    ///
+    /// The IMU is **off by default** and its accelerometer/gyro fields are bitwise static until
+    /// this is sent — confirmed by the SC2 capture study across nine thousand idle frames plus a
+    /// deliberate shake, and independently by `scdsu-core`, which sends the same command on
+    /// open. Register 48, value 0x18 = raw accelerometer + raw gyroscope.
+    public static func tritonMotionReportingReports(enabled: Bool) -> [SteamControllerFeatureReport] {
+        [tritonSettingReport(register: tritonIMUModeSetting,
+                             value: enabled ? tritonIMUModeAccelerometerAndGyroscope : 0)]
+    }
+
+    /// Whether this model's motion reporting can be switched from the host at all. The 2015
+    /// controller has no IMU, and the Steam Deck reports motion through its own state report.
+    public static func supportsMotionReporting(model: SteamControllerModel) -> Bool {
+        model == .triton
     }
 
     /// The 2026 controller ("Ibex" in Linux `hid-steam`; the Puck is `USB_DEVICE_ID_STEAM_CONTROLLER_PROTEUS`
@@ -460,6 +530,19 @@ extension SteamControllerReport {
         static let rightPadClick: UInt32 = 0x0040_0000
         static let leftPadTouch: UInt32 = 0x0200_0000
         static let leftPadClick: UInt32 = 0x0400_0000
+
+        // Capacitive contact, not presses. Verified twice over and in agreement: SDL's
+        // `SDL_hidapi_steam_triton.c` (`TRITON_RIGHT_JOYSTICK_TOUCH` 0x00100000,
+        // `TRITON_LEFT_JOYSTICK_TOUCH` 0x01000000, `TRITON_RIGHT_GRIP_TOUCH` 0x10000000,
+        // `TRITON_LEFT_GRIP_TOUCH` 0x20000000, added in SDL PR #15528) and the SC2 capture
+        // study's byte table (byte 0x04 bit 4 = RStick_Touch; byte 0x05 bit 0 = LStick_Touch,
+        // bit 4 = RGrip_Touch, bit 5 = LGrip_Touch). Grip Sense is what Valve added for gyro
+        // ratcheting, and these bits were previously parsed into `buttons` and then dropped
+        // because no mask claimed them.
+        static let rightStickTouch: UInt32 = 0x0010_0000
+        static let leftStickTouch: UInt32 = 0x0100_0000
+        static let rightGripTouch: UInt32 = 0x1000_0000
+        static let leftGripTouch: UInt32 = 0x2000_0000
     }
 
     private enum DeckStateButtonMask {

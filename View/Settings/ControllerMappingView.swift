@@ -348,44 +348,51 @@ struct ControllerMappingView: View {
                     Spacer(minLength: 0)
                 }
 
-                if let padSettingsKind = padSettingsKind(for: control) {
-                    behaviorSection(padSettingsKind)
-                    SteamControllerModalRule()
-                    SteamControllerEyebrow(text: "CLICK BINDING", uiScale: uiScale)
-                }
-
-                SteamControllerOptionPicker(
-                    options: BindingKind.allCases.map { (value: $0, label: $0.label) },
-                    selection: displayedKind,
-                    uiScale: uiScale
-                ) { newKind in
-                    bindingKindOverride = newKind
-                    switch newKind {
-                    case .off:
-                        draft?.bindings[control] = .disabled
-                    case .gamepad:
-                        if committedKind != .gamepad { draft?.bindings[control] = .passthroughButton }
-                    case .keyboard, .mouse:
-                        break // wait for the recorder / chip picker below to commit a concrete value
+                if control == .gyro {
+                    // Gyro is a continuous source, not a press: it has behaviour and tuning, and no
+                    // discrete binding, so the binding picker below is deliberately absent.
+                    gyroSection()
+                    Spacer(minLength: 0)
+                } else {
+                    if let padSettingsKind = padSettingsKind(for: control) {
+                        behaviorSection(padSettingsKind)
+                        SteamControllerModalRule()
+                        SteamControllerEyebrow(text: "CLICK BINDING", uiScale: uiScale)
                     }
-                }
 
-                switch displayedKind {
-                case .gamepad:
-                    gamepadEditor(control: control, target: target)
-                case .keyboard:
-                    keyboardEditor(control: control, target: target)
-                case .mouse:
-                    mouseEditor(control: control, target: target)
-                case .off:
-                    EmptyView()
-                }
+                    SteamControllerOptionPicker(
+                        options: BindingKind.allCases.map { (value: $0, label: $0.label) },
+                        selection: displayedKind,
+                        uiScale: uiScale
+                    ) { newKind in
+                        bindingKindOverride = newKind
+                        switch newKind {
+                        case .off:
+                            draft?.bindings[control] = .disabled
+                        case .gamepad:
+                            if committedKind != .gamepad { draft?.bindings[control] = .passthroughButton }
+                        case .keyboard, .mouse:
+                            break // wait for the recorder / chip picker below to commit a concrete value
+                        }
+                    }
 
-                Spacer(minLength: 0)
+                    switch displayedKind {
+                    case .gamepad:
+                        gamepadEditor(control: control, target: target)
+                    case .keyboard:
+                        keyboardEditor(control: control, target: target)
+                    case .mouse:
+                        mouseEditor(control: control, target: target)
+                    case .off:
+                        EmptyView()
+                    }
 
-                Text("While a control is bound to a gamepad combo, L1/R1/L2/R2 in that combo land first and the rest follow a moment later so games register them as modifier + press.")
+                    Spacer(minLength: 0)
+
+                    Text("While a control is bound to a gamepad combo, L1/R1/L2/R2 in that combo land first and the rest follow a moment later so games register them as modifier + press.")
                     .font(.settingsFont(size: 10 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.muted)
+                }
             }
             .padding(OPNDesign.Spacing.card(scale: uiScale))
         }

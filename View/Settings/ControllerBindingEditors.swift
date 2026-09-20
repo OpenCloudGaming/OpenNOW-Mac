@@ -124,8 +124,11 @@ extension ControllerMappingView {
     func behaviorSection(_ kind: PadSettingsKind) -> some View {
         let binding = padSettingsBinding(kind)
         let isStick = kind == .leftStick || kind == .rightStick
-        let availableModes: [ControllerPointerMode] = isStick
-            ? [.joystickPassthrough, .mouse, .scrollWheel, .disabled]
+        // Flick stick is a right-stick behaviour in Steam, and here too: it replaces the stick's
+        // rate with an absolute heading, so it is meaningless on the left stick.
+        let availableModes: [ControllerPointerMode] = kind == .rightStick
+            ? [.joystickPassthrough, .mouse, .scrollWheel, .disabled, .flickStick]
+            : isStick ? [.joystickPassthrough, .mouse, .scrollWheel, .disabled]
             : [.mouse, .scrollWheel, .disabled]
 
         return VStack(alignment: .leading, spacing: OPNDesign.Spacing.section(scale: uiScale)) {
@@ -158,6 +161,10 @@ extension ControllerMappingView {
                     Spacer()
                     Toggle(isOn: binding.invertY, uiScale: uiScale)
                 }
+            }
+            if kind == .rightStick, binding.wrappedValue.mode == .flickStick {
+                SteamControllerModalRule()
+                flickStickSection()
             }
         }
     }

@@ -17,7 +17,7 @@ extension NativeWebRTCGamepadMonitor {
         let profile = mappingProvider.profile(for: deviceID, family: .steam) ?? ControllerMappingProfile(name: "Default")
         let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
         var engine = bindingEngines[deviceID] ?? ControllerBindingEngine()
-        var result = engine.applyDiscreteControls(profile: profile, snapshot: snapshot, deviceID: deviceID, playerIndex: playerIndex, now: bindingClock.now, timestamp: timestamp)
+        var result = engine.applyDiscreteControls(profile: profile, snapshot: snapshot, deviceID: deviceID, playerIndex: playerIndex, now: bindingClock.now, timestamp: timestamp, includePointerMotion: includePointerMotion)
         if includePointerMotion {
             result.events.append(contentsOf: engine.applyPointerMotion(profile: profile, snapshot: snapshot, deviceID: deviceID, timestamp: timestamp))
         }

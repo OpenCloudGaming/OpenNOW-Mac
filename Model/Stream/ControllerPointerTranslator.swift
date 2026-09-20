@@ -58,7 +58,7 @@ public struct ControllerPadPointerTranslator: Sendable {
             let wholeWheel = scaledWheel.rounded(.towardZero)
             wheelRemainder = scaledWheel - wholeWheel
             actions.wheelDelta = clampedInt16(wholeWheel)
-        case .joystickPassthrough, .disabled:
+        case .joystickPassthrough, .disabled, .flickStick:
             break
         }
         return actions
@@ -105,7 +105,7 @@ public struct ControllerStickPointerTranslator: Sendable {
             let wholeWheel = scaledWheel.rounded(.towardZero)
             wheelRemainder = scaledWheel - wholeWheel
             actions.wheelDelta = clampedInt16(wholeWheel)
-        case .joystickPassthrough, .disabled:
+        case .joystickPassthrough, .disabled, .flickStick:
             break
         }
         return actions

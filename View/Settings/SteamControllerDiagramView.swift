@@ -122,12 +122,16 @@ struct SteamControllerDiagramView: View {
                 .position(x: art(227.5), y: art(76))
 
             selectable(.leftStickClick) {
-                stickView(x: snapshot.leftStickX, y: snapshot.leftStickY, pressed: snapshot.buttons.contains(.leftStick))
+                stickView(x: snapshot.leftStickX, y: snapshot.leftStickY,
+                          pressed: snapshot.buttons.contains(.leftStick),
+                          touched: snapshot.leftStickTouched)
             }
             .position(x: art(161.5), y: art(108.5))
 
             selectable(.rightStickClick) {
-                stickView(x: snapshot.rightStickX, y: snapshot.rightStickY, pressed: snapshot.buttons.contains(.rightStick))
+                stickView(x: snapshot.rightStickX, y: snapshot.rightStickY,
+                          pressed: snapshot.buttons.contains(.rightStick),
+                          touched: snapshot.rightStickTouched)
             }
             .position(x: art(292.5), y: art(108.5))
 
@@ -200,7 +204,7 @@ struct SteamControllerDiagramView: View {
         }
     }
 
-    private func stickView(x: Float, y: Float, pressed: Bool) -> some View {
+    private func stickView(x: Float, y: Float, pressed: Bool, touched: Bool) -> some View {
         let active = pressed || abs(x) > 0.05 || abs(y) > 0.05
         // Valve draws the well at r=34.5 and the thumb cap at r=20.75.
         let well = art(69)
@@ -211,7 +215,7 @@ struct SteamControllerDiagramView: View {
                 .fill(ControllerDiagramArtwork.Overlay.fill(0.02))
                 .overlay(
                     Circle().stroke(
-                        pressed ? OPNDesign.accent.opacity(0.7) : (active ? ControllerDiagramArtwork.Overlay.fill(0.28) : ControllerDiagramArtwork.Overlay.strokeRegular),
+                        pressed ? OPNDesign.accent.opacity(0.7) : (touched ? OPNDesign.accent.opacity(0.5) : (active ? ControllerDiagramArtwork.Overlay.fill(0.28) : ControllerDiagramArtwork.Overlay.strokeRegular)),
                         lineWidth: pressed ? 1.5 : 1
                     )
                 )
@@ -353,18 +357,29 @@ struct SteamControllerDiagramView: View {
 
     private func gripPill(_ control: ControllerControl) -> some View {
         let pressed = control.gamepadButton.map { snapshot.buttons.contains($0) } ?? false
+        let sensed = gripSensed(control)
         return ZStack {
             Capsule()
                 .fill(pressed ? OPNDesign.accent.opacity(0.25) : ControllerDiagramArtwork.Overlay.fill(0.02))
             Capsule()
                 .stroke(
-                    pressed ? OPNDesign.accent.opacity(0.7) : ControllerDiagramArtwork.Overlay.strokeStrong,
-                    style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])
+                    pressed ? OPNDesign.accent.opacity(0.7) : (sensed ? OPNDesign.accent.opacity(0.5) : ControllerDiagramArtwork.Overlay.strokeStrong),
+                    style: StrokeStyle(lineWidth: pressed || sensed ? 1.5 : 1, dash: pressed || sensed ? [] : [3, 2.5])
                 )
             Text(control.label)
                 .font(.settingsFont(size: 9 * uiScale, weight: .bold))
-                .foregroundStyle(pressed ? OPNDesign.accentInk : ControllerDiagramArtwork.Overlay.textTertiary)
+                .foregroundStyle(pressed ? OPNDesign.accentInk : (sensed ? OPNDesign.accent : ControllerDiagramArtwork.Overlay.textTertiary))
         }
         .frame(width: art(30), height: art(15))
+    }
+
+    /// Grip Sense is the capacitive handle contact, not the rear buttons: both L4/L5 sit on the
+    /// left handle and both R4/R5 on the right, so either pill lights for its side's sensor.
+    private func gripSensed(_ control: ControllerControl) -> Bool {
+        switch control {
+        case .leftGrip, .leftGrip2: snapshot.leftGripSense
+        case .rightGrip, .rightGrip2: snapshot.rightGripSense
+        default: false
+        }
     }
 }

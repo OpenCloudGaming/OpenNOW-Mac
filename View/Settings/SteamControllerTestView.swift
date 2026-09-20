@@ -239,11 +239,17 @@ struct SteamControllerTestView: View {
     }
 
     private var steamRawValuesPanel: some View {
-        SteamControllerSection(title: "RAW INPUT VALUES", uiScale: uiScale) {
-            HStack(alignment: .top, spacing: OPNDesign.Spacing.xLarge(scale: uiScale)) {
-                steamAxesColumn
-                steamButtonStatesGrid
+        VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
+            SteamControllerSection(title: "RAW INPUT VALUES", uiScale: uiScale) {
+                HStack(alignment: .top, spacing: OPNDesign.Spacing.xLarge(scale: uiScale)) {
+                    steamAxesColumn
+                    steamButtonStatesGrid
+                }
             }
+            SteamControllerMotionPanel(snapshot: steamModel.snapshot,
+                                       gyroReadout: steamModel.gyroReadout,
+                                       activationHint: steamModel.gyroActivationHint,
+                                       uiScale: uiScale)
         }
     }
 

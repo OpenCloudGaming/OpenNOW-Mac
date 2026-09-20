@@ -191,6 +191,12 @@ public final class SteamControllerHIDMonitor: ObservableObject {
             if abs(snapshot.rightStickY) > abs(merged.rightStickY) { merged.rightStickY = snapshot.rightStickY }
             if snapshot.leftPad != empty.leftPad { merged.leftPad = snapshot.leftPad }
             if snapshot.rightPad != empty.rightPad { merged.rightPad = snapshot.rightPad }
+            if merged.touchpad == nil { merged.touchpad = snapshot.touchpad }
+            merged.leftGripSense = merged.leftGripSense || snapshot.leftGripSense
+            merged.rightGripSense = merged.rightGripSense || snapshot.rightGripSense
+            merged.leftStickTouched = merged.leftStickTouched || snapshot.leftStickTouched
+            merged.rightStickTouched = merged.rightStickTouched || snapshot.rightStickTouched
+            if merged.motion == nil { merged.motion = snapshot.motion }
         }
     }
 
@@ -200,6 +206,9 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         guard isInputCaptureActive else { return }
         let wantsRawTrackpadCapture = mappingProvider.requiresRawSteamTrackpads
         for context in devices.values {
+            // Ahead of the trackpad branch, which can `continue`: toggling gyro in the settings must
+            // reach every connected pad, not only the ones whose trackpads changed behaviour.
+            configureMotionReporting(for: context)
             if wantsRawTrackpadCapture {
                 guard !context.isSeized else { continue }
                 configureCapture(for: context)
