@@ -453,6 +453,9 @@ or INSTALLING eyebrow, an 11pt bold byte readout, and a 3px progress bar — det
 Rectangles (accent over #FFFFFF @ 0.10), or `VendorIndeterminateProgressBar` when the server
 sends no content length. Buttons and the close control disable for the duration.
 
+It enters and leaves through `Motion.panel` — the scrim cross-fades while the centered panel
+springs up from 0.96 scale with a fade, collapsing to a plain cross-fade under Reduce Motion.
+
 ### Settings Destination Rail (`SettingsSidebar`)
 
 The desktop Settings navigation: a 208-wide column of 36-high rows, 14 horizontal padding, 16pt
@@ -676,7 +679,9 @@ title, and the square 28×28 close control (shared `OPNModalCloseButton`). 1px D
 actions trailing. Actions are `OPNConfirmationAction`s in visual order: `.cancel` (Escape,
 `OPNModalSecondaryButtonStyle`), `.standard` (Enter, secondary), and `.destructive`
 (`OPNModalDestructiveButtonStyle`, never the default). The scrim tap, close control, Escape, and
-`.cancel` all dismiss.
+`.cancel` all dismiss. It enters and leaves through `Motion.panel`: the scrim cross-fades while the
+centered panel springs up from 0.96 scale with a fade. Reduce Motion collapses both to a plain
+cross-fade.
 
 ### Report an Issue Modal (`OPNReportIssueModal`)
 
@@ -727,7 +732,9 @@ form with two destinations:
   is NVIDIA's and is not restyled.
 
 Scrim tap, close control, and Escape all dismiss; the centered picker stays above whichever form the
-channel draws.
+channel draws. It opens and closes with the same `Motion.panel` entrance as the confirmation modal:
+the scrim cross-fades while the panel springs up from 0.96 scale with a fade, collapsing to a plain
+cross-fade under Reduce Motion.
 
 ### Controller Sheets (test / mapping)
 

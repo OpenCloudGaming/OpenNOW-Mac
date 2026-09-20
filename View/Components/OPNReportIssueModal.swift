@@ -7,23 +7,27 @@ struct OPNReportIssueOverlay: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        if presentation.isPresented {
-            GeometryReader { proxy in
-                ZStack {
-                    OPNDesign.Surface.scrim
-                        .ignoresSafeArea()
-                        .onTapGesture { presentation.dismiss() }
+        ZStack {
+            if presentation.isPresented {
+                OPNDesign.Surface.scrim
+                    .ignoresSafeArea()
+                    .onTapGesture { presentation.dismiss() }
+                    .opnTransition(.opacity)
 
-                    OPNReportIssueModal(
-                        presentation: presentation,
-                        uiScale: uiScale,
-                        availableSize: proxy.size
-                    )
+                GeometryReader { proxy in
+                    ZStack {
+                        OPNReportIssueModal(
+                            presentation: presentation,
+                            uiScale: uiScale,
+                            availableSize: proxy.size
+                        )
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                .opnTransition(.scale(scale: 0.96).combined(with: .opacity))
             }
-            .transition(.opacity)
         }
+        .opnMotion(OPNDesign.Motion.panel, value: presentation.isPresented)
     }
 }
 

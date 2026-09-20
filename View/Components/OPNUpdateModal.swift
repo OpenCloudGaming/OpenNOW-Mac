@@ -7,25 +7,29 @@ struct OPNUpdateOverlay: View {
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
-        if let request = presentation.request {
-            GeometryReader { proxy in
-                ZStack {
-                    OPNDesign.Surface.scrim
-                        .ignoresSafeArea()
-                        .onTapGesture { presentation.dismiss() }
+        ZStack {
+            if let request = presentation.request {
+                OPNDesign.Surface.scrim
+                    .ignoresSafeArea()
+                    .onTapGesture { presentation.dismiss() }
+                    .opnTransition(.opacity)
 
-                    OPNUpdateModal(
-                        request: request,
-                        notes: presentation.notes,
-                        installState: presentation.installState,
-                        availableSize: proxy.size,
-                        uiScale: uiScale
-                    )
+                GeometryReader { proxy in
+                    ZStack {
+                        OPNUpdateModal(
+                            request: request,
+                            notes: presentation.notes,
+                            installState: presentation.installState,
+                            availableSize: proxy.size,
+                            uiScale: uiScale
+                        )
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                .opnTransition(.scale(scale: 0.96).combined(with: .opacity))
             }
-            .transition(.opacity)
         }
+        .opnMotion(OPNDesign.Motion.panel, value: presentation.request != nil)
     }
 }
 

@@ -66,26 +66,30 @@ struct OPNConfirmationOverlay: View {
     @ObservedObject private var presentation = OPNConfirmationPresentation.shared
 
     var body: some View {
-        if let request = presentation.request {
-            GeometryReader { proxy in
-                ZStack {
-                    OPNDesign.Surface.scrim
-                        .ignoresSafeArea()
-                        .onTapGesture { presentation.dismiss() }
+        ZStack {
+            if let request = presentation.request {
+                OPNDesign.Surface.scrim
+                    .ignoresSafeArea()
+                    .onTapGesture { presentation.dismiss() }
+                    .opnTransition(.opacity)
 
-                    OPNConfirmationModal(
-                        eyebrow: request.eyebrow,
-                        title: request.title,
-                        message: request.message,
-                        actions: request.actions,
-                        availableSize: proxy.size,
-                        dismiss: { presentation.dismiss() }
-                    )
+                GeometryReader { proxy in
+                    ZStack {
+                        OPNConfirmationModal(
+                            eyebrow: request.eyebrow,
+                            title: request.title,
+                            message: request.message,
+                            actions: request.actions,
+                            availableSize: proxy.size,
+                            dismiss: { presentation.dismiss() }
+                        )
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
+                .opnTransition(.scale(scale: 0.96).combined(with: .opacity))
             }
-            .transition(.opacity)
         }
+        .opnMotion(OPNDesign.Motion.panel, value: presentation.request != nil)
     }
 }
 
