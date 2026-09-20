@@ -239,6 +239,14 @@ public struct GyroProcessor: Sendable {
         horizontal = horizontalFilter.filter(horizontal, deltaTime: deltaTime)
         vertical = verticalFilter.filter(vertical, deltaTime: deltaTime)
 
+        return producedOutput(horizontal: horizontal, vertical: vertical, settings: settings, deltaTime: deltaTime)
+    }
+
+    /// Routes the shaped rates to the mode the profile asked for.
+    private mutating func producedOutput(horizontal: Float,
+                                        vertical: Float,
+                                        settings: ControllerGyroSettings,
+                                        deltaTime: Float) -> GyroMotionOutput {
         var output = GyroMotionOutput()
         switch settings.mode {
         case .off:

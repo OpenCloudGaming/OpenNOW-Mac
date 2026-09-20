@@ -246,61 +246,7 @@ struct SteamControllerTestView: View {
                     steamButtonStatesGrid
                 }
             }
-            steamMotionPanel
-        }
-    }
-
-    /// Live inertial data, plus the capacitive contacts that gate it.
-    ///
-    /// This panel is also the hardware check the gyro feature depends on: the 2026 controller's
-    /// IMU ships disabled and reports twelve bytes of nothing until the host switches it on, so
-    /// "no motion data" here means the reporting command never landed — not that the pad is still.
-    private var steamMotionPanel: some View {
-        SteamControllerSection(title: "MOTION", uiScale: uiScale) {
-            VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-                if let motion = steamModel.snapshot.motion {
-                    motionVectorRow("GYRO", x: motion.gyroX, y: motion.gyroY, z: motion.gyroZ, unit: "°/s")
-                    motionVectorRow("ACCEL", x: motion.accelX, y: motion.accelY, z: motion.accelZ, unit: "")
-                    HStack(spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
-                        buttonStateRow("Grip L", active: steamModel.snapshot.leftGripSense)
-                        buttonStateRow("Grip R", active: steamModel.snapshot.rightGripSense)
-                        buttonStateRow("Stick L", active: steamModel.snapshot.leftStickTouched)
-                        buttonStateRow("Stick R", active: steamModel.snapshot.rightStickTouched)
-                    }
-                } else {
-                    Text("No motion data. The IMU is off in the controller's firmware until OpenNOW switches it on, which it does only while a profile asks for gyro — set Gyro → Output to anything other than Off.")
-                        .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    private func motionVectorRow(_ label: String, x: Float, y: Float, z: Float, unit: String) -> some View {
-        HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-            Text(label)
-                .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                .foregroundStyle(OPNDesign.Text.tertiary)
-                .frame(width: 44 * uiScale, alignment: .leading)
-            ForEach(["X", "Y", "Z"], id: \.self) { axis in
-                let value: Float = axis == "X" ? x : (axis == "Y" ? y : z)
-                HStack(spacing: 3 * uiScale) {
-                    Text(axis)
-                        .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                        .foregroundStyle(OPNDesign.Text.muted)
-                    Text(String(format: "%.0f", value))
-                        .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.primary)
-                        .monospacedDigit()
-                        .frame(width: 48 * uiScale, alignment: .trailing)
-                }
-            }
-            if !unit.isEmpty {
-                Text(unit)
-                    .font(.settingsFont(size: 10 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.muted)
-            }
+            SteamControllerMotionPanel(snapshot: steamModel.snapshot, uiScale: uiScale)
         }
     }
 
