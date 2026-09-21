@@ -3,6 +3,10 @@ import Foundation
 public typealias StreamSessionQuitDecisionHandler = @MainActor @Sendable (_ shouldTerminateApplication: Bool) -> Void
 public typealias StreamSessionQuitRequestHandler = @MainActor @Sendable (_ completion: @escaping StreamSessionQuitDecisionHandler) -> Bool
 public typealias StreamCommandHandler = @MainActor @Sendable (_ command: StreamCommand) -> Void
+/// Hands one synthetic event to a live session through that session's own input path, returning
+/// whether the session accepted it. A session that is tearing down, not yet ready, or already gone
+/// answers `false` rather than dropping the event silently.
+public typealias StreamInputInjector = @MainActor @Sendable (_ event: UserInputEvent) -> Bool
 
 enum StreamAntiAFKInputPolicy {
     /// The poll phase is pinned to stream start, not to the last input, so the interval is the
@@ -22,7 +26,7 @@ enum StreamAntiAFKInputPolicy {
     }
 
     static func mouseMove(deltaX: Int16, deltaY: Int16) -> UserInputEvent {
-        .mouse(.moved(deviceID: "mouse", deltaX: deltaX, deltaY: deltaY, timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
+        .relativeMouseMove(deltaX: deltaX, deltaY: deltaY)
     }
 }
 
@@ -35,16 +39,21 @@ public enum StreamSessionLifecycle {
     private static var activeStreamIDs: [UUID] = []
     private static var quitRequestHandlers: [UUID: StreamSessionQuitRequestHandler] = [:]
     private static var commandHandlers: [UUID: StreamCommandHandler] = [:]
+    private static var inputInjectors: [UUID: StreamInputInjector] = [:]
 
     public static var hasActiveStream: Bool {
         !activeStreamIDs.isEmpty
     }
 
-    public static func activate(_ id: UUID, quitRequestHandler: @escaping StreamSessionQuitRequestHandler, commandHandler: StreamCommandHandler? = nil) {
+    public static func activate(_ id: UUID,
+                                quitRequestHandler: @escaping StreamSessionQuitRequestHandler,
+                                commandHandler: StreamCommandHandler? = nil,
+                                inputInjector: StreamInputInjector? = nil) {
         activeStreamIDs.removeAll { $0 == id }
         activeStreamIDs.append(id)
         quitRequestHandlers[id] = quitRequestHandler
         commandHandlers[id] = commandHandler
+        inputInjectors[id] = inputInjector
         NotificationCenter.default.post(name: activeStreamDidChangeNotification, object: nil)
     }
 
@@ -52,6 +61,7 @@ public enum StreamSessionLifecycle {
         activeStreamIDs.removeAll { $0 == id }
         quitRequestHandlers.removeValue(forKey: id)
         commandHandlers.removeValue(forKey: id)
+        inputInjectors.removeValue(forKey: id)
         NotificationCenter.default.post(name: activeStreamDidChangeNotification, object: nil)
     }
 
@@ -64,5 +74,17 @@ public enum StreamSessionLifecycle {
         guard let id = activeStreamIDs.last, let handler = commandHandlers[id] else { return false }
         handler(command)
         return true
+    }
+
+    /// Injects one synthetic event into the live session — the route a settings surface uses to
+    /// reach a stream it does not own.
+    ///
+    /// Deliberately not a second input path: the injector is a closure the live stream surface
+    /// registers, and it sends through the same transport call the surface's own input already
+    /// uses. Settings never learns which transport is live, so the two cannot disagree about how an
+    /// event is encoded or paced. `false` means there was no live session to take it.
+    public static func sendSyntheticInput(_ event: UserInputEvent) -> Bool {
+        guard let id = activeStreamIDs.last, let injector = inputInjectors[id] else { return false }
+        return injector(event)
     }
 }

@@ -238,11 +238,17 @@ public enum SteamControllerReport {
 
     /// A raw gyroscope sample as degrees per second.
     ///
-    /// UNVERIFIED SCALE. Nothing public states the Ibex gyro's full-scale range; the Steam Deck's
-    /// ICM-42607 is configured for ±2000 °/s and SDL parses both reports through the same struct
-    /// shape, so that range is assumed. A wrong constant here shifts the *default* sensitivity
-    /// only — the pixels-per-360 calibration measures the real ratio at runtime and corrects it —
-    /// but the sign and axis assignment need the Phase 0 hardware pass regardless.
+    /// **The full-scale range is derived, not measured.** Nothing public states the Ibex gyro's
+    /// range, so this assumes the Steam Deck's ICM-42607 is configured for ±2000 °/s and that SDL
+    /// parses both reports through the same struct shape. A wrong constant here shifts the
+    /// *default* sensitivity only — the pixels-per-360 calibration measures the real ratio at
+    /// runtime and corrects it.
+    ///
+    /// The gyro path is otherwise verified end-to-end on hardware (recorded 2026-09-21): the IMU
+    /// switches on, motion decodes, and the axis assignment drives the camera correctly in a live
+    /// game. Derived rather than measured, and therefore not covered by that pass: this constant's
+    /// exact value, the `0x45` and `0x47` offsets (both shifted from the `0x42` layout), IMU
+    /// enable per transport, and the report rate.
     private static func rate(_ report: [UInt8], at index: Int) -> Float {
         rawInt16(report, at: index) * (2000.0 / 32768.0)
     }

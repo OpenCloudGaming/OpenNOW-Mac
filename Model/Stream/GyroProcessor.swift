@@ -77,6 +77,22 @@ private struct OneEuroFilter: Sendable {
 /// rotation as drift, cancelling it — the single most reported gyro complaint about the hardware,
 /// and one Steam Input cannot switch off. This estimator only adapts while gyro is *inactive*,
 /// so deliberate slow aim is never mistaken for drift.
+/// One sample's shaped rotation rates, in degrees per second, ahead of the output mode.
+///
+/// Carries the clamped `deltaTime` the shaping ran with, so a caller that continues into mode
+/// routing accumulates with the same step the shaping used.
+public struct GyroShapedRates: Equatable, Sendable {
+    public let horizontal: Float
+    public let vertical: Float
+    public let deltaTime: Float
+
+    public init(horizontal: Float, vertical: Float, deltaTime: Float) {
+        self.horizontal = horizontal
+        self.vertical = vertical
+        self.deltaTime = deltaTime
+    }
+}
+
 public struct GyroProcessor: Sendable {
     /// Counts per degree used when `useNaturalSensitivity` is off, chosen so the default
     /// sensitivity reproduces a 1440-count 360-degree turn — the common shooter default.
@@ -87,8 +103,11 @@ public struct GyroProcessor: Sendable {
     /// mouse events would flood it and delay real mouse input.
     public static let defaultFlushInterval: Float = 1.0 / 120.0
 
-    /// Rates below this are treated as "held still" for bias estimation.
-    private static let autoBiasStillRate: Float = 4
+    /// Rates below this are treated as "held still" for bias estimation. Public because the
+    /// calibration capture has to judge stillness by the same threshold the estimator does: a second
+    /// copy of the number is how a capture and the estimator it feeds end up disagreeing about
+    /// whether the pad was still.
+    public static let autoBiasStillRate: Float = 4
     /// Time constant of the bias estimate, in seconds.
     private static let autoBiasTimeConstant: Float = 1.5
     /// Time constant of the gravity estimate, in seconds.
@@ -167,7 +186,8 @@ public struct GyroProcessor: Sendable {
     public var currentBias: SIMD3<Float> { bias }
 
     /// Fold one sample into the bias estimate. Called repeatedly while the controller is known to
-    /// be still — the calibration wizard's "hold still" step and nothing else in manual mode.
+    /// be still — in automatic mode whenever gyro is inactive, which is the whole procedure: hold
+    /// the pad still for a second or two. Manual mode never calls this.
     public mutating func captureBias(_ sample: ControllerMotionSample, deltaTime: Float) {
         let measured = SIMD3(sample.gyroX, sample.gyroY, sample.gyroZ)
         guard hasBias else {
@@ -191,14 +211,38 @@ public struct GyroProcessor: Sendable {
                                  settings: ControllerGyroSettings,
                                  isActive: Bool,
                                  deltaTime: Float) -> GyroMotionOutput {
-        let deltaTime = min(max(deltaTime, 0.0001), 0.05)
+        guard let shaped = shapedRates(sample,
+                                       settings: settings,
+                                       isActive: isActive,
+                                       deltaTime: deltaTime) else { return .none }
+        return producedOutput(horizontal: shaped.horizontal,
+                              vertical: shaped.vertical,
+                              settings: settings,
+                              deltaTime: shaped.deltaTime)
+    }
+
+    /// The shaped rotation rates one sample produces, in degrees per second, before the profile's
+    /// output mode is applied.
+    ///
+    /// `process` is this plus mode routing and deliberately nothing more. The calibration wizard
+    /// measures a user's turn rate through these exact numbers, so the rate it reads is the rate the
+    /// stick receives; shaping a sample twice — once to measure, once to emit — is how a wizard ends
+    /// up recommending a value its own output path disagrees with.
+    ///
+    /// Returns `nil` for a profile whose gyro is off and for a missing sample: the two cases that
+    /// produce no output at all and reset the transient state.
+    public mutating func shapedRates(_ sample: ControllerMotionSample?,
+                                     settings: ControllerGyroSettings,
+                                     isActive: Bool,
+                                     deltaTime rawDeltaTime: Float) -> GyroShapedRates? {
+        let deltaTime = min(max(rawDeltaTime, 0.0001), 0.05)
         guard settings.isEnabled else {
             resetTransientState()
-            return .none
+            return nil
         }
         guard let sample else {
             resetTransientState()
-            return .none
+            return nil
         }
 
         // The first sample is NOT taken as the bias. Doing that would read every session's first
@@ -243,7 +287,7 @@ public struct GyroProcessor: Sendable {
         horizontal = horizontalFilter.filter(horizontal, deltaTime: deltaTime)
         vertical = verticalFilter.filter(vertical, deltaTime: deltaTime)
 
-        return producedOutput(horizontal: horizontal, vertical: vertical, settings: settings, deltaTime: deltaTime)
+        return GyroShapedRates(horizontal: horizontal, vertical: vertical, deltaTime: deltaTime)
     }
 
     /// Routes the shaped rates to the mode the profile asked for.

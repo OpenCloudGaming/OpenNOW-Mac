@@ -14,6 +14,7 @@ struct ControllerMappingView: View {
     @State var draft: ControllerMappingProfile?
     @State var selectedControl: ControllerControl = .leftGrip
     @State var bindingKindOverride: BindingKind?
+    @State var calibration = GyroCalibrationSession()
     @FocusState private var nameFieldFocused: Bool
 
     private static let sidebarWidth: CGFloat = 168
@@ -107,6 +108,18 @@ struct ControllerMappingView: View {
         .onChange(of: devices.devices) { selection = resolvedSelection }
         .onChange(of: selectedControl) {
             bindingKindOverride = nil
+        }
+        // The calibration passes read the live pad on the same cadence the snapshots arrive on, in
+        // their own loop rather than off snapshot changes: a capture held perfectly still would
+        // otherwise stop receiving samples at the exact moment it needs them.
+        .task(id: calibration.isRunning) {
+            guard calibration.isRunning else { return }
+            while !Task.isCancelled, calibration.isRunning {
+                calibration.ingest(liveModel.snapshot.motion,
+                                   settings: draft?.gyro ?? ControllerGyroSettings(),
+                                   deltaTime: ControllerMappingLiveModel.sampleInterval)
+                try? await Task.sleep(for: ControllerMappingLiveModel.pollInterval)
+            }
         }
     }
 

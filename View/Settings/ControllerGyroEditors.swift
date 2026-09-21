@@ -240,16 +240,108 @@ extension ControllerMappingView {
                 gyroValueChip("Y", String(format: "%.2f", settings.biasY))
                 gyroValueChip("Z", String(format: "%.2f", settings.biasZ))
             }
-            SteamControllerChip(label: "Recalibrate", isSelected: false, uiScale: uiScale) {
-                var updated = binding.wrappedValue
-                updated.biasX = 0
-                updated.biasY = 0
-                updated.biasZ = 0
-                updated.calibrationMode = .automatic
-                binding.wrappedValue = updated
+            gyroNote("Automatic calibration only adapts while gyro is inactive. That is deliberate: the controller's own firmware auto-calibrates constantly and cancels slow deliberate movement, which no setting in Steam Input can switch off. Hold the pad still with gyro released and the estimator re-learns the offset in a second or two.")
+            zeroRateOffsetPass(binding)
+            if settings.mode == .joystickCamera {
+                turnRatePass(binding)
             }
-            gyroNote("Recalibrating clears the stored zero-rate offset; hold the controller still for a second or two with gyro inactive and the estimator re-learns it.")
-            gyroNote("Automatic calibration only adapts while gyro is inactive. That is deliberate: the controller's own firmware auto-calibrates constantly and cancels slow deliberate movement, which no setting in Steam Input can switch off.")
+        }
+    }
+
+    /// The zero-rate offset pass: hold still, measure, store what the estimator itself measured.
+    private func zeroRateOffsetPass(_ binding: Binding<ControllerGyroSettings>) -> some View {
+        let isRunning = calibration.isRunning && calibration.kind == .zeroRateOffset
+        let isBusy = calibration.isRunning
+        return VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+            gyroNote("Zero-rate offset: hold the controller as still as you can and measure. The stored value seeds every session, so a pad on a table gives the cleanest reading; moving during the measurement cancels it.")
+            if isRunning {
+                SteamControllerValueBar(value: calibration.progress, signed: false, uiScale: uiScale)
+            }
+            HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+                SteamControllerChip(label: isRunning ? "Measuring…" : "Measure Offset", isSelected: isRunning, uiScale: uiScale) {
+                    if isRunning {
+                        calibration.cancel()
+                    } else {
+                        calibration.start(.zeroRateOffset)
+                    }
+                }
+                .disabled(isBusy && !isRunning)
+                if case .measuredOffset(let x, let y, let z) = calibration.result, !isBusy {
+                    SteamControllerChip(label: "Use \(offsetText(x, y, z))", isSelected: false, uiScale: uiScale) {
+                        binding.wrappedValue = calibration.applyingMeasuredOffset(to: binding.wrappedValue)
+                        calibration.cancel()
+                    }
+                }
+            }
+            if let text = offsetOutcomeText {
+                gyroNote(text)
+            }
+        }
+    }
+
+    private func offsetText(_ x: Float, _ y: Float, _ z: Float) -> String {
+        String(format: "%.2f / %.2f / %.2f", x, y, z)
+    }
+
+    private var offsetOutcomeText: String? {
+        guard !calibration.isRunning else { return nil }
+        switch calibration.result {
+        case .measuredOffset:
+            return "Measured. Store it, or measure again if the pad was not resting."
+        case .movedDuringCapture:
+            return "The controller moved while measuring, so nothing was stored. Rest your hands and measure again."
+        case .noMotionData:
+            return "This controller reports no motion data, so there is no zero-rate offset to measure."
+        default:
+            return nil
+        }
+    }
+
+    /// The turn-rate pass. Offered only for joystick-camera output: that deflection divides the
+    /// shaped rotation rate by `maxTurnRateDegreesPerSecond`, so it is the one mode where the number
+    /// this measures is a number something reads.
+    private func turnRatePass(_ binding: Binding<ControllerGyroSettings>) -> some View {
+        let isRunning = calibration.isRunning && calibration.kind == .turnRate
+        let isBusy = calibration.isRunning
+        return VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+            gyroNote("Maximum Turn Rate is how fast you rotate before the right stick pins at full — \(Int(binding.wrappedValue.maxTurnRateDegreesPerSecond))°/s now. Measure it by turning the controller the way you swing the camera in game.")
+            if isRunning {
+                SteamControllerValueBar(value: calibration.progress, signed: false, uiScale: uiScale)
+            }
+            HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+                SteamControllerChip(label: isRunning ? "Measuring…" : "Measure Turn Rate", isSelected: isRunning, uiScale: uiScale) {
+                    if isRunning {
+                        calibration.cancel()
+                    } else {
+                        calibration.start(.turnRate)
+                    }
+                }
+                .disabled(isBusy && !isRunning)
+                if case .turnRateRecommended(let rate) = calibration.result, !isBusy {
+                    SteamControllerChip(label: "Use \(Int(rate))°/s", isSelected: false, uiScale: uiScale) {
+                        binding.wrappedValue = calibration.applyingMeasuredTurnRate(to: binding.wrappedValue)
+                        calibration.cancel()
+                    }
+                }
+            }
+            if let text = turnRateOutcomeText {
+                gyroNote(text)
+            }
+        }
+    }
+
+    private var turnRateOutcomeText: String? {
+        if case .noTurnDetected = calibration.result {
+            return "Only a slow drift was measured, so nothing was stored. Turn faster than you ever would in game."
+        }
+        guard calibration.isRunning, calibration.kind == .turnRate else { return nil }
+        switch calibration.liveTurnRateVerdict {
+        case .keepRotating:
+            return "Keep turning — about a third of a full turn is needed before the reading means anything."
+        case .noTurnDetected:
+            return "Turn faster: only a slow drift has reached the gyro so far."
+        case .recommend, nil:
+            return nil
         }
     }
 

@@ -116,6 +116,7 @@ OpenNOW talks to Valve's controllers directly over HID, so you get the pad in yo
 
 - **Every 2026 variant** - wired, BLE, and both dongles - plus the original 2015 controller.
 - **Haptics, grips, trackpads** - rumble feedback, four back grips, and both pads parsed and bindable client-side.
+- **Gyro and flick stick** - the 2026 controller's IMU, decoded in the client: right-stick or mouse output, Grip Sense or latch activation, flick stick, and a live MOTION panel in the tester. Opt-in per profile.
 - **Visual mapping editor** - click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
 - **Combos on any control** - bind a back grip to `B + R2`; the modifier lands first, the press follows a beat later, so games read it as a real combo.
 - **Profiles** - save as many as you like and switch between them.

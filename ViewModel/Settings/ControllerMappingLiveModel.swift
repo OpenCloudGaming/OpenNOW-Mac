@@ -4,6 +4,12 @@ import GameController
 
 @MainActor
 final class ControllerMappingLiveModel: ObservableObject {
+    /// The cadence this model republishes at, and therefore the step one calibration sample
+    /// represents. Exposed so the gyro editor's capture integrates over the same interval the
+    /// snapshots arrive on instead of carrying a second copy of the same number.
+    static let pollInterval: Duration = .milliseconds(33)
+    static let sampleInterval: Float = 0.033
+
     @Published private(set) var snapshot = ControllerInputSnapshot()
     var selectedDeviceID: InputDeviceID? {
         didSet { snapshot = ControllerInputSnapshot() }
@@ -20,7 +26,7 @@ final class ControllerMappingLiveModel: ObservableObject {
         task = Task { [weak self] in
             while !Task.isCancelled {
                 self?.poll()
-                try? await Task.sleep(for: .milliseconds(33))
+                try? await Task.sleep(for: Self.pollInterval)
             }
         }
     }

@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 
 public struct InputDeviceID: Codable, Equatable, Hashable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
@@ -237,6 +238,21 @@ public enum UserInputEvent: Codable, Equatable, Hashable, Sendable {
         case .gamepad(let state):
             state.timestamp
         }
+    }
+}
+
+extension UserInputEvent {
+    /// A relative pointer move on the shared virtual mouse device.
+    ///
+    /// The single constructor for a synthetic move, so the two producers that do not come from the
+    /// pointer hardware — the anti-AFK nudge and the gyro calibration turn — cannot drift into two
+    /// encodings of the same event. A caller that already has the event's instant passes it; one
+    /// that does not gets the current uptime.
+    public static func relativeMouseMove(deltaX: Int16,
+                                         deltaY: Int16,
+                                         deviceID: InputDeviceID = "mouse",
+                                         timestamp: MediaTimestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)) -> UserInputEvent {
+        .mouse(.moved(deviceID: deviceID, deltaX: deltaX, deltaY: deltaY, timestamp: timestamp))
     }
 }
 

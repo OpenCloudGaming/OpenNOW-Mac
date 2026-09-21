@@ -176,7 +176,9 @@ public enum GyroCalibrationMode: String, Codable, CaseIterable, Identifiable, Se
     /// the same estimator is what the 2026 controller's own firmware applies too aggressively
     /// for slow deliberate motion, which is why `deadband` exists alongside it.
     case automatic
-    /// Only the explicit recalibrate action updates the bias.
+    /// The bias is never re-estimated: it stays at the offset the profile stores, for the whole
+    /// session. Nothing in the app writes a stored offset, so this means no zero-rate compensation
+    /// at all — it exists for a profile that already carries one, not as a working feature.
     case manual
 
     public var id: String { rawValue }
@@ -198,6 +200,13 @@ public struct ControllerGyroSettings: Equatable, Codable, Sendable {
     public static let minimumPixelsPer360: Float = 100
     public static let maximumPixelsPer360: Float = 32000
 
+    /// Range of `maxTurnRateDegreesPerSecond`: the rotation rate at which the joystick-camera
+    /// output reaches full deflection, and therefore the value the turn-rate calibration
+    /// recommends. Exposed so the wizard clamps to the same bounds this initializer does rather
+    /// than to a second copy of the same two numbers.
+    public static let minimumMaxTurnRate: Float = 10
+    public static let maximumMaxTurnRate: Float = 2000
+
     public var mode: GyroOutputMode
     public var activationStyle: GyroActivationStyle
     public var activationSource: GyroActivationSource
@@ -214,8 +223,9 @@ public struct ControllerGyroSettings: Equatable, Codable, Sendable {
     /// calibration value reproduces the same physical turn in every game that shares an in-game
     /// sensitivity. This is Steam's "Natural Sensitivity Scale".
     public var useNaturalSensitivity: Bool
-    /// Screen pixels (or in-game counts) for one physical 360-degree turn. Set by the calibration
-    /// wizard, not typed in by hand if the user takes the wizard.
+    /// Screen pixels (or in-game counts) for one physical 360-degree turn. Nothing measures it
+    /// automatically: the user types it in the gyro editor, and the guided loop that would measure
+    /// it is not implemented.
     public var pixelsPer360: Float
 
     public var conversion: GyroConversion
@@ -310,7 +320,7 @@ public struct ControllerGyroSettings: Equatable, Codable, Sendable {
         self.momentumVertical = Self.clamp(momentumVertical, 0, 1)
         self.joystickPowerCurve = Self.clamp(joystickPowerCurve, 0.25, 4)
         self.antiDeadzone = Self.clamp(antiDeadzone, 0, 0.6)
-        self.maxTurnRateDegreesPerSecond = Self.clamp(maxTurnRateDegreesPerSecond, 10, 2000)
+        self.maxTurnRateDegreesPerSecond = Self.clamp(maxTurnRateDegreesPerSecond, Self.minimumMaxTurnRate, Self.maximumMaxTurnRate)
         self.catchUp = catchUp
         self.lockExtents = lockExtents
         self.deflectionAngleDegrees = Self.clamp(deflectionAngleDegrees, 5, 540)

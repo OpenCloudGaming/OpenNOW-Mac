@@ -394,7 +394,12 @@ extension WebRTCMediaStreamSurface {
                 showQuitMenu(completion: completion)
                 return true
             },
-            commandHandler: handle
+            commandHandler: handle,
+            inputInjector: { event in
+                guard isStreamReady, !isEndingStream, !didEndStream, let transport else { return false }
+                transport.sendNow(event)
+                return true
+            }
         )
     }
 

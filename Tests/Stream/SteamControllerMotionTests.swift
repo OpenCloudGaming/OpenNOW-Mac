@@ -70,7 +70,9 @@ private func gyroMouseMovement(in events: [UserInputEvent]) -> (Int16, Int16)? {
     @Test func gyroIsDecodedFromTheDocumentedOffsets() {
         let raw: Int16 = 16384
         let snapshot = tritonMotionSnapshot(tritonMotionReport(gyro: (raw, 0, 0)))
-        // ±2000 deg/s full scale: 16384 / 32768 * 2000.
+        // ±2000 deg/s is the derived full scale (`SteamControllerReport.rate`): this pins the
+        // conversion arithmetic, not the range. A differently measured range moves this expected
+        // value without the parse being wrong.
         #expect(abs((snapshot?.motion?.gyroX ?? 0) - 1000) < 0.01)
     }
 
@@ -90,7 +92,10 @@ private func gyroMouseMovement(in events: [UserInputEvent]) -> (Int16, Int16)? {
         #expect(abs((snapshot?.motion?.gyroY ?? 0) - 1000) < 0.01)
     }
 
-    @Test func bleReportCarriesMotionAtTheSameOffsets() {
+    /// The `0x45` block is captured nowhere in this repository: motion is decoded by shifting the
+    /// `0x42` layout one motion block along. This pins that derivation, not a measured BLE layout —
+    /// the end-to-end hardware pass did not cover it separately.
+    @Test func bleReportIsDecodedFromTheDerivedWiredLayout() {
         let raw: Int16 = 16384
         let snapshot = tritonMotionSnapshot(tritonMotionReport(gyro: (0, 0, raw), reportID: 0x45))
         #expect(abs((snapshot?.motion?.gyroZ ?? 0) - 1000) < 0.01)

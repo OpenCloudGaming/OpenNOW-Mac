@@ -239,8 +239,8 @@ final class NativeNVSTHostViewModel: ObservableObject {
         configureInput(for: nativeView)
         StreamSessionLifecycle.activate(
             configuration.id,
-            // Both handlers land in `StreamSessionLifecycle`'s static dictionaries, so both
-            // capture weakly: as a struct these closures held a value copy and retained nothing, but
+            // All three handlers land in `StreamSessionLifecycle`'s static dictionaries, so all
+            // three capture weakly: as a struct these closures held a value copy and retained nothing, but
             // this class owns the Metal surface, the transport and five unbounded tasks.
             //
             // Returning `false` when `self` is gone is load-bearing, not a formality. `true` makes
@@ -252,7 +252,15 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 self.showStreamControls(completion: completion)
                 return true
             },
-            commandHandler: { [weak self] command in self?.handleNativeCommand(command) }
+            commandHandler: { [weak self] command in self?.handleNativeCommand(command) },
+            // `self.inputDispatcher` is the property, not the local the dispatcher was built into:
+            // teardown nils the property, so reading it here is what makes a torn-down session
+            // refuse an injected event instead of enqueueing into a dead buffer.
+            inputInjector: { [weak self] event in
+                guard let self, isConnected, !isEnding, !didEnd, let dispatcher = self.inputDispatcher else { return false }
+                dispatcher.enqueue(event)
+                return true
+            }
         )
         runStartTask(path: path,
                      nativeView: nativeView,
