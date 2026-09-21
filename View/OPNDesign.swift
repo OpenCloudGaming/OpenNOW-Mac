@@ -190,7 +190,11 @@ enum OPNDesign {
         static let press = Animation.easeOut(duration: 0.10)
         /// A control changing state in place (chevron flip, disclosure, tab tint).
         static let toggle = Animation.easeInOut(duration: 0.18)
-        /// Panels and menus entering or leaving. The only spring in the set - travel is the point.
+        /// Physical travel inside a control, where the ground covered is the feedback (the switch
+        /// knob crossing its track). Tighter than `panel` and barely overshooting, so a 16pt slide
+        /// settles into place rather than bouncing off the end of the track.
+        static let toggleKnob = Animation.spring(response: 0.24, dampingFraction: 0.7)
+        /// Panels and menus entering or leaving. The only full spring in the set - travel is the point.
         static let panel = Animation.spring(response: 0.34, dampingFraction: 0.86)
         /// Whole-surface swaps (page change, skeleton to content).
         static let page = Animation.easeInOut(duration: 0.24)

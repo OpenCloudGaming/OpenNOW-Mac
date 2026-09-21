@@ -158,9 +158,11 @@ struct OPNReportIssueCheckbox: View {
                         Image(systemName: "checkmark")
                             .font(.uiSans(size: 10 * uiScale, weight: .bold))
                             .foregroundStyle(OPNDesign.onAccent)
+                            .opnTransition(.scale(scale: 0.55).combined(with: .opacity))
                     }
                 }
                 .frame(width: 18 * uiScale, height: 18 * uiScale)
+                .opnMotion(OPNDesign.Motion.toggle, value: isOn)
 
                 VStack(alignment: .leading, spacing: 3 * uiScale) {
                     Text(title)

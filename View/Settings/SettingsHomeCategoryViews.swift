@@ -44,6 +44,7 @@ struct HomeCategorySettingsCard: View {
                     )
                 }
             }
+            .opnMotion(OPNDesign.Motion.panel, value: rails.map(\.id))
 
             if viewModel.isHomeCustomized {
                 SettingsDivider(uiScale: uiScale)
@@ -69,6 +70,7 @@ private struct HomeRailRow: View {
     let onDropOnRail: @MainActor @Sendable (String) -> Void
 
     @State private var focusIdentity = ControllerFocusIdentity()
+    @State private var isDropTargeted = false
 
     var body: some View {
         HStack(spacing: 12 * uiScale) {
@@ -89,13 +91,18 @@ private struct HomeRailRow: View {
         }
         .padding(.horizontal, 12 * uiScale)
         .padding(.vertical, 8 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNDesign.Fill.neutral(isDropTargeted ? 0.10 : 0.045))
+        .overlay {
+            Rectangle().strokeBorder(isDropTargeted ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1)
+        }
+        .opnMotion(OPNDesign.Motion.hover, value: isDropTargeted)
         .draggable(rail.id)
         .dropDestination(for: String.self) { droppedIDs, _ in
             guard let draggedID = droppedIDs.first, draggedID != rail.id else { return false }
             Task { @MainActor in onDropOnRail(draggedID) }
             return true
+        } isTargeted: { isTargeted in
+            isDropTargeted = isTargeted
         }
         .controllerFocusable(
             focusIdentity,

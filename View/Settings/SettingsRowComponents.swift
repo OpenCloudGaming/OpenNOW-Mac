@@ -162,24 +162,29 @@ struct Toggle: View {
     private var trackHeight: CGFloat { 18 * uiScale }
     private var knobInset: CGFloat { 2 * uiScale }
     private var knobSize: CGFloat { trackHeight - knobInset * 2 }
+    private var knobTravel: CGFloat { trackWidth - knobSize - knobInset * 2 }
 
     var body: some View {
         Button { isOn.toggle() } label: {
-            ZStack(alignment: isOn ? .trailing : .leading) {
+            ZStack(alignment: .leading) {
                 Rectangle()
                     .fill(isOn ? onColor : (isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle))
                     .overlay { Rectangle().stroke(isOn ? onColor : OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .opnMotion(OPNDesign.Motion.toggle, value: isOn)
+                    .opnMotion(OPNDesign.Motion.toggle, value: isInert)
+                    .opnMotion(OPNDesign.Motion.hover, value: isHovering)
                 Rectangle()
                     .fill(isOn ? Color.black.opacity(0.85) : OPNDesign.Fill.neutral(0.72))
                     .frame(width: knobSize, height: knobSize)
                     .padding(knobInset)
+                    .shadow(color: Color.black.opacity(isOn ? 0.3 : 0.12), radius: 1.5 * uiScale, y: 0.5 * uiScale)
+                    .offset(x: isOn ? knobTravel : 0)
+                    .opnMotion(OPNDesign.Motion.toggleKnob, value: isOn)
             }
             .frame(width: trackWidth, height: trackHeight)
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .opnMotion(OPNDesign.Motion.toggle, value: isOn)
-        .opnMotion(OPNDesign.Motion.hover, value: isHovering)
         .accessibilityAddTraits(.isButton)
         .accessibilityValue(isOn ? (isInert ? "On, not in effect" : "On") : "Off")
     }
