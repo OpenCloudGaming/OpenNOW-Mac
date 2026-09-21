@@ -52,9 +52,14 @@ struct RecordingsView: View {
                     .frame(width: OPNDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
                 playerPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The pane's decorative backdrop ignores the safe area; clipping keeps it inside
+                    // the pane so the diagonal grid can never paint over the list.
+                    .clipped()
             }
         }
-        .background(RecordingsBackdrop())
+        // Opaque base, not the striped backdrop: the list is the page's content surface and the
+        // stripes belong to the preview pane only.
+        .background(RecordingsLayout.surface)
         // The page owns the bottom of the window: the editor drawer sits on that edge, and stopping
         // at the safe area left a band of whatever is behind it.
         .ignoresSafeArea(edges: .bottom)
@@ -267,14 +272,17 @@ struct RecordingsView: View {
     }
 
     private var playerPane: some View {
-        ZStack {
-            RecordingsBackdrop()
+        // The backdrop is a `.background`, never a ZStack sibling: an `ignoresSafeArea` child in a
+        // ZStack drew its blend-mode grid over the content instead of under it.
+        Group {
             if let selectedRecording = model.selectedRecording, let player = model.player {
                 selectedPlayer(recording: selectedRecording, player: player)
             } else {
                 RecordingEmptyPlayer(message: model.message, uiScale: uiScale)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RecordingsBackdrop())
     }
 
     private func selectedPlayer(recording: StreamRecording, player: AVPlayer) -> some View {

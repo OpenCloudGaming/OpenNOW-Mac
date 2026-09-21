@@ -205,6 +205,7 @@ struct CatalogTopBar: View {
     private var mainPageTitle: String {
         switch viewModel.selectedMainPage {
         case .games: return viewModel.selectedCatalogDestination.title
+        case .screenshots: return "Screenshots"
         case .recordings: return "Recordings"
         case .settings: return "Settings"
         }

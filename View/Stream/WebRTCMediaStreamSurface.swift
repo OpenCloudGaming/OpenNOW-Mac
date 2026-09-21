@@ -50,6 +50,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State var microphoneEnabled = false
     @State var recordingStatus = StreamRecordingStatus.idle
     @State var recordingNotificationTask: Task<Void, Never>?
+    @State var screenshotTask: Task<Void, Never>?
     @State var antiAFKMouseMovementTask: Task<Void, Never>?
     @State var lastAcceptedStreamInputAt = Date()
     @State var transientStreamMessage = ""

@@ -65,6 +65,7 @@ enum CatalogModalOverlay: Equatable {
 
 enum CatalogMainPage: String, CaseIterable, Identifiable {
     case games
+    case screenshots
     case recordings
     case settings
 

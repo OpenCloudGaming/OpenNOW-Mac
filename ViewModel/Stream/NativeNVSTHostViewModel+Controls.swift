@@ -21,6 +21,7 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "controls", columns: 4, action: toggleNativeMicrophone),
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "controls", columns: 4, action: toggleNativeLocalAudioMute),
             StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, group: "controls", columns: 4, action: toggleNativeRecording),
+            StreamHUDFocusEntry(id: "screenshot", isDisabled: !sidebarCapabilities.supports(.screenshot) || !isConnected || screenshotTask != nil, group: "controls", columns: 4, action: takeNativeScreenshot),
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "controls", columns: 4, action: toggleNativeStatsHUD),
             StreamHUDFocusEntry(id: "full-screen", isDisabled: nativeView?.window == nil, group: "controls", columns: 4, action: toggleNativeFullScreen),
             StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected, group: "input", columns: 4, action: toggleNativePointerLock),
@@ -176,32 +177,6 @@ extension NativeNVSTHostViewModel {
             }
         case .back:
             dismissStreamControls()
-        }
-    }
-
-    func handleNativeCommand(_ command: StreamCommand) {
-        switch command {
-        case .toggleStatsHUD:
-            toggleNativeStatsHUD()
-        case .toggleUnifiedHUD:
-            guard !streamControlsVisible else { return }
-            setUnifiedHUDVisible(!unifiedHUDVisible)
-        case .toggleMicrophone:
-            toggleNativeMicrophone()
-        case .toggleRecording:
-            toggleNativeRecording()
-        case .toggleAntiAFK:
-            toggleNativeAntiAFKMouseMovement()
-        case .togglePointerCapture:
-            toggleNativePointerLock()
-        case .showQuitMenu:
-            if !streamControlsVisible { showStreamControls() }
-        case .endSession:
-            endFromStreamControls()
-        case .pauseSession:
-            pauseFromStreamControls()
-        case .toggleOnScreenKeyboard:
-            toggleOnScreenKeyboard()
         }
     }
 
@@ -391,6 +366,8 @@ extension NativeNVSTHostViewModel {
         transientStreamMessage = ""
         recordingStatusResetTask?.cancel()
         recordingStatusResetTask = nil
+        screenshotTask?.cancel()
+        screenshotTask = nil
     }
 
     func showStreamControls(completion: StreamSessionQuitDecisionHandler? = nil) {

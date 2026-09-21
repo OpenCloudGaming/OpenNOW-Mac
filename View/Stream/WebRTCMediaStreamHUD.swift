@@ -311,6 +311,15 @@ extension WebRTCMediaStreamSurface {
                     action: toggleRecording
                 )
                 StreamHUDActionRow(
+                    title: "Screenshot",
+                    subtitle: screenshotTask == nil ? "Save current frame" : "Saving…",
+                    systemName: "camera.fill",
+                    isActive: false,
+                    isDisabled: !sidebarCapabilities.supports(.screenshot) || !isStreamReady || screenshotTask != nil,
+                    isFocused: hudFocusID == "screenshot",
+                    action: takeScreenshot
+                )
+                StreamHUDActionRow(
                     title: runtimeSettings.antiAFKMouseMovementEnabled ? "Disable Anti-AFK" : "Enable Anti-AFK",
                     subtitle: runtimeSettings.antiAFKMouseMovementEnabled ? "Active" : "Idle",
                     systemName: "cursorarrow.motionlines",

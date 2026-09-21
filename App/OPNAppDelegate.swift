@@ -141,7 +141,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private static func streamCommand(for event: NSEvent) -> StreamCommand? {
         guard let command = StreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags) else { return nil }
         switch command {
-        case .toggleMicrophone, .toggleRecording, .toggleAntiAFK:
+        case .toggleMicrophone, .toggleRecording, .takeScreenshot, .toggleAntiAFK:
             return command
         default: return nil
         }

@@ -25,6 +25,9 @@ extension NvstBifrostFreeTransport {
         // when the surface is hidden, and so nothing on the decode thread has to reach the main
         // actor. It costs one uncontended lock per frame while idle.
         let recorder = self.recorder
+        // The screenshot tap rides the same decoded-frame callback. It does nothing while no capture
+        // is waiting, so a running session pays one uncontended lock per frame.
+        let screenshotCapture = self.screenshotCapture
         // Remote Co-Op guests are fed from the same tap and for the same reasons. The relay is a
         // no-op until a guest is connected, so a solo session pays one uncontended lock per frame.
         let coOpVideoRelay = self.remoteCoOpVideoRelay
@@ -35,6 +38,7 @@ extension NvstBifrostFreeTransport {
         // seat's opening frame burst, not session creation. Removed; the explicit first-keyframe
         // gate it needed stays in the decoder.
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
+            screenshotCapture.deliver(pixelBuffer)
             recorder.appendNativePixelBuffer(pixelBuffer)
             coOpVideoRelay.renderPixelBuffer(pixelBuffer, presentationTime: presentationTime)
             sink?(pixelBuffer, presentationTime, isKeyframe)

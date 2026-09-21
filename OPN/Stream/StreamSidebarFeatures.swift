@@ -3,6 +3,7 @@ import Foundation
 enum StreamSidebarFeature: String, CaseIterable, Hashable, Sendable {
     case microphone
     case recording
+    case screenshot
     case antiAFK
     case floatingStats
     case networkHealth
@@ -18,6 +19,7 @@ struct StreamSidebarCapabilities: Equatable, Sendable {
     static let nativeNVST = StreamSidebarCapabilities(availableFeatures: [
         .microphone,
         .recording,
+        .screenshot,
         .antiAFK,
         .floatingStats,
         .networkHealth,

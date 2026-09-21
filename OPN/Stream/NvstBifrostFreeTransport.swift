@@ -56,6 +56,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// thread — the VideoToolbox decode callback and the CoreAudio playout callback — and neither
     /// may `await`; the recorder does its own locking and queueing.
     nonisolated let recorder = WebRTCStreamRecorder()
+    /// The screenshot tap, off the actor for the same reason as the recorder: every decoded frame
+    /// reaches it from the VideoToolbox callback, and a capture is rendered there.
+    nonisolated let screenshotCapture = StreamScreenshotCapture()
     /// Remote Co-Op's outbound feeds, off the actor for the same reason as the recorder: both are
     /// written from the VideoToolbox decode callback and the audio thread. Both relays are always
     /// allocated and cost one uncontended lock per frame while no guest is connected.
@@ -506,10 +509,15 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         recorder.onStatusChanged = handler
     }
 
+    public func takeScreenshot() async -> StreamScreenshotImage? {
+        await screenshotCapture.capture()
+    }
+
     public func disconnect() async {
         // Teardown before the writer is closed would strand a half-written file with no metadata,
         // so every exit closes the recording first.
         recorder.stop()
+        screenshotCapture.cancel()
         // Guests outlive nothing: dropping the sinks here stops frames being encoded for peers
         // whose connection is about to be torn down anyway.
         remoteCoOpVideoRelay.removeAll()
@@ -523,6 +531,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // and a recovered session can come back at a different resolution than the adaptor was
         // sized for. Close the recording and keep what was captured.
         recorder.stop()
+        screenshotCapture.cancel()
         await teardown(reason: "recovery")
     }
 

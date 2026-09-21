@@ -106,6 +106,7 @@ enum ControllerActionMenuItem {
     case library
     case favorites
     case userCollection(id: String, name: String)
+    case screenshots
     case recordings
     case settings
     case account(LoginAccount, isActive: Bool, needsSignIn: Bool)
@@ -120,6 +121,7 @@ enum ControllerActionMenuItem {
         case .library: return "Go to Library"
         case .favorites: return "Go to Favorites"
         case .userCollection(_, let name): return name
+        case .screenshots: return "Open Screenshots"
         case .recordings: return "Open Recordings"
         case .settings: return "Open Settings"
         case .account(let account, let isActive, let needsSignIn):
@@ -145,6 +147,7 @@ enum ControllerActionMenuItem {
         case .library: return "rectangle.stack.fill"
         case .favorites: return "heart.fill"
         case .userCollection: return "square.stack.3d.up.fill"
+        case .screenshots: return "camera.fill"
         case .recordings: return "play.rectangle.fill"
         case .settings: return "gearshape.fill"
         case .account(_, let isActive, let needsSignIn):

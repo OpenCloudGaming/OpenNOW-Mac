@@ -184,6 +184,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var hudGamepadTracker = StreamHUDGamepadTracker()
     @Published var recordingStatus = StreamRecordingStatus.idle
     var recordingStatusResetTask: Task<Void, Never>?
+    /// In flight while a screenshot is being rendered and written, so a held key cannot start a
+    /// second capture before the first has landed.
+    var screenshotTask: Task<Void, Never>?
     /// The settings the session actually started with, kept because the recording configuration is
     /// built from them (bitrates, fps, resolution) long after `prepareLaunch` returns.
     var resolvedStreamSettings: WebRTCMediaResolvedStreamSettings?

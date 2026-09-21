@@ -282,6 +282,9 @@ struct CatalogView: View {
                                 if viewModel.selectedMainPage == .settings {
                                     SettingsView(viewModel: viewModel)
                                         .id(themeIdentity)
+                                } else if viewModel.selectedMainPage == .screenshots {
+                                    ScreenshotsView()
+                                        .id(themeIdentity)
                                 } else if viewModel.selectedMainPage == .recordings {
                                     RecordingsView()
                                         .id(themeIdentity)

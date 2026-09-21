@@ -218,6 +218,10 @@ struct OPNApp: App {
                     _ = StreamSessionLifecycle.sendCommand(.toggleRecording)
                 }
                 .opnKeyboardShortcut(keybindings.combo(for: .toggleRecording))
+                Button("Take Screenshot") {
+                    _ = StreamSessionLifecycle.sendCommand(.takeScreenshot)
+                }
+                .opnKeyboardShortcut(keybindings.combo(for: .takeScreenshot))
                 Button("Toggle Anti-AFK") {
                     _ = StreamSessionLifecycle.sendCommand(.toggleAntiAFK)
                 }

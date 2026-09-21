@@ -316,6 +316,9 @@ extension ControllerCatalogViewModel {
         case .recordings:
             catalog.showRecordings()
             focusArea = .navigation
+        case .screenshots:
+            catalog.showScreenshots()
+            focusArea = .navigation
         case .settings:
             catalog.showSettings(.input)
             focusArea = .navigation
@@ -626,19 +629,14 @@ extension ControllerCatalogViewModel {
             catalog.browseCatalog()
         case .recordings:
             catalog.showRecordings()
+        case .screenshots:
+            catalog.showScreenshots()
         case .settings:
             catalog.showSettings(.input)
         case .home, .library, .favorites, .userCollection:
             performNavigationItem(item, catalog: catalog)
-        case .desktopMode:
-            host.onExitControllerMode()
-        case .account(let account, let isActive, _):
-            // The active row has nowhere to go - confirming it just closes the menu, same as
-            // clicking the active row in the desktop dropdown.
-            guard !isActive else { return }
-            host.onSwitch(account)
-        case .addAccount:
-            host.onAddAccount()
+        case .desktopMode, .account, .addAccount:
+            handleActionMenuHostItem(item)
         }
     }
 

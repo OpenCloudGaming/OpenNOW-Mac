@@ -43,6 +43,9 @@ public protocol NativeNVSTTransport: Sendable {
     func startRecording(configuration: StreamRecordingConfiguration) async
     func stopRecording() async
     func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async
+    /// Renders the next decoded frame to an image. Nil when no frame arrives before the capture
+    /// times out, which is the honest answer for a paused or stalled stream.
+    func takeScreenshot() async -> StreamScreenshotImage?
     func pause() async throws
     func disconnect() async
     func resetForRecovery() async
@@ -298,6 +301,13 @@ public actor NativeNVSTStreamingPath {
 
     public func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async {
         await transport.setRecordingStatusHandler(handler)
+    }
+
+    /// Renders the next decoded frame. Guarded by the active session so a torn-down path answers nil
+    /// instead of reaching a transport that is about to be discarded.
+    public func takeScreenshot() async -> StreamScreenshotImage? {
+        guard activeSession != nil else { return nil }
+        return await transport.takeScreenshot()
     }
 
     public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {

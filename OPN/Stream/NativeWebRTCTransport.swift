@@ -9,6 +9,12 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
 
     let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
+    /// The screenshot tap. Fed from the same decoded-frame callback as the recorder and off the main
+    /// actor, so it can render the next frame without hopping.
+    private let screenshotCapture = StreamScreenshotCapture()
+    /// Owned here rather than borrowed from the recorder: the recorder uses its converter on its own
+    /// writer queue, and this path converts on the WebRTC frame callback thread.
+    private let screenshotConverter = WebRTCI420BGRAConverter()
     private weak var nativeView: NativeWebRTCStreamView?
     private let continuationLock = NSLock()
     private let localIceLock = NSLock()
@@ -67,6 +73,7 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
             self.session.onVideoFrame = { [weak self] framePointer in
                 guard let framePointer else { return }
                 let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
+                self?.offerScreenshot(frame)
                 self?.recorder.appendVideoFrame(frame)
             }
             self.session.onEnhancedVideoFrame = { [weak self] pixelBufferPointer in
@@ -170,6 +177,36 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
         session.setEnhancedVideoFrameCaptureEnabled(recorder.wantsEnhancedVideo)
     }
 
+    public func takeScreenshot() async -> StreamScreenshotImage? {
+        await screenshotCapture.capture()
+    }
+
+    /// Renders the next frame while a capture waits. The common BGRA buffer is handed straight
+    /// through; an I420 frame is converted with a converter owned by this transport, only when a
+    /// capture is actually pending, so an idle session does no extra work and the recorder's own
+    /// pooled converter is never touched from this thread.
+    private func offerScreenshot(_ frame: RTCVideoFrame) {
+        guard screenshotCapture.hasPendingCapture else { return }
+        if let buffer = frame.buffer as? RTCCVPixelBuffer {
+            screenshotCapture.deliver(buffer.pixelBuffer)
+            return
+        }
+        let i420Frame = frame.newI420()
+        guard let i420 = i420Frame.buffer as? RTCI420Buffer else { return }
+        let width = Int(i420.width)
+        let height = Int(i420.height)
+        guard width > 0, height > 0 else { return }
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+        ]
+        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, attributes as CFDictionary, &pixelBuffer) == kCVReturnSuccess,
+              let pixelBuffer,
+              screenshotConverter.copy(i420, toBGRAOutput: pixelBuffer) else { return }
+        screenshotCapture.deliver(pixelBuffer)
+    }
+
     public func disconnect() async {
         OPNStreamTelemetry.capture("webrtc.transport.disconnect", level: .info, message: "Stopping native WebRTC transport.")
         isDisconnecting = true
@@ -179,6 +216,7 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
         statsTelemetryTask = nil
         let pendingContinuation = takeContinuation()
         recorder.stop()
+        screenshotCapture.cancel()
         session.setEnhancedVideoFrameCaptureEnabled(false)
         localIceLock.withLock {
             localIceContinuation?.finish()

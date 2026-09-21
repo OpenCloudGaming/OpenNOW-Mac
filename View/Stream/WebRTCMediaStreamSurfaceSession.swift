@@ -250,6 +250,8 @@ extension WebRTCMediaStreamSurface {
             toggleMicrophone()
         case .toggleRecording:
             toggleRecording()
+        case .takeScreenshot:
+            takeScreenshot()
         case .toggleAntiAFK:
             toggleAntiAFKMouseMovement()
         case .togglePointerCapture:

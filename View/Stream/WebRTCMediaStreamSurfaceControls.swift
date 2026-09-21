@@ -22,6 +22,7 @@ extension WebRTCMediaStreamSurface {
         [
             StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", group: "controls", columns: 8, action: toggleMicrophone),
             StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, group: "controls", columns: 8, action: toggleRecording),
+            StreamHUDFocusEntry(id: "screenshot", isDisabled: !isStreamReady || screenshotTask != nil, group: "controls", columns: 8, action: takeScreenshot),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, group: "controls", columns: 8, action: toggleAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "controls", columns: 8, action: openControllerMapping),
             StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "controls", columns: 8, action: openControllerOrder),
@@ -110,6 +111,34 @@ extension WebRTCMediaStreamSurface {
     func recordingElapsedText(_ elapsedSeconds: Double) -> String {
         let seconds = max(0, Int(elapsedSeconds.rounded(.down)))
         return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
+    }
+
+    func takeScreenshot() {
+        guard isStreamReady, !isEndingStream, !didEndStream, screenshotTask == nil else { return }
+        guard let transport else {
+            showTransientStreamMessage("Screenshot unavailable")
+            OPNStreamTelemetry.capture("webrtc.ui.screenshot.unavailable", level: .warning, message: "Stream screenshot requested before transport was ready.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        screenshotTask = Task { @MainActor in
+            defer { screenshotTask = nil }
+            guard let image = await transport.takeScreenshot() else {
+                showTransientStreamMessage("Screenshot unavailable")
+                OPNStreamTelemetry.capture("webrtc.ui.screenshot.unavailable", level: .warning, message: "Stream screenshot found no frame.", attributes: ["applicationID": configuration.applicationID])
+                return
+            }
+            do {
+                let screenshot = try StreamScreenshotLibrary.save(image, title: configuration.title, applicationID: configuration.applicationID)
+                showTransientStreamMessage("Screenshot saved")
+                OPNStreamTelemetry.capture("webrtc.ui.screenshot.saved", level: .info, message: "Stream screenshot saved.", attributes: [
+                    "applicationID": configuration.applicationID,
+                    "resolution": "\(screenshot.width)x\(screenshot.height)",
+                ])
+            } catch {
+                showTransientStreamMessage("Screenshot failed")
+                OPNStreamTelemetry.capture("webrtc.ui.screenshot.failed", level: .error, message: error.localizedDescription, attributes: ["applicationID": configuration.applicationID])
+            }
+        }
     }
 
     func settingsRow(_ label: String, _ value: String) -> some View {

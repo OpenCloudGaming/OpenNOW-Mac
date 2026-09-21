@@ -17,6 +17,7 @@ enum ControllerNavigationItem: CaseIterable, Equatable, Identifiable {
     case library
     case favorites
     case search
+    case screenshots
     case recordings
     case settings
     case actions
@@ -29,6 +30,7 @@ enum ControllerNavigationItem: CaseIterable, Equatable, Identifiable {
         case .library: return "Library"
         case .favorites: return "Favorites"
         case .search: return "Search"
+        case .screenshots: return "Screenshots"
         case .recordings: return "Recordings"
         case .settings: return "Settings"
         case .actions: return "Actions"
@@ -41,6 +43,7 @@ enum ControllerNavigationItem: CaseIterable, Equatable, Identifiable {
         case .library: return "rectangle.stack.fill"
         case .favorites: return "heart.fill"
         case .search: return "magnifyingglass"
+        case .screenshots: return "camera.fill"
         case .recordings: return "play.rectangle.fill"
         case .settings: return "gearshape.fill"
         case .actions: return "ellipsis.circle.fill"
@@ -149,7 +152,7 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// hinted as such in the hint bar), not a place you land on. Listing it as a destination meant
     /// the bar had to claim something was "active" while an overlay was up, and paging with LB/RB
     /// stepped onto a screen that immediately covered the bar it came from.
-    let navigationItems: [ControllerNavigationItem] = [.home, .recordings, .settings, .actions]
+    let navigationItems: [ControllerNavigationItem] = [.home, .screenshots, .recordings, .settings, .actions]
 
     var hasControllerOverlay: Bool {
         isActionMenuVisible || isSearchVisible || isDetailVisible || isAccountOptionsVisible || isCollectionPickerVisible
@@ -282,6 +285,7 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// destination underneath - which is also the one LB/RB pages away from.
     var activeNavigationItem: ControllerNavigationItem {
         guard let catalog else { return .home }
+        if catalog.selectedMainPage == .screenshots { return .screenshots }
         if catalog.selectedMainPage == .recordings { return .recordings }
         if catalog.selectedMainPage == .settings { return .settings }
         switch catalog.selectedCatalogDestination {
@@ -328,7 +332,7 @@ final class ControllerCatalogViewModel: ObservableObject {
         // The reader's own collections sit with the destinations, after Home. They are local lists,
         // so their page is the local Show All rather than a server browse.
         items.append(contentsOf: catalog.sortedUserCollections.map { .userCollection(id: $0.id, name: $0.name) })
-        items.append(contentsOf: [.recordings, .desktopMode, .settings])
+        items.append(contentsOf: [.screenshots, .recordings, .desktopMode, .settings])
         // Active account first (it must be listed at all, or it can never be forgotten on a pad),
         // then the rest in the order the host handed them over.
         var accounts = host.accounts

@@ -287,6 +287,11 @@ struct ControllerCatalogView: View {
                 RecordingsView()
                     .environment(\.controllerPageCommand, controllerViewModel.embeddedPageCommand)
             }
+        case .screenshots:
+            ControllerEmbeddedPage(title: "Screenshots", subtitle: "Captured stills and albums", layout: layout) {
+                ScreenshotsView()
+                    .environment(\.controllerPageCommand, controllerViewModel.embeddedPageCommand)
+            }
         case .settings:
             ControllerEmbeddedPage(title: "Settings", subtitle: "Streaming, account, interface, and system options", layout: layout) {
                 SettingsView(viewModel: viewModel)
@@ -378,6 +383,7 @@ private struct ControllerHeader: View {
     private var headerTitle: String {
         switch viewModel.selectedMainPage {
         case .games: return viewModel.selectedCatalogDestination.title
+        case .screenshots: return "Screenshots"
         case .recordings: return "Recordings"
         case .settings: return viewModel.selectedSettingsGroup.title
         }

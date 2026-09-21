@@ -92,6 +92,10 @@ struct CatalogMainMenuPanel: View {
                             viewModel.showCatalogDestination(.home)
                             isPresented = false
                         }
+                        CatalogMainMenuRow(title: "Screenshots", subtitle: "Browse captured stills and albums", systemImage: "camera.fill", isActive: viewModel.selectedMainPage == .screenshots, isBeta: true) {
+                            viewModel.showScreenshots()
+                            isPresented = false
+                        }
                         CatalogMainMenuRow(title: "Recordings", subtitle: "Watch saved stream videos", systemImage: "play.rectangle.fill", isActive: viewModel.selectedMainPage == .recordings) {
                             viewModel.showRecordings()
                             isPresented = false
@@ -317,6 +321,7 @@ struct CatalogMainMenuRow: View {
     let isActive: Bool
     var isLoading = false
     var compact = false
+    var isBeta = false
     var role: ButtonRole?
     let action: () -> Void
     @Environment(\.opnUIScale) private var uiScale
@@ -342,10 +347,15 @@ struct CatalogMainMenuRow: View {
                 .frame(width: (compact ? 28 : 34) * uiScale, height: (compact ? 28 : 34) * uiScale)
 
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
-                    Text(title)
-                        .catalogFont(size: compact ? 12 : 14, weight: .bold)
-                        .foregroundStyle(titleColor)
-                        .lineLimit(1)
+                    HStack(spacing: 6 * uiScale) {
+                        Text(title)
+                            .catalogFont(size: compact ? 12 : 14, weight: .bold)
+                            .foregroundStyle(titleColor)
+                            .lineLimit(1)
+                        if isBeta {
+                            OPNBetaTag(uiScale: uiScale * 0.85, compact: true)
+                        }
+                    }
                     if !subtitle.isEmpty {
                         Text(subtitle)
                             .catalogFont(size: 11, weight: .medium)

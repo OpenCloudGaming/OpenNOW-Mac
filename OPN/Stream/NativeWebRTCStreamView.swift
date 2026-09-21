@@ -31,6 +31,7 @@ public enum StreamCommand: Equatable, Sendable {
     case toggleUnifiedHUD
     case toggleMicrophone
     case toggleRecording
+    case takeScreenshot
     case toggleAntiAFK
     case togglePointerCapture
     case showQuitMenu
@@ -49,6 +50,7 @@ public enum StreamCommand: Equatable, Sendable {
             "\(bindings.combo(for: .toggleStatsHUD).label) Stats",
             "\(bindings.combo(for: .toggleMicrophone).label) Mic",
             "\(bindings.combo(for: .toggleRecording).label) Rec",
+            "\(bindings.combo(for: .takeScreenshot).label) Shot",
             "\(bindings.combo(for: .toggleAntiAFK).label) AFK",
             "\(bindings.combo(for: .togglePointerCapture).label) Capture",
             "\(bindings.combo(for: .showQuitMenu).label) Quit",

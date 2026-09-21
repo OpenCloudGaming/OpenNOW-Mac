@@ -28,7 +28,7 @@ struct NativeNVSTHUDFocusEntryParityTests {
         let surface = makeSurface()
         let ids = surface.model.hudFocusEntries.map(\.id)
         #expect(ids.contains("full-screen"))
-        #expect(Array(ids.prefix(5)) == ["microphone", "localAudioMute", "recording", "floating-stats", "full-screen"])
+        #expect(Array(ids.prefix(6)) == ["microphone", "localAudioMute", "recording", "screenshot", "floating-stats", "full-screen"])
     }
 
     @Test func tileIDsMatchTheFocusEntries() {
@@ -56,8 +56,8 @@ struct NativeNVSTHUDFocusEntryParityTests {
         let entries = surface.model.hudFocusEntries
         let rows = StreamHUDFocusEntry.rows(of: entries)
         #expect(rows.prefix(3).map { $0.map { entries[$0].id } } == [
-            ["microphone", "localAudioMute", "recording", "floating-stats"],
-            ["full-screen"],
+            ["microphone", "localAudioMute", "recording", "screenshot"],
+            ["floating-stats", "full-screen"],
             ["pointer", "cursor-policy", "anti-afk", "controller-mapping"],
         ])
     }

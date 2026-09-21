@@ -184,7 +184,6 @@ struct RecordingEmptyPlayer: View {
                 Rectangle()
                     .fill(OPNDesign.Fill.neutral(0.045))
                     .frame(width: 180 * uiScale, height: 108 * uiScale)
-                    .overlay { DiagonalGrid().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
                     .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "play.rectangle.fill")
                     .font(.recordingsFont(size: 46 * uiScale, weight: .bold))
@@ -199,21 +198,26 @@ struct RecordingEmptyPlayer: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 420 * uiScale)
         }
+        .padding(36 * uiScale)
+        .background(RecordingsLayout.surface)
+        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .shadow(color: .black.opacity(0.42), radius: 22 * uiScale, y: 10 * uiScale)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 struct RecordingsBackdrop: View {
     var body: some View {
+        // Surface and radial accents only. The diagonal grid used to live here, but a backdrop behind
+        // a pane's content still composited its lines over the opaque cards in a live window, so the
+        // decorative grid is dropped rather than risk covering the panels again. No `ignoresSafeArea`:
+        // the page extends the bottom edge, and a backdrop that demanded it escaped the stack and
+        // painted over the list.
         ZStack {
             RecordingsLayout.surface
             RadialGradient(colors: [OPNDesign.accent.opacity(0.12), .clear], center: .topLeading, startRadius: 20, endRadius: 620)
             RadialGradient(colors: [OPNDesign.Fill.neutral(0.06), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 520)
-            DiagonalGrid()
-                .stroke(OPNDesign.Fill.neutral(0.026), lineWidth: 1)
-                .blendMode(.screen)
         }
-        .ignoresSafeArea()
     }
 }
 

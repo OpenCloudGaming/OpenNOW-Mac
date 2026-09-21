@@ -325,6 +325,12 @@ extension CatalogViewModel {
         errorMessage = ""
     }
 
+    func showScreenshots() {
+        selectedMainPage = .screenshots
+        actionMessage = ""
+        errorMessage = ""
+    }
+
     func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
         cancelActiveStreamAdPlayback()
