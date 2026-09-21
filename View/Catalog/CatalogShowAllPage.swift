@@ -154,13 +154,7 @@ struct CatalogShowAllPage: View {
 
     private var localOnlyNote: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 7) {
-                Image(systemName: "externaldrive.fill")
-                    .catalogFont(size: 11, weight: .bold)
-                Text("Stored on this Mac only. Not synced to NVIDIA. Back up your collections yourself.")
-                    .catalogFont(size: 12, weight: .medium)
-            }
-            .foregroundStyle(OPNDesign.Text.secondary)
+            CatalogCollectionsLocalOnlyNote()
             if viewModel.localShowAllUnavailableCount > 0 {
                 Text("\(viewModel.localShowAllUnavailableCount) of these games aren't in your loaded catalog right now.")
                     .catalogFont(size: 12, weight: .medium)

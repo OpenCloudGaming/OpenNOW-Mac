@@ -31,7 +31,7 @@ enum SettingsSearchIndex {
     /// lies about where the setting is: rows that exist only inside a modal wizard, and rows that
     /// appear only once another setting is switched on. The second kind hands its words to the
     /// control that gates it, so searching "socks" still reaches the session proxy.
-    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + keybindingEntries + recordingEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries
+    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + keybindingEntries + recordingEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries + cloudSyncEntries
 
     private static let keybindingEntries: [SettingsSearchEntry] = KeybindingAction.allCases.map { action in
         SettingsSearchEntry(action.title, .keybindings, action.section.rawValue, keywords: ["shortcut", "hotkey", "keyboard", "binding", "rebind"])
@@ -154,6 +154,12 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Static Guest Page (Optional)", .remoteCoOp, nil, keywords: ["hosting", "invite", "page"]),
     ]
 
+    private static let cloudSyncEntries: [SettingsSearchEntry] = [
+        SettingsSearchEntry("Sync with iCloud", .iCloud, "cloud-sync", keywords: ["backup", "back up", "restore", "icloud drive", "cloud", "settings", "catalog", "screenshots"]),
+        SettingsSearchEntry("Back Up Now", .iCloud, "cloud-sync", keywords: ["sync now", "upload", "push", "backup"]),
+        SettingsSearchEntry("Restore from iCloud", .iCloud, "cloud-sync", keywords: ["download", "pull", "recover", "restore"]),
+    ]
+
     /// Case- and diacritic-insensitive substring match over the title first, then the keywords, so a
     /// reader who types the label sees it above rows that merely mention the word.
     static func results(for query: String, limit: Int = 8) -> [SettingsSearchEntry] {
@@ -177,21 +183,26 @@ enum SettingsSearchIndex {
     }
 
     @MainActor static func sections(for group: CatalogSettingsGroup) -> [SettingsSection] {
-        switch group {
-        case .account: AccountSettingsGroup.sections
-        case .video: VideoSettingsGroup.sections
-        case .audio: AudioSettingsPage.sections
-        case .input: InputSettingsGroup.sections
-        case .keybindings: KeybindingsSettingsPage.sections
-        case .recording: RecordingSettingsGroup.sections
-        case .network: NetworkSettingsGroup.sections
-        case .remoteCoOp: []
-        case .theme: ThemeSettingsPage.sections
-        case .general: GeneralSettingsGroup.sections
-        case .system: SystemSettingsGroup.sections
-        case .labs: LabsSettingsPage.sections
-        }
+        sectionMap[group] ?? []
     }
+
+    /// One entry per destination. A map rather than a switch so adding a tab is a data change, not
+    /// another branch in a function already at the complexity ceiling once.
+    @MainActor private static let sectionMap: [CatalogSettingsGroup: [SettingsSection]] = [
+        .account: AccountSettingsGroup.sections,
+        .video: VideoSettingsGroup.sections,
+        .audio: AudioSettingsPage.sections,
+        .input: InputSettingsGroup.sections,
+        .keybindings: KeybindingsSettingsPage.sections,
+        .recording: RecordingSettingsGroup.sections,
+        .network: NetworkSettingsGroup.sections,
+        .remoteCoOp: [],
+        .theme: ThemeSettingsPage.sections,
+        .general: GeneralSettingsGroup.sections,
+        .system: SystemSettingsGroup.sections,
+        .iCloud: CloudSyncSettingsGroup.sections,
+        .labs: LabsSettingsPage.sections,
+    ]
 }
 
 // MARK: - Field

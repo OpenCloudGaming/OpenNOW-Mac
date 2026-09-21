@@ -100,6 +100,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case theme
     case general
     case system
+    case iCloud
     case labs
 
     var id: String { rawValue }
@@ -131,6 +132,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .theme: return "Look"
         case .general: return "General"
         case .system: return "System"
+        case .iCloud: return "iCloud"
         case .labs: return "Labs"
         }
     }
@@ -148,6 +150,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .theme: return "How OpenNOW looks: interface scale, accent, and the rails the home page draws its games in."
         case .general: return "Alerts, game launch, Discord, privacy, and maintenance."
         case .system: return "Product identity, updates, release notes, and what this Mac can do."
+        case .iCloud: return "Back up your settings, catalog, and screenshots to iCloud Drive, and restore them on another Mac."
         case .labs: return "Features on trial. Off by default, and liable to change or vanish."
         }
     }
@@ -165,6 +168,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .theme: return "paintpalette.fill"
         case .general: return "gearshape.2.fill"
         case .system: return "info.circle.fill"
+        case .iCloud: return "icloud.fill"
         case .labs: return "flask.fill"
         }
     }

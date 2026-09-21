@@ -184,12 +184,17 @@ extension CatalogViewModel {
         return true
     }
 
-    /// Shows the one-time explainer the first time the reader meets collections. Nothing about a
-    /// collection leaves this machine, so this is the moment to say so.
+    /// Shows the one-time explainer the first time the reader meets collections. Only when iCloud is
+    /// not carrying the catalog: a reader whose collections are already backed up has nothing to warn.
     func revealCollectionsLocalOnlyNotice() {
         guard !CatalogCollectionsStore.isLocalOnlyNoticeSeen else { return }
+        guard !isCatalogBackedUpByICloud else { return }
         CatalogCollectionsStore.isLocalOnlyNoticeSeen = true
         isCollectionsNoticePresented = true
+    }
+
+    private var isCatalogBackedUpByICloud: Bool {
+        OPNCloudSyncPreferences.isEnabled && OPNCloudSyncPreferences.isCategoryEnabled(.catalog)
     }
 
     func dismissCollectionsLocalOnlyNotice() {

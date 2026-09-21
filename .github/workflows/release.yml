@@ -117,12 +117,21 @@ jobs:
           APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
           DMG_PATH="OpenNOW.dmg"
 
-          echo "Stripping get-task-allow entitlement..."
+          echo "Reading the entitlements the Release build produced..."
+          # The entitlements are read back from the built app rather than copied from
+          # OpenNOW.entitlements: the file carries $(OPN_ICLOUD_ENVIRONMENT), which codesign does
+          # not expand, so re-signing from the raw file would embed a literal placeholder and drop
+          # the iCloud keys. Reading the signed app preserves exactly what the Release build produced.
           ENTITLEMENTS="${RUNNER_TEMP}/release.entitlements"
-          cp OpenNOW.entitlements "${ENTITLEMENTS}"
+          codesign -d --entitlements :- "${APP_PATH}" > "${ENTITLEMENTS}" 2>/dev/null
           /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${ENTITLEMENTS}" 2>/dev/null || true
 
-          echo "Re-signing with stripped entitlements..."
+          echo "Embedding iCloud provisioning profile..."
+          PROFILE_PATH="${RUNNER_TEMP}/OpenNOW.provisionprofile"
+          echo "${PROFILE_BASE64}" | base64 -d > "${PROFILE_PATH}"
+          cp "${PROFILE_PATH}" "${APP_PATH}/Contents/embedded.provisionprofile"
+
+          echo "Re-signing with the profile and entitlements..."
           codesign --force --deep --options runtime \
             --entitlements "${ENTITLEMENTS}" \
             --sign "${CODE_SIGN_IDENTITY}" \
@@ -130,12 +139,17 @@ jobs:
             --keychain "${RUNNER_TEMP}/build.keychain-db" \
             "${APP_PATH}"
 
+          echo "Verifying the signed bundle carries the profile..."
+          test -f "${APP_PATH}/Contents/embedded.provisionprofile"
+          codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+
           echo "Creating DMG..."
           ./scripts/create-dmg.sh "${APP_PATH}" "${DMG_PATH}"
           codesign --force --keychain "${RUNNER_TEMP}/build.keychain-db" \
             --sign "${CODE_SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
         env:
           CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
+          PROFILE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_PROFILE_BASE64 }}
         shell: bash
 
       - name: Notarize DMG

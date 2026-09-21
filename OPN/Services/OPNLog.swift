@@ -36,6 +36,7 @@ enum OPNLog {
         case shortcut = "GFNShortcut"
         case stream = "Stream"
         case controller = "Controller"
+        case sync = "Sync"
     }
 
     private static let subsystem = Bundle.main.bundleIdentifier ?? "com.interlaced-pixel.OpenNOW"

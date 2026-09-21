@@ -40,27 +40,30 @@ struct OPNApp: App {
             LoginSession.self,
             LoginDeviceRegistration.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // CloudKit is explicitly off. The app carries an iCloud entitlement for its backup container,
+        // and SwiftData reads any iCloud entitlement as an invitation to attach CloudKit to this store,
+        // which then rejects the model's non-optional attributes and unique constraints.
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, cloudKitDatabase: .none)
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
             OPNLog.info(.app, "SwiftData model container created")
             return container
         } catch {
-            OPNLog.error(.app, "Could not create SwiftData model container, attempting store recovery: \(error.localizedDescription)")
+            OPNLog.error(.app, "Could not open the SwiftData store: \(error.localizedDescription)")
+            quarantineStoreIfUnreadable(at: modelConfiguration.url, errorDescription: error.localizedDescription)
         }
 
-        Self.removePersistentStoreFiles(at: modelConfiguration.url)
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            OPNLog.warning(.app, "SwiftData model container recreated after removing unreadable store")
+            OPNLog.warning(.app, "SwiftData model container opened after quarantining an unreadable store")
             return container
         } catch {
-            OPNLog.error(.app, "SwiftData store recovery failed, falling back to in-memory store: \(error.localizedDescription)")
+            OPNLog.error(.app, "SwiftData store still unreadable after quarantine: \(error.localizedDescription)")
         }
 
         do {
-            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)])
+            let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)])
             OPNLog.warning(.app, "SwiftData running with an in-memory store; sessions will not persist across launches")
             return container
         } catch {
@@ -69,15 +72,27 @@ struct OPNApp: App {
         }
     }
 
-    private static func removePersistentStoreFiles(at storeURL: URL) {
+    /// Moves unreadable store files aside so a fresh store can open. The files are archived, never
+    /// deleted, and a configuration error is left untouched: a bug must not cost the reader their
+    /// saved sessions.
+    private static func quarantineStoreIfUnreadable(at storeURL: URL, errorDescription: String) {
         let fileManager = FileManager.default
-        for suffix in ["", "-wal", "-shm"] {
-            let candidate = URL(fileURLWithPath: storeURL.path + suffix)
+        let storeExists = fileManager.fileExists(atPath: storeURL.path)
+        let decision = OPNStoreRecoveryPolicy.decision(storeExists: storeExists, errorDescription: errorDescription)
+        guard decision == .quarantine else {
+            OPNLog.warning(.app, "SwiftData store left in place; the failure is not an unreadable store")
+            return
+        }
+
+        let archiveSuffix = ".unreadable-\(Int(Date().timeIntervalSince1970))"
+        for storeFileSuffix in ["", "-wal", "-shm"] {
+            let candidate = URL(fileURLWithPath: storeURL.path + storeFileSuffix)
             guard fileManager.fileExists(atPath: candidate.path) else { continue }
+            let archived = URL(fileURLWithPath: candidate.path + archiveSuffix)
             do {
-                try fileManager.removeItem(at: candidate)
+                try fileManager.moveItem(at: candidate, to: archived)
             } catch {
-                OPNLog.warning(.app, "Could not remove SwiftData store file \(candidate.lastPathComponent): \(error.localizedDescription)")
+                OPNLog.warning(.app, "Could not archive store file \(candidate.lastPathComponent): \(error.localizedDescription)")
             }
         }
     }
@@ -167,7 +182,7 @@ struct OPNApp: App {
     nonisolated private static func makeImageCacheContainer() -> ModelContainer? {
         let schema = Schema([CatalogImageCacheEntry.self])
         let storeURL = URL.applicationSupportDirectory.appending(path: "CatalogImageCache.store")
-        let configuration = ModelConfiguration(schema: schema, url: storeURL)
+        let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
         do {
             let container = try ModelContainer(for: schema, configurations: [configuration])
             OPNLog.info(.app, "Catalog image cache container created")

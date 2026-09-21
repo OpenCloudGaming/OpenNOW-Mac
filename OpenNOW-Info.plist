@@ -117,5 +117,17 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>OpenNOW uses the local network to host and join Remote Co-Op sessions between Macs.</string>
+	<key>NSUbiquitousContainers</key>
+	<dict>
+		<key>iCloud.io.github.opencloudgaming.opennow</key>
+		<dict>
+			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+			<true/>
+			<key>NSUbiquitousContainerName</key>
+			<string>OpenNOW</string>
+			<key>NSUbiquitousContainerSupportedFolderLevels</key>
+			<string>Any</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

@@ -206,6 +206,11 @@
 				TargetAttributes = {
 					7729CE752FDEDAB300D5C9D5 = {
 						CreatedOnToolsVersion = 26.5;
+						SystemCapabilities = {
+							com.apple.iCloud = {
+								enabled = 1;
+							};
+						};
 					};
 					C00000000000000000000005 = {
 						CreatedOnToolsVersion = 26.5;
@@ -439,6 +444,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 0.0.0;
+				OPN_ICLOUD_ENVIRONMENT = Development;
 				OPN_SENTRY_DSN = "";
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow.dev;
 				PRODUCT_MODULE_NAME = OpenNOW;
@@ -483,6 +489,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 0.0.0;
+				OPN_ICLOUD_ENVIRONMENT = Production;
 				OPN_SENTRY_DSN = "";
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -1,5 +1,5 @@
 //  The desktop surfaces for locally-owned collections: the per-game picker, the manager's
-//  create/rename/delete dialog, and the one-time note that a collection never leaves this Mac.
+//  create/rename/delete dialog, and the warning that a collection is not backed up.
 
 import SwiftUI
 
@@ -10,21 +10,27 @@ extension OPNUserCollection {
     }
 }
 
-/// The reminder shown wherever a collection is created, edited or opened. Short enough to live in a
-/// footer; the first-use explainer carries the longer version.
+/// The warning shown wherever a collection is created, edited or opened. It renders nothing once
+/// iCloud sync is carrying the catalog, so a reader is never told to back up what is already backed up.
 struct CatalogCollectionsLocalOnlyNote: View {
     @Environment(\.opnUIScale) private var uiScale
+    @AppStorage(OPNCloudSyncPreferences.enabledKey) private var isSyncEnabled = false
+    @AppStorage(OPNCloudSyncPreferences.categoryKey(.catalog)) private var isCatalogSyncEnabled = true
 
     var body: some View {
-        HStack(alignment: .top, spacing: 7 * uiScale) {
-            Image(systemName: "externaldrive.fill")
-                .catalogFont(size: 11, weight: .bold)
-            Text("Stored on this Mac only. Not synced to NVIDIA. Back up your collections yourself.")
-                .catalogFont(size: 12, weight: .medium)
-                .fixedSize(horizontal: false, vertical: true)
+        if !isCatalogBackedUp {
+            HStack(alignment: .top, spacing: 7 * uiScale) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .catalogFont(size: 11, weight: .bold)
+                Text("iCloud Sync is off, so these collections live only on this Mac. Turn it on in Settings › iCloud to back them up.")
+                    .catalogFont(size: 12, weight: .medium)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(OPNDesign.Semantic.warning)
         }
-        .foregroundStyle(OPNDesign.Text.tertiary)
     }
+
+    private var isCatalogBackedUp: Bool { isSyncEnabled && isCatalogSyncEnabled }
 }
 
 /// The empty state a collection with no resolvable members draws instead of a blank grid.
@@ -206,11 +212,6 @@ struct CatalogCollectionsManagerOverlay: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 8 * uiScale) {
-                        Text("Collections live on this Mac. Naming, renaming and deleting them changes nothing on NVIDIA.")
-                            .catalogFont(size: 12, weight: .medium)
-                            .foregroundStyle(OPNDesign.Text.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.bottom, 4 * uiScale)
                         ForEach(viewModel.sortedUserCollections) { collection in
                             managerRow(collection)
                         }
@@ -417,7 +418,7 @@ struct CatalogCollectionsNoticeOverlay: View {
                     .catalogFont(size: 13, weight: .medium)
                     .foregroundStyle(OPNDesign.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("If you want to keep a collection safe, back it up yourself. There is no server copy to restore from.")
+                Text("Turn on iCloud Sync in Settings › iCloud to keep them safe, or back them up yourself. There is no NVIDIA server copy to restore from.")
                     .catalogFont(size: 13, weight: .semibold)
                     .foregroundStyle(OPNDesign.Text.primary)
                     .fixedSize(horizontal: false, vertical: true)

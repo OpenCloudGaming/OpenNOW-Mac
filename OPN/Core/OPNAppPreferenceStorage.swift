@@ -31,6 +31,12 @@ public struct OPNAppPreferenceStorage: @unchecked Sendable {
         defaults.dictionary(forKey: key)
     }
 
+    /// Every stored key/value, used by the iCloud backup to enumerate what it may export. Filtered
+    /// by the caller: this includes the global and registration domains too.
+    public func dictionaryRepresentation() -> [String: Any] {
+        defaults.dictionaryRepresentation()
+    }
+
     public func object(forKey key: String) -> Any? {
         defaults.object(forKey: key)
     }

@@ -48,6 +48,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         OPNMainWindowCloseGuard.install()
         OPNDockIconController.install()
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
+        OPNCloudSyncCoordinator.shared.start()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

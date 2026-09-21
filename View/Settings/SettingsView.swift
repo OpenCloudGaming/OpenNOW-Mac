@@ -372,7 +372,7 @@ extension SettingsTabBar {
     /// A tab wears the tag only when everything on it is beta. Network no longer qualifies: its
     /// server location and transport rows are settled and only the session proxy card is still
     /// moving, so that card carries its own badge instead of tagging the whole destination.
-    static let betaGroups: Set<CatalogSettingsGroup> = [.remoteCoOp]
+    static let betaGroups: Set<CatalogSettingsGroup> = [.remoteCoOp, .iCloud]
 }
 
 struct SettingsTabItem: View {
@@ -569,6 +569,7 @@ struct SettingsContent: View {
         case .theme: ThemeSettingsPage.sections
         case .general: GeneralSettingsGroup.sections
         case .system: SystemSettingsGroup.sections
+        case .iCloud: CloudSyncSettingsGroup.sections
         case .labs: LabsSettingsPage.sections
         }
     }
@@ -597,6 +598,8 @@ struct SettingsContent: View {
             GeneralSettingsGroup(viewModel: viewModel)
         case .system:
             SystemSettingsGroup(viewModel: viewModel)
+        case .iCloud:
+            CloudSyncSettingsGroup()
         case .labs:
             LabsSettingsPage(uiScale: uiScale)
         }

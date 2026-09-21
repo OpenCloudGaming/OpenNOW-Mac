@@ -35,7 +35,7 @@ import Foundation
 
 @Test func theTabsAreOneDestinationPerConcernInAFixedOrder() {
     // One destination per concern, and the case order is the order the sidebar and pad walk.
-    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .keybindings, .recording, .network, .remoteCoOp, .theme, .general, .system, .labs])
+    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .keybindings, .recording, .network, .remoteCoOp, .theme, .general, .system, .iCloud, .labs])
 }
 
 @Test func everySettingsGroupNamesItself() {
@@ -51,6 +51,7 @@ import Foundation
 /// on it is beta; anything narrower is a card badge.
 @MainActor @Test func onlyAWhollyBetaDestinationCarriesTheTag() {
     #expect(SettingsTabBar.betaGroups.contains(.remoteCoOp))
+    #expect(SettingsTabBar.betaGroups.contains(.iCloud))
     #expect(!SettingsTabBar.betaGroups.contains(.network))
     #expect(!SettingsTabBar.betaGroups.contains(.account))
 }
@@ -69,7 +70,8 @@ import Foundation
         (.theme, ThemeSettingsPage.sections),
         (.general, GeneralSettingsGroup.sections),
         (.system, SystemSettingsGroup.sections),
-        // Labs carries one section, so its bar is hidden; it is checked by the flag test instead.
+        // Labs and iCloud each carry one section, so their bars are hidden; Labs is checked by the
+        // flag test instead, and iCloud by the sync tests.
     ]
     for (group, sections) in sectioned {
         #expect(sections.count > 1, "\(group.rawValue) has no section map")
