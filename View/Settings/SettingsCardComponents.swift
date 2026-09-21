@@ -20,12 +20,16 @@ enum SettingsCardBadge {
 struct SettingsCard<Content: View>: View {
     let title: String
     let badge: SettingsCardBadge?
+    /// The card qualifies a setting added in the current release, so its header wears the NEW tag.
+    /// Expires by version and by use exactly as a row's does.
+    let isNew: Bool
     let uiScale: CGFloat
     private let content: Content
 
-    init(title: String, badge: SettingsCardBadge? = nil, uiScale: CGFloat, @ViewBuilder content: () -> Content) {
+    init(title: String, badge: SettingsCardBadge? = nil, isNew: Bool = false, uiScale: CGFloat, @ViewBuilder content: () -> Content) {
         self.title = title
         self.badge = badge
+        self.isNew = isNew
         self.uiScale = uiScale
         self.content = content()
     }
@@ -42,6 +46,9 @@ struct SettingsCard<Content: View>: View {
                     .tracking(1.1)
                 if let badge {
                     SettingsCardTag(text: badge.text, uiScale: uiScale)
+                }
+                if isNew {
+                    OPNNewTag(uiScale: uiScale)
                 }
                 Spacer(minLength: 0)
             }

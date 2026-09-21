@@ -520,6 +520,21 @@ below it. Use it instead of a second `SettingsCard` when the blocks belong to on
 card each would read as separate objects and spend a header of height saying so. The folded system
 report is the reference case.
 
+### Settings Reorder List (`HomeCategorySettingsCard`)
+
+Settings → Look → Home Categories: the reader's own order for the home rails, and which are drawn.
+The card sits last on the Look page and wears the NEW tag. Each rail is a stroked row - 12 padding,
+subtle fill, 1pt Stroke Subtle border - holding an 18-wide
+muted drag handle, a 14pt bold title that drops to Text Tertiary while switched off, and a
+`Toggle`. Pointer dragging reorders through `draggable`/`dropDestination`; under a gamepad, confirm
+switches the focused rail on or off and left/right moves it one place. A rail the arrangement has
+never seen appears at the bottom and stays visible. The Jump Back In row writes through to its own
+preference rather than the arrangement's hidden set, because that setting predates this card and is
+read elsewhere. A RESET ORDER secondary `SettingsActionButton` appears only while something is
+customised. The three fixed rails are always listed, so a rail the catalog has nothing for yet is
+still findable. Stored under `OpenNOW.Interface.HomeRailOrder` and
+`OpenNOW.Interface.HomeRailsHidden` via `OPNHomeCustomization`.
+
 ### Settings Labs (`LabsSettingsPage`, `OPNLabs`)
 
 Features on trial live on their own destination, always drawn so people can learn where to look.
@@ -558,6 +573,8 @@ than stored. A Reset card appears only while something is customised.
 tracking 0.7, accent @ 0.78 on accent @ 0.12. Scope is the card. A destination in
 `SettingsTabBar.betaGroups` wears the tag in the rail instead, and only when every card on it is
 beta - one unsettled card in a settled tab is a card badge, not a destination tag.
+`SettingsCard(title:badge:isNew:uiScale:)` also lets a card wear the solid NEW tag when it qualifies
+a setting added in the current release; it expires by version and by use exactly as a row's does.
 
 ### Tags (`OPNBetaTag`, `OPNNewTag`)
 

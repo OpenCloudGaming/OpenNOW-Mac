@@ -89,7 +89,7 @@ enum SettingsNewBadges {
         case .sessionReadyAction, .steamBigPictureMode, .inGameSettingsPersistence: .general
         case .vsyncMode, .reflex: .video
         case .controllerOrder: .input
-        case .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme
+        case .homeLayout, .homeCategories, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme
         case .keybindings: .keybindings
         case .menuBar, .launchAtLogin, .startupPresentation: .general
         }

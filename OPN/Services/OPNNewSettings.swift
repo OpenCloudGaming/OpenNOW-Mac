@@ -16,6 +16,7 @@ enum OPNNewSettings {
         case reflex
         case controllerOrder
         case homeLayout
+        case homeCategories
         case tileDensity
         case tileTitles
         case reduceMotion
@@ -34,7 +35,7 @@ enum OPNNewSettings {
             case .surroundSound, .sessionReadyAction: "0.6.0"
             case .steamBigPictureMode: "0.8.0"
             case .vsyncMode, .reflex, .controllerOrder, .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn, .inGameSettingsPersistence: "0.9.0"
-            case .keybindings, .menuBar, .launchAtLogin, .startupPresentation: "1.0.0"
+            case .keybindings, .menuBar, .launchAtLogin, .startupPresentation, .homeCategories: "1.0.0"
             }
         }
     }

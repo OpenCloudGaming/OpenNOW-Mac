@@ -10,7 +10,6 @@ struct ThemeSettingsPage: View {
     @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isMotionReduced = false
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
-    @AppStorage(OPNThemePreferences.isJumpBackInEnabledKey) private var isJumpBackInStorage = true
 
     private var selectedAppearanceIndex: Int {
         let appearance = OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
@@ -51,6 +50,7 @@ struct ThemeSettingsPage: View {
         SettingsSection("home-layout", "Home Layout"),
         SettingsSection("tiles", "Tiles"),
         SettingsSection("motion", "Motion"),
+        SettingsSection("home-categories", "Home Categories"),
     ]
 
     var body: some View {
@@ -88,12 +88,6 @@ struct ThemeSettingsPage: View {
                     OPNNewSettings.acknowledge(.homeLayout)
                     homeLayoutRawValue = OPNHomeLayout.Mode.allCases[index].rawValue
                 }
-                SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(title: "Jump Back In", subtitle: "Show the games you played most recently in a rail at the top of the home page, above My Favorites.", isOn: isJumpBackInStorage, isNew: OPNNewSettings.isNew(.jumpBackIn), uiScale: uiScale) { newValue in
-                    OPNNewSettings.acknowledge(.jumpBackIn)
-                    isJumpBackInStorage = newValue
-                    viewModel.isJumpBackInEnabled = newValue
-                }
             }
             .settingsSection("home-layout")
 
@@ -117,6 +111,9 @@ struct ThemeSettingsPage: View {
                 }
             }
             .settingsSection("motion")
+
+            HomeCategorySettingsCard(viewModel: viewModel, uiScale: uiScale)
+                .settingsSection("home-categories")
         }
     }
 }

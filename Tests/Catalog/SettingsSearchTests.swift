@@ -88,6 +88,9 @@ import Testing
             // The Report an Issue card is a SettingsCard + SettingsActionButton, which the row source
             // scan does not read; the card and its section are rendered all the same.
             "Report an Issue",
+            // The Home Categories card is a SettingsCard whose rails are custom rows, so neither the
+            // card nor its Jump Back In toggle is built from the scanned `Settings…Row` family.
+            "Home Categories", "Jump Back In",
         ]
         // Keybinding rows draw their title from `KeybindingAction`, which the literal source scan
         // cannot read; the index builds those same titles from that same enum.

@@ -209,8 +209,8 @@ final class CatalogViewModel {
     var isLoadingMarquee = false
     /// The deferred library/favorites fetches run after the main grid. These hold a skeleton rail
     /// in place while they do, so the rails do not silently pop in when they land.
-    var isLoadingLibrary = false { didSet { cachedCatalogSections = nil } }
-    var isLoadingFavorites = false { didSet { cachedCatalogSections = nil } }
+    var isLoadingLibrary = false { didSet { cachedBaseCatalogSections = nil } }
+    var isLoadingFavorites = false { didSet { cachedBaseCatalogSections = nil } }
     var catalogEndCursor = ""
     var errorMessage = ""
     /// A launch that failed, kept until the next launch attempt or an explicit dismissal.
@@ -299,6 +299,11 @@ final class CatalogViewModel {
     /// and the home page rebuilds its rails when it flips.
     var isJumpBackInEnabled = OPNThemePreferences.isJumpBackInEnabled {
         didSet { invalidateDerivedCatalogCaches() }
+    }
+    /// The reader's arrangement of the home rails: their order and which are switched off. Stored
+    /// separately from the catalog so it survives a reload that returns the rails in another order.
+    var homeRailArrangement = OPNHomeCustomization.arrangement {
+        didSet { OPNHomeCustomization.arrangement = homeRailArrangement }
     }
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     var favoriteGameIdentities: Set<String> = []
@@ -435,12 +440,12 @@ final class CatalogViewModel {
     // dependencies and re-render when the underlying data changes.
     @ObservationIgnored var cachedMarqueeGames: [OPNCatalogGameObject]?
     @ObservationIgnored var cachedHeroRotationGames: [OPNCatalogGameObject]?
-    @ObservationIgnored var cachedCatalogSections: [CatalogSectionModel]?
+    @ObservationIgnored var cachedBaseCatalogSections: [CatalogSectionModel]?
 
     private func invalidateDerivedCatalogCaches() {
         cachedMarqueeGames = nil
         cachedHeroRotationGames = nil
-        cachedCatalogSections = nil
+        cachedBaseCatalogSections = nil
     }
 
     var marqueeGames: [OPNCatalogGameObject] {

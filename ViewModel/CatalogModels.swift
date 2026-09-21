@@ -1,5 +1,13 @@
 import Foundation
 
+/// One home rail as the customization card sees it. Unlike `CatalogSectionModel` it exists even for
+/// a rail the catalog has nothing for yet, so a reader can still hide My Favorites while empty.
+struct CatalogHomeRail: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let isVisible: Bool
+}
+
 struct CatalogSectionModel: Identifiable, Equatable {
     enum Kind: Equatable {
         case catalog
