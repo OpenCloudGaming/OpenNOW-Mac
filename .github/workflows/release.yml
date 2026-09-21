@@ -67,11 +67,9 @@ jobs:
       - name: Build OpenNOW
         env:
           DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
-          CODE_SIGN_IDENTITY: ${{ secrets.APPLE_CODE_SIGN_IDENTITY }}
           OPN_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           set -euo pipefail
-          KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             TAG_VERSION="${GITHUB_REF_NAME#v}"
             echo "Overriding MARKETING_VERSION from tag: ${TAG_VERSION}"
@@ -80,6 +78,8 @@ jobs:
             echo "Not a tag push — using MARKETING_VERSION from project.pbxproj"
             VERSION_OVERRIDES=()
           fi
+          # Compiled unsigned here and signed once in the DMG step, with the iCloud profile embedded.
+          # Signing at build time would demand a provisioning profile Xcode cannot find on the runner.
           xcodebuild build \
             -project OpenNOW.xcodeproj \
             -scheme OpenNOW \
@@ -89,16 +89,9 @@ jobs:
             "${VERSION_OVERRIDES[@]}" \
             OPN_SENTRY_DSN="${OPN_SENTRY_DSN}" \
             DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM}" \
-            CODE_SIGN_IDENTITY="${CODE_SIGN_IDENTITY}" \
-            CODE_SIGN_STYLE=Manual \
-            SWIFT_COMPILATION_MODE=singlefile \
-            OTHER_CODE_SIGN_FLAGS="--timestamp --options runtime --keychain ${KEYCHAIN_PATH}"
-        shell: bash
-
-      - name: Verify code signature
-        run: |
-          APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
-          codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            SWIFT_COMPILATION_MODE=singlefile
         shell: bash
 
       - name: Install dmgbuild
@@ -117,13 +110,11 @@ jobs:
           APP_PATH="DerivedData/Build/Products/Release/OpenNOW.app"
           DMG_PATH="OpenNOW.dmg"
 
-          echo "Reading the entitlements the Release build produced..."
-          # The entitlements are read back from the built app rather than copied from
-          # OpenNOW.entitlements: the file carries $(OPN_ICLOUD_ENVIRONMENT), which codesign does
-          # not expand, so re-signing from the raw file would embed a literal placeholder and drop
-          # the iCloud keys. Reading the signed app preserves exactly what the Release build produced.
+          echo "Preparing entitlements..."
+          # Rendered here because the build is unsigned, and codesign does not expand $(...) build
+          # settings: the iCloud environment is substituted with the value the Release build ships.
           ENTITLEMENTS="${RUNNER_TEMP}/release.entitlements"
-          codesign -d --entitlements :- "${APP_PATH}" > "${ENTITLEMENTS}" 2>/dev/null
+          sed 's/\$(OPN_ICLOUD_ENVIRONMENT)/Production/' OpenNOW.entitlements > "${ENTITLEMENTS}"
           /usr/libexec/PlistBuddy -c "Delete :com.apple.security.get-task-allow" "${ENTITLEMENTS}" 2>/dev/null || true
 
           echo "Embedding iCloud provisioning profile..."
