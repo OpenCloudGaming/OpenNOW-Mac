@@ -507,8 +507,14 @@ extension NativeNVSTHostViewModel {
                 // consecutive zero-frame samples the watchdog needs and never tripped at all.
                 let snapshot = await path.performanceSnapshot()
                 if let snapshot, isConnected, !isEnding, !didEnd {
-                    latestNativeStats = snapshot
-                    latestRenderDiagnostics = nativeView?.nvstBifrostFreeRenderer?.renderDiagnostics
+                    // Equality-gated: the poll runs once a second and a healthy stream reports the
+                    // same snapshot for long stretches, but an unconditional assignment still
+                    // publishes, re-rendering the whole stream surface and every HUD panel. The
+                    // telemetry and governor below still run on every tick; only the published
+                    // writes are skipped when the value is unchanged.
+                    if latestNativeStats != snapshot { latestNativeStats = snapshot }
+                    let renderDiagnostics = nativeView?.nvstBifrostFreeRenderer?.renderDiagnostics
+                    if latestRenderDiagnostics != renderDiagnostics { latestRenderDiagnostics = renderDiagnostics }
                     if snapshot.serverGPU != nativeRigRawName {
                         nativeRigRawName = snapshot.serverGPU
                         nativeRigName = OPNStreamPreferences.friendlyGPUName(for: snapshot.serverGPU)

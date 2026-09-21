@@ -367,11 +367,18 @@ final class OPNGameDataCache: @unchecked Sendable {
     }
 
     private func readCacheDictionary(path: String, requireFreshness: Bool, maxAgeSeconds: TimeInterval) -> NSDictionary? {
+        // Freshness is checked against the file's modification date before the file is read. A
+        // catalog snapshot is tens of megabytes; loading and parsing an expired one only to reject
+        // it on the timestamp inside is the whole cost of the read, for nothing.
+        if requireFreshness {
+            guard maxAgeSeconds > 0 else { return nil }
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+                  let modified = attributes[.modificationDate] as? Date else { return nil }
+            let age = Date().timeIntervalSince(modified)
+            guard age >= 0, age <= maxAgeSeconds else { return nil }
+        }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { return nil }
         guard let dictionary = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? NSDictionary else {
-            return nil
-        }
-        if requireFreshness && !cacheDictionaryIsFresh(dictionary, maxAgeSeconds: maxAgeSeconds) {
             return nil
         }
         return dictionary
@@ -382,11 +389,5 @@ final class OPNGameDataCache: @unchecked Sendable {
             return
         }
         try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
-    }
-
-    private func cacheDictionaryIsFresh(_ dictionary: NSDictionary, maxAgeSeconds: TimeInterval) -> Bool {
-        guard maxAgeSeconds > 0, let timestamp = dictionary["ts"] as? NSNumber else { return false }
-        let age = Date().timeIntervalSince1970 - timestamp.doubleValue
-        return age >= 0 && age <= maxAgeSeconds
     }
 }

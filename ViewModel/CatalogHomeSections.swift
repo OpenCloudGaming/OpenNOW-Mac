@@ -80,6 +80,8 @@ extension CatalogViewModel {
     /// The rails the home page actually draws: the base list in the reader's order, with the hidden
     /// ones removed, capped at the number of rails home shows at once. A browse result stays pinned.
     var catalogSections: [CatalogSectionModel] {
+        _ = (baseCatalogSections, homeRailArrangement)
+        if let cachedCatalogSections { return cachedCatalogSections }
         let base = baseCatalogSections
         let pinned = base.filter { $0.kind == .catalog }
         let arrangeable = base.filter { $0.kind != .catalog }
@@ -87,7 +89,9 @@ extension CatalogViewModel {
         let sectionsByID = sectionsIndexedByID(arrangeable)
         let arranged = orderedIDs.compactMap { sectionsByID[$0] }
         let visible = arranged.filter { !homeRailArrangement.hidden.contains($0.id) }
-        return Array((pinned + visible).prefix(Self.maximumHomeRailCount))
+        let result = Array((pinned + visible).prefix(Self.maximumHomeRailCount))
+        cachedCatalogSections = result
+        return result
     }
 
     /// Every home rail as the customization card sees it, in the arranged order and including the
@@ -197,7 +201,10 @@ extension CatalogViewModel {
     /// already capped and deduped by the store; this pass only drops titles the catalog no longer
     /// carries.
     var jumpBackInGames: [OPNCatalogGameObject] {
+        _ = (isJumpBackInEnabled, recentlyPlayed)
         guard isJumpBackInEnabled, !recentlyPlayed.games.isEmpty else { return [] }
+        _ = allKnownGames
+        if let cachedJumpBackInGames { return cachedJumpBackInGames }
         let knownGames = allKnownGames
         var resolved: [OPNCatalogGameObject] = []
         var seenIdentities = Set<String>()
@@ -208,6 +215,7 @@ extension CatalogViewModel {
             resolved.append(game)
             if resolved.count == CatalogRecentlyPlayed.maximumGameCount { break }
         }
+        cachedJumpBackInGames = resolved
         return resolved
     }
 
@@ -216,5 +224,57 @@ extension CatalogViewModel {
             return match
         }
         return knownGames.first(where: { !$0.title.isEmpty && $0.title.caseInsensitiveCompare(entry.title) == .orderedSame })
+    }
+}
+
+// The derived game lists, memoized against the same invalidation as the rails above. They live here
+// rather than in the view model's class body: they are read from many bodies, and a cached getter
+// reads its inputs on the cached path so Observation still registers the dependency.
+extension CatalogViewModel {
+    var visibleFilterGroups: [OPNCatalogFilterGroupObject] {
+        _ = filterGroups
+        if let cachedVisibleFilterGroups { return cachedVisibleFilterGroups }
+        let groups = filterGroups.filter { !$0.options.isEmpty }
+        cachedVisibleFilterGroups = groups
+        return groups
+    }
+
+    var showsCatalogLoadingIndicator: Bool {
+        (isLoading && !catalogGames.isEmpty) || isLoadingMoreCatalog
+    }
+
+    var isRefetchingCatalog: Bool {
+        isLoading && !catalogGames.isEmpty
+    }
+
+    var allKnownGames: [OPNCatalogGameObject] {
+        _ = (marqueeGames, catalogGames, libraryGames, favoriteGames, mainPanelGames)
+        if let cachedAllKnownGames { return cachedAllKnownGames }
+        let games = marqueeGames + catalogGames + libraryGames + favoriteGames + mainPanelGames
+        cachedAllKnownGames = games
+        return games
+    }
+
+    var mainPanelGames: [OPNCatalogGameObject] {
+        _ = mainPanels
+        if let cachedMainPanelGames { return cachedMainPanelGames }
+        let games = mainPanels.flatMap { panel in panel.sections.flatMap(\.games) }
+        cachedMainPanelGames = games
+        return games
+    }
+
+    /// Everything the catalog knows, keyed by canonical identity, first writer wins. Rebuilt only
+    /// when the underlying game lists change, so resolving a collection's members is a dictionary
+    /// lookup per member rather than a full catalog scan.
+    var catalogGamesByIdentity: [String: OPNCatalogGameObject] {
+        _ = (allKnownGames, jumpBackInGames)
+        if let cachedCatalogGamesByIdentity { return cachedCatalogGamesByIdentity }
+        var byIdentity: [String: OPNCatalogGameObject] = [:]
+        for game in allKnownGames + jumpBackInGames {
+            let identity = Self.identity(for: game)
+            if !identity.isEmpty, byIdentity[identity] == nil { byIdentity[identity] = game }
+        }
+        cachedCatalogGamesByIdentity = byIdentity
+        return byIdentity
     }
 }

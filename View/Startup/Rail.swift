@@ -14,11 +14,12 @@ struct StartupRail: View, Equatable {
             && lhs.stage.statusText == rhs.stage.statusText
             && lhs.stage.frameMarks == rhs.stage.frameMarks
             && lhs.stage.bloom == rhs.stage.bloom
+            && lhs.stage.holdPhase == rhs.stage.holdPhase
             && lhs.metrics == rhs.metrics
     }
 
-    nonisolated fileprivate var percent: Int { Int((stage.progress * 100).rounded()) }
-    nonisolated fileprivate var filledCount: Int { Int((Double(metrics.railCells) * stage.progress).rounded(.down)) }
+    nonisolated fileprivate var percent: Int { Int((stage.railProgress * 100).rounded()) }
+    nonisolated fileprivate var filledCount: Int { Int((Double(metrics.railCells) * stage.railProgress).rounded(.down)) }
 
     var body: some View {
         let scale = metrics.uiScale
@@ -38,7 +39,13 @@ struct StartupRail: View, Equatable {
                     .contentTransition(.identity)
             }
 
-            StartupSegmentBar(filledCount: filledCount, cells: metrics.railCells, scale: scale)
+            StartupSegmentBar(
+                filledCount: filledCount,
+                cells: metrics.railCells,
+                scale: scale,
+                holdHeadIndex: stage.isHolding ? filledCount : nil,
+                holdPulse: stage.holdPulse
+            )
                 .frame(height: (metrics.compact ? 8 : 11) * scale)
         }
         .frame(width: metrics.railWidth)
@@ -52,6 +59,10 @@ private struct StartupSegmentBar: View {
     let filledCount: Int
     let cells: Int
     let scale: CGFloat
+    /// The first unfilled segment while the splash is holding for content, so it can breathe as a
+    /// sign the launch is still working rather than frozen.
+    let holdHeadIndex: Int?
+    let holdPulse: Double
 
     var body: some View {
         let accent = OPNDesign.Fixed.accent
@@ -60,11 +71,12 @@ private struct StartupSegmentBar: View {
             ForEach(0..<cells, id: \.self) { index in
                 let isFilled = index < filledCount
                 let isHead = index == filledCount - 1
+                let isHoldHead = index == holdHeadIndex
 
                 Rectangle()
-                    .fill(isFilled ? accent.opacity(isHead ? 1.0 : 0.72) : OPNDesign.Fixed.ink(0.14))
+                    .fill(isFilled ? accent.opacity(isHead ? 1.0 : 0.72) : (isHoldHead ? accent.opacity(0.12 + 0.35 * holdPulse) : OPNDesign.Fixed.ink(0.14)))
                     .frame(maxWidth: .infinity)
-                    .scaleEffect(y: isHead ? 1.0 : (isFilled ? 0.78 : 0.42), anchor: .bottom)
+                    .scaleEffect(y: isHead ? 1.0 : (isFilled ? 0.78 : (isHoldHead ? 0.42 + 0.30 * holdPulse : 0.42)), anchor: .bottom)
             }
         }
     }

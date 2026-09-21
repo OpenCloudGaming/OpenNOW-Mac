@@ -384,8 +384,8 @@ struct CatalogView: View {
         // Reported from the view rather than from the fetch callbacks: the point of the signal is
         // that a frame carrying real content has been built, not that bytes arrived.
         .task(id: viewModel.hasStartupContent) { @MainActor in
-            guard viewModel.hasStartupContent else { return }
-            StartupReadiness.shared.markContentReady()
+            guard let gate = viewModel.startupContentGate else { return }
+            StartupReadiness.shared.markContentReady(gate: gate)
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: menuBarAccountsSignature, initial: true) { @MainActor _, _ in

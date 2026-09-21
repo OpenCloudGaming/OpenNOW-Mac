@@ -28,22 +28,29 @@ extension CatalogViewModel {
     }
 
     static func formattedCacheSummary(_ statistics: CatalogImageCacheStatistics) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        let bytes = formatter.string(fromByteCount: Int64(statistics.totalBytes))
+        let bytes = ByteCountFormatter.string(fromByteCount: Int64(statistics.totalBytes), countStyle: .file)
         let entryLabel = statistics.entryCount == 1 ? "entry" : "entries"
         return "\(bytes) / \(statistics.entryCount) \(entryLabel)"
     }
 
+    /// Which real content can let the launch splash open, or nil while there is none.
+    ///
+    /// The splash covers the page's first layout settle: the top bar taking its full height and the
+    /// marquee skeleton swapping for the hero. The hero having art means that settle is over for the
+    /// top of the page; failing that, the rails having content with the panel query finished is
+    /// enough. It deliberately no longer waits for *both* queries - the main panels arrive from cache
+    /// well before the marquee, and holding for the marquee when the rails are ready is the wait the
+    /// adaptive hold exists to bound, not to extend.
+    var startupContentGate: StartupContentGate? {
+        if !heroRotationGames.isEmpty { return .hero }
+        guard !isLoadingPanels, !catalogSections.isEmpty else { return nil }
+        return .rails
+    }
+
     /// True once the page has something real to draw rather than skeletons. Read by the launch
     /// splash, which holds its last frame until then.
-    ///
-    /// Both queries have to have landed, not just one: the main panels arrive from cache well before
-    /// the marquee, so sections alone let the fade uncover a page whose hero was still missing.
     var hasStartupContent: Bool {
-        guard !isLoadingMarquee, !isLoadingPanels else { return false }
-        return !heroRotationGames.isEmpty || !catalogSections.isEmpty
+        startupContentGate != nil
     }
 
     func loadPanels() {
@@ -65,6 +72,7 @@ extension CatalogViewModel {
     }
 
     func handleLaunchPrefetchEvent(_ event: CatalogLaunchPrefetch.Event) {
+        StartupReadiness.shared.noteProgress()
         switch event {
         case .panels(.marquee, let panels):
             isLoadingMarquee = false
@@ -98,6 +106,7 @@ extension CatalogViewModel {
     }
 
     func loadMarqueePanels() {
+        StartupReadiness.shared.noteProgress()
         let panelStartTime = CFAbsoluteTimeGetCurrent()
         gameService.fetchMarqueePanelObjects { [weak self] success, panels, error in
             guard let self else { return }
@@ -115,6 +124,7 @@ extension CatalogViewModel {
     }
 
     func loadMainPanels() {
+        StartupReadiness.shared.noteProgress()
         let panelStartTime = CFAbsoluteTimeGetCurrent()
         gameService.fetchMainPanelObjects { [weak self] success, panels, error in
             guard let self else { return }
@@ -138,6 +148,7 @@ extension CatalogViewModel {
     func applyMarqueePanels(_ panels: [OPNCatalogPanelObject]) {
         let fingerprint = Self.panelsFingerprint(panels)
         guard fingerprint != appliedMarqueePanelsFingerprint else { return }
+        StartupReadiness.shared.noteProgress()
         appliedMarqueePanelsFingerprint = fingerprint
         marqueePanels = panels
         schedulePatchingPollIfNeeded()
@@ -146,6 +157,7 @@ extension CatalogViewModel {
     func applyMainPanels(_ panels: [OPNCatalogPanelObject]) {
         let fingerprint = Self.panelsFingerprint(panels)
         guard fingerprint != appliedMainPanelsFingerprint else { return }
+        StartupReadiness.shared.noteProgress()
         appliedMainPanelsFingerprint = fingerprint
         mainPanels = panels
         schedulePatchingPollIfNeeded()
@@ -190,10 +202,12 @@ extension CatalogViewModel {
     }
 
     func fetchLibraryFromNetwork() {
+        StartupReadiness.shared.noteProgress()
         gameService.fetchLibraryGameObjects { [weak self] success, games, error in
             guard let self else { return }
             self.isLoadingLibrary = false
             if success {
+                StartupReadiness.shared.noteProgress()
                 self.libraryGames = games
                 self.applyServerRecentlyPlayed(from: games)
                 self.schedulePatchingPollIfNeeded()
@@ -233,6 +247,7 @@ extension CatalogViewModel {
     }
 
     func fetchFavoritesFromNetwork() {
+        StartupReadiness.shared.noteProgress()
         gameService.fetchFavoriteGameObjects { [weak self] success, games, error in
             guard let self else { return }
             self.isLoadingFavorites = false
@@ -256,6 +271,7 @@ extension CatalogViewModel {
         }
         favoriteGames = uniqueGames
         favoriteGameIdentities = identities
+        StartupReadiness.shared.noteProgress()
         // Persisted for the menu bar's windowless launch, which has no catalog to push the list.
         CatalogFavoritesCache(games: Self.menuBarGames(from: uniqueGames)).save(accountIdentifier: catalogAccountIdentifier)
     }

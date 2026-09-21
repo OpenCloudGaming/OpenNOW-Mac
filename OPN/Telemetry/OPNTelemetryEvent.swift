@@ -109,8 +109,10 @@ public struct OPNTelemetryEvent: Equatable, Sendable {
     }
 
     public static func currentTimestamp() -> String {
-        ISO8601DateFormatter().string(from: Date())
+        Self.timestampFormatter.string(from: Date())
     }
+
+    private nonisolated(unsafe) static let timestampFormatter = ISO8601DateFormatter()
 }
 
 public enum OPNTelemetryRecorder {

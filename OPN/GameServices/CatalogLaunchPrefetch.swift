@@ -74,6 +74,7 @@ final class CatalogLaunchPrefetch {
         for kind in PanelKind.allCases { panelStates[kind] = .inFlight }
         for kind in GameListKind.allCases { gameListStates[kind] = .inFlight }
         startedAt = ContinuousClock.now
+        StartupReadiness.shared.noteProgress()
         // Also prewarms the vpcId lookup, which every catalog query waits on.
         gameService.configureCatalogSession(accessToken: accessToken, idToken: idToken, userId: accountIdentifier)
         OPNLog.info(.catalog, "Launch panel prefetch started")
@@ -149,6 +150,7 @@ final class CatalogLaunchPrefetch {
     private func applyCachedPanels(_ cached: [OPNCatalogPanelObject], for kind: PanelKind) {
         guard (panels[kind] ?? []).isEmpty else { return }
         panels[kind] = cached
+        StartupReadiness.shared.noteProgress()
         OPNLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(cached.flatMap(\.sections).count)")
         observer?(.panels(kind, cached))
         prefetchFirstFrameImages(for: kind)
@@ -184,6 +186,7 @@ final class CatalogLaunchPrefetch {
 
         panelStates[kind] = .delivered
         panels[kind] = newPanels
+        StartupReadiness.shared.noteProgress()
         logDelivered(label: "panel", kind: kind.rawValue, count: newPanels.flatMap(\.sections).count, unit: "sections")
         observer?(.panels(kind, newPanels))
         prefetchFirstFrameImages(for: kind)
@@ -201,6 +204,7 @@ final class CatalogLaunchPrefetch {
         }
         gameListStates[kind] = .delivered
         gameLists[kind] = games
+        StartupReadiness.shared.noteProgress()
         logDelivered(label: kind.rawValue, kind: nil, count: games.count, unit: "games")
         observer?(.games(kind, games))
     }

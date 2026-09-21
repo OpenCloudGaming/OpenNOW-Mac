@@ -7,6 +7,26 @@ struct StartupStage {
     let elapsed: TimeInterval
     let duration: TimeInterval
     let reduceMotion: Bool
+    /// Whether the page behind the splash has real content to draw. The animation clock finishing
+    /// and the app being ready are different events, and only the second may report completion.
+    let contentReady: Bool
+    /// How far the final stretch of the rail has filled since content became ready, 0...1. The rail
+    /// completes over this window rather than jumping from its hold to 100% in a single frame.
+    let completionRamp: Double
+
+    /// The rail's progress, held just short of complete until the app is ready, so a launch that is
+    /// still waiting on the catalog does not read 100%. It completes as the splash fades.
+    var railProgress: Double { min(progress, 0.98 + 0.02 * completionRamp) }
+
+    /// The animation has finished but the launch is still holding for content. The rail should read
+    /// as working, not stuck at a number that will not move.
+    var isHolding: Bool { !contentReady && progress >= 0.90 }
+
+    /// A slow breath for the next rail segment while holding.
+    var holdPulse: Double { reduceMotion ? 1 : (sin(elapsed * .pi * 2 / 1.6) * 0.5 + 0.5) }
+
+    /// Quantized so the equatable rail redraws at a visible rate instead of every frame.
+    var holdPhase: Int { isHolding ? Int(holdPulse * 10) : -1 }
 
     /// Grid, vignette and frame marks arrive first so the beam has a stage to fall through.
     var ignite: Double { startupSmoothStep(0.00, 0.18, progress) }
@@ -32,7 +52,7 @@ struct StartupStage {
         if progress < 0.20 { return "IGNITING CORE" }
         if progress < 0.44 { return "ATTACHING SERVICES" }
         if progress < 0.68 { return "INDEXING CATALOG" }
-        if progress < 0.90 { return "ARMING STREAM SURFACE" }
+        if progress < 0.90 || !contentReady { return "ARMING STREAM SURFACE" }
         return "READY"
     }
 }

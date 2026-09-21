@@ -148,11 +148,14 @@ enum GameDetailPresentation {
 
     // MARK: - Spec rows
 
+    // ISO8601DateFormatter is not Sendable, but this instance only ever parses; formatter parsing
+    // is documented thread-safe since macOS 10.9, so a shared read-only instance cannot race.
+    private nonisolated(unsafe) static let releaseDateFormatter = ISO8601DateFormatter()
+
     static func releaseDateLine(game: OPNCatalogGameObject) -> String {
         let value = game.releaseDate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return "" }
-        let formatter = ISO8601DateFormatter()
-        if let date = formatter.date(from: value) {
+        if let date = Self.releaseDateFormatter.date(from: value) {
             return date.formatted(date: .abbreviated, time: .omitted)
         }
         return value

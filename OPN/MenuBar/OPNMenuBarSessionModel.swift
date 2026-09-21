@@ -3,6 +3,24 @@ import Combine
 import Foundation
 import Observation
 
+/// The status item's insertion flag, published on its own so `OPNApp`'s scene body observes only
+/// this instead of the whole session model. The session model publishes at stream cadence — the
+/// elapsed clock ticks every second, queue ETAs change on every vendor poll — and observing it in
+/// the `App` struct re-evaluated the entire scene graph, `Window`, commands and `MenuBarExtra`
+/// included, once per second for the life of a stream. Only the flag that decides whether the item
+/// exists is a scene argument; everything else is read inside the popover.
+@MainActor
+final class OPNMenuBarStatusItemModel: ObservableObject {
+    static let shared = OPNMenuBarStatusItemModel()
+
+    @Published private(set) var isInserted = false
+
+    func setInserted(_ isInserted: Bool) {
+        guard self.isInserted != isInserted else { return }
+        self.isInserted = isInserted
+    }
+}
+
 /// The menu bar surface's state: what the status item shows, what the menu's session controls act
 /// on, and which recent games it can relaunch.
 ///
@@ -463,6 +481,7 @@ final class OPNMenuBarSessionModel: ObservableObject {
             && (OPNWindowClosePreferences.keepsApplicationRunning || phase != .idle)
         guard isStatusItemInserted != isInserted else { return }
         isStatusItemInserted = isInserted
+        OPNMenuBarStatusItemModel.shared.setInserted(isInserted)
         OPNLog.info(.app, "Menu bar status item \(isInserted ? "shown" : "hidden") phase=\(phase)")
     }
 }

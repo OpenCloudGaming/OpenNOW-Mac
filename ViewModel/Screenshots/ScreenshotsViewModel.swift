@@ -28,6 +28,7 @@ final class ScreenshotsViewModel: ObservableObject {
     @Published var message = ""
 
     private let systemIntegration: any SystemIntegrationServing
+    private var reloadTask: Task<Void, Never>?
 
     init(systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration()) {
         self.systemIntegration = systemIntegration
@@ -107,16 +108,26 @@ final class ScreenshotsViewModel: ObservableObject {
     // MARK: - Library
 
     func reload(showMessage: Bool) {
-        screenshots = StreamScreenshotLibrary.loadScreenshots()
-        albums = StreamScreenshotLibrary.loadAlbums()
-        pruneAlbumSelection()
-        if let selectedScreenshot, let refreshed = screenshots.first(where: { $0.id == selectedScreenshot.id }) {
-            self.selectedScreenshot = refreshed
-        } else {
-            selectedScreenshot = visibleScreenshots.first
-        }
-        if showMessage {
-            message = screenshots.isEmpty ? "No screenshots yet. Take one from a running stream." : "Loaded \(screenshots.count) screenshot\(screenshots.count == 1 ? "" : "s")."
+        // The library scan reads a sidecar per screenshot and stats every image, which scales with
+        // how many shots the user has taken. It runs off the main actor so the page cannot hitch on
+        // a full library; the results are applied back on the main actor when they are ready.
+        reloadTask?.cancel()
+        reloadTask = Task { [weak self] in
+            let loaded = await Task.detached(priority: .userInitiated) {
+                (screenshots: StreamScreenshotLibrary.loadScreenshots(), albums: StreamScreenshotLibrary.loadAlbums())
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            self.screenshots = loaded.screenshots
+            self.albums = loaded.albums
+            self.pruneAlbumSelection()
+            if let selected = self.selectedScreenshot, let refreshed = loaded.screenshots.first(where: { $0.id == selected.id }) {
+                self.selectedScreenshot = refreshed
+            } else {
+                self.selectedScreenshot = self.visibleScreenshots.first
+            }
+            if showMessage {
+                self.message = loaded.screenshots.isEmpty ? "No screenshots yet. Take one from a running stream." : "Loaded \(loaded.screenshots.count) screenshot\(loaded.screenshots.count == 1 ? "" : "s")."
+            }
         }
     }
 

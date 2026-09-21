@@ -214,8 +214,8 @@ final class CatalogViewModel {
     var isLoadingMarquee = false
     /// The deferred library/favorites fetches run after the main grid. These hold a skeleton rail
     /// in place while they do, so the rails do not silently pop in when they land.
-    var isLoadingLibrary = false { didSet { cachedBaseCatalogSections = nil } }
-    var isLoadingFavorites = false { didSet { cachedBaseCatalogSections = nil } }
+    var isLoadingLibrary = false { didSet { invalidateDerivedCatalogCaches() } }
+    var isLoadingFavorites = false { didSet { invalidateDerivedCatalogCaches() } }
     var catalogEndCursor = ""
     var errorMessage = ""
     /// A launch that failed, kept until the next launch attempt or an explicit dismissal.
@@ -241,7 +241,9 @@ final class CatalogViewModel {
     var libraryGames: [OPNCatalogGameObject] = [] {
         didSet { invalidateDerivedCatalogCaches() }
     }
-    var filterGroups: [OPNCatalogFilterGroupObject] = []
+    var filterGroups: [OPNCatalogFilterGroupObject] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
     var sortOptions: [OPNCatalogSortOptionObject] = []
     var totalCatalogCount = 0
     var supportedCatalogCount = 0
@@ -308,7 +310,10 @@ final class CatalogViewModel {
     /// The reader's arrangement of the home rails: their order and which are switched off. Stored
     /// separately from the catalog so it survives a reload that returns the rails in another order.
     var homeRailArrangement = OPNHomeCustomization.arrangement {
-        didSet { OPNHomeCustomization.arrangement = homeRailArrangement }
+        didSet {
+            OPNHomeCustomization.arrangement = homeRailArrangement
+            invalidateDerivedCatalogCaches()
+        }
     }
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable
     var favoriteGameIdentities: Set<String> = []
@@ -468,11 +473,25 @@ final class CatalogViewModel {
     @ObservationIgnored var cachedMarqueeGames: [OPNCatalogGameObject]?
     @ObservationIgnored var cachedHeroRotationGames: [OPNCatalogGameObject]?
     @ObservationIgnored var cachedBaseCatalogSections: [CatalogSectionModel]?
+    @ObservationIgnored var cachedCatalogSections: [CatalogSectionModel]?
+    @ObservationIgnored var cachedAllKnownGames: [OPNCatalogGameObject]?
+    @ObservationIgnored var cachedMainPanelGames: [OPNCatalogGameObject]?
+    @ObservationIgnored var cachedJumpBackInGames: [OPNCatalogGameObject]?
+    @ObservationIgnored var cachedSortedUserCollections: [OPNUserCollection]?
+    @ObservationIgnored var cachedCatalogGamesByIdentity: [String: OPNCatalogGameObject]?
+    @ObservationIgnored var cachedVisibleFilterGroups: [OPNCatalogFilterGroupObject]?
 
     private func invalidateDerivedCatalogCaches() {
         cachedMarqueeGames = nil
         cachedHeroRotationGames = nil
         cachedBaseCatalogSections = nil
+        cachedCatalogSections = nil
+        cachedAllKnownGames = nil
+        cachedMainPanelGames = nil
+        cachedJumpBackInGames = nil
+        cachedSortedUserCollections = nil
+        cachedCatalogGamesByIdentity = nil
+        cachedVisibleFilterGroups = nil
     }
 
     var marqueeGames: [OPNCatalogGameObject] {
@@ -503,7 +522,7 @@ final class CatalogViewModel {
     }
 
     var isBrowseMode: Bool {
-        !searchQuery.trimmed.isEmpty || !selectedFilterIds.isEmpty
+        !selectedFilterIds.isEmpty || searchQuery.contains { !$0.isWhitespace }
     }
 
     var isCatalogRefreshInProgress: Bool {
@@ -512,26 +531,6 @@ final class CatalogViewModel {
 
     var selectedSortLabel: String {
         sortOptions.first { $0.id == selectedSortId }?.label ?? "A-Z"
-    }
-
-    var visibleFilterGroups: [OPNCatalogFilterGroupObject] {
-        filterGroups.filter { !$0.options.isEmpty }
-    }
-
-    var showsCatalogLoadingIndicator: Bool {
-        (isLoading && !catalogGames.isEmpty) || isLoadingMoreCatalog
-    }
-
-    var isRefetchingCatalog: Bool {
-        isLoading && !catalogGames.isEmpty
-    }
-
-    var allKnownGames: [OPNCatalogGameObject] {
-        marqueeGames + catalogGames + libraryGames + favoriteGames + mainPanelGames
-    }
-
-    var mainPanelGames: [OPNCatalogGameObject] {
-        mainPanels.flatMap { panel in panel.sections.flatMap(\.games) }
     }
 
     var selectedFilterCount: Int { selectedFilterIds.count }

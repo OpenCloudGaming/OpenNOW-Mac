@@ -158,11 +158,15 @@ struct AccountSettingsPage: View {
     }
 
     private func dateText(_ date: Date) -> String {
+        Self.dateFormatter.string(from: date)
+    }
+
+    private nonisolated(unsafe) static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
+        return formatter
+    }()
 
     private func durationText(_ seconds: Double) -> String {
         let totalMinutes = max(0, Int((seconds / 60).rounded()))

@@ -7,9 +7,12 @@ struct OPNApp: App {
     @NSApplicationDelegateAdaptor(OPNAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
     @ObservedObject private var keybindings = OPNKeybindingsObserver.shared
-    /// Owns what the status item shows. Read here as well as in its own views because `isInserted`
-    /// is a scene argument: whether the item exists at all is decided in this body.
-    @ObservedObject private var menuBarSession = OPNMenuBarSessionModel.shared
+    /// The status item's insertion flag, observed here because `isInserted` is a scene argument:
+    /// whether the item exists at all is decided in this body. Deliberately this small object and
+    /// not `OPNMenuBarSessionModel` — that model publishes at stream cadence (a 1 Hz elapsed clock,
+    /// queue ETAs on every poll), and observing it here re-evaluated the whole scene graph once a
+    /// second. The session itself is read inside the popover, which observes it directly.
+    @ObservedObject private var menuBarStatusItem = OPNMenuBarStatusItemModel.shared
     /// The scene argument for `MenuBarExtra(isInserted:)`, mirrored from the surface instead of
     /// handing SwiftUI the published property itself: SwiftUI writes this binding back on every
     /// graph change, and a `@Published` write invalidates the body even when the value is unchanged
@@ -256,12 +259,12 @@ struct OPNApp: App {
         // every close choice except menu bar only. `OPNDockIconController` is the single place that
         // trades the Dock icon away, and only while no window is on screen.
         MenuBarExtra(isInserted: $isMenuBarStatusItemInserted) {
-            OPNMenuBarSceneContent(session: menuBarSession)
+            OPNMenuBarSceneContent(session: OPNMenuBarSessionModel.shared)
         } label: {
-            OPNMenuBarStatusLabel(session: menuBarSession)
+            OPNMenuBarStatusLabel(session: OPNMenuBarSessionModel.shared)
         }
         .menuBarExtraStyle(.window)
-        .onChange(of: menuBarSession.isStatusItemInserted) { @MainActor _, isInserted in
+        .onChange(of: menuBarStatusItem.isInserted) { @MainActor _, isInserted in
             isMenuBarStatusItemInserted = isInserted
         }
 

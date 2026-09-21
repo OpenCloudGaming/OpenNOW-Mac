@@ -20,7 +20,11 @@ extension CatalogViewModel {
 
     /// The collections in the order the UI lists them, case-insensitively by name.
     var sortedUserCollections: [OPNUserCollection] {
-        userCollections.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        _ = userCollections
+        if let cachedSortedUserCollections { return cachedSortedUserCollections }
+        let sorted = userCollections.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        cachedSortedUserCollections = sorted
+        return sorted
     }
 
     func collection(id: String) -> OPNUserCollection? {
@@ -111,11 +115,7 @@ extension CatalogViewModel {
     /// A collection's members resolved against everything the catalog knows, in stored order, plus
     /// the identities it cannot resolve so the caller can report them rather than drop them.
     func resolvedMembers(of collection: OPNUserCollection) -> (games: [OPNCatalogGameObject], missingIdentities: [String]) {
-        var byIdentity: [String: OPNCatalogGameObject] = [:]
-        for game in allKnownGames + jumpBackInGames {
-            let identity = Self.identity(for: game)
-            if !identity.isEmpty, byIdentity[identity] == nil { byIdentity[identity] = game }
-        }
+        let byIdentity = catalogGamesByIdentity
         var games: [OPNCatalogGameObject] = []
         var missing: [String] = []
         for identity in collection.gameIds {

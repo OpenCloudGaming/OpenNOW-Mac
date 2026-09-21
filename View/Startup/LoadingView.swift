@@ -6,6 +6,9 @@ enum StartupAnimation {
     static let dismissalDelayNanoseconds: UInt64 = 2_400_000_000
     static let quickDismissalDelayNanoseconds: UInt64 = 1_000_000_000
     static let fadeDuration: TimeInterval = 0.4
+    /// How long the rail takes to fill from its hold to 100% once content is ready, so it completes
+    /// with the fade instead of snapping.
+    static let completionRampDuration: TimeInterval = 0.35
 }
 
 /// Boot sequence for the app window.
@@ -22,7 +25,9 @@ struct StartupLoadingView: View {
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
     @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @Environment(\.opnUIScale) private var uiScale
+    @ObservedObject private var readiness = StartupReadiness.shared
     @State private var clock = StartupClock()
+    @State private var contentReadyAt: Date?
 
     private var isMotionReduced: Bool {
         OPNDesign.Motion.isMotionReduced(system: isSystemReduceMotionEnabled, preference: isReduceMotionPreferenceEnabled)
@@ -36,11 +41,18 @@ struct StartupLoadingView: View {
             // drifts against the display refresh, so even an unloaded run beats against vsync.
             TimelineView(.animation(minimumInterval: OPNDesign.Motion.heroFrameInterval, paused: false)) { timeline in
                 let elapsed = clock.advance(to: timeline.date)
+                // Fills the rail's last stretch over a short window once content is ready, so the
+                // hold ending reads as completion rather than a snap.
+                let completionRamp = readiness.isContentReady
+                    ? (contentReadyAt.map { startupClamp(timeline.date.timeIntervalSince($0) / StartupAnimation.completionRampDuration) } ?? 1)
+                    : 0
                 let stage = StartupStage(
                     progress: startupClamp(elapsed / duration),
                     elapsed: elapsed,
                     duration: duration,
-                    reduceMotion: isMotionReduced
+                    reduceMotion: isMotionReduced,
+                    contentReady: readiness.isContentReady,
+                    completionRamp: completionRamp
                 )
 
                 ZStack {
@@ -74,5 +86,12 @@ struct StartupLoadingView: View {
         .background(.black)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("OpenNOW is starting")
+        .onChange(of: readiness.isContentReady) { _, isReady in
+            if isReady { contentReadyAt = Date() }
+        }
+        .task(id: duration) {
+            try? await Task.sleep(for: .seconds(duration))
+            OPNStartupTrace.recordAnimationComplete(duration: duration)
+        }
     }
 }

@@ -7,17 +7,36 @@ import Foundation
 import SwiftUI
 
 enum RecordingFormat {
-    static func dateText(_ date: Date) -> String {
+    // Formatters are not Sendable, but each instance is read-only after construction and
+    // Foundation's formatter parsing/formatting is documented thread-safe, so sharing cannot race.
+    private nonisolated(unsafe) static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private nonisolated(unsafe) static let relativeDateFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter
+    }()
+
+    private nonisolated(unsafe) static let fileSizeFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        formatter.isAdaptive = true
+        return formatter
+    }()
+
+    static func dateText(_ date: Date) -> String {
+        dateFormatter.string(from: date)
     }
 
     static func relativeDateText(_ date: Date) -> String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .full
-        return formatter.localizedString(for: date, relativeTo: Date())
+        relativeDateFormatter.localizedString(for: date, relativeTo: Date())
     }
 
     static func durationText(_ seconds: Double) -> String {
@@ -27,12 +46,7 @@ enum RecordingFormat {
     }
 
     static func compactFileSizeText(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .file
-        formatter.includesUnit = true
-        formatter.isAdaptive = true
-        return formatter.string(fromByteCount: bytes)
+        fileSizeFormatter.string(fromByteCount: bytes)
     }
 
     static func qualityText(_ recording: StreamRecording) -> String {

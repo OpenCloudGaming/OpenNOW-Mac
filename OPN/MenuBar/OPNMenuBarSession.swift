@@ -255,11 +255,16 @@ enum OPNMenuBarReadout {
     /// "0 seconds ago" and yesterday reads "yesterday" rather than "1 day ago".
     static func lastPlayedText(for date: Date?, now: Date = Date()) -> String? {
         guard let date else { return nil }
+        return Self.relativeDateFormatter.localizedString(for: date, relativeTo: now)
+    }
+
+    /// Read-only after construction; Foundation formatter formatting is documented thread-safe.
+    private nonisolated(unsafe) static let relativeDateFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         formatter.dateTimeStyle = .named
-        return formatter.localizedString(for: date, relativeTo: now)
-    }
+        return formatter
+    }()
 
     static func elapsedText(since start: Date, now: Date) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(start).rounded(.down)))

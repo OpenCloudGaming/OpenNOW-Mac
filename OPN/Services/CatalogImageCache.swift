@@ -30,12 +30,33 @@ private struct CatalogImagePrefetchRequest: Sendable {
     let retainingSourceData: Bool
 }
 
+/// A decode in flight, identified by everything that changes its result. Two readers asking for the
+/// same rung share one decode, but a hero (large, source-retaining) and a tile (small) do not,
+/// because their results differ. Keying on URL alone meant a source-retaining hero request never
+/// joined an in-flight tile decode - and, worse, overwrote the same key - so the largest image in
+/// the app could be fetched and decoded several times concurrently during launch and rotation.
+private struct CatalogImageLoadKey: Hashable, Sendable {
+    let url: URL
+    let maxPixelSize: CGFloat
+    let retainingSourceData: Bool
+
+    init(url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) {
+        self.url = url
+        self.maxPixelSize = maxPixelSize
+        self.retainingSourceData = retainingSourceData
+    }
+
+    init(_ request: CatalogImagePrefetchRequest) {
+        self.init(url: request.url, maxPixelSize: request.maxPixelSize, retainingSourceData: request.retainingSourceData)
+    }
+}
+
 actor CatalogImageCache {
     static let shared = CatalogImageCache()
 
     nonisolated private let memoryCache = CatalogImageMemoryCache()
     nonisolated private let containerStore = CatalogImageCacheContainerStore()
-    private var inFlightLoads: [URL: Task<CatalogCachedImageData?, Never>] = [:]
+    private var inFlightLoads: [CatalogImageLoadKey: Task<CatalogCachedImageData?, Never>] = [:]
     private var prefetchTask: Task<Void, Never>?
     private var prefetchQueue: [CatalogImagePrefetchRequest] = []
     private var queuedPrefetchURLs: Set<URL> = []
@@ -102,7 +123,8 @@ actor CatalogImageCache {
             return cached
         }
 
-        if !retainingSourceData, let existingTask = inFlightLoads[url] {
+        let key = CatalogImageLoadKey(url: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
+        if let existingTask = inFlightLoads[key] {
             return await existingTask.value
         }
 
@@ -110,9 +132,9 @@ actor CatalogImageCache {
             guard let self else { return nil }
             return await self.loadImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
         })
-        inFlightLoads[url] = task
+        inFlightLoads[key] = task
         let result = await task.value
-        inFlightLoads[url] = nil
+        inFlightLoads[key] = nil
         return result
     }
 
@@ -319,6 +341,12 @@ actor CatalogImageCache {
             if httpResponse.statusCode == 304 {
                 markStoredImageFresh(for: url)
                 await MainActor.run { OPNLog.debug(.cache, "Catalog image cache validated url=\(url.absoluteString)") }
+                // The caller that triggered this refresh decoded the stored blob moments ago and left
+                // it in the memory cache, so reuse it instead of reading and decoding the blob a
+                // second time. Only a miss (evicted between the two) falls back to the store.
+                if let cached = memoryCache.image(for: url) {
+                    return (cached, nil, httpResponse)
+                }
                 if let stored = await loadStoredImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
                     return (stored.imageData, nil, httpResponse)
                 }
