@@ -22,6 +22,14 @@ struct CatalogImageCacheStatistics: Sendable {
     let totalBytes: Int
 }
 
+/// One queued background decode. The options travel with the URL because the one cache serves both
+/// tiles and marquee banners, and the banner rung is both larger and source-retaining.
+private struct CatalogImagePrefetchRequest: Sendable {
+    let url: URL
+    let maxPixelSize: CGFloat
+    let retainingSourceData: Bool
+}
+
 actor CatalogImageCache {
     static let shared = CatalogImageCache()
 
@@ -29,7 +37,7 @@ actor CatalogImageCache {
     nonisolated private let containerStore = CatalogImageCacheContainerStore()
     private var inFlightLoads: [URL: Task<CatalogCachedImageData?, Never>] = [:]
     private var prefetchTask: Task<Void, Never>?
-    private var prefetchQueue: [URL] = []
+    private var prefetchQueue: [CatalogImagePrefetchRequest] = []
     private var queuedPrefetchURLs: Set<URL> = []
     private var priorityPrefetchQueue: [URL] = []
     private var queuedPriorityPrefetchURLs: Set<URL> = []
@@ -71,8 +79,21 @@ actor CatalogImageCache {
     }
 
     nonisolated func prefetch(_ urls: [URL]) {
+        let requests = urls.map { CatalogImagePrefetchRequest(url: $0, maxPixelSize: 768, retainingSourceData: false) }
+        guard !requests.isEmpty else { return }
         Task(priority: .background) { [weak self] in
-            await self?.startPrefetch(urls)
+            await self?.startPrefetch(requests)
+        }
+    }
+
+    /// Background-priority warming at a named rung, for artwork that is not on the first frame.
+    /// The marquee's upcoming slides use this so each decodes one at a time behind whatever is on
+    /// screen, rather than joining the priority queue and spiking the frame it turns over.
+    nonisolated func prewarmDeferred(_ urls: [URL], maxPixelSize: CGFloat, retainingSourceData: Bool) {
+        let requests = urls.map { CatalogImagePrefetchRequest(url: $0, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) }
+        guard !requests.isEmpty else { return }
+        Task(priority: .background) { [weak self] in
+            await self?.startPrefetch(requests, toFront: true)
         }
     }
 
@@ -161,12 +182,17 @@ actor CatalogImageCache {
         priorityPrefetchWorkers = max(priorityPrefetchWorkers - 1, 0)
     }
 
-    private func startPrefetch(_ urls: [URL]) {
-        let uniqueUrls = Array(Dictionary(grouping: urls, by: { $0 }).keys)
-        guard !uniqueUrls.isEmpty else { return }
-        for url in uniqueUrls where !queuedPrefetchURLs.contains(url) {
-            queuedPrefetchURLs.insert(url)
-            prefetchQueue.append(url)
+    private func startPrefetch(_ requests: [CatalogImagePrefetchRequest], toFront: Bool = false) {
+        var added: [CatalogImagePrefetchRequest] = []
+        for request in requests where !queuedPrefetchURLs.contains(request.url) {
+            queuedPrefetchURLs.insert(request.url)
+            added.append(request)
+        }
+        guard !added.isEmpty else { return }
+        if toFront {
+            prefetchQueue.insert(contentsOf: added, at: 0)
+        } else {
+            prefetchQueue.append(contentsOf: added)
         }
         startPrefetchTaskIfNeeded()
     }
@@ -175,21 +201,21 @@ actor CatalogImageCache {
         guard prefetchTask == nil, !prefetchQueue.isEmpty else { return }
         prefetchTask = Task(priority: .background) { [weak self] in
             guard let self else { return }
-            while let url = await self.nextPrefetchURL() {
+            while let request = await self.nextPrefetchRequest() {
                 guard !Task.isCancelled else { return }
-                if self.hasCachedImage(for: url) { continue }
-                _ = await self.image(for: url, maxPixelSize: 768)
+                if self.hasCachedImage(for: request.url) { continue }
+                _ = await self.image(for: request.url, maxPixelSize: request.maxPixelSize, retainingSourceData: request.retainingSourceData)
                 try? await Task.sleep(nanoseconds: 35_000_000)
             }
             await self.prefetchDidFinish()
         }
     }
 
-    private func nextPrefetchURL() -> URL? {
+    private func nextPrefetchRequest() -> CatalogImagePrefetchRequest? {
         guard !prefetchQueue.isEmpty else { return nil }
-        let url = prefetchQueue.removeFirst()
-        queuedPrefetchURLs.remove(url)
-        return url
+        let request = prefetchQueue.removeFirst()
+        queuedPrefetchURLs.remove(request.url)
+        return request
     }
 
     private func prefetchDidFinish() {

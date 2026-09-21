@@ -50,7 +50,7 @@ struct CatalogHeroRemoteImage: View {
             isLoading = false
             var scrimColor = CatalogMarqueeScrimColor.black
             if let sourceData = cached.sourceData {
-                scrimColor = await CatalogHeroImageMetadata.scrimColor(from: sourceData) ?? .black
+                scrimColor = await CatalogHeroImageMetadata.scrimColor(for: url, from: sourceData) ?? .black
             }
             guard !Task.isCancelled else { return }
             onScrimColorChange(scrimColor)
@@ -167,7 +167,21 @@ struct CatalogMarqueeScrimColor: Equatable, Sendable {
     }
 }
 
+/// `CatalogMarqueeScrimColor` is a value type; `NSCache` stores objects.
+private final class CatalogMarqueeScrimColorBox {
+    let color: CatalogMarqueeScrimColor
+
+    init(_ color: CatalogMarqueeScrimColor) {
+        self.color = color
+    }
+}
+
 enum CatalogHeroImageMetadata {
+    /// The scrim colour is a property of the artwork, not the slide, and a rotation can return to a
+    /// slide already shown; a cached colour keeps that revisit from re-parsing the EXIF comment or
+    /// sampling the image again.
+    nonisolated(unsafe) private static let scrimColorCache = NSCache<NSURL, CatalogMarqueeScrimColorBox>()
+
     private struct Metadata: Decodable {
         let colors: Colors?
     }
@@ -176,6 +190,14 @@ enum CatalogHeroImageMetadata {
         let left: String?
         let right: String?
         let bottom: String?
+    }
+
+    static func scrimColor(for url: URL, from data: Data) async -> CatalogMarqueeScrimColor? {
+        let key = url as NSURL
+        if let cached = scrimColorCache.object(forKey: key) { return cached.color }
+        guard let color = await scrimColor(from: data) else { return nil }
+        scrimColorCache.setObject(CatalogMarqueeScrimColorBox(color), forKey: key)
+        return color
     }
 
     static func scrimColor(from data: Data) async -> CatalogMarqueeScrimColor? {

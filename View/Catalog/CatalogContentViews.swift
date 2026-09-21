@@ -231,17 +231,31 @@ struct CatalogContentView: View {
         viewModel.heroRotationGames
     }
 
-    /// Warms the next slide's banner while the current one is still showing, so the five-second
-    /// rotation stops downloading and decoding a fresh 1920px hero on the frame it turns over.
-    /// Skipped whenever the rotation itself is held, so a still hero never pays for artwork it
-    /// will not advance to.
+    /// Warms the slides the marquee will rotate to - each banner plus the wordmark its title draws -
+    /// while the current one is still showing, so the five-second turn-over does not download and
+    /// decode on the frame it changes. Handed to the cache's gradual background queue, and skipped
+    /// whenever the rotation itself is held, so a still hero never pays for artwork it will not
+    /// advance to.
     private func prefetchUpcomingHeroArtwork(from index: Int) {
         guard isActive, !isMotionReduced, heroAutoScrollEnabled else { return }
         let games = heroGames
         guard games.count > 1 else { return }
-        let upcoming = games[(index + 1) % games.count]
-        guard let url = viewModel.optimizedImageURL(upcoming.bestMarqueeHeroImageURL, width: 1920) else { return }
-        viewModel.prefetchHeroArtwork([url])
+        var heroURLs: [URL] = []
+        var wordmarkURLs: [URL] = []
+        var seen = Set<String>()
+        for offset in 1...min(2, games.count - 1) {
+            let game = games[(index + offset) % games.count]
+            appendHeroPrefetchURL(game.bestMarqueeHeroImageURL, width: 1920, urls: &heroURLs, seen: &seen)
+            appendHeroPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &wordmarkURLs, seen: &seen)
+        }
+        guard !heroURLs.isEmpty || !wordmarkURLs.isEmpty else { return }
+        viewModel.prewarmHeroRotation(heroURLs: heroURLs, wordmarkURLs: wordmarkURLs)
+    }
+
+    private func appendHeroPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
+        guard let url = viewModel.optimizedImageURL(rawValue, width: width) else { return }
+        guard seen.insert(url.absoluteString).inserted else { return }
+        urls.append(url)
     }
 
     /// True while the first page of rails is still in flight. Drives the in-flow rail skeletons,

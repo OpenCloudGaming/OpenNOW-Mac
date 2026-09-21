@@ -34,7 +34,9 @@ struct VendorResourceImage: View {
             ("login-wall-background", "png"),
             ("login-wall-fallback-tile", "png"),
             ("hero-vignette", "svg"),
-            ("avatar-generic", "svg")
+            ("avatar-generic", "svg"),
+            ("arrow-left", "svg"),
+            ("arrow-right", "svg")
         ]
         for asset in assets {
             _ = loadImage(name: asset.name, fileExtension: asset.fileExtension)

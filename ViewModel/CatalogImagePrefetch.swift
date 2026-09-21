@@ -51,11 +51,12 @@ extension CatalogViewModel {
         prefetchImages(urls)
     }
 
-    /// Warms marquee banners at the size the hero band reads them, keeping the compressed bytes the
-    /// scrim colour is derived from. A rung cached without them is a miss for the hero reader, which
-    /// then decodes the largest artwork in the app a second time.
-    func prefetchHeroArtwork(_ urls: [URL]) {
-        imageCache.prefetchPriority(urls, maxPixelSize: 1920, retainingSourceData: true)
+    /// Warms the marquee slides the hero will rotate to. Banners decode at the size and with the
+    /// source bytes the hero band reads them; wordmarks do not need the bytes. Deferred rather than
+    /// priority: these are not on the first frame, so they decode one at a time behind it.
+    func prewarmHeroRotation(heroURLs: [URL], wordmarkURLs: [URL]) {
+        imageCache.prewarmDeferred(heroURLs, maxPixelSize: 1920, retainingSourceData: true)
+        imageCache.prewarmDeferred(wordmarkURLs, maxPixelSize: CGFloat(CatalogLogoArtwork.requestWidth), retainingSourceData: false)
     }
 
     private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {

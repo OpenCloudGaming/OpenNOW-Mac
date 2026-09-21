@@ -3,6 +3,9 @@ import Foundation
 protocol CatalogImageServing: Sendable {
     nonisolated func prefetch(_ urls: [URL])
     nonisolated func prefetchPriority(_ urls: [URL], maxPixelSize: CGFloat, retainingSourceData: Bool)
+    /// Queues artwork behind the priority set: decoded one at a time at background priority, so a
+    /// slide that is not on screen yet warms without competing with the frame that is.
+    nonisolated func prewarmDeferred(_ urls: [URL], maxPixelSize: CGFloat, retainingSourceData: Bool)
     /// `retainingSourceData` keeps the compressed bytes alongside the decoded image. Only callers
     /// that read the file's metadata (the hero, for its EXIF scrim colour) should ask for it -
     /// every retained copy is a second, full-size allocation held for the life of the cache entry.
