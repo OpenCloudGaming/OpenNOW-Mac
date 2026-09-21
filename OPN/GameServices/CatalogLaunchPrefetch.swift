@@ -228,7 +228,10 @@ final class CatalogLaunchPrefetch {
             guard !didPrefetchHeroImages else { return }
             didPrefetchHeroImages = true
             let games = (panels[.marquee] ?? []).flatMap { $0.sections.flatMap(\.games) }
-            for game in games.prefix(3) {
+            // Only the slide on screen is warmed here. The hero view prefetches the next banner
+            // during the current slide's five seconds, so decoding the rest now would only move
+            // work into the launch spike.
+            for game in games.prefix(1) {
                 append(game.bestMarqueeHeroImageURL, width: 1920, into: &urls, seen: &seen)
                 append(game.bestLogoImageURL, width: 620, into: &urls, seen: &seen)
             }
@@ -240,7 +243,7 @@ final class CatalogLaunchPrefetch {
             didPrefetchRailImages = true
             let sections = (panels[.main] ?? []).flatMap(\.sections).filter { !$0.games.isEmpty }
             for section in sections.prefix(2) {
-                for game in section.games.prefix(8) {
+                for game in section.games.prefix(4) {
                     append(game.bestWideImageURL, width: 768, into: &urls, seen: &seen)
                 }
                 for tile in section.tiles.prefix(2) {

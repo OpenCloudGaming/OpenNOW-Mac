@@ -203,6 +203,7 @@ struct CatalogContentView: View {
                 }
                 .background(OPNDesign.Surface.app)
                 .task {
+                    prefetchUpcomingHeroArtwork(from: heroIndex)
                     while !Task.isCancelled {
                         try? await Task.sleep(for: Self.heroRotationInterval)
                         guard !Task.isCancelled, isActive, !isMotionReduced, heroAutoScrollEnabled, heroes.count > 1 else { continue }
@@ -217,6 +218,10 @@ struct CatalogContentView: View {
                         return
                     }
                     if heroIndex >= identities.count { heroIndex = 0 }
+                    prefetchUpcomingHeroArtwork(from: heroIndex)
+                }
+                .onChange(of: heroIndex) { _, index in
+                    prefetchUpcomingHeroArtwork(from: index)
                 }
             }
         }
@@ -224,6 +229,19 @@ struct CatalogContentView: View {
 
     private var heroGames: [OPNCatalogGameObject] {
         viewModel.heroRotationGames
+    }
+
+    /// Warms the next slide's banner while the current one is still showing, so the five-second
+    /// rotation stops downloading and decoding a fresh 1920px hero on the frame it turns over.
+    /// Skipped whenever the rotation itself is held, so a still hero never pays for artwork it
+    /// will not advance to.
+    private func prefetchUpcomingHeroArtwork(from index: Int) {
+        guard isActive, !isMotionReduced, heroAutoScrollEnabled else { return }
+        let games = heroGames
+        guard games.count > 1 else { return }
+        let upcoming = games[(index + 1) % games.count]
+        guard let url = viewModel.optimizedImageURL(upcoming.bestMarqueeHeroImageURL, width: 1920) else { return }
+        viewModel.prefetchHeroArtwork([url])
     }
 
     /// True while the first page of rails is still in flight. Drives the in-flow rail skeletons,

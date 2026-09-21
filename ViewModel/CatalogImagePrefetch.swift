@@ -51,6 +51,13 @@ extension CatalogViewModel {
         prefetchImages(urls)
     }
 
+    /// Warms marquee banners at the size the hero band reads them, keeping the compressed bytes the
+    /// scrim colour is derived from. A rung cached without them is a miss for the hero reader, which
+    /// then decodes the largest artwork in the app a second time.
+    func prefetchHeroArtwork(_ urls: [URL]) {
+        imageCache.prefetchPriority(urls, maxPixelSize: 1920, retainingSourceData: true)
+    }
+
     private func appendPrefetchURL(_ rawValue: String, width: Int, urls: inout [URL], seen: inout Set<String>) {
         guard let url = optimizedImageURL(rawValue, width: width) else { return }
         let key = url.absoluteString

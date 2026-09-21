@@ -43,7 +43,9 @@ actor CatalogImageCache {
     private let maximumStoredBytes = 512 * 1024 * 1024
     private let maximumStoredEntries = 2_000
     private let pruneStoreThreshold = 25
-    private let maximumPriorityPrefetchWorkers = 5
+    /// Every worker is a concurrent decode of large artwork, and launch is when the queue is
+    /// deepest. Capping lower trades a slightly later first-frame fill for a lower CPU peak.
+    private let maximumPriorityPrefetchWorkers = 2
     private let pruneInterval: TimeInterval = 60
     nonisolated private let pruneThrottle = CatalogImageCachePruneThrottle()
 
