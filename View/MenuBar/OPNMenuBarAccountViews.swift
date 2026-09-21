@@ -97,7 +97,7 @@ struct OPNMenuBarAccountSection: View {
                         .foregroundStyle(account.isSignedOut ? OPNDesign.Text.secondary : OPNDesign.Text.primary)
                         .lineLimit(1)
                     if account.isSignedOut {
-                        Text("Signed out — sign in again")
+                        Text("Signed out. Sign in again")
                             .font(.opnUI(size: 10, weight: .medium))
                             .foregroundStyle(OPNDesign.Text.tertiary)
                             .lineLimit(1)
@@ -146,7 +146,7 @@ struct OPNMenuBarAccountSection: View {
     }
 
     private func subtitle(for account: OPNMenuBarAccount) -> String {
-        if account.isSignedOut { return "Signed out — sign in again" }
+        if account.isSignedOut { return "Signed out. Sign in again" }
         return account.membershipTier.isEmpty ? account.email : account.membershipTier
     }
 

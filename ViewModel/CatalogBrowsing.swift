@@ -51,15 +51,19 @@ extension CatalogViewModel {
 
     func openShowAll(_ section: CatalogSectionModel) {
         OPNLog.info(.catalog, "Show All opened section=\(section.id) title=\(section.title) games=\(section.games.count) canLoadFullList=\(section.canLoadFullList) seeMoreFilterIds=\(section.seeMoreFilterIds) seeMoreSortId=\(section.seeMoreSortId)")
-        // My Library / My Favorites are server-side catalog filters (the `collections` filter
-        // group), so every Show All page is the same browse with a different seed filter.
+        // A user collection is local data: its page must never touch the server. Library and
+        // favorites are the opposite, server-side filters, so their page is a browse with a seed.
+        if case .userCollection(let id) = section.kind {
+            openLocalShowAll(section, collectionId: id)
+            return
+        }
         let seededFilterIds: [String]
         switch section.kind {
         case .library:
             seededFilterIds = [OPNGameService.libraryCatalogFilterId]
         case .favorites:
             seededFilterIds = [OPNGameService.favoritesCatalogFilterId]
-        case .catalog, .panel, .jumpBackIn:
+        case .catalog, .panel, .jumpBackIn, .userCollection:
             seededFilterIds = section.seeMoreFilterIds
         }
         selectedShowAllSection = section
@@ -70,6 +74,53 @@ extension CatalogViewModel {
         searchQuery = ""
         browseCatalog()
     }
+
+    /// Opens a collection's Show All page from the reader's own store, filtering the already-loaded
+    /// catalog by membership without browsing, since no server filter could stand for it.
+    func openLocalShowAll(_ section: CatalogSectionModel, collectionId: String) {
+        let collection = collection(id: collectionId)
+        let resolved = collection.map { resolvedMembers(of: $0) }
+        let games = section.games.isEmpty ? (resolved?.games ?? []) : section.games
+        localShowAllGames = games
+        localShowAllUnavailableCount = resolved?.missingIdentities.count ?? 0
+        selectedShowAllSection = section
+        selectedGame = nil
+        selectedSectionId = ""
+        selectedSortId = "a_to_z"
+        selectedFilterIds = []
+        searchQuery = ""
+        selectedCatalogDestination = .home
+        selectedMainPage = .games
+        OPNLog.info(.catalog, "Local Show All opened collection=\(collectionId) games=\(games.count) unavailable=\(localShowAllUnavailableCount)")
+    }
+
+    /// Opens a collection listed outside the home rails, such as the menu's Collections group.
+    func openUserCollection(id: String) {
+        guard let collection = collection(id: id) else { return }
+        let resolved = resolvedMembers(of: collection)
+        let section = CatalogSectionModel(
+            id: OPNHomeCustomization.userCollectionRailID(collection.id),
+            title: collection.name,
+            games: resolved.games,
+            kind: .userCollection(id: collection.id)
+        )
+        localShowAllUnavailableCount = resolved.missingIdentities.count
+        openLocalShowAll(section, collectionId: collection.id)
+    }
+
+    /// True while Show All is showing a local collection, so the page hides the server filter panel
+    /// and sort control and reads its games locally.
+    var isShowingLocalCollection: Bool {
+        if case .userCollection = selectedShowAllSection?.kind { return true }
+        return false
+    }
+
+    /// The games the Show All page should draw: the local set for a collection, the browse results
+    /// otherwise.
+    var displayedShowAllGames: [OPNCatalogGameObject] {
+        isShowingLocalCollection ? localShowAllGames : catalogGames
+    }
+
 
     func closeShowAll() {
         launchErrorMessage = ""
@@ -85,6 +136,8 @@ extension CatalogViewModel {
         isLoading = false
         isLoadingMoreCatalog = false
         catalogEndCursor = ""
+        localShowAllGames = []
+        localShowAllUnavailableCount = 0
     }
 
     func showSettings(_ group: CatalogSettingsGroup = .account) {

@@ -12,7 +12,7 @@ extension CatalogViewModel {
     /// Every rail the catalog currently offers, in the catalog's own order, including the ones the
     /// reader has hidden. The customization card lists this; the home page draws `catalogSections`.
     var baseCatalogSections: [CatalogSectionModel] {
-        _ = (mainPanels, catalogGames, libraryGames, favoriteGames, searchQuery, selectedFilterIds, isJumpBackInEnabled, recentlyPlayed)
+        _ = (mainPanels, catalogGames, libraryGames, favoriteGames, searchQuery, selectedFilterIds, isJumpBackInEnabled, recentlyPlayed, userCollections)
         if let cachedBaseCatalogSections { return cachedBaseCatalogSections }
         var sections: [CatalogSectionModel] = []
         var seenTitles = Set<String>()
@@ -49,6 +49,24 @@ extension CatalogViewModel {
         if let library = librarySection() {
             let insertionIndex = sections.isEmpty ? 0 : min(sections.count, 1)
             sections.insert(library, at: insertionIndex)
+        }
+        // The reader's own collections sit just after My Library / My Favorites and before the
+        // vendor rails; empty ones are skipped, and overflow past the 10-rail cap stays in the menu.
+        if !isBrowseMode {
+            let insertionIndex = sections.firstIndex { $0.kind == .library }.map { $0 + 1 } ?? min(sections.count, 1)
+            var offset = 0
+            for collection in sortedUserCollections {
+                let resolved = resolvedMembers(of: collection)
+                guard !resolved.games.isEmpty else { continue }
+                let rail = CatalogSectionModel(
+                    id: OPNHomeCustomization.userCollectionRailID(collection.id),
+                    title: collection.name,
+                    games: resolved.games,
+                    kind: .userCollection(id: collection.id)
+                )
+                sections.insert(rail, at: min(insertionIndex + offset, sections.count))
+                offset += 1
+            }
         }
         // The most recent games come before every vendor rail, favorites included. Inserted after
         // the rest so it cannot displace the library/favorites slot bookkeeping above.

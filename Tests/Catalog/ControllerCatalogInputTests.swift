@@ -110,6 +110,92 @@ import Testing
     #expect(model.isDetailVisible == false)
 }
 
+@Suite @MainActor struct ControllerCollectionInputTests {
+    @Test func controllerCollectionPickerFlipsMembershipThenCreates() {
+    let model = makeCatalogViewModelForTesting()
+    model.session.userId = "controller-collections-\(UUID().uuidString)"
+    CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier)
+    let priorNotice = CatalogCollectionsStore.isLocalOnlyNoticeSeen
+    CatalogCollectionsStore.isLocalOnlyNoticeSeen = true
+    defer {
+        CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier)
+        CatalogCollectionsStore.isLocalOnlyNoticeSeen = priorNotice
+    }
+
+    var info = OPNGameInfo()
+    info.id = "id-1"
+    info.title = "Hades"
+    info.launchAppId = "app-1"
+    info.variants = [OPNGameVariant(id: "app-1", appStore: "STEAM", serviceStatus: "AVAILABLE", isPatching: false)]
+    let game = OPNCatalogGameObject(game: info)
+    model.catalogGames = [game]
+    model.selectGame(game)
+    guard let collection = model.createCollection(name: "Co-op") else {
+        Issue.record("collection should be created")
+        return
+    }
+
+    let controller = ControllerCatalogViewModel()
+    controller.bind(catalog: model, host: ControllerCatalogHost(), capturesControllerInput: false)
+    controller.openCollectionPicker(game: game)
+    #expect(controller.isCollectionPickerVisible)
+
+    controller.handleInput(.confirm)
+    #expect(model.isInCollection(game, id: collection.id))
+
+    controller.handleInput(.move(.down))
+    #expect(controller.collectionPickerIndex == 1)
+
+    controller.handleInput(.confirm)
+    #expect(controller.isCollectionNameKeyboardVisible)
+    controller.collectionNameDraft = "Finished this year"
+    controller.commitCollectionName()
+    #expect(model.userCollections.contains { $0.name == "Finished this year" })
+
+    controller.handleInput(.back)
+    #expect(!controller.isCollectionPickerVisible)
+}
+
+    @Test func controllerCollectionRowOpensTheLocalShowAll() {
+    let model = makeCatalogViewModelForTesting()
+    model.session.userId = "controller-collections-open-\(UUID().uuidString)"
+    CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier)
+    defer { CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier) }
+
+    var info = OPNGameInfo()
+    info.id = "id-1"
+    info.title = "Hades"
+    info.launchAppId = "app-1"
+    info.variants = [OPNGameVariant(id: "app-1", appStore: "STEAM", serviceStatus: "AVAILABLE", isPatching: false)]
+    let game = OPNCatalogGameObject(game: info)
+    model.catalogGames = [game]
+    guard let collection = model.createCollection(name: "Co-op") else { return }
+    model.toggleMembership(collectionId: collection.id, game: game)
+
+    let controller = ControllerCatalogViewModel()
+    controller.bind(catalog: model, host: ControllerCatalogHost(), capturesControllerInput: false)
+    let generation = model.browseGeneration
+
+    #expect(controller.actionMenuItems.contains { if case .userCollection(let id, _) = $0 { return id == collection.id } else { return false } })
+    controller.executeActionMenuItem(.userCollection(id: collection.id, name: collection.name))
+
+    #expect(model.isShowingLocalCollection)
+    #expect(model.displayedShowAllGames.map(\.title) == ["Hades"])
+    #expect(model.browseGeneration == generation)
+}
+
+    @Test func detailMoreMenuOffersCollections() {
+    let model = ControllerCatalogViewModel()
+    var info = OPNGameInfo()
+    info.title = "One"
+    let single = OPNCatalogGameObject(game: info)
+
+    #expect(model.detailMoreActions(for: single).contains(.collections))
+    #expect(ControllerActionMenuItem.userCollection(id: "x", name: "Co-op").title == "Co-op")
+    #expect(ControllerActionMenuItem.userCollection(id: "x", name: "Co-op").icon == "square.stack.3d.up.fill")
+}
+}
+
 @Test func itMapsArrowKeysDespiteAppKitTaggingThemAsFunctionAndNumericPad() {
     // AppKit sets both flags on every arrow event; testing the whole device-independent mask
     // rejected all four and left keyboard navigation dead while Esc and Return still worked.

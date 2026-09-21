@@ -197,7 +197,7 @@ struct CatalogErrorPresentation {
             let seat = Self.requestStatusServerID(from: message)
             title = seat.map { "This game is not licensed on the \($0) seat." }
                 ?? "This game is not licensed in your streaming region."
-            hint = "GeForce NOW grants entitlement per server region. Pick a region that carries the title under Settings, Server Location. With the session proxy on, the Catalog Only scope still allocates the seat in your own region — switch it to Catalog + Sessions to stream from the proxy's region instead."
+            hint = "GeForce NOW grants entitlement per server region. Pick a region that carries the title under Settings, Server Location. With the session proxy on, the Catalog Only scope still allocates the seat in your own region. Switch it to Catalog + Sessions to stream from the proxy's region instead."
             technicalDetails = message
             return
         }

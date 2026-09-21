@@ -46,6 +46,7 @@ enum ControllerGameDetailFocusRow {
 enum ControllerDetailAction: Equatable {
     case primary
     case favorite
+    case collections
     case more
     case store
     case ownership
@@ -56,11 +57,10 @@ enum ControllerDetailAction: Equatable {
     @MainActor func title(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, viewModel: CatalogViewModel) -> String {
         switch self {
         case .primary:
-            if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "Queued" : "Queue" }
-            if viewModel.selectedPlatformHasAccess(in: game) { return "Play" }
-            if selectedVariant != nil { return "Mark Owned" }
-            return "Play"
+            return Self.primaryTitle(game: game, selectedVariant: selectedVariant, viewModel: viewModel)
         case .favorite: return viewModel.isFavorite(game) ? "Unfavorite" : "Favorite"
+        case .collections:
+            return Self.collectionTitle(count: viewModel.collections(containing: game).count)
         case .more: return "More"
         case .store: return "Change Store"
         case .ownership:
@@ -76,6 +76,7 @@ enum ControllerDetailAction: Equatable {
         switch self {
         case .primary: return "play.fill"
         case .favorite: return "heart.fill"
+        case .collections: return "square.stack.3d.up.fill"
         case .more: return "ellipsis"
         case .store: return "bag.fill"
         case .ownership: return "checkmark.seal.fill"
@@ -83,6 +84,18 @@ enum ControllerDetailAction: Equatable {
         case .shortcut: return "plus.rectangle.on.rectangle"
         case .visitStore: return "safari.fill"
         }
+    }
+
+    private static func collectionTitle(count: Int) -> String {
+        if count == 0 { return "Add to Collection" }
+        return "In \(count) Collection\(count == 1 ? "" : "s")"
+    }
+
+    @MainActor private static func primaryTitle(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, viewModel: CatalogViewModel) -> String {
+        if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "Queued" : "Queue" }
+        if viewModel.selectedPlatformHasAccess(in: game) { return "Play" }
+        if selectedVariant != nil { return "Mark Owned" }
+        return "Play"
     }
 }
 enum ControllerActionMenuItem {
@@ -92,6 +105,7 @@ enum ControllerActionMenuItem {
     case home
     case library
     case favorites
+    case userCollection(id: String, name: String)
     case recordings
     case settings
     case account(LoginAccount, isActive: Bool, needsSignIn: Bool)
@@ -105,6 +119,7 @@ enum ControllerActionMenuItem {
         case .home: return "Go to Home"
         case .library: return "Go to Library"
         case .favorites: return "Go to Favorites"
+        case .userCollection(_, let name): return name
         case .recordings: return "Open Recordings"
         case .settings: return "Open Settings"
         case .account(let account, let isActive, let needsSignIn):
@@ -129,6 +144,7 @@ enum ControllerActionMenuItem {
         case .home: return "gamecontroller.fill"
         case .library: return "rectangle.stack.fill"
         case .favorites: return "heart.fill"
+        case .userCollection: return "square.stack.3d.up.fill"
         case .recordings: return "play.rectangle.fill"
         case .settings: return "gearshape.fill"
         case .account(_, let isActive, let needsSignIn):

@@ -15,6 +15,9 @@ struct CatalogSectionModel: Identifiable, Equatable {
         case favorites
         case panel
         case jumpBackIn
+        /// A locally-owned collection. Its games come from the reader's own store, never from the
+        /// vendor, so opening its Show All page must filter locally rather than seed a server filter.
+        case userCollection(id: String)
     }
 
     let id: String
@@ -52,6 +55,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
 
     var canLoadFullList: Bool {
         if kind == .library || kind == .favorites { return true }
+        if case .userCollection = kind { return true }
         return !seeMoreFilterIds.isEmpty || !seeMoreSortId.isEmpty
     }
 

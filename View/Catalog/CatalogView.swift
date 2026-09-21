@@ -328,6 +328,30 @@ struct CatalogView: View {
                         .transition(.opacity)
                         .zIndex(19)
                     }
+
+                    if viewModel.isCollectionsPickerPresented {
+                        CatalogCollectionsPickerOverlay(viewModel: viewModel)
+                            .transition(.opacity)
+                            .zIndex(24)
+                    }
+
+                    if viewModel.isCollectionsManagerPresented {
+                        CatalogCollectionsManagerOverlay(viewModel: viewModel, close: { viewModel.dismissCollectionsManager() })
+                            .transition(.opacity)
+                            .zIndex(24)
+                    }
+
+                    if viewModel.collectionsDialog != nil {
+                        CatalogCollectionsDialogOverlay(viewModel: viewModel)
+                            .transition(.opacity)
+                            .zIndex(25)
+                    }
+
+                    if viewModel.isCollectionsNoticePresented {
+                        CatalogCollectionsNoticeOverlay(viewModel: viewModel)
+                            .transition(.opacity)
+                            .zIndex(26)
+                    }
                 }
                 .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)

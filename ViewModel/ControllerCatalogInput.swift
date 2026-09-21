@@ -27,6 +27,11 @@ extension ControllerCatalogViewModel {
     private func handleSharedOverlayInput(_ command: ControllerInputCommand) -> Bool {
         guard let catalog else { return false }
 
+        if catalog.isCollectionsNoticePresented {
+            if command == .confirm || command == .back { catalog.dismissCollectionsLocalOnlyNotice() }
+            return true
+        }
+        if isCollectionPickerVisible { handleCollectionPickerInput(command); return true }
         if catalog.isLaunchFlowVisible { return handleLaunchFlowInput(command, catalog: catalog) }
         if catalog.isStorePickerVisible { return handleStorePickerInput(command, catalog: catalog) }
         if catalog.isGameInfoVisible { return handleGameInfoInput(command, catalog: catalog) }
@@ -161,14 +166,7 @@ extension ControllerCatalogViewModel {
     }
 
     private func handleSearchInput(_ command: ControllerInputCommand) {
-        if searchPicker != nil {
-            handleSearchPickerInput(command)
-            return
-        }
-        if isSearchKeyboardVisible {
-            handleSearchKeyboardInput(command)
-            return
-        }
+        if handlesSearchOverlayModal(command) { return }
         switch command {
         case .move(.up): moveSearchRowIndex(delta: -1, rowCount: searchRowCount)
         case .move(.down): moveSearchRowIndex(delta: 1, rowCount: searchRowCount)
@@ -179,6 +177,42 @@ extension ControllerCatalogViewModel {
             catalog?.clearSearch()
             catalog?.clearFilters()
             catalog?.browseCatalog()
+        case .back, .search: closeSearchOverlay()
+        case .pageLeft: cycleNavigation(delta: -1)
+        case .pageRight: cycleNavigation(delta: 1)
+        default: break
+        }
+    }
+
+    /// The search overlay's layered modals: a local collection page, the sort/filter picker, and
+    /// the on-screen keyboard. Returns whether one of them consumed the command.
+    private func handlesSearchOverlayModal(_ command: ControllerInputCommand) -> Bool {
+        if catalog?.isShowingLocalCollection == true {
+            handleLocalCollectionInput(command)
+            return true
+        }
+        if searchPicker != nil {
+            handleSearchPickerInput(command)
+            return true
+        }
+        if isSearchKeyboardVisible {
+            handleSearchKeyboardInput(command)
+            return true
+        }
+        return false
+    }
+
+    /// The pad's route through a collection's page. There is no search field or filter bar here:
+    /// a collection is local data, so there is nothing on the server to filter it by.
+    private func handleLocalCollectionInput(_ command: ControllerInputCommand) {
+        guard let catalog else { return }
+        switch command {
+        case .move(.left): moveSearchSelection(delta: -1)
+        case .move(.right): moveSearchSelection(delta: 1)
+        case .confirm:
+            if catalog.displayedShowAllGames.indices.contains(searchResultIndex) {
+                openDetails(catalog.displayedShowAllGames[searchResultIndex], sectionId: catalog.selectedShowAllSection?.id ?? "catalog-results")
+            }
         case .back, .search: closeSearchOverlay()
         case .pageLeft: cycleNavigation(delta: -1)
         case .pageRight: cycleNavigation(delta: 1)
@@ -215,17 +249,6 @@ extension ControllerCatalogViewModel {
         case .actions, .menu: openDetailMoreMenu(for: game)
         case .pageLeft: showDetailPage(detailPage.stepped(by: -1, in: pages))
         case .pageRight: showDetailPage(detailPage.stepped(by: 1, in: pages))
-        }
-    }
-
-    private func handleSearchPickerInput(_ command: ControllerInputCommand) {
-        guard let searchPicker else { return }
-        switch command {
-        case .move(.up): searchPickerIndex = max(searchPickerIndex - 1, 0)
-        case .move(.down): searchPickerIndex = min(searchPickerIndex + 1, max(searchPicker.options.count - 1, 0))
-        case .confirm: applySearchPickerSelection(at: searchPickerIndex)
-        case .back, .search, .menu, .actions: closeSearchPicker()
-        default: break
         }
     }
 
@@ -434,15 +457,11 @@ extension ControllerCatalogViewModel {
         let selectedVariant = catalog.selectedVariant(in: game)
         switch action {
         case .primary:
-            if game.isLaunchPatching || selectedVariant?.isPatching == true {
-                catalog.queuePatchingLaunch(game: game, variantIndex: catalog.selectedVariantIndex)
-            } else if catalog.selectedPlatformHasAccess(in: game) || selectedVariant == nil {
-                catalog.launchSelectedGame()
-            } else {
-                catalog.handleUnownedSelectedVariantPrimaryAction()
-            }
+            handleDetailPrimary(catalog: catalog, game: game, selectedVariant: selectedVariant)
         case .favorite:
             catalog.toggleFavoriteSelectedGame()
+        case .collections:
+            openCollectionPicker(game: game)
         case .store:
             catalog.changeSelectedGameStore()
         case .ownership:
@@ -459,6 +478,16 @@ extension ControllerCatalogViewModel {
             catalog.openStoreForSelectedVariant()
         case .more:
             openDetailMoreMenu(for: game)
+        }
+    }
+
+    private func handleDetailPrimary(catalog: CatalogViewModel, game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?) {
+        if game.isLaunchPatching || selectedVariant?.isPatching == true {
+            catalog.queuePatchingLaunch(game: game, variantIndex: catalog.selectedVariantIndex)
+        } else if catalog.selectedPlatformHasAccess(in: game) || selectedVariant == nil {
+            catalog.launchSelectedGame()
+        } else {
+            catalog.handleUnownedSelectedVariantPrimaryAction()
         }
     }
 
@@ -523,7 +552,7 @@ extension ControllerCatalogViewModel {
         guard let catalog else { return }
         catalog.openShowAll(section)
         isSearchVisible = true
-        searchRowIndex = 0
+        searchRowIndex = catalog.isShowingLocalCollection ? 2 : 0
         searchResultIndex = 0
         for group in catalog.visibleFilterGroups {
             if let index = group.options.firstIndex(where: { catalog.selectedFilterIds.contains($0.id) }) {
@@ -543,8 +572,8 @@ extension ControllerCatalogViewModel {
             searchFilterOptionIndices[ControllerSearchBar.indexKey] = next
             return
         }
-        if searchRowIndex == 2, !catalog.catalogGames.isEmpty {
-            searchResultIndex = min(max(searchResultIndex + delta, 0), catalog.catalogGames.count - 1)
+        if searchRowIndex == 2, !catalog.displayedShowAllGames.isEmpty {
+            searchResultIndex = min(max(searchResultIndex + delta, 0), catalog.displayedShowAllGames.count - 1)
         }
     }
 
@@ -567,51 +596,9 @@ extension ControllerCatalogViewModel {
             }
             return
         }
-        if searchRowIndex == 2, catalog.catalogGames.indices.contains(searchResultIndex) {
-            openDetails(catalog.catalogGames[searchResultIndex], sectionId: "catalog-results")
+        if searchRowIndex == 2, catalog.displayedShowAllGames.indices.contains(searchResultIndex) {
+            openDetails(catalog.displayedShowAllGames[searchResultIndex], sectionId: "catalog-results")
         }
-    }
-
-    // MARK: - Sort and filter picker
-
-    func openSortPicker() {
-        guard let catalog else { return }
-        let options = catalog.sortOptions.map { ControllerSearchPicker.Option(id: $0.id, label: $0.label) }
-        guard !options.isEmpty else { return }
-        searchPickerIndex = options.firstIndex { $0.id == catalog.selectedSortId } ?? 0
-        searchPicker = ControllerSearchPicker(title: "Sort", kind: .sort, options: options)
-    }
-
-    func openFilterPicker(group: OPNCatalogFilterGroupObject) {
-        guard let catalog, !group.options.isEmpty else { return }
-        var options = [ControllerSearchPicker.Option(id: ControllerSearchPicker.clearOptionId, label: "None")]
-        options.append(contentsOf: group.options.map { ControllerSearchPicker.Option(id: $0.id, label: $0.label) })
-        searchPickerIndex = options.firstIndex { catalog.selectedFilterIds.contains($0.id) } ?? 0
-        searchPicker = ControllerSearchPicker(title: group.label, kind: .filter(groupId: group.id), options: options)
-    }
-
-    func closeSearchPicker() {
-        searchPicker = nil
-    }
-
-    func applySearchPickerSelection(at index: Int) {
-        guard let catalog, let searchPicker, searchPicker.options.indices.contains(index) else { return }
-        let option = searchPicker.options[index]
-        switch searchPicker.kind {
-        case .sort:
-            catalog.setSort(option.id)
-        case .filter(let groupId):
-            guard let group = catalog.visibleFilterGroups.first(where: { $0.id == groupId }) else { break }
-            // One option per group: clear whatever this group already had before applying. "None"
-            // stops there, which is how a group gets turned back off.
-            for existing in group.options where catalog.selectedFilterIds.contains(existing.id) {
-                catalog.toggleFilter(existing.id)
-            }
-            if option.id != ControllerSearchPicker.clearOptionId, !catalog.selectedFilterIds.contains(option.id) {
-                catalog.toggleFilter(option.id)
-            }
-        }
-        closeSearchPicker()
     }
 
     // MARK: - Actions menu
@@ -641,8 +628,8 @@ extension ControllerCatalogViewModel {
             catalog.showRecordings()
         case .settings:
             catalog.showSettings(.input)
-        case .home, .library, .favorites:
-            catalog.showCatalogDestination(Self.destination(for: item))
+        case .home, .library, .favorites, .userCollection:
+            performNavigationItem(item, catalog: catalog)
         case .desktopMode:
             host.onExitControllerMode()
         case .account(let account, let isActive, _):
@@ -655,6 +642,17 @@ extension ControllerCatalogViewModel {
         }
     }
 
+
+    /// Runs a navigation row. A user collection is a local page, so it never routes through
+    /// `CatalogDestination`; the three server destinations keep sharing `destination(for:)`.
+    private func performNavigationItem(_ item: ControllerActionMenuItem, catalog: CatalogViewModel) {
+        if case .userCollection(let id, _) = item {
+            catalog.openUserCollection(id: id)
+            focusArea = .content
+            return
+        }
+        catalog.showCatalogDestination(Self.destination(for: item))
+    }
 
     /// The catalog destination each navigation menu item selects. `home` is the only item the
     /// caller routes here besides these two, so anything else is a caller mistake.

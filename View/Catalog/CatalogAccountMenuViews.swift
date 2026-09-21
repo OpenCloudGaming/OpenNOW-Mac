@@ -132,7 +132,7 @@ struct CatalogAccountDropdownPanel: View {
                         }
                         CatalogAccountDropdownRow(
                             title: account.displayName,
-                            subtitle: isActive ? "Signed in" : (needsSignIn ? "Signed out — sign in again" : nil),
+                            subtitle: isActive ? "Signed in" : (needsSignIn ? "Signed out. Sign in again" : nil),
                             systemImage: isActive ? "checkmark" : (needsSignIn ? "person.crop.circle.badge.exclamationmark" : "person"),
                             isActive: isActive,
                             role: nil,

@@ -29,9 +29,22 @@ struct ControllerSearchOverlay: View {
         GeometryReader { proxy in
             let columns = overlayColumnCount(width: layout.contentWidth, minimumWidth: 250 * uiScale, spacing: 14 * uiScale)
             VStack(alignment: .leading, spacing: 16 * uiScale) {
-                searchField
-                filterBar
-                resultsGrid(columns: columns)
+                if viewModel.isShowingLocalCollection {
+                    Text(viewModel.selectedShowAllSection?.title ?? "Collection")
+                        .catalogFont(size: 18, weight: .bold)
+                        .foregroundStyle(OPNDesign.Text.primary)
+                        .lineLimit(1)
+                    CatalogCollectionsLocalOnlyNote()
+                    if viewModel.localShowAllUnavailableCount > 0 {
+                        Text("\(viewModel.localShowAllUnavailableCount) of these games aren't in your loaded catalog right now.")
+                            .catalogFont(size: 12, weight: .medium)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
+                    }
+                } else {
+                    searchField
+                    filterBar
+                }
+                resultsGrid(columns: columns, games: viewModel.displayedShowAllGames)
             }
             .frame(width: layout.contentWidth, alignment: .leading)
             .padding(.top, 16 * uiScale)
@@ -39,7 +52,7 @@ struct ControllerSearchOverlay: View {
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             .clipped()
         }
-        .opnTakingFocus($isSearchFieldFocused, while: rowIndex == 0)
+        .opnTakingFocus($isSearchFieldFocused, while: rowIndex == 0 && !viewModel.isShowingLocalCollection)
         .onChange(of: rowIndex) { _, row in
             // Moving off the search row hands the keyboard back to the navigation bridge.
             if row != 0 { isSearchFieldFocused = false }
@@ -170,8 +183,8 @@ struct ControllerSearchOverlay: View {
         .buttonStyle(.plain)
     }
 
-    private func resultsGrid(columns: Int) -> some View {
-        let isResultsRowFocused = rowIndex == 2
+    private func resultsGrid(columns: Int, games: [OPNCatalogGameObject]) -> some View {
+        let isResultsRowFocused = rowIndex == 2 || viewModel.isShowingLocalCollection
         return VStack(alignment: .leading, spacing: 10 * uiScale) {
             ControllerOverlaySectionTitle(viewModel.resultSummary.isEmpty ? "Results" : viewModel.resultSummary)
             GeometryReader { grid in
@@ -182,7 +195,7 @@ struct ControllerSearchOverlay: View {
                 let tileSize = CGSize(width: floor(tileWidth), height: floor(tileWidth * 9 / 16))
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(tileSize.width), spacing: spacing), count: columns), spacing: spacing) {
-                        ForEach(Array(viewModel.catalogGames.enumerated()), id: \.element.catalogIdentity) { index, game in
+                        ForEach(Array(games.enumerated()), id: \.element.catalogIdentity) { index, game in
                             ControllerGameTile(
                                 game: game,
                                 imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),

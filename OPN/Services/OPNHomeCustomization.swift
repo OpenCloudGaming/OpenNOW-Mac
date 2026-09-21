@@ -12,6 +12,12 @@ enum OPNHomeCustomization {
     static let libraryRailID = "my-library"
     static let fixedRailOrder = [jumpBackInRailID, favoritesRailID, libraryRailID]
 
+    /// The rail identity for a user collection. Prefixed so a collection id can never collide with
+    /// a fixed rail id or a vendor section id.
+    static func userCollectionRailID(_ collectionID: String) -> String {
+        "user-collection-\(collectionID)"
+    }
+
     /// The reader's arrangement: `order` is every rail identity they have arranged, `hidden` is the
     /// subset switched off. Jump Back In is excluded from `hidden`; it keeps its own preference.
     struct Arrangement: Equatable, Sendable {

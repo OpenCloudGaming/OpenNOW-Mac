@@ -42,7 +42,7 @@ struct SteamControllerSettingsPage: View {
                         Text("Test Rumble")
                             .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                             .foregroundStyle(OPNDesign.Text.primary)
-                        Text(rumbleTestMessage ?? "Pulse the motors of every connected controller — Steam Controllers and GameController pads — at the intensity above, the way a game's rumble reaches them during a stream.")
+                        Text(rumbleTestMessage ?? "Pulse the motors of every connected controller (Steam Controllers and GameController pads) at the intensity above, the way a game's rumble reaches them during a stream.")
                             .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                             .foregroundStyle(OPNDesign.Text.tertiary)
                     }

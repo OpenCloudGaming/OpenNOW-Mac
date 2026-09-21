@@ -75,7 +75,7 @@ extension OPNStreamPreferences {
     /// rate that fits, or that it has not been measured yet.
     public static func decodeAdvice(codec: String, resolution: String, colorQualityLabel: String, colorQuality: String, fps: Int) -> String {
         guard let measurement = decodeMeasurement(for: streamShapeKey(codec: codec, resolution: resolution, colorQuality: colorQuality)) else {
-            return "Not measured yet on this Mac — stream once at these settings."
+            return "Not measured yet on this Mac. Stream once at these settings."
         }
         let fits = measurement.sustainableFps
         let verdict = fits >= fps ? "holds \(fps) fps" : "fits about \(fits) fps, not \(fps)"

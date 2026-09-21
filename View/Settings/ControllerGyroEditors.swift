@@ -201,7 +201,7 @@ extension ControllerMappingView {
                 Spacer()
                 Toggle(isOn: binding.catchUp, uiScale: uiScale)
             }
-            gyroNote("Anti-Deadzone jumps just past the game's own stick deadzone, and Power Curve cancels part of its response curve — the two things that make naive gyro-to-stick feel mushy.")
+            gyroNote("Anti-Deadzone jumps just past the game's own stick deadzone, and Power Curve cancels part of its response curve. Those two things make naive gyro-to-stick feel mushy.")
         }
     }
 
@@ -304,7 +304,7 @@ extension ControllerMappingView {
         let isRunning = calibration.isRunning && calibration.kind == .turnRate
         let isBusy = calibration.isRunning
         return VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
-            gyroNote("Maximum Turn Rate is how fast you rotate before the right stick pins at full — \(Int(binding.wrappedValue.maxTurnRateDegreesPerSecond))°/s now. Measure it by turning the controller the way you swing the camera in game.")
+            gyroNote("Maximum Turn Rate is how fast you rotate before the right stick pins at full. Currently \(Int(binding.wrappedValue.maxTurnRateDegreesPerSecond))°/s. Measure it by turning the controller the way you swing the camera in game.")
             if isRunning {
                 SteamControllerValueBar(value: calibration.progress, signed: false, uiScale: uiScale)
             }
@@ -337,7 +337,7 @@ extension ControllerMappingView {
         guard calibration.isRunning, calibration.kind == .turnRate else { return nil }
         switch calibration.liveTurnRateVerdict {
         case .keepRotating:
-            return "Keep turning — about a third of a full turn is needed before the reading means anything."
+            return "Keep turning. About a third of a full turn is needed before the reading means anything."
         case .noTurnDetected:
             return "Turn faster: only a slow drift has reached the gyro so far."
         case .recommend, nil:
@@ -368,7 +368,7 @@ extension ControllerMappingView {
                 Spacer()
                 Toggle(isOn: binding.flickStickSnap, uiScale: uiScale)
             }
-            gyroNote("Flick stick turns by heading, so it needs the mouse channel — the game will show keyboard prompts while it is in use. Pair it with a vertical scale near 40% and let gyro do the aiming.")
+            gyroNote("Flick stick turns by heading, so it needs the mouse channel. The game will show keyboard prompts while it is in use. Pair it with a vertical scale near 40% and let gyro do the aiming.")
         }
     }
 

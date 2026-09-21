@@ -616,8 +616,8 @@ extension NativeNVSTHostViewModel {
         let names = arrived.map(\.displayName).joined(separator: ", ")
         remoteCoOpMessage = "\(names) wants to join. Open the HUD to approve."
         showNativeTransientStreamMessage(arrived.count == 1
-            ? "\(names) wants to join Remote Co-Op — \(OPNKeybindings.standard.combo(for: .toggleUnifiedHUD).label) to approve"
-            : "\(arrived.count) guests want to join Remote Co-Op — \(OPNKeybindings.standard.combo(for: .toggleUnifiedHUD).label) to approve")
+            ? "\(names) wants to join Remote Co-Op (\(OPNKeybindings.standard.combo(for: .toggleUnifiedHUD).label) to approve)"
+            : "\(arrived.count) guests want to join Remote Co-Op (\(OPNKeybindings.standard.combo(for: .toggleUnifiedHUD).label) to approve)")
     }
 
     /// How long the invite has left, for the HUD. Nil when there is nothing to count down.

@@ -310,6 +310,27 @@ final class CatalogViewModel {
     var favoriteGames: [OPNCatalogGameObject] = [] {
         didSet { invalidateDerivedCatalogCaches() }
     }
+    /// The reader's locally-owned collections. There is no vendor endpoint for these: they are
+    /// written only to this Mac, keyed per account, and the reader backs them up themselves.
+    var userCollections: [OPNUserCollection] = [] {
+        didSet { invalidateDerivedCatalogCaches() }
+    }
+    /// Games for a local Show All page, held apart from `catalogGames` so a server browse can never
+    /// overwrite them and a local page can never seed a server filter.
+    var localShowAllGames: [OPNCatalogGameObject] = []
+    /// Members of the open local collection that the loaded catalog does not currently carry, so the
+    /// page can say how many are missing instead of dropping them silently.
+    var localShowAllUnavailableCount = 0
+    /// The collection picker raised from a game's detail panel.
+    var isCollectionsPickerPresented = false
+    /// The manager raised from the menu's Collections group.
+    var isCollectionsManagerPresented = false
+    /// The create/rename/delete dialog, one at a time.
+    var collectionsDialog: CatalogCollectionsDialog?
+    var collectionsDraftName = ""
+    var collectionsDialogError = ""
+    /// The one-time explainer that collections are local-only.
+    var isCollectionsNoticePresented = false
     var selectedGameRevealRequest: CatalogGameRevealRequest?
     var catalogImageCacheSummary = "Calculating"
     var presentedModal: CatalogModalOverlay?
@@ -417,6 +438,7 @@ final class CatalogViewModel {
         let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
         recentlyPlayed = CatalogRecentlyPlayed.load(accountIdentifier: playtimeAccountIdentifier)
+        userCollections = CatalogCollectionsStore.load(accountIdentifier: collectionsAccountIdentifier).collections
     }
 
     private func scheduleSearchDebounce() {

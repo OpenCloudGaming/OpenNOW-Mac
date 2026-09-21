@@ -213,7 +213,7 @@ struct VideoSettingsPage: View {
         guard viewModel.streamProfile.enableCloudGsync else { return nil }
         let vsyncMode = NvstVsyncMode(rawValue: viewModel.streamProfile.vsyncMode) ?? .adaptive
         guard vsyncMode != .adaptive else { return nil }
-        return "VRR pairs with VSync Adaptive — set VSync to Adaptive."
+        return "VRR pairs with VSync Adaptive. Set VSync to Adaptive."
     }
 
     private var estimatedDataUsage: String {

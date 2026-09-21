@@ -247,7 +247,7 @@ struct RemoteCoOpGuestView: View {
                     .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: uiScale))
                     .disabled(viewModel.manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            Text("A Tailscale address or MagicDNS name works here, as does the invite link the host copied — use the link if they are behind a tunnel. Bonjour only reaches your local network.")
+            Text("A Tailscale address or MagicDNS name works here, as does the invite link the host copied. Use the link if they are behind a tunnel. Bonjour only reaches your local network.")
                 .catalogFont(size: 11 * uiScale)
                 .foregroundStyle(OPNDesign.Text.tertiary)
                 .multilineTextAlignment(.center)
@@ -368,7 +368,7 @@ struct RemoteCoOpGuestView: View {
     private var controllerMissingNotice: some View {
         HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
             Image(systemName: "gamecontroller")
-            Text("No controller detected — connect one to play. Guests cannot use a keyboard or mouse.")
+            Text("No controller detected. Connect one to play. Guests cannot use a keyboard or mouse.")
                 .catalogFont(size: 11 * uiScale, weight: .medium)
         }
         .foregroundStyle(OPNDesign.Text.primary)

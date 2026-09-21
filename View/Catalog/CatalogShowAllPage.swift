@@ -21,10 +21,12 @@ struct CatalogShowAllPage: View {
                 HStack(spacing: 0) {
                     mainColumn
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    CatalogShowAllFilterPanel(viewModel: viewModel)
-                        .frame(width: 280)
-                        .background(OPNDesign.Surface.overlay)
-                        .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(width: 1) }
+                    if !viewModel.isShowingLocalCollection {
+                        CatalogShowAllFilterPanel(viewModel: viewModel)
+                            .frame(width: 280)
+                            .background(OPNDesign.Surface.overlay)
+                            .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(width: 1) }
+                    }
                 }
                 if isSortMenuPresented {
                     CatalogSortDropdownOverlay(viewModel: viewModel, isPresented: $isSortMenuPresented, screenWidth: proxy.size.width)
@@ -58,14 +60,22 @@ struct CatalogShowAllPage: View {
                 }
             }
             .animation(.easeOut(duration: 0.2), value: viewModel.showsCatalogLoadingIndicator)
-            if viewModel.isLoading && viewModel.catalogGames.isEmpty {
+            let showsSkeleton = !viewModel.isShowingLocalCollection && viewModel.isLoading && viewModel.catalogGames.isEmpty
+            let showsEmptyCollection = !showsSkeleton && viewModel.displayedShowAllGames.isEmpty
+            let showsGrid = !showsSkeleton && !showsEmptyCollection
+            if showsSkeleton {
                 CatalogGridSkeletonView(isPosterLayout: isPosterLayout)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
-            } else {
+            }
+            if showsEmptyCollection {
+                CatalogEmptyCollectionView(viewModel: viewModel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if showsGrid {
                 CatalogShowAllGridView(
                     viewModel: viewModel,
-                    games: viewModel.catalogGames,
+                    games: viewModel.displayedShowAllGames,
                     selectedGame: viewModel.selectedGame,
                     isQueuedForPatching: { viewModel.isQueuedForPatching($0) },
                     imageURL: { gridImageURL(for: $0) },
@@ -114,7 +124,9 @@ struct CatalogShowAllPage: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                sortMenu
+                if !viewModel.isShowingLocalCollection {
+                    sortMenu
+                }
             }
             .frame(height: 44)
 
@@ -124,6 +136,9 @@ struct CatalogShowAllPage: View {
                     .foregroundStyle(OPNDesign.Text.tertiary)
                 Spacer(minLength: 0)
             }
+            if viewModel.isShowingLocalCollection {
+                localOnlyNote
+            }
         }
         .padding(.horizontal, 22)
         .padding(.top, 18)
@@ -131,8 +146,27 @@ struct CatalogShowAllPage: View {
     }
 
     private var resultCount: String {
-        let count = viewModel.totalCatalogCount > 0 ? viewModel.totalCatalogCount : viewModel.catalogGames.count
+        let count = viewModel.isShowingLocalCollection
+            ? viewModel.displayedShowAllGames.count
+            : (viewModel.totalCatalogCount > 0 ? viewModel.totalCatalogCount : viewModel.catalogGames.count)
         return count == 1 ? "1 game" : "\(count) games"
+    }
+
+    private var localOnlyNote: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 7) {
+                Image(systemName: "externaldrive.fill")
+                    .catalogFont(size: 11, weight: .bold)
+                Text("Stored on this Mac only. Not synced to NVIDIA. Back up your collections yourself.")
+                    .catalogFont(size: 12, weight: .medium)
+            }
+            .foregroundStyle(OPNDesign.Text.secondary)
+            if viewModel.localShowAllUnavailableCount > 0 {
+                Text("\(viewModel.localShowAllUnavailableCount) of these games aren't in your loaded catalog right now.")
+                    .catalogFont(size: 12, weight: .medium)
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+            }
+        }
     }
 
     private var sortMenu: some View {

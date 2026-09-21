@@ -77,6 +77,15 @@ enum ControllerAccountOptionsStage: Equatable {
     case confirmForget
 }
 
+/// The collection editor layered over the pad's collection picker. `rowActions` is the per-row
+/// door to rename/delete; the rest mirror the desktop dialog's three states.
+enum ControllerCollectionEditor: Equatable {
+    case rowActions(id: String)
+    case create
+    case rename(id: String)
+    case confirmDelete(id: String)
+}
+
 @MainActor
 final class ControllerCatalogViewModel: ObservableObject {
     /// The catalog this shell drives. Optional only because the view model is created by
@@ -124,6 +133,16 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// 0 = Cancel, 1 = Forget Account.
     @Published var accountOptionsConfirmIndex = 0
 
+    /// The pad's add-to-collection picker, raised from the detail panel's more menu.
+    @Published var isCollectionPickerVisible = false
+    @Published var collectionPickerIndex = 0
+    @Published var collectionEditor: ControllerCollectionEditor?
+    @Published var collectionEditorIndex = 0
+    /// The name entry step, driven by the stream's on-screen keyboard. Shares the keyboard model
+    /// with search but routes its keystrokes to `collectionNameDraft`.
+    @Published var isCollectionNameKeyboardVisible = false
+    @Published var collectionNameDraft = ""
+
     // Library and Favorites are no longer standalone destinations — they are reached from the
     // Home rails' Show All (revamped, filterable catalog view), so they are omitted from the nav.
     /// Search is deliberately absent: it is an overlay raised by the dedicated search button (and
@@ -133,7 +152,7 @@ final class ControllerCatalogViewModel: ObservableObject {
     let navigationItems: [ControllerNavigationItem] = [.home, .recordings, .settings, .actions]
 
     var hasControllerOverlay: Bool {
-        isActionMenuVisible || isSearchVisible || isDetailVisible || isAccountOptionsVisible
+        isActionMenuVisible || isSearchVisible || isDetailVisible || isAccountOptionsVisible || isCollectionPickerVisible
     }
 
     var isAccountOptionsVisible: Bool { accountOptionsTarget != nil }
@@ -226,13 +245,13 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// Called from the view's `onAppear`. Binding once, rather than on every render, is deliberate
     /// and matches what the view did before: the input handlers were installed in `onAppear` and
     /// captured the view struct as it was at that moment, accounts and callbacks included.
-    func bind(catalog: CatalogViewModel, host: ControllerCatalogHost) {
+    func bind(catalog: CatalogViewModel, host: ControllerCatalogHost, capturesControllerInput: Bool = true) {
         self.catalog = catalog
         self.host = host
         configureSearchKeyboard()
         inputRouter.onCommand = { [weak self] command in self?.handleInput(command) }
         steamNavigator.onCommand = { [weak self] command in self?.handleInput(command) }
-        steamNavigator.start(capturingInput: true)
+        steamNavigator.start(capturingInput: capturesControllerInput)
     }
 
     func unbind() {
@@ -298,14 +317,18 @@ final class ControllerCatalogViewModel: ObservableObject {
 
     var searchRowCount: Int {
         guard let catalog else { return 2 }
-        return 2 + (catalog.catalogGames.isEmpty ? 0 : 1)
+        return 2 + (catalog.displayedShowAllGames.isEmpty ? 0 : 1)
     }
 
     var actionMenuItems: [ControllerActionMenuItem] {
         guard let catalog else { return [] }
         var items: [ControllerActionMenuItem] = [.refresh]
         if catalog.isBrowseMode { items.append(.clearSearch) }
-        items.append(contentsOf: [.home, .recordings, .desktopMode, .settings])
+        items.append(contentsOf: [.home])
+        // The reader's own collections sit with the destinations, after Home. They are local lists,
+        // so their page is the local Show All rather than a server browse.
+        items.append(contentsOf: catalog.sortedUserCollections.map { .userCollection(id: $0.id, name: $0.name) })
+        items.append(contentsOf: [.recordings, .desktopMode, .settings])
         // Active account first (it must be listed at all, or it can never be forgotten on a pad),
         // then the rest in the order the host handed them over.
         var accounts = host.accounts
@@ -341,7 +364,7 @@ final class ControllerCatalogViewModel: ObservableObject {
 
     /// Everything the row used to carry inline, now one Y press away.
     func detailMoreActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
-        var actions: [ControllerDetailAction] = [.favorite]
+        var actions: [ControllerDetailAction] = [.favorite, .collections]
         if let catalog, catalog.platformOptions(for: game).count > 1 { actions.append(.store) }
         if catalog?.selectedVariant(in: game) != nil { actions.append(.ownership) }
         actions.append(contentsOf: [.share, .shortcut, .visitStore])

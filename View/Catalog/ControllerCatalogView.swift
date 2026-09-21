@@ -185,7 +185,7 @@ struct ControllerCatalogView: View {
             // visible content is laid out in and can never anchor past the
             // window's trailing edge.
             .overlay {
-                if isSearchOverlayPresented && controllerViewModel.isSearchKeyboardVisible {
+                if (isSearchOverlayPresented && controllerViewModel.isSearchKeyboardVisible) || controllerViewModel.isCollectionNameKeyboardVisible {
                     StreamOnScreenKeyboardOverlay(controller: controllerViewModel.searchKeyboard)
                         .transition(.opacity)
                 }
@@ -227,6 +227,20 @@ struct ControllerCatalogView: View {
                     )
                     .transition(.opacity)
                     .zIndex(41)
+                }
+            }
+            .overlay {
+                if controllerViewModel.isCollectionPickerVisible {
+                    ControllerCollectionPickerOverlay(
+                        viewModel: viewModel,
+                        controller: controllerViewModel,
+                        glyphs: activeGlyphs,
+                        layout: layout,
+                        topInset: topInset,
+                        close: controllerViewModel.closeCollectionPicker
+                    )
+                    .transition(.opacity)
+                    .zIndex(45)
                 }
             }
         }
@@ -301,6 +315,11 @@ struct ControllerCatalogView: View {
 
     /// Stays in the view: `ControllerHint` is the hint bar's own glyph vocabulary, not shell state.
     private var hints: [ControllerHint] {
+        if controllerViewModel.isCollectionPickerVisible {
+            if controllerViewModel.isCollectionNameKeyboardVisible { return [.move, .select, .back] }
+            if controllerViewModel.collectionEditor != nil { return [.move, .select, .back] }
+            return [.move, .select, .clear, .back]
+        }
         if controllerViewModel.isAccountOptionsVisible { return [.move, .select, .back] }
         if controllerViewModel.isActionMenuVisible {
             var hints: [ControllerHint] = [.move, .select, .back]
@@ -311,6 +330,7 @@ struct ControllerCatalogView: View {
             return hints
         }
         if controllerViewModel.isSearchKeyboardVisible { return [.move, .select, .back] }
+        if viewModel.isShowingLocalCollection { return [.move, .select, .back] }
         if controllerViewModel.isSearchVisible || viewModel.selectedShowAllSection != nil { return [.move, .select, .back, .clear] }
         if controllerViewModel.isDetailLightboxVisible { return [.move, .back] }
         if controllerViewModel.isDetailMoreMenuVisible { return [.move, .select, .back] }

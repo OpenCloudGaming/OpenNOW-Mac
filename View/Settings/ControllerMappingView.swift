@@ -265,7 +265,7 @@ struct ControllerMappingView: View {
             Image(systemName: "gamecontroller")
                 .font(.settingsFont(size: 40 * uiScale))
                 .foregroundStyle(OPNDesign.Text.muted.opacity(0.5))
-            Text("Direct passthrough — select or create a profile to enable custom mappings")
+            Text("Direct passthrough. Select or create a profile to enable custom mappings")
                 .font(.settingsFont(size: 14 * uiScale, weight: .medium))
                 .foregroundStyle(OPNDesign.Text.tertiary)
         }

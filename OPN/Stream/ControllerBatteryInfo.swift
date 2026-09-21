@@ -96,7 +96,7 @@ public final class ControllerBatteryAlertTracker {
             for threshold in Self.thresholds where level <= threshold && !fired.contains(threshold) {
                 fired.insert(threshold)
                 let severity = threshold <= 5 ? "critical" : "low"
-                messages.append("\(battery.label) \(severity) battery — \(level)%")
+                messages.append("\(battery.label) \(severity) battery: \(level)%")
             }
             if level > Self.thresholds[0] {
                 fired.removeAll()

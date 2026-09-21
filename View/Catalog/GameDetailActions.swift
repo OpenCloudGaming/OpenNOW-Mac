@@ -56,6 +56,14 @@ extension GameDetailPanel {
         }
     }
 
+    /// The add-to-collection row's label names membership rather than staying "Add…", so the menu
+    /// says whether the game is already in a reader's collection without opening the picker.
+    func collectionsMenuTitle(game: OPNCatalogGameObject) -> String {
+        let count = viewModel.collections(containing: game).count
+        if count == 0 { return "Add to collection…" }
+        return count == 1 ? "In 1 collection" : "In \(count) collections"
+    }
+
     func detailActionsMenuPanel(game: OPNCatalogGameObject) -> some View {
         var items: [OPNDropdownItem] = []
         if game.variants.count > 1 {
@@ -71,6 +79,10 @@ extension GameDetailPanel {
         items.append(OPNDropdownItem(id: "addShortcut", title: "Add shortcut") {
             showsActionsMenu = false
             viewModel.addShortcutForSelectedGame()
+        })
+        items.append(OPNDropdownItem(id: "collections", title: collectionsMenuTitle(game: game)) {
+            showsActionsMenu = false
+            viewModel.presentCollectionsPicker()
         })
         if selectedVariant?.inLibrary == true || selectedVariant?.librarySelected == true || game.isInLibrary {
             items.append(OPNDropdownItem(id: "unmarkOwned", title: "Unmark as owned") {

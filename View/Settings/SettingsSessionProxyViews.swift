@@ -195,7 +195,7 @@ struct SessionProxySettingsPage: View {
         savedPassword = passwordStored ? password : OPNSessionProxyStore.loadPassword()
         passwordSaveFailure = passwordStored
             ? ""
-            : "Password not saved — the keychain refused the write. The proxy keeps its previous password."
+            : "Password not saved. The keychain refused the write. The proxy keeps its previous password."
         if !passwordStored { testMessage = "" }
         let newRouteKey = OPNSessionProxyStore.configuration()?.cacheKey ?? "direct"
         guard newRouteKey != previousRouteKey else { return }
