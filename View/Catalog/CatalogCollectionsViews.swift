@@ -167,25 +167,33 @@ struct CatalogCollectionsPickerOverlay: View {
     }
 
     private var newCollectionRow: some View {
-        Button {
+        let isDisabled = viewModel.isAtCollectionLimit
+        return Button {
             viewModel.presentCollectionsDialog(.create)
         } label: {
             HStack(spacing: 12 * uiScale) {
                 Image(systemName: "plus.square")
                     .catalogFont(size: 16, weight: .bold)
-                    .foregroundStyle(OPNDesign.accentInk)
+                    .foregroundStyle(isDisabled ? OPNDesign.Text.tertiary : OPNDesign.accentInk)
                 Text("New collection…")
                     .catalogFont(size: 14, weight: .bold)
-                    .foregroundStyle(OPNDesign.Text.primary)
+                    .foregroundStyle(isDisabled ? OPNDesign.Text.tertiary : OPNDesign.Text.primary)
                 Spacer(minLength: 0)
+                if isDisabled {
+                    Text("Limit reached")
+                        .catalogFont(size: 11, weight: .medium)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
+                }
             }
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 48 * uiScale)
-            .background(OPNDesign.Fill.neutral(0.045))
+            .background(OPNDesign.Fill.neutral(isDisabled ? 0.025 : 0.045))
             .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityHint(isDisabled ? "You can keep at most \(OPNUserCollection.maximumCount) collections." : "")
     }
 
     private var footer: some View {
@@ -249,10 +257,18 @@ struct CatalogCollectionsManagerOverlay: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4 * uiScale) {
-            Text("COLLECTIONS")
-                .catalogFont(size: 11, weight: .bold)
-                .tracking(1.1)
-                .foregroundStyle(OPNDesign.accentInk)
+            HStack(spacing: 8 * uiScale) {
+                Text("COLLECTIONS")
+                    .catalogFont(size: 11, weight: .bold)
+                    .tracking(1.1)
+                    .foregroundStyle(OPNDesign.accentInk)
+                Spacer(minLength: 0)
+                Text(collectionsCountText)
+                    .catalogFont(size: 11, weight: .bold)
+                    .monospacedDigit()
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .accessibilityLabel("\(viewModel.userCollections.count) of \(OPNUserCollection.maximumCount) collections used")
+            }
             Text("Manage your collections")
                 .catalogFont(size: 19, weight: .bold)
                 .foregroundStyle(OPNDesign.Text.primary)
@@ -260,6 +276,10 @@ struct CatalogCollectionsManagerOverlay: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 22 * uiScale)
         .padding(.vertical, 16 * uiScale)
+    }
+
+    private var collectionsCountText: String {
+        "\(viewModel.userCollections.count)/\(OPNUserCollection.maximumCount)"
     }
 
     private func managerRow(_ collection: OPNUserCollection) -> some View {
@@ -300,25 +320,33 @@ struct CatalogCollectionsManagerOverlay: View {
     }
 
     private var newCollectionRow: some View {
-        Button {
+        let isDisabled = viewModel.isAtCollectionLimit
+        return Button {
             viewModel.presentCollectionsDialog(.create)
         } label: {
             HStack(spacing: 12 * uiScale) {
                 Image(systemName: "plus.square")
                     .catalogFont(size: 16, weight: .bold)
-                    .foregroundStyle(OPNDesign.accentInk)
+                    .foregroundStyle(isDisabled ? OPNDesign.Text.tertiary : OPNDesign.accentInk)
                 Text("New collection…")
                     .catalogFont(size: 14, weight: .bold)
-                    .foregroundStyle(OPNDesign.Text.primary)
+                    .foregroundStyle(isDisabled ? OPNDesign.Text.tertiary : OPNDesign.Text.primary)
                 Spacer(minLength: 0)
+                if isDisabled {
+                    Text("Limit reached")
+                        .catalogFont(size: 11, weight: .medium)
+                        .foregroundStyle(OPNDesign.Text.tertiary)
+                }
             }
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 48 * uiScale)
-            .background(OPNDesign.Fill.neutral(0.045))
+            .background(OPNDesign.Fill.neutral(isDisabled ? 0.025 : 0.045))
             .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityHint(isDisabled ? "You can keep at most \(OPNUserCollection.maximumCount) collections." : "")
     }
 
     private func iconButton(_ systemName: String, label: String, isDestructive: Bool = false, action: @escaping () -> Void) -> some View {

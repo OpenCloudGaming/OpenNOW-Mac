@@ -49,6 +49,12 @@ extension CatalogViewModel {
 
     // MARK: - Create / rename / delete
 
+    /// Whether the account already holds the most collections it may keep, so every "new collection"
+    /// affordance can disable itself instead of failing after the name is typed.
+    var isAtCollectionLimit: Bool {
+        userCollections.count >= OPNUserCollection.maximumCount
+    }
+
     @discardableResult
     func createCollection(name: String, icon: OPNCollectionIcon? = nil) -> OPNUserCollection? {
         guard userCollections.count < OPNUserCollection.maximumCount else {
