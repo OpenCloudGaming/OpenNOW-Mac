@@ -17,6 +17,9 @@ import Testing
 ///   while the display is asleep or the session is locked. Those put the panel in a real window over
 ///   a high-contrast backdrop and capture what the window server composed — which is why they skip
 ///   unless a capture directory was asked for.
+///
+/// One platform limit for reading a capture: `ImageRenderer` does not rasterize `ScrollView` content,
+/// so a capped list's rows are verified by the composited captures, not by an offscreen image.
 @MainActor @Suite(.serialized, .streamLifecycleExclusive) struct MenuBarPanelSnapshotTests {
     /// Opt-in capture directory. Read once, here, so every capture in this file agrees.
     nonisolated private static var captureDirectory: String? {
@@ -35,6 +38,27 @@ import Testing
 
     /// Seven, so the Favorites tab renders past the five-row cap and exercises the scrolling path.
     private static let favorites = (1...7).map { OPNMenuBarGame(title: "Favorite \($0)", appId: "fav-\($0)") }
+
+    /// Seven collections and a member list past the cap, so both Collections surfaces render their
+    /// scrolling paths.
+    private static let collections = (1...7).map { index in
+        OPNMenuBarCollection(
+            id: "collection-\(index)",
+            name: "Collection \(index)",
+            icon: .symbol("sparkles"),
+            gameCount: index,
+            games: (1...index).map { OPNMenuBarGame(title: "Collection \(index) Game \($0)", appId: "collection-\(index)-game-\($0)") }
+        )
+    }
+
+    /// One collection with more members than the list shows at once.
+    private static let spaceGames = OPNMenuBarCollection(
+        id: "collection-space",
+        name: "Space Games",
+        icon: .symbol("sparkles"),
+        gameCount: 7,
+        games: (1...7).map { OPNMenuBarGame(title: "Space Game \($0)", appId: "space-\($0)") }
+    )
 
     // MARK: - Layout
 
@@ -73,6 +97,41 @@ import Testing
         try await withPanel(phase: .idle, title: "", favorites: Self.favorites, initialTab: .favorites) { panel in
             try render(panel, named: "menu-bar-panel-favorites-scrolling.png", minimumHeight: 200)
         }
+    }
+
+    /// Three collections on the tab, short of the cap: the panel takes its natural height, the rows
+    /// render offscreen, and no scroll view is introduced.
+    @Test func theCollectionsTabRendersAShortList() async throws {
+        try await withPanel(phase: .idle, title: "", collections: Array(Self.collections.prefix(3)), initialTab: .collections) { panel in
+            try render(panel, named: "menu-bar-panel-collections.png", minimumHeight: 160)
+        }
+    }
+
+    /// Seven collections on the tab: the list holds the five-row cap rather than growing the popover
+    /// with every entry. The cap is checked by the height here and by the composited capture below.
+    @Test func theCollectionsTabHoldsTheCapPastFiveRows() async throws {
+        try await withPanel(phase: .idle, title: "", collections: Self.collections, initialTab: .collections) { panel in
+            try render(panel, named: "menu-bar-panel-collections-scrolling.png", minimumHeight: 200)
+        }
+    }
+
+    /// One collection's members, opened from the list and short of the cap, so every row renders.
+    @Test func aCollectionDetailRendersAShortListOfGames() async throws {
+        let collection = OPNMenuBarCollection(
+            id: "collection-short",
+            name: "Space Games",
+            icon: .symbol("sparkles"),
+            gameCount: 3,
+            games: (1...3).map { OPNMenuBarGame(title: "Space Game \($0)", appId: "space-\($0)") }
+        )
+        try await renderCollectionCard(collection, named: "menu-bar-panel-collection-detail.png", minimumHeight: 200)
+    }
+
+    /// A collection whose members the catalog has not resolved: the detail says so rather than
+    /// showing an empty list, and still reports the collection's real size.
+    @Test func aCollectionDetailExplainsUnresolvedGames() async throws {
+        let collection = OPNMenuBarCollection(id: "collection-pending", name: "Waiting Room", icon: nil, gameCount: 3, games: [])
+        try await renderCollectionCard(collection, named: "menu-bar-panel-collection-pending.png", minimumHeight: 100)
     }
 
     /// The account card is fixed across tabs: it shows on Favorites too, above the list, rather than
@@ -139,12 +198,13 @@ import Testing
         title: String,
         recentGames: [OPNMenuBarGame] = MenuBarPanelSnapshotTests.games,
         favorites: [OPNMenuBarGame] = [],
+        collections: [OPNMenuBarCollection] = [],
         initialTab: OPNMenuBarTab = .session,
         _ body: (OPNMenuBarPanel) throws -> Void
     ) async rethrows {
         let model = OPNMenuBarSessionModel()
         let source = PanelStubSource()
-        source.snapshot = OPNMenuBarSessionSnapshot(phase: phase, title: title, recentGames: recentGames, favorites: favorites)
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: phase, title: title, recentGames: recentGames, favorites: favorites, collections: collections)
         model.attach(source: source)
         defer { model.detachSource(source) }
 
@@ -163,7 +223,29 @@ import Testing
     }
 
     private func render(_ panel: OPNMenuBarPanel, named name: String, minimumHeight: CGFloat) throws {
-        let renderer = ImageRenderer(content: panel.background(Color.black))
+        try renderContent(panel.background(Color.black), named: name, minimumHeight: minimumHeight)
+    }
+
+    /// A collection's detail card rendered on its own, over a model whose snapshot carries the
+    /// collection; the selection is constant because a snapshot render never navigates.
+    private func renderCollectionCard(_ collection: OPNMenuBarCollection, named name: String, minimumHeight: CGFloat) async throws {
+        let model = OPNMenuBarSessionModel()
+        let source = PanelStubSource()
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", collections: [collection])
+        model.attach(source: source)
+        defer { model.detachSource(source) }
+        try? await Task.sleep(for: .milliseconds(60))
+
+        let card = OPNMenuBarCollectionsCard(session: model, selectedCollectionId: .constant(collection.id), onLaunchGame: { _ in })
+            .padding(10)
+            .frame(width: OPNMenuBarPanel.width)
+            .opnMenuBarPanelBackground()
+            .background(Color.black)
+        try renderContent(card, named: name, minimumHeight: minimumHeight)
+    }
+
+    private func renderContent(_ content: some View, named name: String, minimumHeight: CGFloat) throws {
+        let renderer = ImageRenderer(content: content)
         renderer.scale = 2
         let image = try #require(renderer.nsImage, "\(name) did not render")
         #expect(image.size.width >= OPNMenuBarPanel.width, "\(name) collapsed horizontally")
@@ -182,8 +264,6 @@ import Testing
     /// glass when there is something behind it to blur and pick colour from. The companion capture
     /// below renders the same backdrop with no panel over it as the control.
     @Test(.enabled(if: captureEnabled)) func theGlassChromeRendersInAWindow() async throws {
-        let directory = try #require(Self.captureDirectory, "set OPN_SNAPSHOT_DIR to capture")
-
         let model = OPNMenuBarSessionModel()
         let source = PanelStubSource()
         source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", recentGames: Self.games)
@@ -191,34 +271,23 @@ import Testing
         defer { model.detachSource(source) }
         try await Task.sleep(for: .milliseconds(80))
 
-        let hosting = NSHostingView(
-            rootView: ZStack(alignment: .top) {
-                GlassEvidenceBackdrop()
-                OPNMenuBarPanel(session: model)
-            }
-        )
-        hosting.frame = NSRect(x: 0, y: 0, width: OPNMenuBarPanel.width, height: 330)
-        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = false
-        window.contentView = hosting
-        window.setFrameOrigin(NSPoint(x: 200, y: 260))
-        window.orderFrontRegardless()
+        try await captureInWindow(OPNMenuBarPanel(session: model), named: "menu-bar-glass-over-backdrop.png", height: 330)
+    }
 
-        // Two waits: one for the window server to put the window up, one for the first real draw —
-        // a transparent borderless window can be captured before SwiftUI has drawn into it.
-        try await Task.sleep(for: .milliseconds(1200))
-        _ = captureWindow(CGWindowID(window.windowNumber))
-        try await Task.sleep(for: .milliseconds(400))
-        let captured = captureWindow(CGWindowID(window.windowNumber))
-        window.orderOut(nil)
+    /// The Collections tab with the scrolling paths on screen: seven members in the open collection.
+    /// This is the capture that verifies what an offscreen render cannot.
+    @Test(.enabled(if: captureEnabled)) func theCollectionsChromeRendersInAWindow() async throws {
+        let model = OPNMenuBarSessionModel()
+        let source = PanelStubSource()
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: .idle, title: "", collections: [Self.spaceGames])
+        model.attach(source: source)
+        defer { model.detachSource(source) }
+        try await Task.sleep(for: .milliseconds(80))
 
-        try write(
-            try #require(captured, "the window server returned no image for our own window"),
-            named: "menu-bar-glass-over-backdrop.png",
-            into: directory
-        )
+        let card = OPNMenuBarCollectionsCard(session: model, selectedCollectionId: .constant(Self.spaceGames.id), onLaunchGame: { _ in })
+            .padding(10)
+            .frame(width: OPNMenuBarPanel.width)
+        try await captureInWindow(card, named: "menu-bar-collections-over-backdrop.png", height: 420)
     }
 
     /// The control for the capture above: the same backdrop with no panel over it, so the blur the
@@ -265,6 +334,39 @@ import Testing
 
     private struct WindowInfo {
         let bounds: CGRect
+    }
+
+    /// Puts `content` in a real borderless window over the backdrop and captures what the window
+    /// server composed, waiting once for the window and once for the first real draw.
+    private func captureInWindow(_ content: some View, named name: String, height: CGFloat) async throws {
+        let directory = try #require(Self.captureDirectory, "set OPN_SNAPSHOT_DIR to capture")
+
+        let hosting = NSHostingView(
+            rootView: ZStack(alignment: .top) {
+                GlassEvidenceBackdrop()
+                content
+            }
+        )
+        hosting.frame = NSRect(x: 0, y: 0, width: OPNMenuBarPanel.width, height: height)
+        let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.contentView = hosting
+        window.setFrameOrigin(NSPoint(x: 200, y: 260))
+        window.orderFrontRegardless()
+
+        try await Task.sleep(for: .milliseconds(1200))
+        _ = captureWindow(CGWindowID(window.windowNumber))
+        try await Task.sleep(for: .milliseconds(400))
+        let captured = captureWindow(CGWindowID(window.windowNumber))
+        window.orderOut(nil)
+
+        try write(
+            try #require(captured, "the window server returned no image for our own window"),
+            named: name,
+            into: directory
+        )
     }
 
     private func onScreenWindows(ownedBy owner: String) -> [WindowInfo] {

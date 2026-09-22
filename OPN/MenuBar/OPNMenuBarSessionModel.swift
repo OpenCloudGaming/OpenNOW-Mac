@@ -40,6 +40,12 @@ final class OPNMenuBarSessionModel: ObservableObject {
     /// a source detach like the recent games, so closing the window to the tray does not empty the
     /// tab; unlike them it cannot be seeded from persistence, because favorites live on the vendor.
     @Published private(set) var favorites: [OPNMenuBarGame] = []
+    /// The account's collections, for the surface's Collections tab. Kept across a source detach like
+    /// the favorites; their members' titles and box art come from the catalog or a windowless lookup.
+    @Published private(set) var collections: [OPNMenuBarCollection] = []
+    /// Whether the windowless collections loader is resolving member games right now, so the
+    /// Collections tab can say it is loading rather than that the games are unavailable.
+    @Published private(set) var isResolvingCollectionGames = false
     /// Every saved account the surface can show and switch to, active one included. Kept across a
     /// source detach like the recent games, so closing the window to the tray does not empty it.
     @Published private(set) var accounts: [OPNMenuBarAccount] = []
@@ -80,6 +86,8 @@ final class OPNMenuBarSessionModel: ObservableObject {
     /// The account the favorites on screen belong to, so a windowless fetch that lands after an
     /// account change cannot replace a newer list.
     private var favoritesAccountIdentifier = ""
+    /// The account the collections on screen belong to, for the same reason the favorites keep one.
+    private var collectionsAccountIdentifier = ""
     /// A page asked for while no window can show it, drained when the next source attaches.
     private var pendingMainPage: OPNMainWindowPage?
     /// A Resume asked for while no window can perform it, drained when the next source attaches.
@@ -147,6 +155,12 @@ final class OPNMenuBarSessionModel: ObservableObject {
         phase == .idle && !favorites.isEmpty
     }
 
+    /// Whether a Collections row can start a session. Gated like the favorites: a launch belongs to
+    /// the catalog, which refuses one while a session is already running.
+    var canLaunchCollections: Bool {
+        phase == .idle
+    }
+
     func panelStatusText() -> String {
         OPNMenuBarReadout.panelStatusText(for: phase, estimatedSeconds: estimatedRemainingSeconds)
     }
@@ -204,6 +218,28 @@ final class OPNMenuBarSessionModel: ObservableObject {
         favorites = games
     }
 
+    /// Seeds the Collections tab from the local store and its resolved-game cache before any window
+    /// exists. Skipped once a source owns the surface, which pushes the live list instead.
+    func primeCollections(_ collections: [OPNMenuBarCollection], accountIdentifier: String) {
+        guard source == nil else { return }
+        collectionsAccountIdentifier = accountIdentifier
+        guard !collections.isEmpty else { return }
+        self.collections = collections
+    }
+
+    /// The windowless member lookup's result, dropped when a newer account has taken over.
+    func applyFetchedCollections(_ collections: [OPNMenuBarCollection], accountIdentifier: String) {
+        guard source == nil, accountIdentifier == collectionsAccountIdentifier else { return }
+        self.collections = collections
+    }
+
+    /// Reports whether the windowless loader is resolving collection members, so an empty detail can
+    /// say it is loading rather than that the games are unavailable.
+    func setResolvingCollectionGames(_ isResolving: Bool) {
+        guard isResolvingCollectionGames != isResolving else { return }
+        isResolvingCollectionGames = isResolving
+    }
+
     /// The account the popover names at its top. Falls back to the first entry so a list seeded
     /// before an active mark lands still shows somebody rather than an empty header.
     var activeAccount: OPNMenuBarAccount? {
@@ -214,10 +250,8 @@ final class OPNMenuBarSessionModel: ObservableObject {
     /// after the replacement attaches often enough that a blind detach would leave the surface
     /// following nothing.
     ///
-    /// The recent games, favorites and accounts are deliberately kept: they describe play history,
-    /// the account's saved favorites, and the saved accounts rather than the session, so closing the
-    /// window to the tray must not empty the menu. The next source to attach overwrites them with its
-    /// own account's lists.
+    /// The recent games, favorites, collections and accounts are deliberately kept: they describe the
+    /// account's own data, and the next source to attach overwrites them with its own account's lists.
     func detachSource(_ source: any OPNMenuBarSessionSource) {
         guard self.source === source else { return }
         self.source = nil
@@ -393,6 +427,7 @@ final class OPNMenuBarSessionModel: ObservableObject {
         gameTitle = snapshot.title
         recentGames = snapshot.recentGames
         favorites = snapshot.favorites
+        collections = snapshot.collections
         accounts = snapshot.accounts
         resumableSessionTitle = snapshot.resumableSessionTitle
         resolvePhase()

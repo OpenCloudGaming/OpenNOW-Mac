@@ -313,6 +313,9 @@ extension CatalogViewModel {
             tombstones.append(tombstone)
         }
         CatalogCollectionsStore(collections: userCollections, tombstones: tombstones).save(accountIdentifier: account)
+        // The menu bar's windowless launch reads this cache, so what the catalog can resolve now is
+        // written back while there is a catalog to resolve it with.
+        persistMenuBarCollectionGames()
         pruneOrphanedCollectionIcons()
     }
 
@@ -359,6 +362,9 @@ extension CatalogViewModel {
         let stored = CatalogCollectionsStore.load(accountIdentifier: accountIdentifier).collections
         guard stored != userCollections else { return }
         userCollections = stored
+        // A peer's write can have added members this catalog can already resolve, so the windowless
+        // cache is kept in step with the collections that just arrived.
+        persistMenuBarCollectionGames()
     }
 
     static func collectionNameError(_ name: String) -> String {

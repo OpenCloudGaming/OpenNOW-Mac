@@ -18,6 +18,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
             title: menuBarTitle,
             recentGames: menuBarRecentGames,
             favorites: menuBarFavorites,
+            collections: menuBarCollections,
             accounts: menuBarAccounts,
             resumableSessionTitle: menuBarResumableSessionTitle
         )
@@ -107,17 +108,52 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         Self.menuBarGames(from: favoriteGames)
     }
 
-    /// The menu bar's reduction of catalog games. Shared by the Favorites tab and the persisted
-    /// favorites cache, so the rows the surface shows and the rows the cache replays carry the same
-    /// identity and artwork.
-    static func menuBarGames(from games: [OPNCatalogGameObject]) -> [OPNMenuBarGame] {
-        games.map { game in
-            OPNMenuBarGame(
-                title: game.title,
-                appId: Self.identity(for: game),
-                artworkURL: Self.menuBarArtworkURL(for: game)
-            )
+    /// The account's collections, reduced for the menu bar with the members the loaded catalog can
+    /// resolve. A member the catalog has not seen is left out while still counting in `gameCount`.
+    private var menuBarCollections: [OPNMenuBarCollection] {
+        let known = catalogGamesByIdentity
+        return sortedUserCollections.map { collection in
+            OPNMenuBarCollection(collection: collection) { identity in
+                known[identity].map(Self.menuBarGame(from:))
+            }
         }
+    }
+
+    /// The menu bar's reduction of one catalog game: the title, the identity a launch looks it up by,
+    /// and its box art. Shared by the Favorites and Collections tabs.
+    static func menuBarGame(from game: OPNCatalogGameObject) -> OPNMenuBarGame {
+        OPNMenuBarGame(
+            title: game.title,
+            appId: Self.identity(for: game),
+            artworkURL: menuBarArtworkURL(for: game)
+        )
+    }
+
+    /// The menu bar's reduction of catalog games, shared by the tabs and the persisted caches.
+    static func menuBarGames(from games: [OPNCatalogGameObject]) -> [OPNMenuBarGame] {
+        games.map(Self.menuBarGame(from:))
+    }
+
+    /// Writes the collection members the catalog can resolve to the menu bar's windowless cache,
+    /// merged so a catalog that has not finished loading cannot shorten what is already cached.
+    func persistMenuBarCollectionGames() {
+        let identifier = collectionsAccountIdentifier
+        guard !identifier.isEmpty else { return }
+        let known = catalogGamesByIdentity
+        var resolved: [String: OPNMenuBarGame] = [:]
+        var referenced: Set<String> = []
+        for collection in userCollections {
+            for identity in collection.gameIds {
+                referenced.insert(identity)
+                guard let game = known[identity] else { continue }
+                resolved[identity] = Self.menuBarGame(from: game)
+            }
+        }
+        guard !referenced.isEmpty else { return }
+        CatalogCollectionGamesCache.load(accountIdentifier: identifier)
+            .merging(resolved)
+            .pruned(keeping: referenced)
+            .save(accountIdentifier: identifier)
     }
 
     private static func menuBarGame(matching entry: CatalogRecentlyPlayedGame, in known: [OPNCatalogGameObject]) -> OPNCatalogGameObject? {
@@ -128,8 +164,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
     /// Box art for the menu's game rows. The catalog only knows a game it has loaded, so a list built
     /// before the catalog arrives simply has no artwork and the row falls back to its placeholder.
     private static func menuBarArtworkURL(for game: OPNCatalogGameObject?) -> String? {
-        let artwork = game?.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return artwork.isEmpty ? nil : artwork
+        OPNMenuBarGame.artworkURL(for: game?.imageUrl ?? "")
     }
 
     func attachMenuBarSurface() {

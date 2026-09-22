@@ -124,6 +124,9 @@ struct OPNApp: App {
             // never builds a catalog to push them, and even a windowed one shows the tab before the
             // catalog attaches. The account list is seeded above for the same reason.
             OPNMenuBarFavorites.primeFromCache(accountIdentifier: userId)
+            // Collections are local, so the list paints from the store at once; the members still
+            // unresolved are fetched below when no window will load a catalog to resolve them.
+            OPNMenuBarCollections.primeFromCache(accountIdentifier: userId)
             // The play history is keyed by the playtime identifier, which needs the account; seeding
             // it here is what keeps the menu bar's Continue Playing list populated on a windowless
             // launch, where no catalog view model ever attaches to push it.
@@ -134,12 +137,12 @@ struct OPNApp: App {
                 )
             }
             // A launch with no window has no splash to hide and nothing to paint the catalog into, so
-            // the home prefetch is skipped. Favorites are the exception: the menu bar's tab needs
-            // them, so they are fetched directly once the session is usable.
+            // the home prefetch is skipped; the menu bar's own tabs are fetched once the session is usable.
             guard OPNLaunchPreferences.startupPresentation == .window else {
                 OPNLog.info(.catalog, "Catalog prefetch skipped: launching menu bar only")
                 guard !session.isExpired else { return }
                 OPNMenuBarFavorites.start(accountIdentifier: userId, accessToken: session.accessToken, idToken: session.idToken)
+                OPNMenuBarCollections.start(accountIdentifier: userId, accessToken: session.accessToken, idToken: session.idToken)
                 return
             }
             guard !session.isExpired else {

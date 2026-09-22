@@ -166,6 +166,24 @@ public struct OPNGameInfo: Codable, Equatable, Sendable {
     public var variants: [OPNGameVariant] = []
 }
 
+extension OPNGameInfo {
+    /// The shared identity rule: the catalog id, then the uuid, then the launch app id, then the
+    /// title, so a service-built list resolves what the catalog view model resolves.
+    public var catalogIdentity: String {
+        OPNGameIdentity.resolve(id: id, uuid: uuid, launchAppId: launchAppId, title: title)
+    }
+}
+
+/// The identity rule `OPNGameInfo` and `OPNCatalogGameObject` share.
+enum OPNGameIdentity {
+    static func resolve(id: String, uuid: String, launchAppId: String, title: String) -> String {
+        if !id.isEmpty { return id }
+        if !uuid.isEmpty { return uuid }
+        if !launchAppId.isEmpty { return launchAppId }
+        return title
+    }
+}
+
 public struct OPNActiveSessionEntry: Equatable, Sendable {
     public var sessionId = ""
     public var appId = 0

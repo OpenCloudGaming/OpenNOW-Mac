@@ -379,10 +379,7 @@ extension OPNCatalogGameObject {
     /// title only as a last resort. Lives on the model so the service layer — which reads catalog
     /// games for the menu bar without a view model — resolves the same identity the catalog does.
     public var catalogIdentity: String {
-        if !id.isEmpty { return id }
-        if !uuid.isEmpty { return uuid }
-        if !launchAppId.isEmpty { return launchAppId }
-        return title
+        OPNGameIdentity.resolve(id: id, uuid: uuid, launchAppId: launchAppId, title: title)
     }
 }
 

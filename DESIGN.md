@@ -368,20 +368,46 @@ The popover's Continue Playing rows name the game and **when it was last played*
 history carries no timestamp for is title-only.
 
 Above the cards sits a compact **icon tab row** (`OPNMenuBarTab`): a game controller for the session
-surface the panel has always been, and a heart for the account's favorites. The tabs are the
-popover's navigation, one of the things Apple names Liquid Glass for, so on macOS 26 and later each
-tab is a glass element in its own `GlassEffectContainer` — the selected one tinted with the accent,
-the unselected one plain interactive glass — exactly as the session control row is gathered. On
-older systems they fall back to the translucent fill with an accent stroke on the selected tab. The
+surface the panel has always been, a heart for the account's favorites, and the catalog's collection
+glyph (`square.stack.3d.up.fill`) for the account's own collections. The tabs are the popover's
+navigation, one of the things Apple names Liquid Glass for, so on macOS 26 and later each tab is a
+glass element in its own `GlassEffectContainer` — the selected one tinted with the accent, the
+unselected one plain interactive glass — exactly as the session control row is gathered. On older
+systems they fall back to the translucent fill with an accent stroke on the selected tab. The
 selected tab's glyph uses `OPNDesign.onAccent`, the ink designed to be read on an accent fill: the
 ordinary text ink all but disappears on the tinted glass. The account card sits between the tab row
 and the tab content and is **fixed across switches** — who is signed in does not depend on which tab
-is showing, so the card, and the account dropdown's state, stay put. The Favorites tab lists the
-account's favorites in the catalog's order as title-only `.opnMenuBarRow` rows, and the list
-**grows with its contents up to five rows** before it starts to scroll, so a long list holds the
-popover at a comfortable size rather than stretching it. Favorites live on the vendor, so unlike the
-play history there is no local copy to seed a windowless surface from: the tab fills once a window
-has loaded the catalog.
+is showing, so the card, and the account dropdown's state, stay put.
+
+The popover is a fixed-width status-item surface, so like the label it takes no `uiScale`: every card
+inside it is laid out at the same 316-wide geometry, and scaling one card alone would break the
+alignment the others share.
+
+The Favorites tab lists the account's favorites in the catalog's order as title-only
+`.opnMenuBarRow` rows, and the list **grows with its contents up to five rows** before it starts to
+scroll, so a long list holds the popover at a comfortable size rather than stretching it. Favorites
+live on the vendor, so unlike the play history there is no local copy to seed a windowless surface
+from: the tab fills once a window has loaded the catalog.
+
+The Collections tab lists the account's collections in the catalog's order — the glyph
+`OPNCollectionIconView` draws, the name, the stored member count, and a chevron — as the same
+`.opnMenuBarRow` content, capped at the same five rows. Choosing one opens its games as a detail
+inside the same card: a back affordance (`COLLECTIONS` behind a chevron), the collection's glyph and
+name with its member count, and the member rows with the same artwork-and-play-glyph treatment a
+favorite gets, lazily built and capped like the list. A collection is addressed by id, so deleting
+the open collection — or switching accounts — returns the card to the list rather than showing a
+stale one. A detail with nothing to list says which case it is: an empty collection, the members
+still being resolved, or members the catalog does not carry, always alongside the collection's real
+stored size.
+
+Collections are local (`CatalogCollectionsStore`), so the list needs neither a window nor a network
+and paints from the store the moment the popover opens. Their members' titles and box art need the
+catalog: with a window it resolves them live through the session snapshot, and the catalog writes
+what it resolved to `CatalogCollectionGamesCache` as collections are written or reloaded. With no
+window, `OPNMenuBarCollections` paints those cached games at launch and asks the vendor for the rest
+in bounded batches through `OPNGameService.resolveCatalogGames(byIdentities:)`, writing the result
+back to the cache so the next windowless run starts warm. A launch from any of these rows takes the
+same window-preserving path a Continue Playing row does.
 
 The popover's first card names the **signed-in account**: avatar, display name, and membership tier.
 When more than one account is saved the header becomes a disclosure — a chevron and a tap reveal the

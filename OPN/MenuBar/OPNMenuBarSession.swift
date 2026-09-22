@@ -69,6 +69,53 @@ struct OPNMenuBarGame: Codable, Equatable, Sendable, Identifiable {
         self.artworkURL = artworkURL
         self.lastPlayedAt = lastPlayedAt
     }
+
+    /// The row for a catalog row the service layer resolved, through the same shared identity rule.
+    init(catalogGame game: OPNGameInfo) {
+        self.init(title: game.title, appId: game.catalogIdentity, artworkURL: Self.artworkURL(for: game.imageUrl))
+    }
+
+    /// The box art a catalog row's image URL describes, or nil when it carries none.
+    static func artworkURL(for rawValue: String) -> String? {
+        let artwork = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return artwork.isEmpty ? nil : artwork
+    }
+}
+
+/// One of the account's collections, reduced to what the popover lists: `gameCount` is the stored
+/// membership — not the resolved rows — so an unresolved member still counts toward the collection.
+struct OPNMenuBarCollection: Equatable, Sendable, Identifiable {
+    let id: String
+    let name: String
+    let icon: OPNCollectionIcon?
+    let gameCount: Int
+    let games: [OPNMenuBarGame]
+
+    /// The glyph to draw: the chosen icon when it is still valid, the catalog default otherwise.
+    var resolvedIcon: OPNCollectionIcon {
+        icon?.validated ?? .fallback
+    }
+
+    init(id: String, name: String, icon: OPNCollectionIcon?, gameCount: Int, games: [OPNMenuBarGame]) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.gameCount = gameCount
+        self.games = games
+    }
+
+    /// Reduces one stored collection: members keep their stored order, and the members that resolve
+    /// to the same game — the same title stored under two id namespaces — collapse to one row.
+    init(collection: OPNUserCollection, resolvedGame: (String) -> OPNMenuBarGame?) {
+        var games: [OPNMenuBarGame] = []
+        var seenIdentities = Set<String>()
+        for identity in collection.gameIds {
+            guard let game = resolvedGame(identity) else { continue }
+            guard seenIdentities.insert(game.id).inserted else { continue }
+            games.append(game)
+        }
+        self.init(id: collection.id, name: collection.name, icon: collection.icon, gameCount: collection.gameIds.count, games: games)
+    }
 }
 
 /// A signed-in account, reduced to what the menu bar shows and what switching to it needs. A value
@@ -96,9 +143,7 @@ struct OPNMenuBarAccount: Equatable, Sendable, Identifiable {
 }
 
 /// Everything the surface needs from the window that owns the launch: the phase, the game it is
-/// about, the games the menu can relaunch, the signed-in accounts it can show and switch, the games
-/// the account has favorited, and the title of a cloud session that exists but is not streaming
-/// locally. Pushed by the catalog view model; the menu bar owns no launch state of its own.
+/// about, the games the menu can relaunch, the account's lists, and any resumable session title.
 struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
     var phase: OPNMenuBarSessionPhase = .idle
     var title = ""
@@ -107,6 +152,9 @@ struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
     /// catalog: favorites live on the vendor, so unlike the play history there is no local copy to
     /// seed a windowless surface from.
     var favorites: [OPNMenuBarGame] = []
+    /// The account's collections, in the catalog's order, each with the members the app could
+    /// resolve; a member the catalog has not seen stays out of `games` but still counts in `gameCount`.
+    var collections: [OPNMenuBarCollection] = []
     /// Every saved account, active one included. Empty until a window attaches or launch seeding runs.
     var accounts: [OPNMenuBarAccount] = []
     /// A resumable session detected while nothing streams locally — a seat this Mac paused, or one

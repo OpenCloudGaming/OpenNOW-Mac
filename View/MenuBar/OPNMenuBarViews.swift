@@ -41,14 +41,12 @@ struct OPNMenuBarSceneContent: View {
     }
 }
 
-/// The popover's top-level views, switched by the icon tabs above the cards.
-///
-/// Two destinations and no more: the session surface the panel has always been, and the account's
-/// favorites. Both are one tap away, so the compact icon row is all the affordance a popover this
-/// size needs — no label under an icon that the accessibility label already carries.
+/// The popover's top-level views, switched by the icon tabs above the cards: the session surface,
+/// the account's favorites, and the account's collections, all one tap away.
 enum OPNMenuBarTab: String, CaseIterable, Identifiable {
     case session
     case favorites
+    case collections
 
     var id: String { rawValue }
 
@@ -56,6 +54,7 @@ enum OPNMenuBarTab: String, CaseIterable, Identifiable {
         switch self {
         case .session: return "Session"
         case .favorites: return "Favorites"
+        case .collections: return "Collections"
         }
     }
 
@@ -63,6 +62,7 @@ enum OPNMenuBarTab: String, CaseIterable, Identifiable {
         switch self {
         case .session: return "gamecontroller.fill"
         case .favorites: return "heart.fill"
+        case .collections: return OPNCollectionIcon.defaultSymbolName
         }
     }
 }
@@ -81,16 +81,11 @@ struct OPNMenuBarPanel: View {
 
     /// Wide enough for a game title beside its artwork, narrow enough to stay a popover.
     static let width: CGFloat = 316
-    /// How many rows the Favorites list shows before it starts to scroll. The panel grows with the
-    /// list up to this many, then holds the height — one tap of a favorite never resizes the popover
-    /// past a comfortable size, and a longer list scrolls inside it.
-    static let favoritesVisibleRows = 5
-    /// One game row's height: the 34pt artwork with 5pt above and below it. Fixed so the Favorites
-    /// list's height can be computed rather than measured.
-    static let gameRowHeight: CGFloat = 44
-    static let gameRowSpacing: CGFloat = 8
 
     @State private var selectedTab: OPNMenuBarTab
+    /// The collection the Collections tab has open, if any. Held by the panel rather than the card, so
+    /// switching tabs and back returns to the collection that was open.
+    @State private var selectedCollectionId: String?
 
     init(session: OPNMenuBarSessionModel, initialTab: OPNMenuBarTab = .session) {
         self.session = session
@@ -118,6 +113,8 @@ struct OPNMenuBarPanel: View {
             continuePlayingCard
         case .favorites:
             favoritesCard
+        case .collections:
+            OPNMenuBarCollectionsCard(session: session, selectedCollectionId: $selectedCollectionId, onLaunchGame: launch)
         }
     }
 
@@ -275,13 +272,13 @@ struct OPNMenuBarPanel: View {
     // MARK: - Continue Playing
 
     private var continuePlayingCard: some View {
-        VStack(alignment: .leading, spacing: Self.gameRowSpacing) {
-            cardEyebrow("CONTINUE PLAYING")
+        VStack(alignment: .leading, spacing: OPNMenuBarListMetrics.rowSpacing) {
+            OPNMenuBarEyebrow(text: "CONTINUE PLAYING")
             if session.recentGames.isEmpty {
-                emptyListText("Games you play show up here.")
+                OPNMenuBarEmptyText(text: "Games you play show up here.")
             } else {
                 ForEach(session.recentGames) { game in
-                    gameButton(game, isEnabled: session.canLaunchRecentGames)
+                    OPNMenuBarGameButton(game: game, isEnabled: session.canLaunchRecentGames) { launch(game) }
                 }
             }
         }
@@ -291,97 +288,21 @@ struct OPNMenuBarPanel: View {
     // MARK: - Favorites
 
     private var favoritesCard: some View {
-        VStack(alignment: .leading, spacing: Self.gameRowSpacing) {
-            cardEyebrow("FAVORITES")
+        VStack(alignment: .leading, spacing: OPNMenuBarListMetrics.rowSpacing) {
+            OPNMenuBarEyebrow(text: "FAVORITES")
             if session.favorites.isEmpty {
-                emptyListText("Games you favorite show up here.")
+                OPNMenuBarEmptyText(text: "Games you favorite show up here.")
             } else {
-                favoritesList
+                OPNMenuBarCappedList(rowCount: session.favorites.count) {
+                    VStack(alignment: .leading, spacing: OPNMenuBarListMetrics.rowSpacing) {
+                        ForEach(session.favorites) { game in
+                            OPNMenuBarGameButton(game: game, isEnabled: session.canLaunchFavorites) { launch(game) }
+                        }
+                    }
+                }
             }
         }
         .opnMenuBarCard()
-    }
-
-    /// The favorites list grows with its contents and only starts scrolling past
-    /// `favoritesVisibleRows`: short lists keep the popover its natural size, a long one holds the
-    /// same height and scrolls. Constraining a `ScrollView` to `maxHeight` would not do that — it is
-    /// greedy and would take the cap even when the list is shorter — so the scroll view is only
-    /// introduced once the rows outgrow the cap, at the height they occupy there.
-    @ViewBuilder private var favoritesList: some View {
-        if session.favorites.count > Self.favoritesVisibleRows {
-            ScrollView(.vertical) {
-                favoritesRows
-            }
-            .scrollIndicators(.visible)
-            .frame(height: favoritesVisibleHeight)
-        } else {
-            favoritesRows
-        }
-    }
-
-    private var favoritesRows: some View {
-        VStack(alignment: .leading, spacing: Self.gameRowSpacing) {
-            ForEach(session.favorites) { game in
-                gameButton(game, isEnabled: session.canLaunchFavorites)
-            }
-        }
-    }
-
-    private var favoritesVisibleHeight: CGFloat {
-        let rows = CGFloat(Self.favoritesVisibleRows)
-        return rows * Self.gameRowHeight + (rows - 1) * Self.gameRowSpacing
-    }
-
-    private func cardEyebrow(_ text: String) -> some View {
-        Text(text)
-            .font(.opnUI(size: 10, weight: .bold))
-            .tracking(0.8)
-            .foregroundStyle(OPNDesign.Text.muted)
-    }
-
-    private func emptyListText(_ text: String) -> some View {
-        Text(text)
-            .font(.opnUI(size: 11.5, weight: .medium))
-            .foregroundStyle(OPNDesign.Text.tertiary)
-            .padding(.vertical, 2)
-    }
-
-    private func gameButton(_ game: OPNMenuBarGame, isEnabled: Bool) -> some View {
-        Button { launch(game) } label: {
-            gameRow(game, isEnabled: isEnabled)
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .accessibilityLabel("Launch \(game.title)")
-    }
-
-    private func gameRow(_ game: OPNMenuBarGame, isEnabled: Bool) -> some View {
-        HStack(spacing: 9) {
-            OPNMenuBarArtwork(url: game.artworkURL)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(game.title)
-                    .font(.opnUI(size: 12.5, weight: .semibold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                    .lineLimit(1)
-                // The card's header already says what the list is; repeating it under every title
-                // says nothing. When the game was last played is what a Continue Playing row can add,
-                // so a favorite — which has no timestamp — is a title-only row.
-                if let lastPlayedText = OPNMenuBarReadout.lastPlayedText(for: game.lastPlayedAt) {
-                    Text(lastPlayedText)
-                        .font(.opnUI(size: 10.5, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 6)
-            Image(systemName: "play.fill")
-                .font(.opnUI(size: 10, weight: .bold))
-                .foregroundStyle(isEnabled ? OPNDesign.accent : OPNDesign.Text.muted)
-        }
-        .padding(.horizontal, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: Self.gameRowHeight)
-        .opnMenuBarRow()
     }
 
     /// A game started here does not bring the window forward: a window on screen, in the Dock, or
@@ -440,42 +361,6 @@ struct OPNMenuBarPanel: View {
         openWindow(id: "main")
         OPNMainWindow.reveal()
         NSApplication.shared.activate(ignoringOtherApps: true)
-    }
-}
-
-/// A recent game's box art, drawn from the catalog's own image cache so opening the popover never
-/// re-downloads something the catalog already has.
-private struct OPNMenuBarArtwork: View {
-    let url: String?
-
-    @State private var image: NSImage?
-
-    var body: some View {
-        Group {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Image(systemName: "gamecontroller.fill")
-                    .font(.opnUI(size: 14, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.muted)
-            }
-        }
-        .frame(width: 34, height: 34)
-        .background(OPNDesign.Fill.neutral(0.08))
-        // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome: artwork tiles match the Control Center cards this surface is modelled on
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .task(id: url) { await load() }
-    }
-
-    private func load() async {
-        // Cleared first: a row can be reused for another game, and a stale cover is worse than the
-        // placeholder while the new one loads.
-        image = nil
-        guard let url, let parsed = URL(string: url) else { return }
-        let cached = await CatalogImageCache.shared.image(for: parsed, maxPixelSize: 96)
-        image = cached?.image
     }
 }
 
