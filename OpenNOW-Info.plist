@@ -17,12 +17,12 @@
 			<string>OpenNOW game shortcut</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>io.github.opencloudgaming.opennow.game-shortcut</string>
 			</array>
-			<key>LSHandlerRank</key>
-			<string>Owner</string>
 		</dict>
 		<dict>
 			<key>CFBundleTypeExtensions</key>
@@ -37,28 +37,6 @@
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
-		</dict>
-	</array>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>io.github.opencloudgaming.opennow.game-shortcut</string>
-			<key>UTTypeDescription</key>
-			<string>OpenNOW game shortcut</string>
-			<key>UTTypeIconFile</key>
-			<string>AppIcon</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.json</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>opennow</string>
-				</array>
-			</dict>
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
@@ -96,27 +74,25 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.games</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 	</dict>
-	<key>NSDesktopFolderUsageDescription</key>
-	<string>OpenNOW writes GeForce NOW shortcut files to your Desktop when you choose Add shortcut.</string>
-	<key>NSHumanReadableCopyright</key>
-	<string></string>
-	<key>OPNSentryDSN</key>
-	<string>$(OPN_SENTRY_DSN)</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>OpenNOW uses the microphone for voice chat during GeForce NOW streams.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_opennow-coop._tcp</string>
 	</array>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>OpenNOW writes direct game shortcut files to your Desktop when you choose Add shortcut.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string></string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>OpenNOW uses the local network to host and join Remote Co-Op sessions between Macs.</string>
+	<string>OpenNOW uses the local network to host and join Remote Co-Op sessions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenNOW uses the microphone for voice chat during streams.</string>
 	<key>NSUbiquitousContainers</key>
 	<dict>
 		<key>iCloud.io.github.opencloudgaming.opennow</key>
@@ -129,5 +105,29 @@
 			<string>Any</string>
 		</dict>
 	</dict>
+	<key>OPNSentryDSN</key>
+	<string>$(OPN_SENTRY_DSN)</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>OpenNOW game shortcut</string>
+			<key>UTTypeIconFile</key>
+			<string>AppIcon</string>
+			<key>UTTypeIdentifier</key>
+			<string>io.github.opencloudgaming.opennow.game-shortcut</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>opennow</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>
