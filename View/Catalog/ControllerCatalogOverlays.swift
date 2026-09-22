@@ -326,17 +326,33 @@ struct ControllerActionMenuOverlay: View {
 
     @Environment(\.opnUIScale) private var uiScale
 
+    /// Rows that open a new group: the first row after the account block, and Refresh Catalog at
+    /// the bottom. The dividers are decoration only: focus walks the flat list unchanged.
+    private var separatorIndexes: Set<Int> {
+        var indexes: Set<Int> = []
+        if let navigationStart = items.firstIndex(where: { !$0.isAccountGroup }) { indexes.insert(navigationStart) }
+        if let refreshIndex = items.firstIndex(where: { $0.isRefresh }) { indexes.insert(refreshIndex) }
+        return indexes
+    }
+
     var body: some View {
-        ZStack(alignment: .trailing) {
+        let separators = separatorIndexes
+        return ZStack(alignment: .trailing) {
             OPNDesign.Surface.scrim.onTapGesture(perform: close)
             VStack(alignment: .leading, spacing: 0) {
-                ControllerOverlayHeader(title: "Controller Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
+                ControllerOverlayHeader(title: "Actions", subtitle: "Catalog navigation and account actions", glyphs: glyphs, close: close)
                     .padding(.horizontal, 22 * uiScale)
                     .padding(.top, 22 + topInset)
                     .padding(.bottom, 12 * uiScale)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 8 * uiScale) {
                         ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                            if separators.contains(index) {
+                                Rectangle()
+                                    .fill(OPNDesign.Stroke.subtle)
+                                    .frame(height: 1)
+                                    .padding(.vertical, 4 * uiScale)
+                            }
                             let isFocused = index == selectedIndex
                             Button { perform(item) } label: {
                                 HStack(spacing: 13 * uiScale) {

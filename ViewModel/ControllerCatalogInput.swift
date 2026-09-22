@@ -607,7 +607,9 @@ extension ControllerCatalogViewModel {
     // MARK: - Actions menu
 
     func openActionMenu() {
-        actionMenuIndex = min(actionMenuIndex, max(actionMenuItems.count - 1, 0))
+        let items = actionMenuItems
+        // Opens on Go to Home: the row most people came for, first in the navigation group.
+        actionMenuIndex = items.firstIndex(where: { if case .home = $0 { return true }; return false }) ?? 0
         isActionMenuVisible = true
     }
 

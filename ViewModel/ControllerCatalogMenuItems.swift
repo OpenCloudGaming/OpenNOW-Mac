@@ -136,6 +136,13 @@ enum ControllerActionMenuItem {
         }
     }
 
+    var isAccountGroup: Bool {
+        switch self {
+        case .account, .addAccount: return true
+        default: return false
+        }
+    }
+
     var icon: String {
         switch self {
         case .refresh: return "arrow.clockwise"

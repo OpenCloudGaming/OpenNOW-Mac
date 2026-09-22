@@ -369,12 +369,10 @@ final class ControllerCatalogViewModel: ObservableObject {
 
     var actionMenuItems: [ControllerActionMenuItem] {
         guard let catalog else { return [] }
-        var items: [ControllerActionMenuItem] = [.refresh]
-        if catalog.isBrowseMode { items.append(.clearSearch) }
-        // Collections are deliberately absent: like the desktop menu, they are reached from their
-        // home rails, and listing every one here would crowd the pad's action menu with no ordering.
-        items.append(contentsOf: [.home])
-        items.append(contentsOf: [.screenshots, .recordings, .desktopMode, .settings])
+        // Three groups top to bottom, split by separators in the overlay: the account block with
+        // Add Account capping it, the catalog navigation actions, and the catalog-wide commands
+        // (refresh, and clearing search while browsing) at the bottom.
+        var items: [ControllerActionMenuItem] = []
         // Active account first (it must be listed at all, or it can never be forgotten on a pad),
         // then the rest in the order the host handed them over.
         var accounts = host.accounts
@@ -389,6 +387,11 @@ final class ControllerCatalogViewModel: ObservableObject {
             ))
         }
         items.append(.addAccount)
+        items.append(contentsOf: [.home, .screenshots, .recordings, .desktopMode, .settings])
+        items.append(.refresh)
+        if catalog.isBrowseMode { items.append(.clearSearch) }
+        // Collections are deliberately absent: like the desktop menu, they are reached from their
+        // home rails, and listing every one here would crowd the pad's action menu with no ordering.
         return items
     }
 
