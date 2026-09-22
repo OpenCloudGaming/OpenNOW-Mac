@@ -253,6 +253,44 @@ extension CatalogViewModel {
         isCollectionsNoticePresented = false
     }
 
+    /// Whether any collections surface is up. These panels never take keyboard focus, so the view
+    /// installs an Escape monitor only while one of them is on screen.
+    var hasPresentedCollectionsOverlay: Bool {
+        isCollectionsIconPickerPresented
+            || isCollectionsNoticePresented
+            || collectionsDialog != nil
+            || isCollectionsManagerPresented
+            || isCollectionsPickerPresented
+    }
+
+    /// Closes the topmost collections surface, in the z-order the catalog draws them, and reports
+    /// whether one was up. Escape routes here: `onExitCommand` fires only for the focused view, and
+    /// none of these panels ever takes focus, so the manager sat unresponsive to the key.
+    @discardableResult
+    func dismissTopmostCollectionsOverlay() -> Bool {
+        if isCollectionsIconPickerPresented {
+            cancelCollectionsIconPicker()
+            return true
+        }
+        if isCollectionsNoticePresented {
+            dismissCollectionsLocalOnlyNotice()
+            return true
+        }
+        if collectionsDialog != nil {
+            cancelCollectionsDialog()
+            return true
+        }
+        if isCollectionsManagerPresented {
+            dismissCollectionsManager()
+            return true
+        }
+        if isCollectionsPickerPresented {
+            dismissCollectionsPicker()
+            return true
+        }
+        return false
+    }
+
     // MARK: - Persistence
 
     func persistUserCollections() {

@@ -362,6 +362,13 @@ struct CatalogView: View {
                             .zIndex(26)
                     }
                 }
+                .background {
+                    // Mounted only while a collections surface is up: a permanently installed
+                    // monitor would eat Escape from whatever else owns it on the page.
+                    if viewModel.hasPresentedCollectionsOverlay {
+                        CatalogCollectionsEscapeMonitor { viewModel.dismissTopmostCollectionsOverlay() }
+                    }
+                }
                 .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
                 .environment(\.opnUIScale, uiScale)
                 .environment(\.opnTileDensity, tileDensity)
@@ -428,4 +435,61 @@ struct CatalogView: View {
         pendingGameShortcut = nil
         viewModel.openGameShortcut(shortcut)
     }
+}
+
+/// Escape handling for the collections surfaces. `onExitCommand` fires only for the focused view,
+/// and these panels never take keyboard focus, so the press reached whatever was focused behind
+/// them and the manager sat unresponsive. The monitor is mounted only while a surface is up and
+/// consumes nothing but Escape, so the dialog and picker fields keep every other key.
+private struct CatalogCollectionsEscapeMonitor: NSViewRepresentable {
+    /// Called for Escape while a collections surface is up. Main-actor by construction: a local key
+    /// monitor is delivered on the main thread. Returns whether it closed a surface.
+    let handle: @MainActor @Sendable () -> Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.box.handle = handle
+        context.coordinator.installMonitor()
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.box.handle = handle
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.removeMonitor()
+    }
+
+    final class Coordinator {
+        let box = CatalogCollectionsEscapeHandlerBox()
+        private var monitor: Any?
+
+        func installMonitor() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [box] event in
+                // A sheet outranks a panel behind it: while one is up, Escape belongs to the sheet.
+                guard event.keyCode == 53,
+                      event.window?.sheetParent == nil,
+                      event.window?.attachedSheet == nil else { return event }
+                return MainActor.assumeIsolated { box.handle() } ? nil : event
+            }
+        }
+
+        func removeMonitor() {
+            guard let monitor else { return }
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+    }
+}
+
+/// Holds the monitor's key handler for its closure. The closure has to be Sendable, and the handler
+/// it calls is main-actor state, so the box — not the coordinator — is what the closure captures.
+/// Local key monitors are delivered on the main thread, which is what makes the hop safe.
+private final class CatalogCollectionsEscapeHandlerBox: @unchecked Sendable {
+    var handle: @MainActor @Sendable () -> Bool = { false }
 }

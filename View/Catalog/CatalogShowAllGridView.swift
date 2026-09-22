@@ -435,7 +435,18 @@ struct CatalogShowAllGridTile: View {
     private var tileContent: some View {
         ZStack(alignment: .topLeading) {
             let showsTitleTray = OPNThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
-            CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
+            // The grid decides the tile's size in its collection view layout, so the artwork has no
+            // fixed frame the way the rails give it. A bare frame around an `.aspectRatio(.fill)`
+            // image does not contain it: that image is not flexible, so the oversized result it
+            // reports survives the frame, grows the whole ZStack, and drags the hover scrim and the
+            // title tray into the grid's gutter - where they paint over, or fall behind, the
+            // neighbouring item. `Color.clear` is flexible: it takes the tile's proposed size, and
+            // clipping the artwork to it keeps every layer inside its own tile. Portrait poster art
+            // is the case that actually overflows, which is why only Poster layout showed this.
+            Color.clear
+                .overlay {
+                    CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
+                }
                 .clipped()
             if isHovering || isSelected {
                 Color.black.opacity(0.50)
