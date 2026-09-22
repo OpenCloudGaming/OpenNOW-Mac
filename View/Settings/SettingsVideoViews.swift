@@ -111,7 +111,7 @@ struct VideoSettingsPage: View {
             SettingsInfoRow(label: "Decode on this Mac", value: OPNStreamPreferences.decodeAdvice(codec: viewModel.streamProfile.codec.value, resolution: viewModel.streamProfile.resolution.value, colorQualityLabel: viewModel.streamProfile.colorQuality.label, colorQuality: viewModel.streamProfile.colorQuality.value, fps: viewModel.streamProfile.fps), uiScale: uiScale)
             if let recommendation = OPNStreamPreferences.decodeRecommendation(resolution: viewModel.streamProfile.resolution.value, codec: viewModel.streamProfile.codec.value, targetFps: viewModel.streamProfile.fps) {
                 SettingsDivider(uiScale: uiScale)
-                SettingsInfoRow(label: "Recommended for this Mac", value: recommendation, uiScale: uiScale)
+                DecodeRecommendationRow(recommendation: recommendation, uiScale: uiScale)
             }
         }
     }
@@ -231,6 +231,74 @@ extension VideoSettingsPage {
         SettingsSection("advanced", "Advanced"),
         SettingsSection("maintenance", "Maintenance")
     ]
+}
+
+/// What each colour tier measured at the chosen resolution and codec. One row per tier rather than
+/// one run-on sentence: at four tiers the sentence is wider than the card at any interface scale,
+/// so it truncated at the right edge and hid the very tiers it was recommending.
+struct DecodeRecommendationRow: View {
+    let recommendation: OPNStreamPreferences.DecodeRecommendation
+    let uiScale: CGFloat
+
+    @Environment(\.opnSettingsNarrowRows) private var isNarrow
+
+    var body: some View {
+        Group {
+            if isNarrow {
+                VStack(alignment: .leading, spacing: 10 * uiScale) {
+                    label
+                    report
+                }
+            } else {
+                HStack(alignment: .top, spacing: 16 * uiScale) {
+                    label
+                        .frame(width: 150 * uiScale, alignment: .leading)
+                    report
+                }
+            }
+        }
+    }
+
+    private var label: some View {
+        Text("RECOMMENDED FOR THIS MAC")
+            .font(.settingsFont(size: 10 * uiScale, weight: .bold))
+            .foregroundStyle(OPNDesign.Text.muted)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var report: some View {
+        VStack(alignment: .leading, spacing: 8 * uiScale) {
+            Text("Measured here at \(recommendation.resolution) \(recommendation.codec)")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(recommendation.tiers) { tier in
+                row(tier)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func row(_ tier: OPNStreamPreferences.DecodeRecommendation.Tier) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10 * uiScale) {
+            Text(tier.label)
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                .foregroundStyle(OPNDesign.Text.secondary)
+                .frame(width: 96 * uiScale, alignment: .leading)
+            Text(tier.millisecondsText)
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.secondary)
+                .monospacedDigit()
+            Spacer(minLength: 8 * uiScale)
+            Text(tier.verdictText)
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                .foregroundStyle(tier.holdsTargetFps ? OPNDesign.accentInk : OPNDesign.Text.muted)
+        }
+        .padding(.horizontal, 10 * uiScale)
+        .frame(height: 28 * uiScale)
+        .background(OPNDesign.Fill.neutral(0.04))
+        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+    }
 }
 
 struct StreamingProfileOverview: View {

@@ -559,6 +559,20 @@ below it. Use it instead of a second `SettingsCard` when the blocks belong to on
 card each would read as separate objects and spend a header of height saying so. The folded system
 report is the reference case.
 
+### Settings Decode Recommendation (`DecodeRecommendationRow`)
+
+Settings → Video → Codec & Colour: what this Mac measured while decoding the chosen
+resolution/codec, one 28-high row per colour tier. A run-on sentence cannot work here: with four
+tiers it is wider than the card at any interface scale and truncated at the right edge, hiding the
+tiers it recommends. The 10pt bold muted eyebrow sits beside the report - a 150-wide label column
+when the card is wide, stacked above it under `opnSettingsNarrowRows`. The report leads with a
+12pt medium Text Tertiary "Measured here at ‹resolution› ‹codec›" line, then one row per tier in
+ascending decode cost: a 96-wide 12pt bold Text Secondary label, the 12pt medium monospaced-digit
+decode time, and the verdict pushed to the trailing edge - accent ink "holds ‹fps› fps" when the
+measured decode time reaches the target, muted "fits ~‹fps› fps" when it does not. Rows carry the
+row fill and a subtle stroke. Tiers this build does not offer are dropped before display, because
+the measurement store is append-only and also holds superseded and test tiers.
+
 ### Settings Reorder List (`HomeCategorySettingsCard`)
 
 Settings → Look → Home Categories: the reader's own order for the home rails, and which are drawn.

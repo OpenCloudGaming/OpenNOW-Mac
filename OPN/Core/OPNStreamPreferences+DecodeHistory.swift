@@ -38,37 +38,65 @@ extension OPNStreamPreferences {
         storage.set(all, forKey: k.decodeMeasurements)
     }
 
-    /// Every measurement recorded at `resolution` with `codec`, keyed by colour tier.
+    /// Every measurement recorded at `resolution` with `codec`, keyed by colour tier. Only the
+    /// tiers this build offers are returned: the store is an append-only dictionary that test
+    /// sessions and superseded tiers also write to, and an unrecognised tier has no label to show.
     public static func decodeMeasurements(resolution: String, codec: String) -> [String: DecodeMeasurement] {
         guard let all = storage.dictionary(forKey: k.decodeMeasurements) else { return [:] }
+        let known = Set(colorQualityOptions.map { $0.value.lowercased() })
         let prefix = "\(codec.uppercased())|\(resolution.lowercased())|"
         var result: [String: DecodeMeasurement] = [:]
         for key in all.keys where key.hasPrefix(prefix) {
-            if let measurement = decodeMeasurement(for: key) { result[String(key.dropFirst(prefix.count))] = measurement }
+            let tier = String(key.dropFirst(prefix.count))
+            guard known.contains(tier), let measurement = decodeMeasurement(for: key) else { continue }
+            result[tier] = measurement
         }
         return result
     }
 
-    /// Settings' "Recommended for this Mac" line for a resolution and codec: every colour tier
+    /// Settings' "Recommended for this Mac" report for a resolution and codec: every colour tier
     /// measured there, in order of decode cost, each with the frame rate its decode time fits.
     /// Pure over the records it is given so it can be tested.
-    public static func decodeRecommendation(resolution: String, codec: String, targetFps: Int, records: [String: DecodeMeasurement], labels: [String: String]) -> String? {
-        guard !records.isEmpty else { return nil }
-        let ordered = records.sorted { $0.value.decodeMilliseconds < $1.value.decodeMilliseconds }
-        let parts = ordered.map { key, measurement -> String in
-            let label = labels[key] ?? key
-            let fits = measurement.sustainableFps
-            return fits >= targetFps
-                ? String(format: "%@ %.1f ms (holds %d)", label, measurement.decodeMilliseconds, targetFps)
-                : String(format: "%@ %.1f ms (fits ~%d)", label, measurement.decodeMilliseconds, fits)
-        }
-        return "Measured here at \(resolution) \(codec.uppercased()): " + parts.joined(separator: " · ")
+    public static func decodeRecommendation(resolution: String, codec: String, targetFps: Int, records: [String: DecodeMeasurement], labels: [String: String]) -> DecodeRecommendation? {
+        let tiers = records.compactMap { key, measurement -> DecodeRecommendation.Tier? in
+            guard let label = labels[key] else { return nil }
+            return DecodeRecommendation.Tier(key: key,
+                                             label: label,
+                                             decodeMilliseconds: measurement.decodeMilliseconds,
+                                             sustainableFps: measurement.sustainableFps,
+                                             targetFps: targetFps)
+        }.sorted { $0.decodeMilliseconds < $1.decodeMilliseconds }
+        guard !tiers.isEmpty else { return nil }
+        return DecodeRecommendation(resolution: resolution, codec: codec.uppercased(), targetFps: targetFps, tiers: tiers)
     }
 
-    public static func decodeRecommendation(resolution: String, codec: String, targetFps: Int) -> String? {
+    public static func decodeRecommendation(resolution: String, codec: String, targetFps: Int) -> DecodeRecommendation? {
         let labels = Dictionary(uniqueKeysWithValues: colorQualityOptions.map { ($0.value.lowercased(), $0.label) })
         return decodeRecommendation(resolution: resolution, codec: codec, targetFps: targetFps,
                                     records: decodeMeasurements(resolution: resolution, codec: codec), labels: labels)
+    }
+
+    /// What this Mac measured while decoding one resolution/codec, one entry per colour tier.
+    public struct DecodeRecommendation: Equatable, Sendable {
+        public struct Tier: Equatable, Sendable, Identifiable {
+            public var id: String { key }
+            public let key: String
+            public let label: String
+            public let decodeMilliseconds: Double
+            public let sustainableFps: Int
+            public let targetFps: Int
+
+            public var holdsTargetFps: Bool { sustainableFps >= targetFps }
+            public var millisecondsText: String { String(format: "%.1f ms", decodeMilliseconds) }
+            public var verdictText: String {
+                holdsTargetFps ? "holds \(targetFps) fps" : "fits ~\(sustainableFps) fps"
+            }
+        }
+
+        public let resolution: String
+        public let codec: String
+        public let targetFps: Int
+        public let tiers: [Tier]
     }
 
     /// One line for Settings: what the chosen combination decoded at on this Mac, and what frame

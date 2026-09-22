@@ -34,9 +34,30 @@ struct NativeNVSTDecodeHistoryTests {
         ]
         let labels = ["10bit_444": "10-bit 4:4:4", "10bit_420": "10-bit 4:2:0"]
         let line = OPNStreamPreferences.decodeRecommendation(resolution: "5120x2160", codec: "H265", targetFps: 120, records: records, labels: labels)
-        #expect(line == "Measured here at 5120x2160 H265: 10-bit 4:2:0 8.7 ms (fits ~115) · 10-bit 4:4:4 10.8 ms (fits ~92)")
+        #expect(line?.tiers.map(\.label) == ["10-bit 4:2:0", "10-bit 4:4:4"])
+        #expect(line?.tiers.map(\.millisecondsText) == ["8.7 ms", "10.8 ms"])
+        #expect(line?.tiers.map(\.verdictText) == ["fits ~115 fps", "fits ~92 fps"])
+        #expect(line?.tiers.map(\.holdsTargetFps) == [false, false])
         let sixty = OPNStreamPreferences.decodeRecommendation(resolution: "5120x2160", codec: "H265", targetFps: 60, records: records, labels: labels)
-        #expect(sixty?.contains("10-bit 4:4:4 10.8 ms (holds 60)") == true)
+        #expect(sixty?.tiers.map(\.verdictText) == ["holds 60 fps", "holds 60 fps"])
         #expect(OPNStreamPreferences.decodeRecommendation(resolution: "5120x2160", codec: "H265", targetFps: 120, records: [:], labels: labels) == nil)
+    }
+
+    @Test func recommendationDropsTiersWithNoLabel() {
+        let records: [String: OPNStreamPreferences.DecodeMeasurement] = [
+            "10bit_444": .init(decodeMilliseconds: 10.84, negotiatedFps: 120, measuredAt: Date()),
+            "10bit_444-test-\(UUID().uuidString)": .init(decodeMilliseconds: 4.2, negotiatedFps: 120, measuredAt: Date()),
+        ]
+        let labels = ["10bit_444": "10-bit 4:4:4"]
+        let line = OPNStreamPreferences.decodeRecommendation(resolution: "5120x2160", codec: "H265", targetFps: 120, records: records, labels: labels)
+        #expect(line?.tiers.map(\.label) == ["10-bit 4:4:4"])
+    }
+
+    @Test func storedMeasurementsIgnoreTiersThisBuildDoesNotOffer() {
+        let seeded = "10bit_444-test-\(UUID().uuidString)"
+        let seededKey = OPNStreamPreferences.streamShapeKey(codec: "H264", resolution: "9000x9000", colorQuality: seeded)
+        OPNStreamPreferences.recordDecodeMeasurement(key: seededKey, decodeMilliseconds: 4.2, negotiatedFps: 120, sessionSeconds: 200)
+        let measurements = OPNStreamPreferences.decodeMeasurements(resolution: "9000x9000", codec: "H264")
+        #expect(measurements[seeded] == nil)
     }
 }
