@@ -155,8 +155,6 @@ extension ControllerCatalogViewModel {
         case .back, .menu, .search:
             collectionEditor = .rowActions(id: id)
             collectionEditorIndex = 0
-        default:
-            break
         }
     }
 

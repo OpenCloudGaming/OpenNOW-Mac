@@ -9,7 +9,7 @@ import SwiftUI
 enum RecordingFormat {
     // Formatters are not Sendable, but each instance is read-only after construction and
     // Foundation's formatter parsing/formatting is documented thread-safe, so sharing cannot race.
-    private nonisolated(unsafe) static let dateFormatter: DateFormatter = {
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short

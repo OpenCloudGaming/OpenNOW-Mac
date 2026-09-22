@@ -161,7 +161,7 @@ struct AccountSettingsPage: View {
         Self.dateFormatter.string(from: date)
     }
 
-    private nonisolated(unsafe) static let dateFormatter: DateFormatter = {
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short

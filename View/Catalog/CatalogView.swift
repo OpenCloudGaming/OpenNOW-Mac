@@ -471,11 +471,15 @@ private struct CatalogCollectionsEscapeMonitor: NSViewRepresentable {
         func installMonitor() {
             guard monitor == nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [box] event in
-                // A sheet outranks a panel behind it: while one is up, Escape belongs to the sheet.
-                guard event.keyCode == 53,
-                      event.window?.sheetParent == nil,
-                      event.window?.attachedSheet == nil else { return event }
-                return MainActor.assumeIsolated { box.handle() } ? nil : event
+                guard event.keyCode == 53 else { return event }
+                let window = event.window
+                let handled = MainActor.assumeIsolated {
+                    // A sheet outranks a panel behind it: while one is up, Escape belongs to the sheet.
+                    guard window?.sheetParent == nil,
+                          window?.attachedSheet == nil else { return false }
+                    return box.handle()
+                }
+                return handled ? nil : event
             }
         }
 
