@@ -149,6 +149,20 @@ struct CatalogCollectionsStoreTests {
         #expect(added.toggling("game-1").gameIds.isEmpty)
     }
 
+    @Test func iconPruningKeepsEveryAccountsImages() {
+        let first = account("icons-a")
+        let second = account("icons-b")
+        defer { clear(first, second) }
+        let firstIcon = "aaaaaaaa-\(UUID().uuidString.lowercased())"
+        let secondIcon = "bbbbbbbb-\(UUID().uuidString.lowercased())"
+        CatalogCollectionsStore(collections: [OPNUserCollection(id: "a", name: "A", icon: .image(assetIdentifier: firstIcon))]).save(accountIdentifier: first)
+        CatalogCollectionsStore(collections: [OPNUserCollection(id: "b", name: "B", icon: .image(assetIdentifier: secondIcon))]).save(accountIdentifier: second)
+
+        let referenced = CatalogCollectionsStore.referencedImageAssetIdentifiers()
+        #expect(referenced.contains(firstIcon))
+        #expect(referenced.contains(secondIcon))
+    }
+
     @Test func savingCollectionsAnnouncesTheAccountThatChanged() {
         let owner = account("announce")
         defer { clear(owner) }

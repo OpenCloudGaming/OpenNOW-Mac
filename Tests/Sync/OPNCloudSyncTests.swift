@@ -4,7 +4,7 @@ import Testing
 
 /// The iCloud backup's pure logic: which preferences travel, how a conflict is decided, how account
 /// namespaces are built, and how the screenshot mirror treats an already-present file.
-@Suite struct OPNCloudSyncTests {
+@Suite(.serialized) struct OPNCloudSyncTests {
     private func entry(_ value: Any, updatedAt: Date, device: String = "A") -> OPNCloudSyncSettingsEntry {
         OPNCloudSyncSettingsEntry(plist: OPNCloudSyncPlist.encode(value) ?? Data(), updatedAt: updatedAt, deviceID: device)
     }
@@ -232,24 +232,79 @@ import Testing
         #expect(merged.isEmpty)
     }
 
-    @Test func theContentSignatureIgnoresWhenAndWhereItWasWritten() {
-        let collections = [OPNUserCollection(id: "a", name: "Finished")]
-        let older = OPNCloudSyncCatalogFile(generatedAt: .distantPast, deviceID: "A", deviceName: "Old Mac", collectionsByAccount: ["ns": collections], railOrder: ["x"], railsHidden: ["y"])
-        let newer = OPNCloudSyncCatalogFile(generatedAt: Date(), deviceID: "B", deviceName: "New Mac", collectionsByAccount: ["ns": collections], railOrder: ["x"], railsHidden: ["y"])
-        #expect(OPNCloudSyncCatalogCodec.contentSignature(older) == OPNCloudSyncCatalogCodec.contentSignature(newer))
+    @Test func aFreshMacsEmptyArrangementDoesNotOverwriteTheBackup() {
+        let priorArrangement = OPNHomeCustomization.arrangement
+        defer { OPNHomeCustomization.arrangement = priorArrangement }
+        OPNHomeCustomization.arrangement = .default
 
-        let different = OPNCloudSyncCatalogFile(generatedAt: Date(), deviceID: "B", collectionsByAccount: [:], railOrder: [], railsHidden: [])
-        #expect(OPNCloudSyncCatalogCodec.contentSignature(older) != OPNCloudSyncCatalogCodec.contentSignature(different))
+        let remote = OPNCloudSyncCatalogFile(deviceID: "B", railOrder: ["x"], railsHidden: ["y"])
+        let result = OPNCloudSyncCatalogCodec.merge(remote: remote, device: "A")
+
+        #expect(result.file.railOrder == ["x"])
+        #expect(result.file.railsHidden == ["y"])
     }
 
-    @Test func aConflictNeedsBothSidesChangedFromTheBaseline() {
+    @Test func restoringDropsCollectionsTheBackupDoesNotCarry() {
+        let account = "collections-restore-a"
+        let namespace = OPNCloudSyncAccountNamespace.namespace(for: account)
+        let backup = OPNCloudSyncCatalogFile(
+            deviceID: "B",
+            collectionsByAccount: [namespace: [OPNUserCollection(id: "remote", name: "From backup")]]
+        )
+
+        let replacements = OPNCloudSyncCatalogCodec.replacementRecords(for: backup, accounts: [namespace: account])
+        #expect(replacements[account]?.map(\.id) == ["remote"])
+
+        // An account the backup does not carry is emptied, not left holding a local-only collection.
+        let absentAccount = "collections-restore-b"
+        let absentNamespace = OPNCloudSyncAccountNamespace.namespace(for: absentAccount)
+        let withAbsent = OPNCloudSyncCatalogCodec.replacementRecords(for: backup, accounts: [namespace: account, absentNamespace: absentAccount])
+        #expect(withAbsent[absentAccount] == [])
+    }
+
+    @Test func anAliasIdentifierResolvesToTheAccountNamespace() {
+        let canonical = "collections-canonical-\(UUID().uuidString.lowercased())"
+        let alias = "collections-alias-\(UUID().uuidString.lowercased())@example.com"
+        OPNCloudSyncAccountNamespace.registerCurrentAccount(canonical, candidates: [alias])
+        defer { removeRegisteredAccounts(canonical: canonical, alias: alias) }
+
+        let aliasNamespace = OPNCloudSyncAccountNamespace.hash(alias)
+        #expect(OPNCloudSyncAccountNamespace.importableAccounts()[aliasNamespace] == canonical)
+        #expect(OPNCloudSyncAccountNamespace.aliasNormalizations()[aliasNamespace] == OPNCloudSyncAccountNamespace.namespace(for: canonical))
+    }
+
+    @Test func theArrangementSignatureIgnoresWhenAndWhereItWasWritten() {
+        // Only the arrangement is signed: collections always merge per identity and never conflict.
+        let older = OPNCloudSyncCatalogFile(generatedAt: .distantPast, deviceID: "A", deviceName: "Old Mac", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "Finished")]], railOrder: ["x"], railsHidden: ["y"])
+        let newer = OPNCloudSyncCatalogFile(generatedAt: Date(), deviceID: "B", deviceName: "New Mac", collectionsByAccount: ["ns": [OPNUserCollection(id: "b", name: "Other")]], railOrder: ["x"], railsHidden: ["y"])
+        #expect(OPNCloudSyncCatalogCodec.arrangementSignature(older) == OPNCloudSyncCatalogCodec.arrangementSignature(newer))
+
+        let different = OPNCloudSyncCatalogFile(generatedAt: Date(), deviceID: "B", railOrder: [], railsHidden: [])
+        #expect(OPNCloudSyncCatalogCodec.arrangementSignature(older) != OPNCloudSyncCatalogCodec.arrangementSignature(different))
+    }
+
+    @Test func collectionEditsNeverRaiseAConflict() {
+        // A collection changed on both Macs since the baseline is a merge, not a decision: the
+        // newest write wins, so no prompt is raised for collections alone.
         let agreed = OPNCloudSyncCatalogFile(deviceID: "A", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "One")]])
         let baseline = OPNCloudSyncCatalogCodec.SignatureBaseline(
-            local: OPNCloudSyncCatalogCodec.contentSignature(agreed),
-            remote: OPNCloudSyncCatalogCodec.contentSignature(agreed)
+            local: OPNCloudSyncCatalogCodec.arrangementSignature(agreed),
+            remote: OPNCloudSyncCatalogCodec.arrangementSignature(agreed)
         )
-        let localEdit = OPNCloudSyncCatalogFile(deviceID: "A", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "Local edit")]])
-        let remoteEdit = OPNCloudSyncCatalogFile(deviceID: "B", deviceName: "Studio Mac", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "Remote edit")]])
+        let localEdit = OPNCloudSyncCatalogFile(deviceID: "A", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "Local edit", updatedAt: Date(timeIntervalSince1970: 2_000))]])
+        let remoteEdit = OPNCloudSyncCatalogFile(deviceID: "B", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "Remote edit", updatedAt: Date(timeIntervalSince1970: 1_000))]])
+
+        #expect(OPNCloudSyncCatalogCodec.detectConflict(remote: remoteEdit, baseline: baseline, local: localEdit) == nil)
+    }
+
+    @Test func aConflictNeedsBothSidesToChangeTheArrangementFromTheBaseline() {
+        let agreed = OPNCloudSyncCatalogFile(deviceID: "A", railOrder: ["a"], railsHidden: [])
+        let baseline = OPNCloudSyncCatalogCodec.SignatureBaseline(
+            local: OPNCloudSyncCatalogCodec.arrangementSignature(agreed),
+            remote: OPNCloudSyncCatalogCodec.arrangementSignature(agreed)
+        )
+        let localEdit = OPNCloudSyncCatalogFile(deviceID: "A", railOrder: ["a", "b"], railsHidden: [])
+        let remoteEdit = OPNCloudSyncCatalogFile(deviceID: "B", deviceName: "Studio Mac", railOrder: ["b", "a"], railsHidden: [])
 
         // Only local moved: it exports. Only remote moved: it imports. Neither is a conflict.
         #expect(OPNCloudSyncCatalogCodec.detectConflict(remote: agreed, baseline: baseline, local: localEdit) == nil)
@@ -316,4 +371,16 @@ import Testing
         #expect(second.copied == 0)
         #expect(second.skipped == 2)
     }
+}
+
+/// Removes the alias/current-account entries a test registered, leaving any another test wrote.
+private func removeRegisteredAccounts(canonical: String, alias: String) {
+    let storage = OPNAppPreferenceStorage.standard
+    var current = storage.array(forKey: OPNCloudSyncAccountNamespace.currentAccountsKey) as? [String] ?? []
+    current.removeAll { $0 == OPNCloudSyncAccountNamespace.normalized(canonical) }
+    storage.set(current, forKey: OPNCloudSyncAccountNamespace.currentAccountsKey)
+
+    var aliases = storage.dictionary(forKey: OPNCloudSyncAccountNamespace.aliasesKey) as? [String: String] ?? [:]
+    aliases.removeValue(forKey: OPNCloudSyncAccountNamespace.normalized(alias))
+    storage.set(aliases, forKey: OPNCloudSyncAccountNamespace.aliasesKey)
 }

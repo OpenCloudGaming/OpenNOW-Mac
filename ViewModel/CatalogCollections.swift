@@ -316,14 +316,23 @@ extension CatalogViewModel {
         pruneOrphanedCollectionIcons()
     }
 
-    /// Drops custom icon files no collection names any more, so deleting a collection also deletes
-    /// the image behind its icon instead of leaving it on disk forever.
+    /// Loads the state scoped to the signed-in account and records which account it is, so the
+    /// backup can be restored into it before any local collection key exists.
+    func loadAccountScopedState() {
+        let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
+        playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
+        recentlyPlayed = CatalogRecentlyPlayed.load(accountIdentifier: playtimeAccountIdentifier)
+        OPNCloudSyncAccountNamespace.registerCurrentAccount(
+            collectionsAccountIdentifier,
+            candidates: [session.userId, account.userId, account.externalUserId, account.email]
+        )
+        userCollections = CatalogCollectionsStore.load(accountIdentifier: collectionsAccountIdentifier).collections
+    }
+
+    /// Drops custom icon files no collection names any more. Every account's icons are kept, not just
+    /// the one on screen, so another account's images are never pruned away.
     func pruneOrphanedCollectionIcons() {
-        let liveAssets = Set(userCollections.compactMap { collection -> String? in
-            guard let icon = collection.icon?.validated, icon.kind == .image else { return nil }
-            return icon.value
-        })
-        OPNCollectionIconStore.removeOrphans(keeping: liveAssets)
+        OPNCollectionIconStore.removeOrphans(keeping: CatalogCollectionsStore.referencedImageAssetIdentifiers())
     }
 
     /// iCloud sync writes the collections store directly from a background actor, so without a nudge

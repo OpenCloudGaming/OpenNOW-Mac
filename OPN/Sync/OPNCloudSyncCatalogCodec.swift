@@ -5,6 +5,9 @@ import Foundation
 /// Favorites, recently-played and playtime live on the vendor's service and are not copied.
 enum OPNCloudSyncCatalogCodec {
     static let signatureBaselineKey = "OpenNOW.CloudSync.CatalogSignatureBaseline"
+    /// How far ahead of this Mac a peer's write time is trusted. A peer with a fast clock would
+    /// otherwise win every merge forever; one with a slow clock would have its writes ignored.
+    private static let futureTimestampSkew: TimeInterval = 300
 
     /// The last catalog this Mac and the shared file agreed on, as content signatures rather than
     /// times: a signature tells the sync whether each side actually changed since, which is what
@@ -39,15 +42,34 @@ enum OPNCloudSyncCatalogCodec {
         let accounts = OPNCloudSyncAccountNamespace.importableAccounts()
         for (namespace, records) in file.collectionsByAccount {
             guard let identifier = accounts[namespace] else { continue }
-            CatalogCollectionsStore(
-                collections: records.filter { !$0.isDeleted },
-                tombstones: records.filter { $0.isDeleted }
-            ).save(accountIdentifier: identifier)
+            save(records, for: identifier)
         }
-        var arrangement = OPNHomeCustomization.arrangement
-        arrangement.order = file.railOrder
-        arrangement.hidden = Set(file.railsHidden)
-        OPNHomeCustomization.arrangement = arrangement
+        applyArrangement(from: file)
+    }
+
+    /// Replaces this Mac's catalog for every known account with the shared file, dropping local
+    /// collections and tombstones the backup does not carry. The reader's "restore from iCloud" path.
+    static func replaceLocal(with file: OPNCloudSyncCatalogFile) {
+        let replacements = replacementRecords(for: file, accounts: OPNCloudSyncAccountNamespace.importableAccounts())
+        for (identifier, records) in replacements {
+            save(records, for: identifier)
+        }
+        applyArrangement(from: file)
+    }
+
+    /// The records every known account should hold after a restore: the backup's for an account it
+    /// carries, and none for an account it does not, so a local-only collection cannot survive.
+    static func replacementRecords(for file: OPNCloudSyncCatalogFile, accounts: [String: String]) -> [String: [OPNUserCollection]] {
+        var recordsByIdentifier: [String: [OPNUserCollection]] = [:]
+        for (namespace, records) in file.collectionsByAccount {
+            guard let identifier = accounts[namespace] else { continue }
+            recordsByIdentifier[identifier] = records
+        }
+        var replacements: [String: [OPNUserCollection]] = [:]
+        for identifier in Set(accounts.values) {
+            replacements[identifier] = recordsByIdentifier[identifier] ?? []
+        }
+        return replacements
     }
 
     /// Whether two files carry the same reader-visible catalog, ignoring when and where they were
@@ -76,20 +98,23 @@ enum OPNCloudSyncCatalogCodec {
         var file = remote ?? snapshot()
         let local = snapshot()
 
-        file.railOrder = local.railOrder
-        file.railsHidden = local.railsHidden
+        // The arrangement is one value, so this Mac's wins only when it has actually been arranged.
+        // A fresh Mac's empty default must not overwrite the backup's rail order.
+        if local.isArranged {
+            file.railOrder = local.railOrder
+            file.railsHidden = local.railsHidden
+        }
 
         let aliases = OPNCloudSyncAccountNamespace.aliasNormalizations()
         var merged = file.collectionsByAccount
         for (namespace, localRecords) in local.collectionsByAccount {
             var remoteRecords = file.collectionsByAccount[namespace] ?? []
-            // A pre-normalization spelling of this account carries the same account's collections.
+            // An alias spelling of this account carries the same account's collections.
             for (alias, normalized) in aliases where normalized == namespace {
                 remoteRecords += file.collectionsByAccount[alias] ?? []
             }
             merged[namespace] = mergedRecords(local: localRecords, remote: remoteRecords, now: now)
         }
-        // Drop a pre-normalization namespace only once the normalized one carries the account.
         for (alias, normalized) in aliases where merged[normalized] != nil {
             merged[alias] = nil
         }
@@ -110,20 +135,20 @@ enum OPNCloudSyncCatalogCodec {
     /// Newest write wins per identity, with the local record breaking a tie. Local order is kept and
     /// remote-only records are appended, so nothing is silently dropped.
     static func mergedRecords(local: [OPNUserCollection], remote: [OPNUserCollection], now: Date) -> [OPNUserCollection] {
-        var remoteByID: [String: OPNUserCollection] = [:]
+        var remoteByIdentity: [String: OPNUserCollection] = [:]
         for record in remote {
-            remoteByID[record.id] = newer(remoteByID[record.id], than: record)
+            remoteByIdentity[record.id] = newer(remoteByIdentity[record.id], than: record, now: now)
         }
 
         var result: [OPNUserCollection] = []
         var seen = Set<String>()
         for record in local {
             seen.insert(record.id)
-            guard let peer = remoteByID[record.id] else {
+            guard let peer = remoteByIdentity[record.id] else {
                 result.append(record)
                 continue
             }
-            result.append(newer(record, than: peer))
+            result.append(newer(record, than: peer, now: now))
         }
         for record in remote where !seen.contains(record.id) {
             result.append(record)
@@ -131,10 +156,14 @@ enum OPNCloudSyncCatalogCodec {
         return result.filter { !isExpiredTombstone($0, now: now) }
     }
 
-    private static func newer(_ existing: OPNUserCollection?, than candidate: OPNUserCollection) -> OPNUserCollection {
+    private static func newer(_ existing: OPNUserCollection?, than candidate: OPNUserCollection, now: Date) -> OPNUserCollection {
         guard let existing else { return candidate }
-        guard candidate.modificationDate > existing.modificationDate else { return existing }
+        guard clampedModificationDate(candidate, now: now) > clampedModificationDate(existing, now: now) else { return existing }
         return candidate
+    }
+
+    private static func clampedModificationDate(_ record: OPNUserCollection, now: Date) -> Date {
+        min(record.modificationDate, now.addingTimeInterval(futureTimestampSkew))
     }
 
     private static func isExpiredTombstone(_ record: OPNUserCollection, now: Date) -> Bool {
@@ -142,17 +171,26 @@ enum OPNCloudSyncCatalogCodec {
         return record.modificationDate < now.addingTimeInterval(-OPNUserCollection.tombstoneRetention)
     }
 
+    private static func save(_ records: [OPNUserCollection], for accountIdentifier: String) {
+        CatalogCollectionsStore(
+            collections: records.filter { !$0.isDeleted },
+            tombstones: records.filter { $0.isDeleted }
+        ).save(accountIdentifier: accountIdentifier)
+    }
+
+    private static func applyArrangement(from file: OPNCloudSyncCatalogFile) {
+        var arrangement = OPNHomeCustomization.arrangement
+        arrangement.order = file.railOrder
+        arrangement.hidden = Set(file.railsHidden)
+        OPNHomeCustomization.arrangement = arrangement
+    }
+
     // MARK: - Conflict detection
 
-    /// A deterministic digest of the reader-visible catalog, ignoring when and where it was written.
-    /// Two files with the same signature say the same thing, so the sync can tell whether a side
-    /// changed by comparing against the signature it last settled on.
-    static func contentSignature(_ file: OPNCloudSyncCatalogFile) -> String {
-        let content = SignatureContent(
-            collectionsByAccount: file.collectionsByAccount,
-            railOrder: file.railOrder,
-            railsHidden: file.railsHidden
-        )
+    /// A deterministic digest of the home arrangement, ignoring when and where it was written. The
+    /// arrangement is the only catalog value that cannot merge, so it alone can raise a conflict.
+    static func arrangementSignature(_ file: OPNCloudSyncCatalogFile) -> String {
+        let content = SignatureContent(railOrder: file.railOrder, railsHidden: file.railsHidden)
         guard let data = try? OPNCloudSyncJSON.encoder.encode(content) else { return "" }
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
@@ -165,8 +203,8 @@ enum OPNCloudSyncCatalogCodec {
         local: OPNCloudSyncCatalogFile
     ) -> OPNCloudSyncConflict? {
         guard let baseline else { return nil }
-        let localSignature = contentSignature(local)
-        let remoteSignature = contentSignature(remote)
+        let localSignature = arrangementSignature(local)
+        let remoteSignature = arrangementSignature(remote)
         guard localSignature != baseline.local,
               remoteSignature != baseline.remote,
               localSignature != remoteSignature else { return nil }
@@ -189,8 +227,12 @@ enum OPNCloudSyncCatalogCodec {
     }
 
     private struct SignatureContent: Encodable {
-        let collectionsByAccount: [String: [OPNUserCollection]]
         let railOrder: [String]
         let railsHidden: [String]
     }
+}
+
+private extension OPNCloudSyncCatalogFile {
+    /// Whether this Mac has arranged its home rails at all. An empty default is not an arrangement.
+    var isArranged: Bool { !railOrder.isEmpty || !railsHidden.isEmpty }
 }

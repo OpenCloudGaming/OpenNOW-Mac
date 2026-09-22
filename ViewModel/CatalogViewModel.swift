@@ -449,10 +449,7 @@ final class CatalogViewModel {
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
-        let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
-        playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
-        recentlyPlayed = CatalogRecentlyPlayed.load(accountIdentifier: playtimeAccountIdentifier)
-        userCollections = CatalogCollectionsStore.load(accountIdentifier: collectionsAccountIdentifier).collections
+        loadAccountScopedState()
         pruneOrphanedCollectionIcons()
         observeCollectionsStoreChanges()
         observeHomeArrangementChanges()

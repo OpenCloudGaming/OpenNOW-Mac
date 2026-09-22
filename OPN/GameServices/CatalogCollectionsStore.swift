@@ -69,7 +69,9 @@ struct CatalogCollectionsStore: Equatable {
         "\(storagePrefix).\(accountIdentifier)"
     }
 
-    private static let localOnlyNoticeKey = "\(storagePrefix).HasSeenLocalOnlyNotice"
+    /// The key marking the one-time explainer as seen. Named so account-namespace enumeration can
+    /// skip it: it shares the collections prefix but is not an account.
+    static let localOnlyNoticeKey = "\(storagePrefix).HasSeenLocalOnlyNotice"
 
     /// Whether the one-time explainer has been shown. Feature-wide rather than per account: the
     /// fact it teaches does not change when the reader signs in as someone else.
@@ -101,6 +103,19 @@ struct CatalogCollectionsStore: Equatable {
             tombstones.append(record)
         }
         return (Array(live.prefix(OPNUserCollection.maximumCount)), Array(tombstones.prefix(maximumTombstoneCount)))
+    }
+
+    /// Every image asset any account's live collections reference, so pruning keeps the icons of
+    /// accounts other than the one on screen instead of deleting them.
+    static func referencedImageAssetIdentifiers() -> Set<String> {
+        var identifiers = Set<String>()
+        for accountIdentifier in OPNCloudSyncAccountNamespace.localAccounts().values {
+            for collection in load(accountIdentifier: accountIdentifier).collections {
+                guard let icon = collection.icon?.validated, icon.kind == .image else { continue }
+                identifiers.insert(icon.value)
+            }
+        }
+        return identifiers
     }
 
     private static func keepNewest(_ candidate: OPNUserCollection, in newestByIdentity: inout [String: OPNUserCollection], order: inout [String]) {

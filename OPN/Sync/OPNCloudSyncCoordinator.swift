@@ -7,6 +7,7 @@ actor OPNCloudSyncEngine {
     /// Runs one pass and returns the conflicts it found, one per category. A conflict is reported to
     /// the reader rather than resolved, so the other categories still sync while it is pending.
     func sync(root: URL, categories: Set<OPNCloudSyncCategory>, device: String) throws -> [OPNCloudSyncConflict] {
+        try assertBackupIsReadableSchema(root: root)
         try writeManifest(root: root, device: device)
         var conflicts: [OPNCloudSyncConflict] = []
         if categories.contains(.settings), let conflict = try syncSettings(root: root, device: device) {
@@ -19,6 +20,15 @@ actor OPNCloudSyncEngine {
             try syncScreenshots(root: root)
         }
         return conflicts
+    }
+
+    /// Refuses to touch a backup written by a newer build. Writing over it would drop data this build
+    /// does not understand, so the reader is told to update instead.
+    private func assertBackupIsReadableSchema(root: URL) throws {
+        let url = OPNCloudSyncLayout.url(root: root, relativePath: OPNCloudSyncLayout.manifestFileName)
+        guard let manifest = OPNCloudSyncJSON.load(OPNCloudSyncManifest.self, from: url) else { return }
+        guard manifest.schemaVersion > OPNCloudSyncLayout.schemaVersion else { return }
+        throw OPNCloudSyncError.backupFromNewerBuild(found: manifest.schemaVersion, supported: OPNCloudSyncLayout.schemaVersion)
     }
 
     /// The collection icon images travel with the catalog: a collection stores only the asset id, so
@@ -37,25 +47,40 @@ actor OPNCloudSyncEngine {
         try OPNCloudSyncJSON.write(OPNCloudSyncManifest(deviceID: device, deviceName: OPNCloudSyncDevice.name), to: url)
     }
 
+    /// Loads a synced file, refusing to proceed when the file exists but cannot be read so an
+    /// unreadable backup is never mistaken for an absent one. Nil means the file is absent.
+    private func loadRemote<Value: Decodable>(_ type: Value.Type, from url: URL) throws -> Value? {
+        let remote = OPNCloudSyncJSON.load(type, from: url)
+        if remote == nil, OPNCloudSyncJSON.fileExists(at: url) {
+            throw OPNCloudSyncError.backupUnreadable
+        }
+        return remote
+    }
+
     /// Reconciles one Mac's settings with the shared file. Returns a conflict instead of merging when
-    /// both sides changed since the last settled sync, so no value is imported or exported until the
-    /// reader chooses.
+    /// both sides changed since the last settled sync.
     private func syncSettings(root: URL, device: String) throws -> OPNCloudSyncConflict? {
         let url = OPNCloudSyncLayout.url(root: root, relativePath: OPNCloudSyncLayout.settingsFileName)
-        let remote = OPNCloudSyncJSON.load(OPNCloudSyncSettingsFile.self, from: url) ?? OPNCloudSyncSettingsFile()
-        let local = OPNCloudSyncSettingsRegistry.snapshot()
+        let remote = try loadRemote(OPNCloudSyncSettingsFile.self, from: url) ?? OPNCloudSyncSettingsFile()
+        guard remote.schemaVersion <= OPNCloudSyncLayout.schemaVersion else {
+            throw OPNCloudSyncError.backupFromNewerBuild(found: remote.schemaVersion, supported: OPNCloudSyncLayout.schemaVersion)
+        }
 
         if let conflict = OPNCloudSyncSettingsRegistry.detectConflict(
-            local: local,
+            local: OPNCloudSyncSettingsRegistry.snapshot(),
             remote: remote,
             baseline: OPNCloudSyncSettingsRegistry.loadSignatureBaseline()
         ) {
             OPNLog.info(.sync, "Settings conflict with \(conflict.remoteDisplayName); awaiting resolution")
             return conflict
         }
+        return try writeSettings(remote: remote, url: url, device: device)
+    }
 
+    /// Merges this Mac's settings over the shared file and writes the result when it changed.
+    private func writeSettings(remote: OPNCloudSyncSettingsFile, url: URL, device: String) throws -> OPNCloudSyncConflict? {
         let result = OPNCloudSyncSettingsRegistry.merge(
-            local: local,
+            local: OPNCloudSyncSettingsRegistry.snapshot(),
             remote: remote,
             baseline: OPNCloudSyncSettingsRegistry.loadBaseline(),
             device: device
@@ -85,7 +110,10 @@ actor OPNCloudSyncEngine {
     /// Replaces this Mac's settings with the shared copy: the reader's "use the other Mac" choice.
     func forceRestoreSettings(root: URL) throws {
         let url = OPNCloudSyncLayout.url(root: root, relativePath: OPNCloudSyncLayout.settingsFileName)
-        guard let remote = OPNCloudSyncJSON.load(OPNCloudSyncSettingsFile.self, from: url) else { return }
+        guard let remote = try loadRemote(OPNCloudSyncSettingsFile.self, from: url) else { return }
+        guard remote.schemaVersion <= OPNCloudSyncLayout.schemaVersion else {
+            throw OPNCloudSyncError.backupFromNewerBuild(found: remote.schemaVersion, supported: OPNCloudSyncLayout.schemaVersion)
+        }
         OPNCloudSyncSettingsRegistry.apply(remote)
         OPNCloudSyncSettingsRegistry.saveBaseline(remote.entries)
         OPNCloudSyncSettingsRegistry.saveSignatureBaseline(.init(
@@ -103,14 +131,18 @@ actor OPNCloudSyncEngine {
     }
 
     /// Reconciles one Mac's catalog with the shared file. Returns a conflict instead of merging when
-    /// both sides changed since the last settled sync, so neither the file nor local storage is
-    /// touched until the reader chooses.
+    /// both sides changed the home arrangement since the last settled sync.
     private func syncCatalog(root: URL, device: String) throws -> OPNCloudSyncConflict? {
         try syncCollectionIcons(root: root)
         let url = OPNCloudSyncLayout.url(root: root, relativePath: OPNCloudSyncLayout.catalogFileName)
-        let remote = OPNCloudSyncJSON.load(OPNCloudSyncCatalogFile.self, from: url)
+        guard let remote = try loadRemote(OPNCloudSyncCatalogFile.self, from: url) else {
+            return try writeCatalog(remote: nil, url: url, device: device)
+        }
+        guard remote.schemaVersion <= OPNCloudSyncLayout.schemaVersion else {
+            throw OPNCloudSyncError.backupFromNewerBuild(found: remote.schemaVersion, supported: OPNCloudSyncLayout.schemaVersion)
+        }
 
-        if let remote, let conflict = OPNCloudSyncCatalogCodec.detectConflict(
+        if let conflict = OPNCloudSyncCatalogCodec.detectConflict(
             remote: remote,
             baseline: OPNCloudSyncCatalogCodec.loadSignatureBaseline(),
             local: OPNCloudSyncCatalogCodec.snapshot()
@@ -118,12 +150,16 @@ actor OPNCloudSyncEngine {
             OPNLog.info(.sync, "Catalog conflict with \(conflict.remoteDisplayName); awaiting resolution")
             return conflict
         }
+        return try writeCatalog(remote: remote, url: url, device: device)
+    }
 
-        let result = OPNCloudSyncCatalogCodec.merge(
-            remote: remote,
-            device: device
-        )
-
+    /// Merges this Mac's catalog over the shared file and writes the result when it changed.
+    private func writeCatalog(remote: OPNCloudSyncCatalogFile?, url: URL, device: String) throws -> OPNCloudSyncConflict? {
+        let result = OPNCloudSyncCatalogCodec.merge(remote: remote, device: device)
+        let isContentPresent = !result.file.collectionsByAccount.isEmpty
+            || !result.file.railOrder.isEmpty
+            || !result.file.railsHidden.isEmpty
+        guard remote != nil || isContentPresent else { return nil }
         if result.isLocalFileChanged || remote == nil {
             try OPNCloudSyncJSON.write(result.file, to: url)
         }
@@ -138,8 +174,8 @@ actor OPNCloudSyncEngine {
         let local = OPNCloudSyncCatalogCodec.snapshot()
         try OPNCloudSyncJSON.write(local, to: url)
         OPNCloudSyncCatalogCodec.saveSignatureBaseline(.init(
-            local: OPNCloudSyncCatalogCodec.contentSignature(local),
-            remote: OPNCloudSyncCatalogCodec.contentSignature(local)
+            local: OPNCloudSyncCatalogCodec.arrangementSignature(local),
+            remote: OPNCloudSyncCatalogCodec.arrangementSignature(local)
         ))
     }
 
@@ -147,11 +183,14 @@ actor OPNCloudSyncEngine {
     func forceRestoreCatalog(root: URL) throws {
         try syncCollectionIcons(root: root)
         let url = OPNCloudSyncLayout.url(root: root, relativePath: OPNCloudSyncLayout.catalogFileName)
-        guard let remote = OPNCloudSyncJSON.load(OPNCloudSyncCatalogFile.self, from: url) else { return }
-        OPNCloudSyncCatalogCodec.apply(remote)
+        guard let remote = try loadRemote(OPNCloudSyncCatalogFile.self, from: url) else { return }
+        guard remote.schemaVersion <= OPNCloudSyncLayout.schemaVersion else {
+            throw OPNCloudSyncError.backupFromNewerBuild(found: remote.schemaVersion, supported: OPNCloudSyncLayout.schemaVersion)
+        }
+        OPNCloudSyncCatalogCodec.replaceLocal(with: remote)
         OPNCloudSyncCatalogCodec.saveSignatureBaseline(.init(
-            local: OPNCloudSyncCatalogCodec.contentSignature(OPNCloudSyncCatalogCodec.snapshot()),
-            remote: OPNCloudSyncCatalogCodec.contentSignature(remote)
+            local: OPNCloudSyncCatalogCodec.arrangementSignature(OPNCloudSyncCatalogCodec.snapshot()),
+            remote: OPNCloudSyncCatalogCodec.arrangementSignature(remote)
         ))
     }
 
@@ -160,8 +199,8 @@ actor OPNCloudSyncEngine {
     private func recordCatalogSignatureBaseline(at url: URL) {
         guard let remote = OPNCloudSyncJSON.load(OPNCloudSyncCatalogFile.self, from: url) else { return }
         OPNCloudSyncCatalogCodec.saveSignatureBaseline(.init(
-            local: OPNCloudSyncCatalogCodec.contentSignature(OPNCloudSyncCatalogCodec.snapshot()),
-            remote: OPNCloudSyncCatalogCodec.contentSignature(remote)
+            local: OPNCloudSyncCatalogCodec.arrangementSignature(OPNCloudSyncCatalogCodec.snapshot()),
+            remote: OPNCloudSyncCatalogCodec.arrangementSignature(remote)
         ))
     }
 
@@ -210,6 +249,7 @@ public final class OPNCloudSyncCoordinator {
     private var metadataQuery: NSMetadataQuery?
     private var pendingSync: Task<Void, Never>?
     private var isSyncing = false
+    private var isResyncRequested = false
     private var isStarted = false
 
     private init() {
@@ -250,14 +290,30 @@ public final class OPNCloudSyncCoordinator {
         Task { await synchronize() }
     }
 
-    /// Re-imports the container's contents, discarding this Mac's record of what it had already seen
-    /// so the shared copy wins outright.
+    /// Re-imports the container's contents, discarding this Mac's own catalog and settings so the
+    /// shared copy wins outright.
     public func restoreNow() {
-        OPNCloudSyncSettingsRegistry.saveBaseline([:])
-        OPNAppPreferenceStorage.standard.removeObject(forKey: OPNCloudSyncCatalogCodec.signatureBaselineKey)
-        OPNAppPreferenceStorage.standard.removeObject(forKey: OPNCloudSyncSettingsRegistry.signatureBaselineKey)
         pendingConflicts = []
-        Task { await synchronize() }
+        Task { await restoreFromBackup() }
+    }
+
+    private func restoreFromBackup() async {
+        guard isEnabled else {
+            status = .disabled
+            return
+        }
+        guard let containerRoot = await resolvedContainerRoot() else { return }
+        root = containerRoot
+        status = .syncing
+        do {
+            try await engine.forceRestoreSettings(root: containerRoot)
+            try await engine.forceRestoreCatalog(root: containerRoot)
+        } catch {
+            status = .failed(error.localizedDescription)
+            return
+        }
+        await performSync(root: containerRoot)
+        startMetadataQuery()
     }
 
     /// Settles one category's conflict by keeping this Mac's copy and overwriting the backup.
@@ -321,20 +377,37 @@ public final class OPNCloudSyncCoordinator {
     }
 
     private func performSync(root: URL) async {
-        guard isEnabled, !isSyncing else { return }
+        guard isEnabled else {
+            status = .disabled
+            return
+        }
+        guard !isSyncing else {
+            // A pass is already running. Re-run once it finishes rather than dropping this request.
+            isResyncRequested = true
+            return
+        }
         isSyncing = true
         status = .syncing
-        defer { isSyncing = false }
+        defer {
+            isSyncing = false
+            if isResyncRequested {
+                isResyncRequested = false
+                Task { [weak self] in
+                    guard let self, let root = self.root else { return }
+                    await self.performSync(root: root)
+                }
+            }
+        }
 
         do {
             let conflicts = try await engine.sync(root: root, categories: OPNCloudSyncPreferences.enabledCategories, device: OPNCloudSyncDevice.identifier)
             pendingConflicts = conflicts
-            if conflicts.isEmpty {
-                lastSyncAt = Date()
-                status = .idle(lastSyncAt)
-            } else {
+            guard conflicts.isEmpty else {
                 status = .conflict(conflicts)
+                return
             }
+            lastSyncAt = Date()
+            status = .idle(lastSyncAt)
         } catch {
             status = .failed(error.localizedDescription)
         }

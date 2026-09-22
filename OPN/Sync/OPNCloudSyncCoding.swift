@@ -89,6 +89,22 @@ enum OPNCloudSyncPlist {
     }
 }
 
+/// Why a sync could not proceed. Surfaced through the coordinator's status so the reader is told,
+/// rather than a backup being silently overwritten by a build that does not understand it.
+enum OPNCloudSyncError: LocalizedError {
+    case backupFromNewerBuild(found: Int, supported: Int)
+    case backupUnreadable
+
+    var errorDescription: String? {
+        switch self {
+        case .backupFromNewerBuild(let found, let supported):
+            return "The iCloud backup uses a newer format (version \(found)); this build understands version \(supported). Update OpenNOW to sync."
+        case .backupUnreadable:
+            return "The iCloud backup could not be read. Check that iCloud Drive is available, then try again."
+        }
+    }
+}
+
 /// The shared JSON coding policy for every sync file: deterministic key order so two devices writing
 /// the same content produce the same bytes, and millisecond dates to break an `updatedAt` tie.
 enum OPNCloudSyncJSON {
@@ -105,9 +121,32 @@ enum OPNCloudSyncJSON {
         return decoder
     }()
 
+    /// Reads a synced file, materialising an iCloud item first. A coordinated read waits for a
+    /// dataless item to download, so a not-yet-synced backup is never mistaken for an absent one.
     static func load<Value: Decodable>(_ type: Value.Type, from url: URL) -> Value? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let data = readData(at: url) else { return nil }
         return try? decoder.decode(type, from: data)
+    }
+
+    /// Whether a synced file is known to exist, including an iCloud item not downloaded yet.
+    static func fileExists(at url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Reads a synced file's bytes, starting a download and coordinating when the item lives in
+    /// iCloud. Returns nil only when the bytes could not be read.
+    static func readData(at url: URL) -> Data? {
+        let isUbiquitous = (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) ?? false
+        if isUbiquitous {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        }
+        var coordinatedData: Data?
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in
+            coordinatedData = try? Data(contentsOf: coordinatedURL)
+        }
+        guard coordinationError == nil else { return nil }
+        return coordinatedData
     }
 
     static func write<Value: Encodable>(_ value: Value, to url: URL) throws {
@@ -209,6 +248,12 @@ public enum OPNCloudSyncAccountNamespace {
         "OpenNOW.Catalog.RecentlyPlayed.",
     ]
 
+    /// The other identifiers that name the signed-in account, so a Mac keying collections by user id
+    /// and one falling back to an email share a namespace instead of splitting the backup.
+    static let aliasesKey = "OpenNOW.Catalog.CollectionAccountAliases"
+    /// The signed-in account, recorded so its namespace is importable before any local key exists.
+    static let currentAccountsKey = "OpenNOW.Catalog.CollectionLocalAccounts"
+
     /// The account identifier's canonical spelling: trimmed and lowercased.
     public static func normalized(_ accountIdentifier: String) -> String {
         accountIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -225,13 +270,37 @@ public enum OPNCloudSyncAccountNamespace {
         hash(normalized(accountIdentifier))
     }
 
+    /// Records the signed-in account and every other identifier that names it, so collections keyed
+    /// under any of them resolve to one namespace.
+    static func registerCurrentAccount(_ accountIdentifier: String, candidates: [String]) {
+        let canonical = normalized(accountIdentifier)
+        guard !canonical.isEmpty else { return }
+
+        var current = Set(OPNAppPreferenceStorage.standard.array(forKey: currentAccountsKey) as? [String] ?? [])
+        current.insert(canonical)
+        OPNAppPreferenceStorage.standard.set(Array(current).sorted(), forKey: currentAccountsKey)
+
+        var aliases = OPNAppPreferenceStorage.standard.dictionary(forKey: aliasesKey) as? [String: String] ?? [:]
+        for candidate in candidates {
+            let alias = normalized(candidate)
+            guard !alias.isEmpty, alias != canonical else { continue }
+            aliases[alias] = canonical
+        }
+        OPNAppPreferenceStorage.standard.set(aliases, forKey: aliasesKey)
+    }
+
     /// The account identifiers stored on this Mac, keyed by their normalized namespace. A collections
-    /// key wins over a playtime or recently-played key for the same account, because that is the key
-    /// the app reads and writes collections under.
+    /// key wins over a playtime or recently-played key for the same account.
     static func localAccounts() -> [String: String] {
         var accounts: [String: String] = [:]
+        for identifier in OPNAppPreferenceStorage.standard.array(forKey: currentAccountsKey) as? [String] ?? [] {
+            let canonical = normalized(identifier)
+            guard !canonical.isEmpty else { continue }
+            accounts[namespace(for: canonical)] = canonical
+        }
         let allKeys = OPNAppPreferenceStorage.standard.dictionaryRepresentation().keys
         for key in allKeys where key.hasPrefix(collectionsKeyPrefix) {
+            guard key != CatalogCollectionsStore.localOnlyNoticeKey else { continue }
             guard let identifier = accountIdentifier(inKey: key, prefix: collectionsKeyPrefix) else { continue }
             accounts[namespace(for: identifier)] = identifier
         }
@@ -245,9 +314,8 @@ public enum OPNCloudSyncAccountNamespace {
         return accounts
     }
 
-    /// The same accounts keyed by every namespace a shared file might have used: the normalized one
-    /// and, for an identifier whose stored casing differs, its pre-normalization namespace. Reading
-    /// through this lets `apply` import collections a Mac wrote before namespaces were normalized.
+    /// The same accounts keyed by every namespace a shared file might have used: the normalized one,
+    /// a pre-normalization spelling, and every alias identifier for the account.
     static func importableAccounts() -> [String: String] {
         var accounts: [String: String] = [:]
         for (namespace, identifier) in localAccounts() {
@@ -255,12 +323,16 @@ public enum OPNCloudSyncAccountNamespace {
             let raw = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
             if raw != normalized(raw) { accounts[hash(raw)] = identifier }
         }
+        let knownAccounts = localAccounts()
+        for (alias, canonical) in identityAliases() {
+            guard let identifier = knownAccounts[namespace(for: canonical)] else { continue }
+            accounts[hash(alias)] = identifier
+        }
         return accounts
     }
 
-    /// Each pre-normalization namespace paired with its normalized replacement. The merge drops the
-    /// stale spelling once the normalized namespace carries the account's collections, so the shared
-    /// file converges on one spelling without a Mac that has never signed into the account losing it.
+    /// Each stale namespace paired with the canonical namespace it folds into: a pre-normalization
+    /// spelling or an alias identifier, so the shared file converges on one namespace per account.
     static func aliasNormalizations() -> [String: String] {
         var aliases: [String: String] = [:]
         for identifier in localAccounts().values {
@@ -268,7 +340,16 @@ public enum OPNCloudSyncAccountNamespace {
             guard raw != normalized(raw) else { continue }
             aliases[hash(raw)] = namespace(for: raw)
         }
+        let knownNamespaces = Set(localAccounts().values.map { namespace(for: $0) })
+        for (alias, canonical) in identityAliases() where knownNamespaces.contains(namespace(for: canonical)) {
+            aliases[hash(alias)] = namespace(for: canonical)
+        }
         return aliases
+    }
+
+    /// Every alias identifier mapped to the canonical spelling of the account it names.
+    private static func identityAliases() -> [String: String] {
+        OPNAppPreferenceStorage.standard.dictionary(forKey: aliasesKey) as? [String: String] ?? [:]
     }
 
     private static func accountIdentifier(inKey key: String, prefix: String) -> String? {
