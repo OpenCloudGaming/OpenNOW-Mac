@@ -203,4 +203,26 @@ import Foundation
         model.deleteCollection(id: collection.id)
         #expect(!model.homeRailRows.contains { $0.id == railID })
     }
+
+    @Test func emptyCollectionRailsStayInNameOrderAsCollectionsChange() {
+        OPNHomeCustomization.arrangement = .default
+        defer { OPNHomeCustomization.arrangement = .default }
+        let model = makeModel()
+        defer { clear(model) }
+        for name in ["Tree", "Bar", "Second Bla", "Bla Update"] {
+            model.createCollection(name: name)
+        }
+        let railTitles = {
+            model.homeRailRows
+                .filter { $0.id.hasPrefix("user-collection-") }
+                .map(\.title)
+        }
+        #expect(railTitles() == ["Bar", "Bla Update", "Second Bla", "Tree"])
+
+        model.createCollection(name: "Apple")
+        #expect(railTitles() == ["Apple", "Bar", "Bla Update", "Second Bla", "Tree"])
+
+        model.setHomeRailVisible(OPNHomeCustomization.userCollectionRailID(model.sortedUserCollections[0].id), isVisible: false)
+        #expect(railTitles() == ["Apple", "Bar", "Bla Update", "Second Bla", "Tree"])
+    }
 }

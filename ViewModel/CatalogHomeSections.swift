@@ -104,13 +104,19 @@ extension CatalogViewModel {
             canonicalOrder.append(rail.id)
         }
         // An empty collection draws no home rail yet, so `baseCatalogSections` omits it. It still
-        // belongs here: order or hide it the moment it exists, without adding a game first.
+        // belongs here: order or hide it the moment it exists, without adding a game first. Walk
+        // the name-sorted collections rather than the lookup's keys: `Dictionary` iteration order
+        // is unspecified, so appending from `collectionTitles.keys` reshuffled every existing
+        // collection row whenever the set changed underneath a re-render.
         let collectionTitles = Dictionary(
             sortedUserCollections.map { (OPNHomeCustomization.userCollectionRailID($0.id), $0.name) },
             uniquingKeysWith: { first, _ in first }
         )
-        for id in collectionTitles.keys where !canonicalOrder.contains(id) {
-            canonicalOrder.append(id)
+        for collection in sortedUserCollections {
+            let id = OPNHomeCustomization.userCollectionRailID(collection.id)
+            if !canonicalOrder.contains(id) {
+                canonicalOrder.append(id)
+            }
         }
         let orderedIDs = OPNHomeCustomization.orderedIdentities(canonicalOrder, by: homeRailArrangement.order)
         return orderedIDs.map { id in
