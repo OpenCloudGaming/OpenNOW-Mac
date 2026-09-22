@@ -128,6 +128,19 @@ jobs:
           xcodebuild -version
         shell: bash
 
+      # Xcode's package cache holds the repository clones and the downloaded binary artifacts
+      # (Sentry's XCFramework zip), so restoring it skips the github.com fetch that otherwise runs
+      # fresh on every build. Keyed on the resolved package set, so a dependency bump refreshes it.
+      - name: Cache Xcode package cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-xcode-packages-v1-${{ github.event.repository.name }}-${{ hashFiles('OpenNOW.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Package.resolved', '**/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-packages-v1-${{ github.event.repository.name }}-
+
       - name: Build OpenNOW
         run: |
           set -euo pipefail
@@ -136,6 +149,7 @@ jobs:
             -scheme OpenNOW \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -packageCachePath ~/Library/Caches/org.swift.swiftpm \
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_COMPILATION_MODE=singlefile
         shell: bash
