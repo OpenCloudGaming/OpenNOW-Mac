@@ -41,16 +41,16 @@ struct SignInModal: View {
                 ViewThatFits(in: .vertical) {
                     modalTabContent
                     ScrollView(.vertical) { modalTabContent }
+                        .frame(maxHeight: max(availableSize.height - OPNDesign.Spacing.pageHorizontal * 2, 320))
                 }
             }
             .padding(OPNDesign.Spacing.xLarge)
         }
-        // Height stays intrinsic up to the window's. Without the cap a ScrollView child reports its
-        // full content height as its ideal size, so ViewThatFits picks it and the modal then paints
-        // past the window edge — the cut-off QR. At the cap the modal stops resizing and the
-        // content scrolls instead.
+        // The panel hugs its content: an unconstrained VStack reports its ideal height, so the
+        // background, stroke, and shadow only cover the real content. ViewThatFits switches to the
+        // scroll fallback once the tab content no longer fits the height the login wall proposes,
+        // and the fallback's cap keeps that branch from ever painting past the window edge.
         .frame(width: panelWidth)
-        .frame(maxHeight: max(availableSize.height - OPNDesign.Spacing.pageHorizontal * 2, 320))
         .background(OPNDesign.Surface.panel)
         .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
