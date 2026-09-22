@@ -54,13 +54,16 @@ jobs:
           }
         shell: bash
 
+      # A test failure is rerun once against the same build graph. The build step above already
+      # validated the restored graph, so a failure here is a test, not a corrupt cache restore.
+      # Wiping the scratch path bought a full rebuild (~90s) and, worse, hid the flake it reshuffled
+      # away instead of reporting it.
       - name: Run package unit tests
         run: |
           set -euo pipefail
           unset ENABLE_NVST_HARDWARE_TESTS
           swift test --scratch-path .build/shared || {
-            echo "swift test failed; clearing scratch path and retrying with a clean build graph"
-            rm -rf .build/shared
+            echo "swift test failed; rerunning once against the same build graph"
             swift test --scratch-path .build/shared
           }
         shell: bash
