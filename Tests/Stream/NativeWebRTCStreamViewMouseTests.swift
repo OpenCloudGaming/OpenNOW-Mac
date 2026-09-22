@@ -150,6 +150,20 @@ private struct MouseButtonTransition: Equatable {
 }
 
 @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor func streamShortcutContractMatchesWebRTCControls() {
+    // `shortcutCommand` resolves through the machine's stored bindings, so a developer's own
+    // rebinding here turns the factory-contract assertions into a machine-dependent test.
+    let actions = KeybindingAction.allCases
+    let storedCombos = actions.map { action in
+        OPNKeybindings.standard.hasCustomBinding(for: action) ? OPNKeybindings.standard.combo(for: action) : nil
+    }
+    defer {
+        for (action, storedCombo) in zip(actions, storedCombos) {
+            if let storedCombo { OPNKeybindings.standard.assign(storedCombo, to: action) }
+            else { OPNKeybindings.standard.reset(action) }
+        }
+    }
+    OPNKeybindings.standard.resetAll()
+
     #expect(StreamCommand.shortcutCommand(keyCode: 5, modifierFlags: .command) == .toggleUnifiedHUD)
     #expect(StreamCommand.shortcutCommand(keyCode: 46, modifierFlags: .command) == .toggleMicrophone)
     #expect(StreamCommand.shortcutCommand(keyCode: 15, modifierFlags: .command) == .toggleRecording)

@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The desktop destination list: every tab visible at once, down the left edge, matching the rail
 /// the reader just came from in the catalog. It replaces a horizontal strip that overflowed at nine
-/// tabs and faded its ends, hiding the very destinations it existed to show.
+/// tabs and faded its ends, hiding the very destinations it existed to show. Pages of one concern
+/// share a quiet caption - App, Stream, Connection - because thirteen bare rows scan as a wall.
 struct SettingsSidebar: View {
     @Binding var selection: CatalogSettingsGroup
     let groups: [CatalogSettingsGroup]
@@ -47,6 +48,18 @@ struct SettingsSidebar: View {
                 SettingsSearchResults(results: results, query: query, uiScale: uiScale) { entry in
                     query = ""
                     onSelectSearchResult(entry)
+                }
+            } else if showsLabels {
+                ForEach(CatalogSettingsSidebarSection.sections(of: groups)) { run in
+                    if let title = run.title {
+                        SettingsSubheading(title: title, uiScale: uiScale)
+                            .padding(.horizontal, 14 * uiScale)
+                            .padding(.top, 12 * uiScale)
+                            .padding(.bottom, 8 * uiScale)
+                    }
+                    ForEach(run.groups) { group in
+                        item(group)
+                    }
                 }
             } else {
                 ForEach(groups) { group in

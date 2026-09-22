@@ -55,7 +55,7 @@ private func makeAccount(email: String, userId: String, isActive: Bool) -> Login
 @Test func signOutEndsTheAuthServiceCredentialForSignedOutAccountsOnly() async throws {
     let container = try ModelContainer(
         for: LoginAccount.self, LoginSession.self, LoginDeviceRegistration.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     )
     let authService = RecordingLoginAuthService()
     let viewModel = LoginViewModel(authService: authService)
@@ -81,7 +81,7 @@ private func makeAccount(email: String, userId: String, isActive: Bool) -> Login
 @Test func signOutKeepsTheOtherSavedAccountRestorable() async throws {
     let container = try ModelContainer(
         for: LoginAccount.self, LoginSession.self, LoginDeviceRegistration.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     )
     let authService = RecordingLoginAuthService()
     let viewModel = LoginViewModel(authService: authService)
@@ -117,7 +117,7 @@ private func makeAccount(email: String, userId: String, isActive: Bool) -> Login
 @Test func signInAgainFromTheLoginWallStartsTheBrowserLeg() async throws {
     let container = try ModelContainer(
         for: LoginAccount.self, LoginSession.self, LoginDeviceRegistration.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     )
     let authService = RecordingLoginAuthService()
     let viewModel = LoginViewModel(authService: authService)
@@ -152,7 +152,7 @@ private func makeAccount(email: String, userId: String, isActive: Bool) -> Login
 @Test func forgetAccountEndsTheAuthServiceCredential() throws {
     let container = try ModelContainer(
         for: LoginAccount.self, LoginSession.self, LoginDeviceRegistration.self,
-        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
     )
     let authService = RecordingLoginAuthService()
     let viewModel = LoginViewModel(authService: authService)

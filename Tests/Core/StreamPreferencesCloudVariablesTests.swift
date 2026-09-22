@@ -2,8 +2,12 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
+/// Every test here opens a save/restore window over the same process-wide `UserDefaults` keys, and
+/// a parallel suite's whole-domain restore would land mid-window with the machine's own values.
 @Suite(.serialized) struct StreamPreferencesLocationTests {
     @Test func automaticServerLocationKeepsProviderCloudMatchBase() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let previousRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
         let previousCachedRegions = OPNStreamPreferences.loadCachedRegions()
         defer {
@@ -20,6 +24,8 @@ import Testing
     }
 
     @Test func manualServerLocationUsesSelectedRegionalCloudMatchBase() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let previousRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
         let previousCachedRegions = OPNStreamPreferences.loadCachedRegions()
         defer {
@@ -36,6 +42,8 @@ import Testing
     }
 
     @Test func cachedRegionsDeduplicatePersistedNormalizedUrls() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
         let cachedRegionsKey = "OpenNOW.Stream.CachedRegions"
         let previousCachedRegions = defaults.object(forKey: cachedRegionsKey)
@@ -60,6 +68,8 @@ import Testing
     }
 
     @Test func cloudMatchRegionHostAddressesNormalizeToDistinctStreamingUrls() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let previousCachedRegions = OPNStreamPreferences.loadCachedRegions()
         defer { OPNStreamPreferences.saveCachedRegions(previousCachedRegions) }
 
@@ -77,6 +87,8 @@ import Testing
     }
 
     @Test func untrustedRegionPreferenceFallsBackToDefaultStreamingBaseUrl() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
         let regionKey = "OpenNOW.Stream.RegionUrl"
         let previousRegionUrl = defaults.object(forKey: regionKey)
@@ -94,6 +106,8 @@ import Testing
     }
 
     @Test func untrustedPerGameRegionPreferenceFallsBackToDefaultStreamingBaseUrl() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
         let gameProfilesKey = "OpenNOW.Stream.GameProfiles"
         let previousProfiles = defaults.object(forKey: gameProfilesKey)
@@ -106,7 +120,7 @@ import Testing
 
         defaults.set([
             appId: [
-                "OpenNOW.Stream.GameProfileEnabled": true,
+                "enabled": true,
                 "OpenNOW.Stream.RegionUrl": "https://attacker.com/",
             ],
         ], forKey: gameProfilesKey)
@@ -117,6 +131,8 @@ import Testing
     }
 
     @Test func untrustedCachedRegionsAreFilteredOut() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
         let cachedRegionsKey = "OpenNOW.Stream.CachedRegions"
         let previousCachedRegions = defaults.object(forKey: cachedRegionsKey)
@@ -139,6 +155,8 @@ import Testing
     }
 
     @Test func saveSelectedRegionUrlRejectsUntrustedOrigin() {
+        preferenceDomainTestLock.lock()
+        defer { preferenceDomainTestLock.unlock() }
         let previousRegionUrl = OPNStreamPreferences.loadSelectedRegionUrl()
         defer { OPNStreamPreferences.saveSelectedRegionUrl(previousRegionUrl) }
 

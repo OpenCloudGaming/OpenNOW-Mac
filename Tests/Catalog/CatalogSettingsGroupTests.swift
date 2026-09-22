@@ -34,8 +34,21 @@ import Foundation
 }
 
 @Test func theTabsAreOneDestinationPerConcernInAFixedOrder() {
-    // One destination per concern, and the case order is the order the sidebar and pad walk.
-    #expect(CatalogSettingsGroup.allCases == [.account, .video, .audio, .input, .keybindings, .recording, .network, .remoteCoOp, .theme, .general, .system, .iCloud, .labs])
+    // One destination per concern, and the case order is the order the sidebar and pad walk. Pages
+    // of one concern sit together so the rail can caption each run once: App, Stream, Connection.
+    #expect(CatalogSettingsGroup.allCases == [.account, .general, .theme, .iCloud, .system, .labs, .video, .audio, .input, .keybindings, .recording, .network, .remoteCoOp])
+}
+
+/// The rail derives its captions by walking the page list, so a section that stopped being
+/// contiguous would draw twice with neither run carrying the whole set. Account is the only
+/// uncaptioned run - the anchor ahead of the first caption.
+@Test func everySidebarSectionIsOneContiguousRun() {
+    var runs: [CatalogSettingsSection?] = []
+    for group in CatalogSettingsGroup.allCases where runs.last != group.sidebarSection {
+        runs.append(group.sidebarSection)
+    }
+    #expect(runs == [nil, .app, .stream, .connection])
+    #expect(CatalogSettingsSidebarSection.sections(of: CatalogSettingsGroup.allCases).flatMap(\.groups) == CatalogSettingsGroup.allCases)
 }
 
 @Test func everySettingsGroupNamesItself() {

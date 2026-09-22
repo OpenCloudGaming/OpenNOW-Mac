@@ -518,10 +518,15 @@ springs up from 0.96 scale with a fade, collapsing to a plain cross-fade under R
 
 The desktop Settings navigation: a 208-wide column of 36-high rows, 14 horizontal padding, 16pt
 glyph then a 13pt label. Selected is accent @ 0.12 fill with a 3-wide accent bar on the leading
-edge; hover is white @ 0.05. Below 900pt of window width per interface scale the labels drop and
-the rail narrows to 60, glyphs only, each row keeping its title as a tooltip. The rail is desktop
-only: controller mode renders `SettingsTabBar` instead, because its shell already carries a
-horizontal row of destination pills and pad focus is a single top-to-bottom list.
+edge; hover is white @ 0.05. Pages of one concern share a quiet caption in the `SettingsSubheading`
+style - App (General, Look, iCloud, System, Labs), Stream, Connection - with 14 horizontal padding,
+12 top and 8 bottom padding, so thirteen bare rows never read as a wall. Account anchors the rail
+uncaptioned, ahead of the first caption, and Connection ends it - no run trails the last caption
+uncaptioned, or it would read as belonging to the section above. Below 900pt of window width per
+interface scale the labels drop and the captions drop with them, the rail narrows to 60, glyphs
+only, each row keeping its title as a tooltip. The rail is desktop only: controller mode renders `SettingsTabBar`
+instead, because its shell already carries a horizontal row of destination pills and pad focus is a
+single top-to-bottom list.
 
 ### Settings Destinations (`GeneralSettingsGroup`, `SystemSettingsGroup`)
 

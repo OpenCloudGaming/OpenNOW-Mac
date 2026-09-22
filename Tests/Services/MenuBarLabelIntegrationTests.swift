@@ -56,10 +56,8 @@ import Testing
 
         StreamSessionLifecycle.deactivate(streamID)
         source.snapshot = OPNMenuBarSessionSnapshot()
-        try await Task.sleep(for: .milliseconds(200))
-        #expect(session.phase == .idle)
-        try await Task.sleep(for: .milliseconds(1200))
-        #expect(session.streamElapsedText == nil)
+        #expect(await waitForMenuBarTransition { session.phase == .idle })
+        #expect(await waitForMenuBarTransition { session.streamElapsedText == nil })
         button.performClick(nil)
     }
 

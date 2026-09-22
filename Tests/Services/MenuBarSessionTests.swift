@@ -431,11 +431,10 @@ import Testing
         #expect(model.isStatusItemInserted)
 
         StreamSessionLifecycle.deactivate(id)
-        try await waitForQueuedDelivery()
-        #expect(model.phase == .idle)
-        #expect(model.streamStartedAt == nil)
-        #expect(model.streamElapsedText == nil)
-        #expect(!model.isStatusItemInserted)
+        #expect(await waitForMenuBarTransition { model.phase == .idle })
+        #expect(await waitForMenuBarTransition { model.streamStartedAt == nil })
+        #expect(await waitForMenuBarTransition { model.streamElapsedText == nil })
+        #expect(await waitForMenuBarTransition { !model.isStatusItemInserted })
     }
 
     @Test func controlsRouteThroughTheStreamLifecycle() {

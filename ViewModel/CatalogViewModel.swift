@@ -90,6 +90,11 @@ enum CatalogDestination: String, CaseIterable, Identifiable {
 
 enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case account
+    case general
+    case theme
+    case iCloud
+    case system
+    case labs
     case video
     case audio
     case input
@@ -97,11 +102,6 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case recording
     case network
     case remoteCoOp
-    case theme
-    case general
-    case system
-    case iCloud
-    case labs
 
     var id: String { rawValue }
 
@@ -170,6 +170,17 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .system: return "info.circle.fill"
         case .iCloud: return "icloud.fill"
         case .labs: return "flask.fill"
+        }
+    }
+
+    /// The sidebar section a page reads under, or nil where a header would only repeat what the
+    /// reader already knows: Account anchors the rail by convention, before the first caption.
+    var sidebarSection: CatalogSettingsSection? {
+        switch self {
+        case .account: return nil
+        case .general, .theme, .iCloud, .system, .labs: return .app
+        case .video, .audio, .input, .keybindings, .recording: return .stream
+        case .network, .remoteCoOp: return .connection
         }
     }
 }

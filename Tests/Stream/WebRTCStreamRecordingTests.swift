@@ -55,10 +55,13 @@ struct StreamRecordingTests {
         recorder.stop()
 
         var terminalStatus: StreamRecordingStatus?
-        for _ in 0..<40 {
+        // Finishing an AVAssetWriter waits on its own queue and a loaded test process pushes that
+        // past the old 2s loop; the happy path still returns the moment the status lands.
+        let terminalDeadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < terminalDeadline {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
-            try await Task.sleep(for: .milliseconds(50))
+            try await Task.sleep(for: .milliseconds(100))
         }
 
         guard case .finished(let recording) = terminalStatus else {
@@ -99,10 +102,13 @@ struct StreamRecordingTests {
         ))
 
         var terminalStatus: StreamRecordingStatus?
-        for _ in 0..<40 {
+        // Finishing an AVAssetWriter waits on its own queue and a loaded test process pushes that
+        // past the old 2s loop; the happy path still returns the moment the status lands.
+        let terminalDeadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < terminalDeadline {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
-            try await Task.sleep(for: .milliseconds(50))
+            try await Task.sleep(for: .milliseconds(100))
         }
 
         #expect(terminalStatus == .failed("Recording could not capture video frames."))
@@ -387,10 +393,13 @@ struct StreamRecordingTests {
         recorder.stop()
 
         var terminalStatus: StreamRecordingStatus?
-        for _ in 0..<40 {
+        // Finishing an AVAssetWriter waits on its own queue and a loaded test process pushes that
+        // past the old 2s loop; the happy path still returns the moment the status lands.
+        let terminalDeadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < terminalDeadline {
             terminalStatus = await statuses.terminalStatus()
             if terminalStatus != nil { break }
-            try await Task.sleep(for: .milliseconds(50))
+            try await Task.sleep(for: .milliseconds(100))
         }
 
         guard case .finished(let recording) = terminalStatus else {
