@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.10.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.9.0...v0.10.0) (2026-09-22)
+
+
+### Features
+
+* add account switcher on menubar ([55df91e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/55df91e2e14b69699751297f9021b186ca29f220))
+* add button tooltip ([19b615e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/19b615e64a860b845d28c5faf7e6570abb02c9a3))
+* add collections ([6ea1a45](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6ea1a45ce2743a7ec30bb38b755f05fe4e90a854))
+* add conditional show all catalog header ([b516204](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b5162041164785d25ba0aec88dbe47f73576a9fe))
+* add custom keybindings ([bb17126](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/bb1712650ec6f44a8b6264eaa23cc3b6da437bb7))
+* add dock statuses ([97da07d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/97da07d75bd8a876ee5651e07530a7f8b8b4ee5e))
+* add feedback dialog animation ([05e222f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/05e222f56cfa5b59bc93070c8c71a71c76628705))
+* add feedback form ([071e3c0](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/071e3c0b9f7cda8d3b3ee03dc0ab5c663f7d514d))
+* add home categorize customization ([02355f5](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/02355f571029a0ebe7ff80eabedf0ed2d4e07ab4))
+* add icloud sync ([2e12377](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/2e123779609b74e9fc9c932c0c777a2be36ba686))
+* add menubar ([#39](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/39)) ([6237432](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6237432897715ea6d770bb9ffd2e6e26792da357))
+* add menubar collections ([6c40085](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6c4008587aa53ed7f689f4a4044d355d40223514))
+* add menubar favorites ([9f6d12d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/9f6d12d051c695b8fda1854a75b3b1212b4bb98d))
+* add screenshot ([6d7781f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6d7781fa890467d6e3a1f286b926eae4ac3651de))
+* add settings categories ([a6f2f28](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a6f2f28b42089813bf041216bc0c22fd370b1f5e))
+* Add Steam Controller 2026 gyroscope ([18c4179](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/18c4179f709c8e7712572121f57ccb3b2080e259))
+* add steam controller gyro calibration ([c50c90a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c50c90aaad7f4dac084bb6a81c63ca4a86a95a78))
+* align dialogs design ([5051dbd](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5051dbde4ad50b6e4b766bfa670ded12e168c66b))
+* catalog performance improvement ([3ff5f7e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3ff5f7e35fb971f89c5cc382e3dc6117bdda011a))
+* disable max collection creation ([f1d7c54](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f1d7c54c56b90f6e8daf0315fab3788b81724cd4))
+* improve controller actions menu ([0bcaf80](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0bcaf80db4cfe09bc74d1de8ab51ee4f01bac1d5))
+* menubar info and queue ([988ed0e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/988ed0ef0fa7bc61bc2c6538e6a76b60b2b07d61))
+* redesign collections ([638421e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/638421ee1a7932b665a471f1fdc3cfe5013e42c9))
+* reorganize system settings ([6f39fd7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/6f39fd706e4c58e4024727cee2e88fbf25145487))
+
+
+### Bug Fixes
+
+* catalog poster view padding ([9987372](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/998737216da415fd34959305781544263a97c029))
+* collection home category order ([5b849f3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5b849f3dd63c40e68709584a2fa847a5476d7ca1))
+* collection tombstone sync ([81a5dc7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/81a5dc7d984902529d8cf03a4708eade7fb3b9f9))
+* menubar queue when app is closed to dock ([f5fbdca](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f5fbdca653811aae739bf211717eea6b59f8029c))
+* protect icloud backup from overwrite and failed restore ([c8658f1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c8658f11d4a14ca0d0f9b37e150c4bb6d37203c8))
+* queue position display ([0e6fa7c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0e6fa7c7f840b97375a777178ccece9553c1f81b))
+* settings recommendation layout ([daad062](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/daad06248d55e4bdb7459bf618b33c625773e2d5))
+* sign in modal height ([08cf68e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/08cf68e5fd08f47c73b4a503cda01bd94909dfa2))
+
 ## [0.9.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.8.0...v0.9.0) (2026-09-17)
 
 
