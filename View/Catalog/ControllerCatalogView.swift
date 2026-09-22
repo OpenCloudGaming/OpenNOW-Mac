@@ -279,7 +279,6 @@ struct ControllerCatalogView: View {
                 selectedGameIndices: $controllerViewModel.selectedGameIndices,
                 layout: layout,
                 openDetails: controllerViewModel.openDetails,
-                showAll: controllerViewModel.openShowAll,
                 openSearch: { controllerViewModel.openSearchOverlay() }
             )
         case .recordings:
@@ -502,7 +501,6 @@ private struct ControllerGamesPage: View {
     @Binding var selectedGameIndices: [String: Int]
     let layout: ControllerLayoutMetrics
     let openDetails: (OPNCatalogGameObject, String) -> Void
-    let showAll: (CatalogSectionModel) -> Void
     let openSearch: () -> Void
 
     @Environment(\.opnUIScale) private var uiScale
@@ -543,8 +541,7 @@ private struct ControllerGamesPage: View {
                                 selectedIndex: binding(for: section),
                                 isFocused: focusArea == .content && selectedRailIndex == index,
                                 layout: layout,
-                                openDetails: { game in openDetails(game, section.id) },
-                                showAll: { showAll(section) }
+                                openDetails: { game in openDetails(game, section.id) }
                             )
                             .id(section.id)
                         }

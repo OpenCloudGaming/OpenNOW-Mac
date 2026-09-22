@@ -26,6 +26,15 @@ struct CatalogPosterRailView: View {
         return visibleGames
     }
     private var canShowAll: Bool { section.canLoadFullList }
+    /// Mirror of `CatalogRailView.showsHeaderShowAll` for the portrait rail: every tile claims one
+    /// poster slot and the two container margins, with no spacing between `LazyHStack` children.
+    private var showsHeaderShowAll: Bool {
+        guard canShowAll else { return false }
+        let itemCount = games.count + section.tiles.count + 1
+        let slotWidth = CatalogPosterLayout.slotWidth(scale: uiScale, density: tileDensity)
+        let contentWidth = CatalogVendorLayout.carouselContainerMargin(scale: uiScale) * 2 + CGFloat(itemCount) * slotWidth
+        return CatalogRailShowAllPlacement.showsHeaderLink(availableWidth: availableWidth, contentWidth: contentWidth)
+    }
     private var collectionIcon: OPNCollectionIcon? {
         guard case .userCollection(let id) = section.kind else { return nil }
         return viewModel.collection(id: id)?.resolvedIcon
@@ -53,7 +62,7 @@ struct CatalogPosterRailView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                if canShowAll {
+                if showsHeaderShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 13, weight: .bold)

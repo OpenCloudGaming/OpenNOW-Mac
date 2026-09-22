@@ -8,6 +8,18 @@ import CryptoKit
 import ImageIO
 import SwiftUI
 
+/// The home rails draw two routes to Show All: a link in the section header and a tile at the end
+/// of the row. The header link only earns its place while the row overflows and that end tile is
+/// scrolled off screen - on a row that already fits, the tile is visible and the floating link is a
+/// second, redundant affordance. A width that has not settled yet (`<= 0`) shows the link rather
+/// than hide an affordance the reader can still reach.
+enum CatalogRailShowAllPlacement {
+    static func showsHeaderLink(availableWidth: CGFloat, contentWidth: CGFloat) -> Bool {
+        guard availableWidth > 0 else { return true }
+        return contentWidth > availableWidth + 0.5
+    }
+}
+
 struct CatalogRailView: View {
     let viewModel: CatalogViewModel
     let section: CatalogSectionModel
@@ -32,6 +44,16 @@ struct CatalogRailView: View {
         return visibleGames
     }
     private var canShowAll: Bool { section.canLoadFullList }
+    /// Every tile in this rail - game, panel action, and the end-of-row Show All tile - claims the
+    /// same slot, so the row is that slot times the item count plus the two container margins.
+    /// `LazyHStack` spacing is zero, so there is no spacing term to add.
+    private var showsHeaderShowAll: Bool {
+        guard canShowAll else { return false }
+        let itemCount = games.count + section.tiles.count + 1
+        let slotWidth = CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity) + CatalogVendorLayout.tileHorizontalMargin(scale: uiScale) * 2
+        let contentWidth = CatalogVendorLayout.carouselContainerMargin(scale: uiScale) * 2 + CGFloat(itemCount) * slotWidth
+        return CatalogRailShowAllPlacement.showsHeaderLink(availableWidth: availableWidth, contentWidth: contentWidth)
+    }
     private var collectionIcon: OPNCollectionIcon? {
         guard case .userCollection(let id) = section.kind else { return nil }
         return viewModel.collection(id: id)?.resolvedIcon
@@ -62,7 +84,7 @@ struct CatalogRailView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                if canShowAll {
+                if showsHeaderShowAll {
                     Button("SHOW ALL", action: onShowAll)
                         .buttonStyle(.plain)
                         .catalogFont(size: 13, weight: .bold)

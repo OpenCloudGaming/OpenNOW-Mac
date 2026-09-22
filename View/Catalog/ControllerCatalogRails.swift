@@ -151,10 +151,8 @@ struct ControllerGameRail: View {
     let isFocused: Bool
     let layout: ControllerLayoutMetrics
     let openDetails: (OPNCatalogGameObject) -> Void
-    let showAll: () -> Void
 
     private var games: [OPNCatalogGameObject] { section.visibleGames(expanded: false) }
-    private var canShowAll: Bool { section.canLoadFullList }
     private var itemSpacing: CGFloat { 18 * uiScale }
 
     @Environment(\.opnUIScale) private var uiScale
@@ -171,12 +169,6 @@ struct ControllerGameRail: View {
                         .foregroundStyle(OPNDesign.accentInk.opacity(0.82))
                 }
                 Spacer(minLength: 0)
-                if canShowAll, !section.isPlaceholder {
-                    Button("SHOW ALL", action: showAll)
-                        .buttonStyle(.plain)
-                        .catalogFont(size: 12, weight: .bold)
-                        .foregroundStyle(OPNDesign.Text.secondary)
-                }
             }
             .frame(width: layout.contentWidth, alignment: .leading)
 
