@@ -32,7 +32,11 @@ struct OPNCollectionIconView: View {
             }
         }
         .frame(width: size * uiScale, height: size * uiScale)
-        .onReceive(NotificationCenter.default.publisher(for: OPNCollectionIconStore.didChangeNotification)) { _ in
+        .onReceive(
+            NotificationCenter.default
+                .publisher(for: OPNCollectionIconStore.didChangeNotification)
+                .receive(on: DispatchQueue.main)
+        ) { _ in
             storeRevision &+= 1
         }
     }
