@@ -121,15 +121,11 @@ actor OPNCloudSyncEngine {
 
         let result = OPNCloudSyncCatalogCodec.merge(
             remote: remote,
-            baseline: OPNCloudSyncCatalogCodec.loadBaseline(),
             device: device
         )
 
         if result.isLocalFileChanged || remote == nil {
             try OPNCloudSyncJSON.write(result.file, to: url)
-            OPNCloudSyncCatalogCodec.saveBaseline(result.file.generatedAt)
-        } else {
-            OPNCloudSyncCatalogCodec.saveBaseline(remote?.generatedAt ?? result.file.generatedAt)
         }
         recordCatalogSignatureBaseline(at: url)
         return nil
@@ -141,7 +137,6 @@ actor OPNCloudSyncEngine {
         let url = OPNCloudSyncLayout.url(root: root, relativePath: OPNCloudSyncLayout.catalogFileName)
         let local = OPNCloudSyncCatalogCodec.snapshot()
         try OPNCloudSyncJSON.write(local, to: url)
-        OPNCloudSyncCatalogCodec.saveBaseline(local.generatedAt)
         OPNCloudSyncCatalogCodec.saveSignatureBaseline(.init(
             local: OPNCloudSyncCatalogCodec.contentSignature(local),
             remote: OPNCloudSyncCatalogCodec.contentSignature(local)
@@ -154,7 +149,6 @@ actor OPNCloudSyncEngine {
         let url = OPNCloudSyncLayout.url(root: root, relativePath: OPNCloudSyncLayout.catalogFileName)
         guard let remote = OPNCloudSyncJSON.load(OPNCloudSyncCatalogFile.self, from: url) else { return }
         OPNCloudSyncCatalogCodec.apply(remote)
-        OPNCloudSyncCatalogCodec.saveBaseline(remote.generatedAt)
         OPNCloudSyncCatalogCodec.saveSignatureBaseline(.init(
             local: OPNCloudSyncCatalogCodec.contentSignature(OPNCloudSyncCatalogCodec.snapshot()),
             remote: OPNCloudSyncCatalogCodec.contentSignature(remote)
@@ -260,7 +254,6 @@ public final class OPNCloudSyncCoordinator {
     /// so the shared copy wins outright.
     public func restoreNow() {
         OPNCloudSyncSettingsRegistry.saveBaseline([:])
-        OPNAppPreferenceStorage.standard.removeObject(forKey: OPNCloudSyncCatalogCodec.baselineKey)
         OPNAppPreferenceStorage.standard.removeObject(forKey: OPNCloudSyncCatalogCodec.signatureBaselineKey)
         OPNAppPreferenceStorage.standard.removeObject(forKey: OPNCloudSyncSettingsRegistry.signatureBaselineKey)
         pendingConflicts = []

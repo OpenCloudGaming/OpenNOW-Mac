@@ -17,7 +17,7 @@ import Testing
 ///   while the display is asleep or the session is locked. Those put the panel in a real window over
 ///   a high-contrast backdrop and capture what the window server composed — which is why they skip
 ///   unless a capture directory was asked for.
-@MainActor @Suite(.serialized) struct MenuBarPanelSnapshotTests {
+@MainActor @Suite(.serialized, .streamLifecycleExclusive) struct MenuBarPanelSnapshotTests {
     /// Opt-in capture directory. Read once, here, so every capture in this file agrees.
     nonisolated private static var captureDirectory: String? {
         ProcessInfo.processInfo.environment["OPN_SNAPSHOT_DIR"]

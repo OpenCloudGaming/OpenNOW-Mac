@@ -54,10 +54,8 @@ jobs:
           }
         shell: bash
 
-      # A test failure is rerun once against the same build graph. The build step above already
-      # validated the restored graph, so a failure here is a test, not a corrupt cache restore.
-      # Wiping the scratch path bought a full rebuild (~90s) and, worse, hid the flake it reshuffled
-      # away instead of reporting it.
+      # Rerun once against the same graph: the build already validated it, so a failure here is a
+      # test, not a corrupt restore. The old wipe cost a full rebuild and hid the flake.
       - name: Run package unit tests
         run: |
           set -euo pipefail

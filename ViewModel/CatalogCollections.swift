@@ -61,7 +61,7 @@ extension CatalogViewModel {
             collectionsDialogError = "You can keep at most \(OPNUserCollection.maximumCount) collections."
             return nil
         }
-        let candidate = OPNUserCollection(id: UUID().uuidString.lowercased(), name: name, icon: icon)
+        let candidate = OPNUserCollection(id: UUID().uuidString.lowercased(), name: name, icon: icon, updatedAt: Date())
         guard let validated = candidate.validated else {
             collectionsDialogError = Self.collectionNameError(name)
             return nil
@@ -75,7 +75,7 @@ extension CatalogViewModel {
     func renameCollection(id: String, name: String, icon: OPNCollectionIcon? = nil) -> Bool {
         guard let index = userCollections.firstIndex(where: { $0.id == id }) else { return false }
         let retainedIcon = icon ?? userCollections[index].icon
-        guard let validated = userCollections[index].renamed(name).withIcon(retainedIcon).validated else {
+        guard let validated = userCollections[index].renamed(name).withIcon(retainedIcon).stamped(at: Date()).validated else {
             collectionsDialogError = Self.collectionNameError(name)
             return false
         }
@@ -88,7 +88,7 @@ extension CatalogViewModel {
     @discardableResult
     func setCollectionIcon(_ icon: OPNCollectionIcon?, collectionId: String) -> Bool {
         guard let index = userCollections.firstIndex(where: { $0.id == collectionId }) else { return false }
-        guard let validated = userCollections[index].withIcon(icon).validated else { return false }
+        guard let validated = userCollections[index].withIcon(icon).stamped(at: Date()).validated else { return false }
         userCollections[index] = validated
         persistUserCollections()
         return true
@@ -100,11 +100,11 @@ extension CatalogViewModel {
     }
 
     func deleteCollection(id: String) {
-        guard userCollections.contains(where: { $0.id == id }) else { return }
-        // Removing a collection removes only the collection. A game stays in My Library, My
-        // Favorites and Recently Played: those are separate lists the vendor or the app owns.
-        userCollections.removeAll { $0.id == id }
-        persistUserCollections()
+        guard let index = userCollections.firstIndex(where: { $0.id == id }) else { return }
+        // Removing a collection removes only the collection; a game stays in My Library, My
+        // Favorites and Recently Played. The tombstone stops another Mac re-adding the collection.
+        let removed = userCollections.remove(at: index)
+        persistUserCollections(addingTombstone: removed.deleting(at: Date()))
     }
 
     // MARK: - Membership
@@ -117,7 +117,7 @@ extension CatalogViewModel {
             actionMessage = "That collection is full."
             return
         }
-        userCollections[index] = current.toggling(identity)
+        userCollections[index] = current.toggling(identity).stamped(at: Date())
         persistUserCollections()
     }
 
@@ -128,7 +128,7 @@ extension CatalogViewModel {
             actionMessage = "That collection is full."
             return
         }
-        userCollections[index] = userCollections[index].toggling(identity)
+        userCollections[index] = userCollections[index].toggling(identity).stamped(at: Date())
         persistUserCollections()
     }
 
@@ -300,7 +300,19 @@ extension CatalogViewModel {
     // MARK: - Persistence
 
     func persistUserCollections() {
-        CatalogCollectionsStore(collections: userCollections).save(accountIdentifier: collectionsAccountIdentifier)
+        persistUserCollections(addingTombstone: nil)
+    }
+
+    /// Writes the live collections and the account's tombstones together, so a live edit never drops
+    /// a pending deletion. `addingTombstone` records a deletion in the same write.
+    func persistUserCollections(addingTombstone tombstone: OPNUserCollection?) {
+        let account = collectionsAccountIdentifier
+        var tombstones = CatalogCollectionsStore.load(accountIdentifier: account).tombstones
+        if let tombstone {
+            tombstones.removeAll { $0.id == tombstone.id }
+            tombstones.append(tombstone)
+        }
+        CatalogCollectionsStore(collections: userCollections, tombstones: tombstones).save(accountIdentifier: account)
         pruneOrphanedCollectionIcons()
     }
 

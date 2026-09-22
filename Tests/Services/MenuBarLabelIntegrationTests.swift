@@ -4,7 +4,7 @@ import Observation
 import Testing
 @testable import OpenNOW
 
-@MainActor @Suite(.serialized) struct MenuBarLabelIntegrationTests {
+@MainActor @Suite(.serialized, .streamLifecycleExclusive) struct MenuBarLabelIntegrationTests {
     @Test(.enabled(if: Bundle.main.bundleIdentifier == "io.github.opencloudgaming.opennow.dev"))
     func statusItemRemainsResponsiveAcrossLaunchPhases() async throws {
         let closeKey = OPNWindowClosePreferences.behaviorKey

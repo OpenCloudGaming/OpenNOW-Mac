@@ -42,6 +42,33 @@ struct CatalogCollectionsStoreTests {
         #expect(CatalogCollectionsStore.load(accountIdentifier: owner).collections.isEmpty)
     }
 
+    @Test func tombstonesRoundTripBesideTheLiveCollections() {
+        let owner = account("tombstones")
+        defer { clear(owner) }
+
+        let now = Date()
+        let live = OPNUserCollection(id: "keep", name: "Keep", updatedAt: now.addingTimeInterval(-60))
+        let tombstone = OPNUserCollection(id: "gone", name: "Gone", updatedAt: now, deletedAt: now)
+        CatalogCollectionsStore(collections: [live], tombstones: [tombstone]).save(accountIdentifier: owner)
+
+        let loaded = CatalogCollectionsStore.load(accountIdentifier: owner)
+        #expect(loaded.collections.map(\.id) == ["keep"])
+        #expect(loaded.tombstones.map(\.id) == ["gone"])
+    }
+
+    @Test func anAgedOutTombstoneIsPrunedFromStorage() {
+        let owner = account("expired")
+        defer { clear(owner) }
+
+        let old = Date(timeIntervalSince1970: 0)
+        let tombstone = OPNUserCollection(id: "gone", name: "Gone", updatedAt: old, deletedAt: old)
+        CatalogCollectionsStore(collections: [], tombstones: [tombstone], now: old.addingTimeInterval(OPNUserCollection.tombstoneRetention + 1))
+            .save(accountIdentifier: owner)
+
+        // Nothing live and the only tombstone aged out, so the account stores nothing at all.
+        #expect(OPNAppPreferenceStorage.standard.object(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: owner)) == nil)
+    }
+
     @Test func aKeyWrittenInAnotherCaseIsFoundAndReused() {
         let identifier = "collections-case-\(UUID().uuidString)"
         let differentlyCased = identifier.uppercased()

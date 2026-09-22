@@ -4,7 +4,7 @@ import Testing
 @testable import OpenNOW
 
 /// The collection icon value: validation, legacy decoding, and the icon store's round trip.
-@Suite struct CollectionIconModelTests {
+@Suite(.serialized) struct CollectionIconModelTests {
     @Test func symbolIconsValidateTheirNames() {
         #expect(OPNCollectionIcon.symbol("gamecontroller.fill").validated == .symbol("gamecontroller.fill"))
         #expect(OPNCollectionIcon.symbol("  heart.fill  ").validated == .symbol("heart.fill"))

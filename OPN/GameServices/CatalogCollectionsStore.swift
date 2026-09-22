@@ -4,13 +4,15 @@
 import Foundation
 
 /// The local collections for one account, stored as JSON under a per-account key. An empty list
-/// clears the key and an empty account identifier stores nothing, like `CatalogFavoritesCache`.
+/// clears the key; deleted collections are kept as tombstones so a peer cannot re-add them.
 struct CatalogCollectionsStore: Equatable {
     private static let storagePrefix = "OpenNOW.Catalog.Collections"
+    /// The most tombstones one account keeps, so a long-lived account cannot grow a delete log
+    /// without bound. Tombstones also age out; this is only the hard ceiling.
+    static let maximumTombstoneCount = 100
 
-    /// Posted after any account's collections are written or cleared. A store write has no other
-    /// channel to the UI: iCloud sync restores collections straight into `UserDefaults` from a
-    /// background actor, so a live view model would otherwise keep showing what it read at launch.
+    /// Posted after any account's collections are written or cleared, because a store write has no
+    /// other channel to a live view model that read its collections at launch.
     static let didChangeNotification = Notification.Name("OPNCatalogCollectionsStoreDidChange")
     /// The `userInfo` key naming the account whose collections changed.
     static let accountIdentifierKey = "accountIdentifier"
@@ -18,9 +20,12 @@ struct CatalogCollectionsStore: Equatable {
     static let empty = CatalogCollectionsStore()
 
     let collections: [OPNUserCollection]
+    let tombstones: [OPNUserCollection]
 
-    init(collections: [OPNUserCollection] = []) {
-        self.collections = Self.sanitized(collections)
+    init(collections: [OPNUserCollection] = [], tombstones: [OPNUserCollection] = [], now: Date = Date()) {
+        let sanitized = Self.sanitized(collections + tombstones, now: now)
+        self.collections = sanitized.live
+        self.tombstones = sanitized.tombstones
     }
 
     static func load(accountIdentifier: String) -> CatalogCollectionsStore {
@@ -34,32 +39,30 @@ struct CatalogCollectionsStore: Equatable {
 
     func save(accountIdentifier: String) {
         guard !accountIdentifier.isEmpty else { return }
-        let key = Self.resolveStorageKey(accountIdentifier: accountIdentifier)
-        if collections.isEmpty {
-            OPNAppPreferenceStorage.standard.removeObject(forKey: key)
-        } else {
-            guard let data = try? JSONEncoder().encode(collections) else { return }
-            OPNAppPreferenceStorage.standard.set(data, forKey: key)
+        let resolvedKey = Self.resolveStorageKey(accountIdentifier: accountIdentifier)
+        let records = collections + tombstones
+        guard !records.isEmpty else {
+            OPNAppPreferenceStorage.standard.removeObject(forKey: resolvedKey)
+            announceChange(accountIdentifier: accountIdentifier)
+            return
         }
-        NotificationCenter.default.post(
-            name: Self.didChangeNotification,
-            object: nil,
-            userInfo: [Self.accountIdentifierKey: accountIdentifier]
-        )
+        guard let data = try? JSONEncoder().encode(records) else { return }
+        OPNAppPreferenceStorage.standard.set(data, forKey: resolvedKey)
+        announceChange(accountIdentifier: accountIdentifier)
     }
 
-    /// The key an account's collections live under, resolved case-insensitively. NVIDIA account ids
-    /// and emails are case-insensitive semantically, and a key written before casing was normalized
-    /// must be found and reused rather than a second, empty key created beside it.
+    /// The key an account's collections live under, resolved case-insensitively so a key written
+    /// before casing was normalized is reused rather than a second, empty key created beside it.
     static func resolveStorageKey(accountIdentifier: String) -> String {
-        let canonical = storageKey(accountIdentifier: accountIdentifier)
-        guard OPNAppPreferenceStorage.standard.object(forKey: canonical) == nil else { return canonical }
-        let prefix = "\(storagePrefix)."
-        for key in OPNAppPreferenceStorage.standard.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
-            let stored = String(key.dropFirst(prefix.count))
-            if stored.caseInsensitiveCompare(accountIdentifier) == .orderedSame { return key }
+        let canonicalKey = storageKey(accountIdentifier: accountIdentifier)
+        guard OPNAppPreferenceStorage.standard.object(forKey: canonicalKey) == nil else { return canonicalKey }
+        let keyPrefix = "\(storagePrefix)."
+        for key in OPNAppPreferenceStorage.standard.dictionaryRepresentation().keys where key.hasPrefix(keyPrefix) {
+            let storedIdentifier = String(key.dropFirst(keyPrefix.count))
+            guard storedIdentifier.caseInsensitiveCompare(accountIdentifier) == .orderedSame else { continue }
+            return key
         }
-        return canonical
+        return canonicalKey
     }
 
     static func storageKey(accountIdentifier: String) -> String {
@@ -75,12 +78,47 @@ struct CatalogCollectionsStore: Equatable {
         set { OPNAppPreferenceStorage.standard.set(newValue, forKey: localOnlyNoticeKey) }
     }
 
-    /// Drops unusable collections, dedupes by id so the first wins, and caps the count. Every
-    /// write and load passes through here, so what is stored is always storable again.
-    static func sanitized(_ collections: [OPNUserCollection]) -> [OPNUserCollection] {
-        var seen = Set<String>()
-        let valid = collections.compactMap(\.validated).filter { seen.insert($0.id).inserted }
-        return Array(valid.prefix(OPNUserCollection.maximumCount))
+    /// Drops unusable records, keeps the newest write per id, expires aged-out tombstones, and caps
+    /// both lists. Every write and load passes through here, so what is stored is storable again.
+    static func sanitized(_ records: [OPNUserCollection], now: Date = Date()) -> (live: [OPNUserCollection], tombstones: [OPNUserCollection]) {
+        var newestByIdentity: [String: OPNUserCollection] = [:]
+        var identityOrder: [String] = []
+        for candidate in records {
+            guard let valid = candidate.validated else { continue }
+            keepNewest(valid, in: &newestByIdentity, order: &identityOrder)
+        }
+
+        let expiryCutoff = now.addingTimeInterval(-OPNUserCollection.tombstoneRetention)
+        var live: [OPNUserCollection] = []
+        var tombstones: [OPNUserCollection] = []
+        for identity in identityOrder {
+            guard let record = newestByIdentity[identity] else { continue }
+            guard record.isDeleted else {
+                live.append(record)
+                continue
+            }
+            guard record.modificationDate >= expiryCutoff else { continue }
+            tombstones.append(record)
+        }
+        return (Array(live.prefix(OPNUserCollection.maximumCount)), Array(tombstones.prefix(maximumTombstoneCount)))
+    }
+
+    private static func keepNewest(_ candidate: OPNUserCollection, in newestByIdentity: inout [String: OPNUserCollection], order: inout [String]) {
+        guard let existing = newestByIdentity[candidate.id] else {
+            newestByIdentity[candidate.id] = candidate
+            order.append(candidate.id)
+            return
+        }
+        guard candidate.modificationDate > existing.modificationDate else { return }
+        newestByIdentity[candidate.id] = candidate
+    }
+
+    private func announceChange(accountIdentifier: String) {
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: nil,
+            userInfo: [Self.accountIdentifierKey: accountIdentifier]
+        )
     }
 }
 

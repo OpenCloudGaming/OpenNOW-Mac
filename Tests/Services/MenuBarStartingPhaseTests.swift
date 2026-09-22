@@ -9,7 +9,7 @@ import Testing
 /// the launch flow's own state: the stream surface registers with `StreamSessionLifecycle` as soon as
 /// it is mounted — before allocation finishes — so the launch in flight has to outrank the lifecycle
 /// or the surface reads streaming for the whole launch.
-@MainActor @Suite(.serialized) struct MenuBarStartingPhaseTests {
+@MainActor @Suite(.serialized, .streamLifecycleExclusive) struct MenuBarStartingPhaseTests {
     private let preferencesKey = OPNWindowClosePreferences.behaviorKey
 
     private func preserveCloseBehavior() -> Any? {

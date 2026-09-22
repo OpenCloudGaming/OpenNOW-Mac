@@ -4,9 +4,10 @@ import Foundation
 /// The on-disk shapes and shared coders for the iCloud backup: a flat, self-describing layout under
 /// the container's `Documents/OpenNOW/` folder that a reader can open in Finder.
 public enum OPNCloudSyncLayout {
-    /// Bumped to 2 when account namespaces were normalized to lowercase, so a build that only knows
-    /// the old, case-preserving layout can be told apart from one that understands the new one.
-    public static let schemaVersion = 2
+    /// Bumped to 3 when collections gained per-item write times and deletion tombstones, so an older
+    /// build that would merge whole sets and resurrect a deletion can be told apart from one that
+    /// understands newest-write-wins.
+    public static let schemaVersion = 3
 
     static let manifestFileName = "manifest.json"
     static let settingsFileName = "settings/keys.json"

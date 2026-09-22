@@ -9,7 +9,7 @@ import Testing
 ///
 /// One serialized suite: every test here reads or writes the same preference key, and Swift Testing
 /// does not serialize two suites against each other.
-@MainActor @Suite(.serialized) struct MenuBarSessionTests {
+@MainActor @Suite(.serialized, .streamLifecycleExclusive) struct MenuBarSessionTests {
     private let preferencesKey = OPNWindowClosePreferences.behaviorKey
 
     private func preserveCloseBehavior() -> Any? {

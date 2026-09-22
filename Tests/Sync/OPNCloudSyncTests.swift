@@ -173,10 +173,63 @@ import Testing
         let normalizedNamespace = OPNCloudSyncAccountNamespace.namespace(for: raw)
         let remote = OPNCloudSyncCatalogFile(generatedAt: .distantPast, deviceID: "B", collectionsByAccount: [aliasNamespace: carried])
 
-        let result = OPNCloudSyncCatalogCodec.merge(remote: remote, baseline: nil, device: "A")
+        let result = OPNCloudSyncCatalogCodec.merge(remote: remote, device: "A")
 
         #expect(result.file.collectionsByAccount[aliasNamespace] == nil)
-        #expect(result.file.collectionsByAccount[normalizedNamespace] == carried)
+        // The alias's collections are folded into the normalized namespace beside this Mac's own,
+        // rather than overwriting them: a re-key must not discard either side.
+        let reKeyed = result.file.collectionsByAccount[normalizedNamespace]?.map(\.id).sorted()
+        #expect(reKeyed == ["local", "remote"])
+    }
+
+    @Test func aTombstoneBeatsAStalePeerCopy() {
+        // The peer still carries the collection, but this Mac deleted it later. The deletion wins, so
+        // the merged result is the tombstone and there is no live collection left to draw.
+        let live = OPNUserCollection(id: "x", name: "X", updatedAt: Date(timeIntervalSince1970: 1_000))
+        let tombstone = live.deleting(at: Date(timeIntervalSince1970: 2_000))
+
+        let merged = OPNCloudSyncCatalogCodec.mergedRecords(
+            local: [tombstone],
+            remote: [live],
+            now: Date(timeIntervalSince1970: 2_001)
+        )
+
+        #expect(merged.map(\.id) == ["x"])
+        let everyRecordIsATombstone = merged.allSatisfy(\.isDeleted)
+        #expect(everyRecordIsATombstone)
+    }
+
+    @Test func aNewerWriteBeatsAnOlderTombstone() {
+        // A genuine re-add after the delete is a newer write, so it wins instead of being swallowed.
+        let tombstone = OPNUserCollection(
+            id: "x",
+            name: "X",
+            updatedAt: Date(timeIntervalSince1970: 1_000),
+            deletedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        let readded = OPNUserCollection(id: "x", name: "X again", updatedAt: Date(timeIntervalSince1970: 3_000))
+
+        let merged = OPNCloudSyncCatalogCodec.mergedRecords(
+            local: [tombstone],
+            remote: [readded],
+            now: Date(timeIntervalSince1970: 3_001)
+        )
+
+        #expect(merged.map(\.id) == ["x"])
+        #expect(merged.first?.isDeleted == false)
+    }
+
+    @Test func anAgedOutTombstoneIsPrunedOnceEveryPeerHasHadLongEnough() {
+        let old = Date(timeIntervalSince1970: 0)
+        let tombstone = OPNUserCollection(id: "x", name: "X", updatedAt: old, deletedAt: old)
+
+        let merged = OPNCloudSyncCatalogCodec.mergedRecords(
+            local: [tombstone],
+            remote: [],
+            now: old.addingTimeInterval(OPNUserCollection.tombstoneRetention + 1)
+        )
+
+        #expect(merged.isEmpty)
     }
 
     @Test func theContentSignatureIgnoresWhenAndWhereItWasWritten() {
