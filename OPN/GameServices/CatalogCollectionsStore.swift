@@ -8,6 +8,13 @@ import Foundation
 struct CatalogCollectionsStore: Equatable {
     private static let storagePrefix = "OpenNOW.Catalog.Collections"
 
+    /// Posted after any account's collections are written or cleared. A store write has no other
+    /// channel to the UI: iCloud sync restores collections straight into `UserDefaults` from a
+    /// background actor, so a live view model would otherwise keep showing what it read at launch.
+    static let didChangeNotification = Notification.Name("OPNCatalogCollectionsStoreDidChange")
+    /// The `userInfo` key naming the account whose collections changed.
+    static let accountIdentifierKey = "accountIdentifier"
+
     static let empty = CatalogCollectionsStore()
 
     let collections: [OPNUserCollection]
@@ -18,7 +25,7 @@ struct CatalogCollectionsStore: Equatable {
 
     static func load(accountIdentifier: String) -> CatalogCollectionsStore {
         guard !accountIdentifier.isEmpty,
-              let data = OPNAppPreferenceStorage.standard.data(forKey: storageKey(accountIdentifier: accountIdentifier)),
+              let data = OPNAppPreferenceStorage.standard.data(forKey: resolveStorageKey(accountIdentifier: accountIdentifier)),
               let decoded = try? JSONDecoder().decode([LossyCollection].self, from: data) else {
             return .empty
         }
@@ -27,12 +34,32 @@ struct CatalogCollectionsStore: Equatable {
 
     func save(accountIdentifier: String) {
         guard !accountIdentifier.isEmpty else { return }
-        guard !collections.isEmpty else {
-            OPNAppPreferenceStorage.standard.removeObject(forKey: Self.storageKey(accountIdentifier: accountIdentifier))
-            return
+        let key = Self.resolveStorageKey(accountIdentifier: accountIdentifier)
+        if collections.isEmpty {
+            OPNAppPreferenceStorage.standard.removeObject(forKey: key)
+        } else {
+            guard let data = try? JSONEncoder().encode(collections) else { return }
+            OPNAppPreferenceStorage.standard.set(data, forKey: key)
         }
-        guard let data = try? JSONEncoder().encode(collections) else { return }
-        OPNAppPreferenceStorage.standard.set(data, forKey: Self.storageKey(accountIdentifier: accountIdentifier))
+        NotificationCenter.default.post(
+            name: Self.didChangeNotification,
+            object: nil,
+            userInfo: [Self.accountIdentifierKey: accountIdentifier]
+        )
+    }
+
+    /// The key an account's collections live under, resolved case-insensitively. NVIDIA account ids
+    /// and emails are case-insensitive semantically, and a key written before casing was normalized
+    /// must be found and reused rather than a second, empty key created beside it.
+    static func resolveStorageKey(accountIdentifier: String) -> String {
+        let canonical = storageKey(accountIdentifier: accountIdentifier)
+        guard OPNAppPreferenceStorage.standard.object(forKey: canonical) == nil else { return canonical }
+        let prefix = "\(storagePrefix)."
+        for key in OPNAppPreferenceStorage.standard.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+            let stored = String(key.dropFirst(prefix.count))
+            if stored.caseInsensitiveCompare(accountIdentifier) == .orderedSame { return key }
+        }
+        return canonical
     }
 
     static func storageKey(accountIdentifier: String) -> String {

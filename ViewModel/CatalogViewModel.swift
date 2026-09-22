@@ -338,7 +338,13 @@ final class CatalogViewModel {
     /// The create/rename/delete dialog, one at a time.
     var collectionsDialog: CatalogCollectionsDialog?
     var collectionsDraftName = ""
+    /// The icon the open dialog is editing. Nil draws the catalog default.
+    var collectionsDraftIcon: OPNCollectionIcon?
     var collectionsDialogError = ""
+    /// The icon picker raised from the create/rename dialog, and the dialog icon to restore if it
+    /// is cancelled rather than confirmed with DONE.
+    var isCollectionsIconPickerPresented = false
+    var collectionsIconPickerBaseline: OPNCollectionIcon?
     /// The one-time explainer that collections are local-only.
     var isCollectionsNoticePresented = false
     var selectedGameRevealRequest: CatalogGameRevealRequest?
@@ -423,19 +429,6 @@ final class CatalogViewModel {
         onSwitchAccount(match)
     }
 
-    /// The saved accounts as the menu bar snapshot carries them, the active one marked.
-    var menuBarAccounts: [OPNMenuBarAccount] {
-        menuBarLoginAccounts.map { login in
-            OPNMenuBarAccount(
-                email: login.email,
-                displayName: login.displayName,
-                membershipTier: login.membershipTier,
-                isSignedOut: menuBarSignedOutEmails.contains(login.email),
-                isActive: login.email == account.email
-            )
-        }
-    }
-
     /// Narrow door onto the image cache for `CatalogImagePrefetch`, which lives in its own file and
     /// therefore cannot see the private property.
     func prefetchImages(_ urls: [URL]) {
@@ -449,6 +442,9 @@ final class CatalogViewModel {
         playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
         recentlyPlayed = CatalogRecentlyPlayed.load(accountIdentifier: playtimeAccountIdentifier)
         userCollections = CatalogCollectionsStore.load(accountIdentifier: collectionsAccountIdentifier).collections
+        pruneOrphanedCollectionIcons()
+        observeCollectionsStoreChanges()
+        observeHomeArrangementChanges()
     }
 
     private func scheduleSearchDebounce() {
@@ -461,6 +457,12 @@ final class CatalogViewModel {
     }
 
     deinit {
+        if let observer = deinitHandle.collectionsStoreObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = deinitHandle.homeArrangementObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         deinitHandle.patchingPollTask?.cancel()
     }
 
@@ -704,6 +706,21 @@ final class CatalogViewModel {
 }
 
 
+extension CatalogViewModel {
+    /// The saved accounts as the menu bar snapshot carries them, the active one marked.
+    var menuBarAccounts: [OPNMenuBarAccount] {
+        menuBarLoginAccounts.map { login in
+            OPNMenuBarAccount(
+                email: login.email,
+                displayName: login.displayName,
+                membershipTier: login.membershipTier,
+                isSignedOut: menuBarSignedOutEmails.contains(login.email),
+                isActive: login.email == account.email
+            )
+        }
+    }
+}
+
 extension OPNCatalogPanelSectionObject {
     func sectionIdentity(fallbackPanelId: String) -> String {
         if !id.isEmpty { return id }
@@ -720,4 +737,6 @@ extension OPNCatalogGameObject {
 
 final class CatalogViewModelDeinitHandle: @unchecked Sendable {
     var patchingPollTask: Task<Void, Never>?
+    var collectionsStoreObserver: NSObjectProtocol?
+    var homeArrangementObserver: NSObjectProtocol?
 }

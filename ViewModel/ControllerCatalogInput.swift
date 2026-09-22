@@ -633,7 +633,7 @@ extension ControllerCatalogViewModel {
             catalog.showScreenshots()
         case .settings:
             catalog.showSettings(.input)
-        case .home, .library, .favorites, .userCollection:
+        case .home, .library, .favorites:
             performNavigationItem(item, catalog: catalog)
         case .desktopMode, .account, .addAccount:
             handleActionMenuHostItem(item)
@@ -641,14 +641,8 @@ extension ControllerCatalogViewModel {
     }
 
 
-    /// Runs a navigation row. A user collection is a local page, so it never routes through
-    /// `CatalogDestination`; the three server destinations keep sharing `destination(for:)`.
+    /// Runs a navigation row through the shared `CatalogDestination` mapping.
     private func performNavigationItem(_ item: ControllerActionMenuItem, catalog: CatalogViewModel) {
-        if case .userCollection(let id, _) = item {
-            catalog.openUserCollection(id: id)
-            focusArea = .content
-            return
-        }
         catalog.showCatalogDestination(Self.destination(for: item))
     }
 

@@ -226,7 +226,9 @@ struct ControllerGameRail: View {
         // collapsing to a single tile.
         let count = section.isPlaceholder ? fitted : min(fitted, max(games.count, 1))
         let totalSpacing = CGFloat(max(count - 1, 0)) * itemSpacing
-        let tileWidth = floor(max((contentWidth - totalSpacing) / CGFloat(count), 1))
+        // A sparse rail keeps its tiles at the preferred size instead of stretching them across the
+        // row: one game would otherwise paint a tile the page wide and taller than the rail holds.
+        let tileWidth = floor(min(layout.railPreferredTileWidth, max((contentWidth - totalSpacing) / CGFloat(count), 1)))
         let tileHeight = floor(tileWidth * 9 / 16)
         return ControllerRailLayoutMetrics(visibleCount: count, tileSize: CGSize(width: tileWidth, height: tileHeight), rowHeight: tileHeight + 4)
     }

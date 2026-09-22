@@ -32,6 +32,10 @@ struct CatalogRailView: View {
         return visibleGames
     }
     private var canShowAll: Bool { section.canLoadFullList }
+    private var collectionIcon: OPNCollectionIcon? {
+        guard case .userCollection(let id) = section.kind else { return nil }
+        return viewModel.collection(id: id)?.resolvedIcon
+    }
 
     var body: some View {
         if section.isPlaceholder {
@@ -48,7 +52,11 @@ struct CatalogRailView: View {
 
     private var loadedBody: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
+            HStack(spacing: 10 * uiScale) {
+                if let collectionIcon {
+                    OPNCollectionIconView(icon: collectionIcon, size: 18, weight: .bold)
+                        .foregroundStyle(OPNDesign.accentInk)
+                }
                 Text(section.title)
                     .catalogFont(size: 20, weight: .medium)
                     .foregroundStyle(OPNDesign.Text.primary)

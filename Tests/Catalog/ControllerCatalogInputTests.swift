@@ -156,9 +156,9 @@ import Testing
     #expect(!controller.isCollectionPickerVisible)
 }
 
-    @Test func controllerCollectionRowOpensTheLocalShowAll() {
+    @Test func theControllerMenuOmitsUserCollectionsButHomeKeepsThem() {
     let model = makeCatalogViewModelForTesting()
-    model.session.userId = "controller-collections-open-\(UUID().uuidString)"
+    model.session.userId = "controller-collections-omit-\(UUID().uuidString)"
     CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier)
     defer { CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier) }
 
@@ -171,17 +171,14 @@ import Testing
     model.catalogGames = [game]
     guard let collection = model.createCollection(name: "Co-op") else { return }
     model.toggleMembership(collectionId: collection.id, game: game)
+    let railID = OPNHomeCustomization.userCollectionRailID(collection.id)
 
     let controller = ControllerCatalogViewModel()
     controller.bind(catalog: model, host: ControllerCatalogHost(), capturesControllerInput: false)
-    let generation = model.browseGeneration
 
-    #expect(controller.actionMenuItems.contains { if case .userCollection(let id, _) = $0 { return id == collection.id } else { return false } })
-    controller.executeActionMenuItem(.userCollection(id: collection.id, name: collection.name))
-
-    #expect(model.isShowingLocalCollection)
-    #expect(model.displayedShowAllGames.map(\.title) == ["Hades"])
-    #expect(model.browseGeneration == generation)
+    // The collection keeps its rail on the controller home but is offered nowhere in the menu.
+    #expect(model.catalogSections.contains { $0.id == railID })
+    #expect(!controller.actionMenuItems.contains { $0.title == "Co-op" })
 }
 
     @Test func detailMoreMenuOffersCollections() {
@@ -191,8 +188,62 @@ import Testing
     let single = OPNCatalogGameObject(game: info)
 
     #expect(model.detailMoreActions(for: single).contains(.collections))
-    #expect(ControllerActionMenuItem.userCollection(id: "x", name: "Co-op").title == "Co-op")
-    #expect(ControllerActionMenuItem.userCollection(id: "x", name: "Co-op").icon == "square.stack.3d.up.fill")
+}
+
+    @Test func controllerRowActionsApplyAnIconToTheCollection() {
+    let model = makeCatalogViewModelForTesting()
+    model.session.userId = "controller-collections-icon-\(UUID().uuidString)"
+    CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier)
+    let priorNotice = CatalogCollectionsStore.isLocalOnlyNoticeSeen
+    CatalogCollectionsStore.isLocalOnlyNoticeSeen = true
+    defer {
+        CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier)
+        CatalogCollectionsStore.isLocalOnlyNoticeSeen = priorNotice
+    }
+
+    var info = OPNGameInfo()
+    info.id = "id-1"
+    info.title = "Hades"
+    info.launchAppId = "app-1"
+    info.variants = [OPNGameVariant(id: "app-1", appStore: "STEAM", serviceStatus: "AVAILABLE", isPatching: false)]
+    let game = OPNCatalogGameObject(game: info)
+    model.selectGame(game)
+    guard let collection = model.createCollection(name: "Co-op") else { return }
+
+    let controller = ControllerCatalogViewModel()
+    controller.bind(catalog: model, host: ControllerCatalogHost(), capturesControllerInput: false)
+    controller.openCollectionPicker(game: game)
+
+    controller.handleInput(.search)
+    #expect(controller.collectionEditor == .rowActions(id: collection.id))
+
+    controller.handleInput(.confirm)
+    #expect(controller.collectionEditor == .icon(id: collection.id))
+
+    guard let focused = controller.collectionIconSymbols.first?.name else {
+        Issue.record("the icon grid should offer at least one symbol")
+        return
+    }
+    controller.handleInput(.confirm)
+    #expect(controller.collectionEditor == .rowActions(id: collection.id))
+    #expect(model.collection(id: collection.id)?.icon?.validated == .symbol(focused))
+}
+
+    @Test func controllerResetClearsTheStagedIconWithoutApplyingIt() {
+    let model = makeCatalogViewModelForTesting()
+    model.session.userId = "controller-collections-icon-reset-\(UUID().uuidString)"
+    CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier)
+    defer { CatalogCollectionsStore(collections: []).save(accountIdentifier: model.collectionsAccountIdentifier) }
+    guard let collection = model.createCollection(name: "Co-op", icon: .symbol("bolt.fill")) else { return }
+
+    let controller = ControllerCatalogViewModel()
+    controller.bind(catalog: model, host: ControllerCatalogHost(), capturesControllerInput: false)
+    controller.beginCollectionIconEditor(id: collection.id)
+    #expect(controller.collectionIconDraft == .symbol("bolt.fill"))
+
+    controller.handleCollectionEditorInput(.actions)
+    #expect(controller.collectionIconDraft == nil)
+    #expect(model.collection(id: collection.id)?.icon == .symbol("bolt.fill"))
 }
 }
 

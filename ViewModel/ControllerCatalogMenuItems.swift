@@ -105,7 +105,6 @@ enum ControllerActionMenuItem {
     case home
     case library
     case favorites
-    case userCollection(id: String, name: String)
     case screenshots
     case recordings
     case settings
@@ -120,7 +119,6 @@ enum ControllerActionMenuItem {
         case .home: return "Go to Home"
         case .library: return "Go to Library"
         case .favorites: return "Go to Favorites"
-        case .userCollection(_, let name): return name
         case .screenshots: return "Open Screenshots"
         case .recordings: return "Open Recordings"
         case .settings: return "Open Settings"
@@ -146,7 +144,6 @@ enum ControllerActionMenuItem {
         case .home: return "gamecontroller.fill"
         case .library: return "rectangle.stack.fill"
         case .favorites: return "heart.fill"
-        case .userCollection: return "square.stack.3d.up.fill"
         case .screenshots: return "camera.fill"
         case .recordings: return "play.rectangle.fill"
         case .settings: return "gearshape.fill"

@@ -103,4 +103,42 @@ struct ScreenshotLibraryTests {
         #expect(stats.totalBytes == 0)
         #expect(stats.newest == nil)
     }
+
+    @Test func libraryWritesAnnounceTheChange() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let recorder = ScreenshotChangeRecorder()
+        let observer = NotificationCenter.default.addObserver(
+            forName: StreamScreenshotLibrary.didChangeNotification,
+            object: nil,
+            queue: nil
+        ) { _ in recorder.count += 1 }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let id = UUID()
+        let shot = StreamScreenshot(
+            id: id,
+            title: "Shot",
+            applicationID: "100",
+            createdAt: .now,
+            width: 1920,
+            height: 1080,
+            fileName: id.uuidString + ".png",
+            fileSizeBytes: 1_000_000,
+            albumIDs: [],
+            storageDirectoryPath: directory.path
+        )
+
+        try StreamScreenshotLibrary.update(shot)
+        #expect(recorder.count == 1)
+
+        try StreamScreenshotLibrary.delete(shot)
+        #expect(recorder.count == 2)
+    }
+}
+
+private final class ScreenshotChangeRecorder: @unchecked Sendable {
+    var count = 0
 }

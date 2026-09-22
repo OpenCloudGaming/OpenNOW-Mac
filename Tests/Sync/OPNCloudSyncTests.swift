@@ -139,6 +139,13 @@ import Testing
         #expect(hashed != OPNCloudSyncAccountNamespace.hash("other@example.com"))
     }
 
+    @Test func theAccountNamespaceNormalizesCase() {
+        #expect(OPNCloudSyncAccountNamespace.normalized("  RVu9-ABC  ") == "rvu9-abc")
+        #expect(OPNCloudSyncAccountNamespace.namespace(for: "RVu9-ABC") == OPNCloudSyncAccountNamespace.namespace(for: "rvu9-abc"))
+        // The raw hash is still distinct: it is what a pre-normalization file carries.
+        #expect(OPNCloudSyncAccountNamespace.hash("RVu9-ABC") != OPNCloudSyncAccountNamespace.hash("rvu9-abc"))
+    }
+
     // MARK: - Catalog merge
 
     @Test func catalogContentEqualityIgnoresWhenItWasWritten() {
@@ -148,6 +155,89 @@ import Testing
         #expect(OPNCloudSyncCatalogCodec.isContentEqual(older, newer))
         let different = OPNCloudSyncCatalogFile(generatedAt: Date(), deviceID: "B", collectionsByAccount: [:], railOrder: [], railsHidden: [])
         #expect(!OPNCloudSyncCatalogCodec.isContentEqual(older, different))
+    }
+
+    @Test func theCatalogMergeReKeysAPreNormalizationNamespace() {
+        let raw = "Alias-\(UUID().uuidString)"
+        let normalized = raw.lowercased()
+        let carried = [OPNUserCollection(id: "remote", name: "Remote")]
+        let priorArrangement = OPNHomeCustomization.arrangement
+        CatalogCollectionsStore(collections: [OPNUserCollection(id: "local", name: "Local")]).save(accountIdentifier: raw)
+        defer {
+            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: raw))
+            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: normalized))
+            OPNHomeCustomization.arrangement = priorArrangement
+        }
+
+        let aliasNamespace = OPNCloudSyncAccountNamespace.hash(raw)
+        let normalizedNamespace = OPNCloudSyncAccountNamespace.namespace(for: raw)
+        let remote = OPNCloudSyncCatalogFile(generatedAt: .distantPast, deviceID: "B", collectionsByAccount: [aliasNamespace: carried])
+
+        let result = OPNCloudSyncCatalogCodec.merge(remote: remote, baseline: nil, device: "A")
+
+        #expect(result.file.collectionsByAccount[aliasNamespace] == nil)
+        #expect(result.file.collectionsByAccount[normalizedNamespace] == carried)
+    }
+
+    @Test func theContentSignatureIgnoresWhenAndWhereItWasWritten() {
+        let collections = [OPNUserCollection(id: "a", name: "Finished")]
+        let older = OPNCloudSyncCatalogFile(generatedAt: .distantPast, deviceID: "A", deviceName: "Old Mac", collectionsByAccount: ["ns": collections], railOrder: ["x"], railsHidden: ["y"])
+        let newer = OPNCloudSyncCatalogFile(generatedAt: Date(), deviceID: "B", deviceName: "New Mac", collectionsByAccount: ["ns": collections], railOrder: ["x"], railsHidden: ["y"])
+        #expect(OPNCloudSyncCatalogCodec.contentSignature(older) == OPNCloudSyncCatalogCodec.contentSignature(newer))
+
+        let different = OPNCloudSyncCatalogFile(generatedAt: Date(), deviceID: "B", collectionsByAccount: [:], railOrder: [], railsHidden: [])
+        #expect(OPNCloudSyncCatalogCodec.contentSignature(older) != OPNCloudSyncCatalogCodec.contentSignature(different))
+    }
+
+    @Test func aConflictNeedsBothSidesChangedFromTheBaseline() {
+        let agreed = OPNCloudSyncCatalogFile(deviceID: "A", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "One")]])
+        let baseline = OPNCloudSyncCatalogCodec.SignatureBaseline(
+            local: OPNCloudSyncCatalogCodec.contentSignature(agreed),
+            remote: OPNCloudSyncCatalogCodec.contentSignature(agreed)
+        )
+        let localEdit = OPNCloudSyncCatalogFile(deviceID: "A", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "Local edit")]])
+        let remoteEdit = OPNCloudSyncCatalogFile(deviceID: "B", deviceName: "Studio Mac", collectionsByAccount: ["ns": [OPNUserCollection(id: "a", name: "Remote edit")]])
+
+        // Only local moved: it exports. Only remote moved: it imports. Neither is a conflict.
+        #expect(OPNCloudSyncCatalogCodec.detectConflict(remote: agreed, baseline: baseline, local: localEdit) == nil)
+        #expect(OPNCloudSyncCatalogCodec.detectConflict(remote: remoteEdit, baseline: baseline, local: agreed) == nil)
+
+        let conflict = OPNCloudSyncCatalogCodec.detectConflict(remote: remoteEdit, baseline: baseline, local: localEdit)
+        #expect(conflict?.remoteDeviceID == "B")
+        #expect(conflict?.remoteDeviceName == "Studio Mac")
+        #expect(conflict?.remoteDisplayName == "Studio Mac")
+
+        // Before any settled sync there is no baseline, so the first merge runs unattended.
+        #expect(OPNCloudSyncCatalogCodec.detectConflict(remote: remoteEdit, baseline: nil, local: localEdit) == nil)
+    }
+
+    @Test func theSettingsSignatureIgnoresKeyOrder() {
+        let first: [String: Any] = ["k1": "v1", "k2": 2]
+        let reordered: [String: Any] = ["k2": 2, "k1": "v1"]
+        #expect(OPNCloudSyncSettingsRegistry.contentSignature(values: first) == OPNCloudSyncSettingsRegistry.contentSignature(values: reordered))
+        #expect(OPNCloudSyncSettingsRegistry.contentSignature(values: first) != OPNCloudSyncSettingsRegistry.contentSignature(values: ["k1": "v1", "k2": 3]))
+    }
+
+    @Test func aSettingsConflictNeedsBothSidesChangedFromTheBaseline() {
+        let key = "OpenNOW.Interface.Appearance"
+        let agreed: [String: Any] = [key: "balanced"]
+        let baseline = OPNCloudSyncSettingsRegistry.SignatureBaseline(
+            local: OPNCloudSyncSettingsRegistry.contentSignature(values: agreed),
+            remote: OPNCloudSyncSettingsRegistry.contentSignature(values: agreed)
+        )
+        let localEdit: [String: Any] = [key: "dark"]
+        let unchangedRemote = OPNCloudSyncSettingsFile(entries: [key: entry("balanced", updatedAt: Date(), device: "B")])
+        let changedRemote = OPNCloudSyncSettingsFile(deviceName: "Studio Mac", entries: [key: entry("light", updatedAt: Date(), device: "B")])
+
+        // No baseline yet, or only one side moved: no conflict.
+        #expect(OPNCloudSyncSettingsRegistry.detectConflict(local: localEdit, remote: changedRemote, baseline: nil) == nil)
+        #expect(OPNCloudSyncSettingsRegistry.detectConflict(local: localEdit, remote: unchangedRemote, baseline: baseline) == nil)
+        #expect(OPNCloudSyncSettingsRegistry.detectConflict(local: agreed, remote: changedRemote, baseline: baseline) == nil)
+
+        let conflict = OPNCloudSyncSettingsRegistry.detectConflict(local: localEdit, remote: changedRemote, baseline: baseline)
+        #expect(conflict?.category == .settings)
+        #expect(conflict?.remoteDeviceName == "Studio Mac")
+        #expect(conflict?.remoteDisplayName == "Studio Mac")
     }
 
     // MARK: - Screenshot mirror
@@ -165,11 +255,11 @@ import Testing
         try Data("meta".utf8).write(to: source.appendingPathComponent("shot.json"))
         try Data("notes".utf8).write(to: source.appendingPathComponent("readme.txt"))
 
-        let first = try OPNCloudSyncScreenshotMirror.mirror(from: source, to: destination)
+        let first = try OPNCloudSyncFileMirror.mirror(from: source, to: destination)
         #expect(first.copied == 2)
         #expect(!fileManager.fileExists(atPath: destination.appendingPathComponent("readme.txt").path))
 
-        let second = try OPNCloudSyncScreenshotMirror.mirror(from: source, to: destination)
+        let second = try OPNCloudSyncFileMirror.mirror(from: source, to: destination)
         #expect(second.copied == 0)
         #expect(second.skipped == 2)
     }

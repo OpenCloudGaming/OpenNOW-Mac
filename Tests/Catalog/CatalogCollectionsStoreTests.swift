@@ -42,6 +42,26 @@ struct CatalogCollectionsStoreTests {
         #expect(CatalogCollectionsStore.load(accountIdentifier: owner).collections.isEmpty)
     }
 
+    @Test func aKeyWrittenInAnotherCaseIsFoundAndReused() {
+        let identifier = "collections-case-\(UUID().uuidString)"
+        let differentlyCased = identifier.uppercased()
+        defer {
+            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: identifier))
+            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased))
+        }
+        let stored = [OPNUserCollection(id: "c", name: "C")]
+        if let data = try? JSONEncoder().encode(stored) {
+            OPNAppPreferenceStorage.standard.set(data, forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased))
+        }
+
+        #expect(CatalogCollectionsStore.load(accountIdentifier: identifier).collections == stored)
+
+        // Saving through the canonical spelling reuses the existing key rather than creating a second.
+        CatalogCollectionsStore(collections: [OPNUserCollection(id: "d", name: "D")]).save(accountIdentifier: identifier)
+        #expect(OPNAppPreferenceStorage.standard.data(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased)) != nil)
+        #expect(OPNAppPreferenceStorage.standard.data(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: identifier)) == nil)
+    }
+
     @Test func namesAreTrimmedWhileBlankNamesAreDropped() {
         let store = CatalogCollectionsStore(collections: [
             OPNUserCollection(id: "keep", name: "  Co-op  "),
@@ -101,4 +121,34 @@ struct CatalogCollectionsStoreTests {
         #expect(added.gameIds == ["game-1"])
         #expect(added.toggling("game-1").gameIds.isEmpty)
     }
+
+    @Test func savingCollectionsAnnouncesTheAccountThatChanged() {
+        let owner = account("announce")
+        defer { clear(owner) }
+
+        let recorder = CollectionChangeRecorder()
+        let observer = NotificationCenter.default.addObserver(
+            forName: CatalogCollectionsStore.didChangeNotification,
+            object: nil,
+            queue: nil
+        ) { notification in
+            // Only this test's account: the observer sees every store write in the process and the
+            // suite's tests run in parallel, so an unfiltered recorder is a race.
+            guard let identifier = notification.userInfo?[CatalogCollectionsStore.accountIdentifierKey] as? String,
+                  identifier == owner else { return }
+            recorder.accounts.append(identifier)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        CatalogCollectionsStore(collections: [OPNUserCollection(id: "c", name: "C")]).save(accountIdentifier: owner)
+        #expect(recorder.accounts == [owner])
+
+        // Clearing the list is a change too: deleting the last collection must reach a live reader.
+        CatalogCollectionsStore(collections: []).save(accountIdentifier: owner)
+        #expect(recorder.accounts == [owner, owner])
+    }
+}
+
+private final class CollectionChangeRecorder: @unchecked Sendable {
+    var accounts: [String] = []
 }

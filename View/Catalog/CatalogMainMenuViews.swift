@@ -50,7 +50,6 @@ struct CatalogMainMenuPanel: View {
     let onSignOut: (LoginAccount) -> Void
     let availableHeight: CGFloat
     @Environment(\.opnUIScale) private var uiScale
-    @State private var isCollectionsExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -156,63 +155,19 @@ struct CatalogMainMenuPanel: View {
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
     }
 
+    /// Collections are opened from the manager or their home rails, not listed here: a long list
+    /// should not stretch a navigation menu, and the manager is where a collection is also created.
     private var collectionsSection: some View {
         VStack(alignment: .leading, spacing: 6 * uiScale) {
-            HStack(spacing: 6 * uiScale) {
-                CatalogMainMenuSectionLabel("COLLECTIONS")
-                Spacer(minLength: 0)
-                Button {
-                    withAnimation(.easeOut(duration: 0.16)) { isCollectionsExpanded.toggle() }
-                } label: {
-                    Image(systemName: isCollectionsExpanded ? "chevron.down" : "chevron.right")
-                        .catalogFont(size: 10, weight: .bold)
-                        .foregroundStyle(OPNDesign.Text.muted)
-                        .frame(width: 22 * uiScale, height: 22 * uiScale)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isCollectionsExpanded ? "Collapse collections" : "Expand collections")
-            }
-            if isCollectionsExpanded {
-                collectionsExpandedContent
+            CatalogMainMenuSectionLabel("COLLECTIONS")
+            CatalogMainMenuRow(title: "Manage Collections", subtitle: "Open, rename or delete your collections", systemImage: "slider.horizontal.3", isActive: false) {
+                viewModel.presentCollectionsManager()
+                isPresented = false
             }
         }
         .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
         .padding(.top, OPNDesign.Spacing.contentVertical(scale: uiScale))
     }
-
-    @ViewBuilder private var collectionsExpandedContent: some View {
-        if viewModel.userCollections.isEmpty {
-            Text("No collections yet.")
-                .catalogFont(size: 12, weight: .medium)
-                .foregroundStyle(OPNDesign.Text.tertiary)
-                .padding(.horizontal, 12 * uiScale)
-                .padding(.vertical, 4 * uiScale)
-        }
-        ForEach(viewModel.sortedUserCollections) { collection in
-            CatalogMainMenuRow(
-                title: collection.name,
-                subtitle: collection.memberCountText,
-                systemImage: "square.stack.3d.up.fill",
-                isActive: viewModel.selectedShowAllSection?.id == OPNHomeCustomization.userCollectionRailID(collection.id)
-            ) {
-                viewModel.openUserCollection(id: collection.id)
-                isPresented = false
-            }
-        }
-        CatalogMainMenuRow(title: "New Collection…", subtitle: "A group stored on this Mac only", systemImage: "plus.square", isActive: false) {
-            viewModel.presentCollectionsDialog(.create)
-            isPresented = false
-        }
-        CatalogMainMenuRow(title: "Manage Collections…", subtitle: "Rename or delete local collections", systemImage: "slider.horizontal.3", isActive: false) {
-            viewModel.presentCollectionsManager()
-            isPresented = false
-        }
-        CatalogCollectionsLocalOnlyNote()
-            .padding(.horizontal, 12 * uiScale)
-            .padding(.top, 4 * uiScale)
-            .padding(.bottom, 2 * uiScale)
-    }
-
 
     private func catalogDestinationIcon(_ destination: CatalogDestination) -> String {
         switch destination {

@@ -87,6 +87,9 @@ enum ControllerCollectionEditor: Equatable {
     case create
     case rename(id: String)
     case confirmDelete(id: String)
+    /// The pad's icon grid for a collection. Custom image uploads are desktop-only: a pad has no
+    /// file picker, so the grid offers the built-in symbols alone.
+    case icon(id: String)
 }
 
 @MainActor
@@ -145,6 +148,46 @@ final class ControllerCatalogViewModel: ObservableObject {
     /// with search but routes its keystrokes to `collectionNameDraft`.
     @Published var isCollectionNameKeyboardVisible = false
     @Published var collectionNameDraft = ""
+    /// The pad's icon grid: which category chip is showing, which cell is focused, and the glyph
+    /// the focused cell stages. `nil` means the catalog default.
+    @Published var collectionIconCategoryIndex = 0
+    @Published var collectionIconSymbolIndex = 0
+    @Published var collectionIconDraft: OPNCollectionIcon?
+
+    /// The most cells the pad's icon grid draws for one category. A pad has no search field, so a
+    /// category is browsed by scrolling rather than filtered.
+    static let maximumControllerIconSymbols = 120
+    /// The pad icon grid's column count, which the D-pad navigation steps by.
+    static let collectionIconColumnCount = 6
+
+    private static let popularCategory = OPNCollectionSymbolCategory(
+        id: OPNCollectionSymbolCatalog.popularCategoryID,
+        title: "Popular"
+    )
+    private static let allSymbolsCategory = OPNCollectionSymbolCategory(
+        id: OPNCollectionSymbolCatalog.allCategoryID,
+        title: "All"
+    )
+
+    var collectionIconCategories: [OPNCollectionSymbolCategory] {
+        [Self.popularCategory, Self.allSymbolsCategory] + OPNCollectionSymbolCatalog.categories
+    }
+
+    var collectionIconSymbols: [OPNCollectionSymbol] {
+        let categoryID = collectionIconCategories.indices.contains(collectionIconCategoryIndex)
+            ? collectionIconCategories[collectionIconCategoryIndex].id
+            : OPNCollectionSymbolCatalog.allCategoryID
+        return Array(OPNCollectionSymbolCatalog.symbols(in: categoryID).prefix(Self.maximumControllerIconSymbols))
+    }
+
+    func setCollectionIconCategoryIndex(_ index: Int) {
+        collectionIconCategoryIndex = min(max(index, 0), max(collectionIconCategories.count - 1, 0))
+        collectionIconSymbolIndex = 0
+    }
+
+    func setCollectionIconSymbolIndex(_ index: Int, symbolCount: Int) {
+        collectionIconSymbolIndex = min(max(index, 0), max(symbolCount - 1, 0))
+    }
 
     // Library and Favorites are no longer standalone destinations — they are reached from the
     // Home rails' Show All (revamped, filterable catalog view), so they are omitted from the nav.
@@ -328,10 +371,9 @@ final class ControllerCatalogViewModel: ObservableObject {
         guard let catalog else { return [] }
         var items: [ControllerActionMenuItem] = [.refresh]
         if catalog.isBrowseMode { items.append(.clearSearch) }
+        // Collections are deliberately absent: like the desktop menu, they are reached from their
+        // home rails, and listing every one here would crowd the pad's action menu with no ordering.
         items.append(contentsOf: [.home])
-        // The reader's own collections sit with the destinations, after Home. They are local lists,
-        // so their page is the local Show All rather than a server browse.
-        items.append(contentsOf: catalog.sortedUserCollections.map { .userCollection(id: $0.id, name: $0.name) })
         items.append(contentsOf: [.screenshots, .recordings, .desktopMode, .settings])
         // Active account first (it must be listed at all, or it can never be forgotten on a pad),
         // then the rest in the order the host handed them over.

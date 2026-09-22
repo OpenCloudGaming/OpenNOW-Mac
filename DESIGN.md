@@ -297,6 +297,40 @@ Text Primary + #FFFFFF @ 0.08 fill on hover. The selected row carries an accent
 checkmark. Dismisses on outside click, Escape, or selection, and closes when the
 underlying item set changes.
 
+### Collection Icon Picker (`OPNCollectionIconView`, `CatalogCollectionIconPickerOverlay`)
+
+Every collection draws its glyph through one component, `OPNCollectionIconView`, so a symbol and a
+reader-imported image read identically wherever a collection appears: the Add to Collection picker,
+the Collections manager, the home rails' headers, the collection's Show All header, the empty state,
+and controller mode's action menu. It takes an unscaled base `size` and scales it
+itself (mirroring `catalogFont`), rendering an SF Symbol or, for an imported image, the PNG the store
+normalized to at most 256px. A missing image or a symbol this macOS does not carry falls back to the
+catalog default, so a tile is never blank.
+
+The desktop picker (`CatalogCollectionIconPickerOverlay`) is a centered 620-wide panel over the Scrim
+at the dialog's elevation: 2px accent top bar, Surface Deep @ 0.98, 1px Stroke Subtle, the deep
+shadow. Header is the eyebrow "CHOOSE ICON" over the collection name with the current glyph leading.
+Below it: a 44-high search field (the dialog field spec — #FFFFFF @ 0.08 fill, 1px Stroke Regular,
+accent caret), a horizontal category chip row (30-high, Row Fill resting, accent fill with
+`onAccent` ink when selected), and a `LazyVGrid` of 44×44 cells at 6 spacing — Row Fill resting, a
+1px Stroke Subtle, accent fill with `onAccent` ink when it is the chosen glyph, each cell labelled
+with its symbol name. The chip row opens on **Popular**, a hand-picked spread of recognizable glyphs,
+ahead of **All** and the subject categories, because All starts at the numeric and letter symbols and
+reads as noise before a search or category is chosen. A typed search is also offered verbatim as
+"Use “…” as an exact symbol name", so a glyph the bundled catalog does not list is still reachable.
+The grid caps at 600 cells and says so, because browsing all symbols unfiltered builds a very long
+list.
+
+The header carries a top-trailing close (a 32×32 square `xmark` button, the icon-only square spec),
+and the footer holds UPLOAD IMAGE… and RESET as secondary actions beside CANCEL and a SAVE-style DONE.
+CANCEL and the scrim restore the icon the picker opened with; DONE keeps the choice as the dialog's
+draft, which the dialog's own SAVE still has to commit.
+
+Controller mode reaches the same glyphs without a file picker: the collection row's Options opens
+Icon, Rename, Delete; Icon opens a D-pad grid inside the picker panel, the D-pad moving the cursor,
+LB/RB stepping categories, X clearing to the default, and A applying the focused glyph. Custom
+images are desktop-only, since a pad has no file picker.
+
 ### Main Menu (app shell)
 
 Full-height leading panel (`CatalogMainMenuPanel`), width 344, surface #171717 @

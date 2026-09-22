@@ -41,8 +41,7 @@ struct CatalogEmptyCollectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14 * uiScale) {
             HStack(spacing: 12 * uiScale) {
-                Image(systemName: "square.stack.3d.up.fill")
-                    .catalogFont(size: 22, weight: .bold)
+                OPNCollectionIconView(icon: emptyIcon, size: 22, weight: .bold)
                     .foregroundStyle(OPNDesign.accentInk)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
@@ -64,6 +63,12 @@ struct CatalogEmptyCollectionView: View {
         .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .padding(.horizontal, 22 * uiScale)
         .padding(.top, 24 * uiScale)
+    }
+
+    private var emptyIcon: OPNCollectionIcon {
+        guard case .userCollection(let id) = viewModel.selectedShowAllSection?.kind,
+              let collection = viewModel.collection(id: id) else { return .fallback }
+        return collection.resolvedIcon
     }
 }
 
@@ -136,8 +141,7 @@ struct CatalogCollectionsPickerOverlay: View {
             viewModel.toggleMembership(collectionId: collection.id, game: game)
         } label: {
             HStack(spacing: 12 * uiScale) {
-                Image(systemName: isMember ? "checkmark.square.fill" : "square")
-                    .catalogFont(size: 16, weight: .bold)
+                OPNCollectionIconView(icon: collection.resolvedIcon, size: 18, weight: .medium)
                     .foregroundStyle(isMember ? OPNDesign.accentInk : OPNDesign.Text.secondary)
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
                     Text(collection.name)
@@ -149,6 +153,9 @@ struct CatalogCollectionsPickerOverlay: View {
                         .foregroundStyle(OPNDesign.Text.tertiary)
                 }
                 Spacer(minLength: 0)
+                Image(systemName: isMember ? "checkmark.square.fill" : "square")
+                    .catalogFont(size: 16, weight: .bold)
+                    .foregroundStyle(isMember ? OPNDesign.accentInk : OPNDesign.Text.secondary)
             }
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 48 * uiScale)
@@ -246,7 +253,7 @@ struct CatalogCollectionsManagerOverlay: View {
                 .catalogFont(size: 11, weight: .bold)
                 .tracking(1.1)
                 .foregroundStyle(OPNDesign.accentInk)
-            Text("Manage your local collections")
+            Text("Manage your collections")
                 .catalogFont(size: 19, weight: .bold)
                 .foregroundStyle(OPNDesign.Text.primary)
         }
@@ -261,14 +268,19 @@ struct CatalogCollectionsManagerOverlay: View {
                 viewModel.openUserCollection(id: collection.id)
                 close()
             } label: {
-                VStack(alignment: .leading, spacing: 2 * uiScale) {
-                    Text(collection.name)
-                        .catalogFont(size: 14, weight: .bold)
-                        .foregroundStyle(OPNDesign.Text.primary)
-                        .lineLimit(1)
-                    Text(collection.memberCountText)
-                        .catalogFont(size: 11, weight: .medium)
-                        .foregroundStyle(OPNDesign.Text.tertiary)
+                HStack(spacing: 12 * uiScale) {
+                    OPNCollectionIconView(icon: collection.resolvedIcon, size: 18, weight: .medium)
+                        .foregroundStyle(OPNDesign.accentInk)
+                    VStack(alignment: .leading, spacing: 2 * uiScale) {
+                        Text(collection.name)
+                            .catalogFont(size: 14, weight: .bold)
+                            .foregroundStyle(OPNDesign.Text.primary)
+                            .lineLimit(1)
+                        Text(collection.memberCountText)
+                            .catalogFont(size: 11, weight: .medium)
+                            .foregroundStyle(OPNDesign.Text.tertiary)
+                    }
+                    Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -347,15 +359,28 @@ struct CatalogCollectionsDialogOverlay: View {
                         .foregroundStyle(OPNDesign.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 default:
-                    TextField("Collection name", text: $viewModel.collectionsDraftName)
-                        .textFieldStyle(.plain)
-                        .catalogFont(size: 15, weight: .medium)
-                        .foregroundStyle(OPNDesign.Text.primary)
-                        .padding(.horizontal, 12 * uiScale)
-                        .frame(height: 44 * uiScale)
-                        .background(OPNDesign.Fill.neutral(0.08))
-                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
-                        .onSubmit { viewModel.confirmCollectionsDialog() }
+                    HStack(spacing: 10 * uiScale) {
+                        Button { viewModel.presentCollectionsIconPicker() } label: {
+                            OPNCollectionIconView(icon: viewModel.collectionsDraftIcon ?? .fallback, size: 22, weight: .medium)
+                                .foregroundStyle(OPNDesign.accentInk)
+                                .frame(width: 44 * uiScale, height: 44 * uiScale)
+                                .background(OPNDesign.Fill.neutral(0.08))
+                                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Choose collection icon")
+
+                        TextField("Collection name", text: $viewModel.collectionsDraftName)
+                            .textFieldStyle(.plain)
+                            .catalogFont(size: 15, weight: .medium)
+                            .foregroundStyle(OPNDesign.Text.primary)
+                            .padding(.horizontal, 12 * uiScale)
+                            .frame(height: 44 * uiScale)
+                            .background(OPNDesign.Fill.neutral(0.08))
+                            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                            .onSubmit { viewModel.confirmCollectionsDialog() }
+                    }
                     if !viewModel.collectionsDialogError.isEmpty {
                         Text(viewModel.collectionsDialogError)
                             .catalogFont(size: 12, weight: .medium)

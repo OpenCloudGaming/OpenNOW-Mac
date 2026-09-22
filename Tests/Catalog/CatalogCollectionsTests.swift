@@ -191,4 +191,16 @@ import Foundation
         model.openUserCollection(id: collection.id)
         #expect(model.localShowAllUnavailableCount == 1)
     }
+
+    @Test func aNewEmptyCollectionAppearsInTheHomeCategoryListAndLeavesOnDelete() {
+        let model = makeModel()
+        defer { clear(model) }
+        guard let collection = model.createCollection(name: "Empty") else { return }
+        let railID = OPNHomeCustomization.userCollectionRailID(collection.id)
+
+        #expect(model.homeRailRows.contains { $0.id == railID && $0.title == "Empty" && $0.isVisible })
+
+        model.deleteCollection(id: collection.id)
+        #expect(!model.homeRailRows.contains { $0.id == railID })
+    }
 }

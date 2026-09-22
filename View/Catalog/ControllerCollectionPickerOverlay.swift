@@ -170,12 +170,91 @@ struct ControllerCollectionPickerOverlay: View {
                 editorButton(title: "Delete", index: 1, isDestructive: true) {
                     controller.deleteCollectionFromView(id: id)
                 }
+            case .icon(let id):
+                iconPickerBody(id: id)
             case .create, .rename:
                 EmptyView()
             }
         }
         .padding(.horizontal, 22 * uiScale)
         .padding(.bottom, 18 * uiScale)
+    }
+
+    @ViewBuilder
+    private func iconPickerBody(id: String) -> some View {
+        let categories = controller.collectionIconCategories
+        let symbols = controller.collectionIconSymbols
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
+            Text("ICON")
+                .catalogFont(size: 10, weight: .bold)
+                .tracking(1.1)
+                .foregroundStyle(OPNDesign.Text.tertiary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6 * uiScale) {
+                    ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
+                        iconCategoryChip(category, isFocused: index == controller.collectionIconCategoryIndex)
+                    }
+                }
+                .padding(.vertical, 2 * uiScale)
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: 6 * uiScale), count: ControllerCatalogViewModel.collectionIconColumnCount),
+                        spacing: 6 * uiScale
+                    ) {
+                        ForEach(Array(symbols.enumerated()), id: \.element.name) { index, symbol in
+                            iconCell(symbol, isFocused: index == controller.collectionIconSymbolIndex)
+                                .id(index)
+                        }
+                    }
+                    .padding(.vertical, 2 * uiScale)
+                }
+                .frame(maxHeight: 300 * uiScale)
+                .onChange(of: controller.collectionIconSymbolIndex) { _, index in
+                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(index, anchor: .center) }
+                }
+            }
+
+            HStack(spacing: 8 * uiScale) {
+                iconHint(glyph: glyphs.pageLeft, text: "CATEGORY")
+                iconHint(glyph: glyphs.pageRight, text: "CATEGORY")
+                iconHint(glyph: glyphs.actions, text: "RESET")
+            }
+        }
+    }
+
+    private func iconCategoryChip(_ category: OPNCollectionSymbolCategory, isFocused: Bool) -> some View {
+        Text(category.title)
+            .catalogFont(size: 12, weight: .bold)
+            .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.secondary)
+            .padding(.horizontal, 12 * uiScale)
+            .frame(height: 32 * uiScale)
+            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
+            .overlay { Rectangle().stroke(isFocused ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+    }
+
+    private func iconCell(_ symbol: OPNCollectionSymbol, isFocused: Bool) -> some View {
+        let isSelected = controller.collectionIconDraft == .symbol(symbol.name)
+        return OPNCollectionIconView(icon: .symbol(symbol.name), size: 18, weight: .medium)
+            .foregroundStyle(isFocused ? .black.opacity(0.86) : (isSelected ? OPNDesign.accentInk : OPNDesign.Text.secondary))
+            .frame(maxWidth: .infinity)
+            .frame(height: 40 * uiScale)
+            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(isSelected ? 0.12 : 0.055))
+            .overlay { Rectangle().stroke(isSelected && !isFocused ? OPNDesign.accent.opacity(0.6) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused)
+    }
+
+    private func iconHint(glyph: ControllerInputGlyph, text: String) -> some View {
+        HStack(spacing: 5 * uiScale) {
+            ControllerGlyphPill(glyph: glyph)
+            Text(text)
+                .catalogFont(size: 10, weight: .bold)
+                .tracking(0.5)
+        }
+        .foregroundStyle(OPNDesign.Text.tertiary)
     }
 
     private func editorButton(title: String, index: Int, isDestructive: Bool, action: @escaping () -> Void) -> some View {

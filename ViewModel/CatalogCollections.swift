@@ -50,12 +50,12 @@ extension CatalogViewModel {
     // MARK: - Create / rename / delete
 
     @discardableResult
-    func createCollection(name: String) -> OPNUserCollection? {
+    func createCollection(name: String, icon: OPNCollectionIcon? = nil) -> OPNUserCollection? {
         guard userCollections.count < OPNUserCollection.maximumCount else {
             collectionsDialogError = "You can keep at most \(OPNUserCollection.maximumCount) collections."
             return nil
         }
-        let candidate = OPNUserCollection(id: UUID().uuidString.lowercased(), name: name)
+        let candidate = OPNUserCollection(id: UUID().uuidString.lowercased(), name: name, icon: icon)
         guard let validated = candidate.validated else {
             collectionsDialogError = Self.collectionNameError(name)
             return nil
@@ -66,15 +66,31 @@ extension CatalogViewModel {
     }
 
     @discardableResult
-    func renameCollection(id: String, name: String) -> Bool {
+    func renameCollection(id: String, name: String, icon: OPNCollectionIcon? = nil) -> Bool {
         guard let index = userCollections.firstIndex(where: { $0.id == id }) else { return false }
-        guard let validated = userCollections[index].renamed(name).validated else {
+        let retainedIcon = icon ?? userCollections[index].icon
+        guard let validated = userCollections[index].renamed(name).withIcon(retainedIcon).validated else {
             collectionsDialogError = Self.collectionNameError(name)
             return false
         }
         userCollections[index] = validated
         persistUserCollections()
         return true
+    }
+
+    /// Sets or clears one collection's icon. Clearing stores nil, which draws the catalog default.
+    @discardableResult
+    func setCollectionIcon(_ icon: OPNCollectionIcon?, collectionId: String) -> Bool {
+        guard let index = userCollections.firstIndex(where: { $0.id == collectionId }) else { return false }
+        guard let validated = userCollections[index].withIcon(icon).validated else { return false }
+        userCollections[index] = validated
+        persistUserCollections()
+        return true
+    }
+
+    /// The glyph a collection draws, resolved to the catalog default when it has none.
+    func icon(for collection: OPNUserCollection) -> OPNCollectionIcon {
+        collection.resolvedIcon
     }
 
     func deleteCollection(id: String) {
@@ -140,6 +156,38 @@ extension CatalogViewModel {
         isCollectionsPickerPresented = false
     }
 
+    func presentCollectionsIconPicker() {
+        collectionsIconPickerBaseline = collectionsDraftIcon
+        isCollectionsIconPickerPresented = true
+    }
+
+    /// Closes the picker keeping the chosen glyph. The dialog's own SAVE still decides whether it is
+    /// stored, so DONE is a preview confirmation, not a write.
+    func dismissCollectionsIconPicker() {
+        isCollectionsIconPickerPresented = false
+    }
+
+    /// Closes the picker and restores the dialog's icon to what it was when the picker opened.
+    func cancelCollectionsIconPicker() {
+        collectionsDraftIcon = collectionsIconPickerBaseline
+        isCollectionsIconPickerPresented = false
+    }
+
+    /// Sets the open dialog's icon draft from a built-in symbol or a cleared choice.
+    func setCollectionsDraftIcon(_ icon: OPNCollectionIcon?) {
+        collectionsDraftIcon = icon?.validated
+        collectionsDialogError = ""
+    }
+
+    /// Imports a reader-chosen image into the icon store and returns the icon that points at it, or
+    /// nil when the file cannot be decoded or is kept out by the size limits. The image is stored
+    /// immediately; a cancelled dialog leaves an orphan the next prune removes.
+    func storeCollectionIconImage(from url: URL) -> OPNCollectionIcon? {
+        let identifier = UUID().uuidString.lowercased()
+        guard OPNCollectionIconStore.storeImage(from: url, assetIdentifier: identifier) else { return nil }
+        return .image(assetIdentifier: identifier)
+    }
+
     func presentCollectionsManager() {
         isCollectionsManagerPresented = true
         revealCollectionsLocalOnlyNotice()
@@ -155,10 +203,13 @@ extension CatalogViewModel {
         switch dialog {
         case .create:
             collectionsDraftName = ""
+            collectionsDraftIcon = nil
         case .rename(let id):
             collectionsDraftName = collection(id: id)?.name ?? ""
+            collectionsDraftIcon = collection(id: id)?.icon
         case .delete:
             collectionsDraftName = ""
+            collectionsDraftIcon = nil
         }
     }
 
@@ -166,6 +217,7 @@ extension CatalogViewModel {
         collectionsDialog = nil
         collectionsDialogError = ""
         collectionsDraftName = ""
+        collectionsDraftIcon = nil
     }
 
     /// Runs whichever dialog is up against the current draft. Returns true when it closed.
@@ -174,9 +226,9 @@ extension CatalogViewModel {
         guard let dialog = collectionsDialog else { return false }
         switch dialog {
         case .create:
-            guard createCollection(name: collectionsDraftName) != nil else { return false }
+            guard createCollection(name: collectionsDraftName, icon: collectionsDraftIcon) != nil else { return false }
         case .rename(let id):
-            guard renameCollection(id: id, name: collectionsDraftName) else { return false }
+            guard renameCollection(id: id, name: collectionsDraftName, icon: collectionsDraftIcon) else { return false }
         case .delete(let id):
             deleteCollection(id: id)
         }
@@ -205,6 +257,43 @@ extension CatalogViewModel {
 
     func persistUserCollections() {
         CatalogCollectionsStore(collections: userCollections).save(accountIdentifier: collectionsAccountIdentifier)
+        pruneOrphanedCollectionIcons()
+    }
+
+    /// Drops custom icon files no collection names any more, so deleting a collection also deletes
+    /// the image behind its icon instead of leaving it on disk forever.
+    func pruneOrphanedCollectionIcons() {
+        let liveAssets = Set(userCollections.compactMap { collection -> String? in
+            guard let icon = collection.icon?.validated, icon.kind == .image else { return nil }
+            return icon.value
+        })
+        OPNCollectionIconStore.removeOrphans(keeping: liveAssets)
+    }
+
+    /// iCloud sync writes the collections store directly from a background actor, so without a nudge
+    /// this model keeps showing the collections it read at launch. Reload only the account on screen,
+    /// and only when the store actually differs: a local edit posts the same notification, and the
+    /// equality guard keeps its own write from re-entering and invalidating the derived caches twice.
+    func observeCollectionsStoreChanges() {
+        guard deinitHandle.collectionsStoreObserver == nil else { return }
+        deinitHandle.collectionsStoreObserver = NotificationCenter.default.addObserver(
+            forName: CatalogCollectionsStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let changedAccount = notification.userInfo?[CatalogCollectionsStore.accountIdentifierKey] as? String
+            MainActor.assumeIsolated {
+                self?.reloadCollectionsAfterExternalWrite(accountIdentifier: changedAccount)
+            }
+        }
+    }
+
+    private func reloadCollectionsAfterExternalWrite(accountIdentifier: String?) {
+        guard let accountIdentifier,
+              accountIdentifier.caseInsensitiveCompare(collectionsAccountIdentifier) == .orderedSame else { return }
+        let stored = CatalogCollectionsStore.load(accountIdentifier: accountIdentifier).collections
+        guard stored != userCollections else { return }
+        userCollections = stored
     }
 
     static func collectionNameError(_ name: String) -> String {

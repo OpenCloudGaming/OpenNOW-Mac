@@ -131,6 +131,10 @@ struct CatalogShowAllPage: View {
             .frame(height: 44)
 
             HStack(spacing: 12) {
+                if let collectionIcon {
+                    OPNCollectionIconView(icon: collectionIcon, size: 16, weight: .bold)
+                        .foregroundStyle(OPNDesign.accentInk)
+                }
                 Text(resultCount)
                     .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.tertiary)
@@ -143,6 +147,11 @@ struct CatalogShowAllPage: View {
         .padding(.horizontal, 22)
         .padding(.top, 18)
         .padding(.bottom, 12)
+    }
+
+    private var collectionIcon: OPNCollectionIcon? {
+        guard case .userCollection(let id) = viewModel.selectedShowAllSection?.kind else { return nil }
+        return viewModel.collection(id: id)?.resolvedIcon
     }
 
     private var resultCount: String {

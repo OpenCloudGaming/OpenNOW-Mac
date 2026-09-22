@@ -103,11 +103,20 @@ extension CatalogViewModel {
         for rail in rails where !canonicalOrder.contains(rail.id) {
             canonicalOrder.append(rail.id)
         }
+        // An empty collection draws no home rail yet, so `baseCatalogSections` omits it. It still
+        // belongs here: order or hide it the moment it exists, without adding a game first.
+        let collectionTitles = Dictionary(
+            sortedUserCollections.map { (OPNHomeCustomization.userCollectionRailID($0.id), $0.name) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for id in collectionTitles.keys where !canonicalOrder.contains(id) {
+            canonicalOrder.append(id)
+        }
         let orderedIDs = OPNHomeCustomization.orderedIdentities(canonicalOrder, by: homeRailArrangement.order)
         return orderedIDs.map { id in
             CatalogHomeRail(
                 id: id,
-                title: railsByID[id]?.title ?? OPNHomeCustomization.fixedRailTitle(for: id) ?? id,
+                title: railsByID[id]?.title ?? collectionTitles[id] ?? OPNHomeCustomization.fixedRailTitle(for: id) ?? id,
                 isVisible: isHomeRailVisible(id)
             )
         }
@@ -116,6 +125,24 @@ extension CatalogViewModel {
     func isHomeRailVisible(_ id: String) -> Bool {
         if id == OPNHomeCustomization.jumpBackInRailID { return isJumpBackInEnabled }
         return !homeRailArrangement.hidden.contains(id)
+    }
+
+    /// iCloud sync writes the arrangement into `UserDefaults` from a background actor, so without
+    /// this the model keeps what it read at launch. Reload only when the stored value differs.
+    func observeHomeArrangementChanges() {
+        guard deinitHandle.homeArrangementObserver == nil else { return }
+        deinitHandle.homeArrangementObserver = NotificationCenter.default.addObserver(
+            forName: OPNHomeCustomization.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let stored = OPNHomeCustomization.arrangement
+                guard stored != self.homeRailArrangement else { return }
+                self.homeRailArrangement = stored
+            }
+        }
     }
 
     /// True when the home rails differ from their shipping order and visibility, so the card can

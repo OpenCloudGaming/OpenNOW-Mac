@@ -29,9 +29,19 @@ final class ScreenshotsViewModel: ObservableObject {
 
     private let systemIntegration: any SystemIntegrationServing
     private var reloadTask: Task<Void, Never>?
+    // Removed from `deinit`, which is nonisolated, so the token is held nonisolated like the other
+    // deinit-removed observer tokens in the app (see `OPNMenuBarSessionModel`).
+    private nonisolated(unsafe) var libraryObserver: NSObjectProtocol?
 
     init(systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration()) {
         self.systemIntegration = systemIntegration
+        observeLibraryChanges()
+    }
+
+    deinit {
+        if let libraryObserver {
+            NotificationCenter.default.removeObserver(libraryObserver)
+        }
     }
 
     // MARK: - Derived
@@ -108,15 +118,27 @@ final class ScreenshotsViewModel: ObservableObject {
     // MARK: - Library
 
     func reload(showMessage: Bool) {
-        // The library scan reads a sidecar per screenshot and stats every image, which scales with
-        // how many shots the user has taken. It runs off the main actor so the page cannot hitch on
-        // a full library; the results are applied back on the main actor when they are ready.
+        loadLibrary(showMessage: showMessage, onlyWhenChanged: false)
+    }
+
+    /// iCloud sync copies files straight into the library directory, off this model, so without this
+    /// the page keeps showing the library it scanned when it opened. Only a scan that differs is
+    /// applied, so this model's own album and screenshot writes do not trigger a redundant reload.
+    private func reloadFromLibraryChange() {
+        loadLibrary(showMessage: false, onlyWhenChanged: true)
+    }
+
+    /// The library scan reads a sidecar per screenshot and stats every image, which scales with how
+    /// many shots the user has taken. It runs off the main actor so the page cannot hitch on a full
+    /// library; the results are applied back on the main actor when they are ready.
+    private func loadLibrary(showMessage: Bool, onlyWhenChanged: Bool) {
         reloadTask?.cancel()
         reloadTask = Task { [weak self] in
             let loaded = await Task.detached(priority: .userInitiated) {
                 (screenshots: StreamScreenshotLibrary.loadScreenshots(), albums: StreamScreenshotLibrary.loadAlbums())
             }.value
             guard let self, !Task.isCancelled else { return }
+            if onlyWhenChanged, loaded.screenshots == self.screenshots, loaded.albums == self.albums { return }
             self.screenshots = loaded.screenshots
             self.albums = loaded.albums
             self.pruneAlbumSelection()
@@ -128,6 +150,19 @@ final class ScreenshotsViewModel: ObservableObject {
             if showMessage {
                 self.message = loaded.screenshots.isEmpty ? "No screenshots yet. Take one from a running stream." : "Loaded \(loaded.screenshots.count) screenshot\(loaded.screenshots.count == 1 ? "" : "s")."
             }
+        }
+    }
+
+    /// Watches the library directory for writes this model did not make - an iCloud sync download in
+    /// particular - and rescans so the page reflects them without a relaunch.
+    private func observeLibraryChanges() {
+        guard libraryObserver == nil else { return }
+        libraryObserver = NotificationCenter.default.addObserver(
+            forName: StreamScreenshotLibrary.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadFromLibraryChange() }
         }
     }
 

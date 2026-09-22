@@ -20,6 +20,7 @@ extension ControllerCatalogViewModel {
         isCollectionPickerVisible = false
         closeCollectionNameEditor()
         collectionNameDraft = ""
+        collectionIconDraft = nil
     }
 
     /// View-facing entry points, so the overlay's row chips do not have to know the editor model.
@@ -90,25 +91,70 @@ extension ControllerCatalogViewModel {
         switch editor {
         case .rowActions(let id): handleCollectionRowActionsInput(command, id: id)
         case .confirmDelete(let id): handleCollectionDeleteConfirmInput(command, id: id)
+        case .icon(let id): handleCollectionIconEditorInput(command, id: id)
         case .create, .rename: handleCollectionNameEditorInput(command)
         }
     }
 
+    /// The row actions are, in order: Icon, Rename, Delete.
     private func handleCollectionRowActionsInput(_ command: ControllerInputCommand, id: String) {
         switch command {
         case .move(.up), .move(.left):
-            collectionEditorIndex = 0
+            collectionEditorIndex = max(collectionEditorIndex - 1, 0)
         case .move(.down), .move(.right):
-            collectionEditorIndex = 1
+            collectionEditorIndex = min(collectionEditorIndex + 1, 2)
         case .confirm:
-            guard collectionEditorIndex == 0 else {
+            switch collectionEditorIndex {
+            case 0:
+                beginCollectionIconEditor(id: id)
+            case 1:
+                beginCollectionName(editor: .rename(id: id))
+            default:
                 collectionEditor = .confirmDelete(id: id)
                 collectionEditorIndex = 0
-                return
             }
-            beginCollectionName(editor: .rename(id: id))
         case .back, .menu, .actions:
             collectionEditor = nil
+        default:
+            break
+        }
+    }
+
+    func beginCollectionIconEditor(id: String) {
+        collectionEditor = .icon(id: id)
+        collectionEditorIndex = 0
+        collectionIconDraft = catalog?.collection(id: id)?.icon
+        setCollectionIconCategoryIndex(0)
+    }
+
+    /// The pad's icon grid. The D-pad moves the cursor, LB/RB step categories, A applies the
+    /// focused glyph, X clears back to the default, and Back returns to the row actions.
+    private func handleCollectionIconEditorInput(_ command: ControllerInputCommand, id: String) {
+        let symbols = collectionIconSymbols
+        let columns = Self.collectionIconColumnCount
+        switch command {
+        case .move(.left):
+            setCollectionIconSymbolIndex(collectionIconSymbolIndex - 1, symbolCount: symbols.count)
+        case .move(.right):
+            setCollectionIconSymbolIndex(collectionIconSymbolIndex + 1, symbolCount: symbols.count)
+        case .move(.up):
+            setCollectionIconSymbolIndex(collectionIconSymbolIndex - columns, symbolCount: symbols.count)
+        case .move(.down):
+            setCollectionIconSymbolIndex(collectionIconSymbolIndex + columns, symbolCount: symbols.count)
+        case .pageLeft:
+            setCollectionIconCategoryIndex(collectionIconCategoryIndex - 1)
+        case .pageRight:
+            setCollectionIconCategoryIndex(collectionIconCategoryIndex + 1)
+        case .actions:
+            collectionIconDraft = nil
+        case .confirm:
+            let focused = symbols.indices.contains(collectionIconSymbolIndex) ? symbols[collectionIconSymbolIndex].name : nil
+            catalog?.setCollectionIcon(focused.map(OPNCollectionIcon.symbol), collectionId: id)
+            collectionEditor = .rowActions(id: id)
+            collectionEditorIndex = 0
+        case .back, .menu, .search:
+            collectionEditor = .rowActions(id: id)
+            collectionEditorIndex = 0
         default:
             break
         }

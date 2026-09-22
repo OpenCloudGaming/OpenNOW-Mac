@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Decides which `UserDefaults` keys travel through iCloud. An allow-list of prefixes plus a short
@@ -81,6 +82,86 @@ enum OPNCloudSyncSettingsRegistry {
         }
     }
 
+    /// Every syncable value in a shared file, as raw property-list values.
+    static func decodedValues(from file: OPNCloudSyncSettingsFile) -> [String: Any] {
+        var values: [String: Any] = [:]
+        for (key, entry) in file.entries where isSyncable(key) {
+            guard let value = OPNCloudSyncPlist.decode(entry.plist) else { continue }
+            values[key] = value
+        }
+        return values
+    }
+
+    /// Writes every value in a shared file back into local storage, the "use the other Mac" choice.
+    static func apply(_ file: OPNCloudSyncSettingsFile) {
+        apply(decodedValues(from: file))
+    }
+
+    /// This Mac's whole syncable preference set as a file, the "keep this Mac" choice.
+    static func localFile(device: String, now: Date = Date()) -> OPNCloudSyncSettingsFile {
+        var entries: [String: OPNCloudSyncSettingsEntry] = [:]
+        for (key, value) in snapshot() {
+            guard let encoded = OPNCloudSyncPlist.encode(value) else { continue }
+            entries[key] = OPNCloudSyncSettingsEntry(plist: encoded, updatedAt: now, deviceID: device)
+        }
+        return OPNCloudSyncSettingsFile(deviceName: OPNCloudSyncDevice.name, entries: entries)
+    }
+
+    // MARK: - Conflict detection
+
+    /// The last settings the two sides agreed on, as content signatures rather than per-key times:
+    /// a signature says whether each side's whole setting set changed since, which is what separates
+    /// a one-sided edit from a genuine conflict.
+    struct SignatureBaseline: Codable, Equatable, Sendable {
+        var local: String
+        var remote: String
+    }
+
+    static let signatureBaselineKey = "OpenNOW.CloudSync.SettingsSignatureBaseline"
+
+    static func loadSignatureBaseline() -> SignatureBaseline? {
+        guard let data = OPNAppPreferenceStorage.standard.data(forKey: signatureBaselineKey) else { return nil }
+        return try? OPNCloudSyncJSON.decoder.decode(SignatureBaseline.self, from: data)
+    }
+
+    static func saveSignatureBaseline(_ baseline: SignatureBaseline) {
+        guard let data = try? OPNCloudSyncJSON.encoder.encode(baseline) else { return }
+        OPNAppPreferenceStorage.standard.set(data, forKey: signatureBaselineKey)
+    }
+
+    /// A deterministic digest of a whole setting set, keyed and encoded so two Macs holding the same
+    /// values produce the same signature regardless of when either wrote them.
+    static func contentSignature(values: [String: Any]) -> String {
+        let parts = values.keys.sorted().compactMap { key -> String? in
+            guard let value = values[key], let data = OPNCloudSyncPlist.encode(value) else { return nil }
+            return "\(key)=\(data.base64EncodedString())"
+        }
+        return SHA256.hash(data: Data(parts.joined(separator: "\n").utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    /// The divergence to surface, or nil when one side can simply be folded over the other. Mirrors
+    /// the catalog's rule: a settled baseline, both sides changed since it, and the two differing.
+    static func detectConflict(
+        local: [String: Any],
+        remote: OPNCloudSyncSettingsFile,
+        baseline: SignatureBaseline?
+    ) -> OPNCloudSyncConflict? {
+        guard let baseline else { return nil }
+        let localSignature = contentSignature(values: local)
+        let remoteSignature = contentSignature(values: decodedValues(from: remote))
+        guard localSignature != baseline.local,
+              remoteSignature != baseline.remote,
+              localSignature != remoteSignature else { return nil }
+        return OPNCloudSyncConflict(
+            category: .settings,
+            remoteDeviceID: remote.entries.values.map(\.deviceID).max() ?? "",
+            remoteDeviceName: remote.deviceName,
+            remoteGeneratedAt: remote.entries.values.map(\.updatedAt).max() ?? .distantPast
+        )
+    }
+
     // MARK: - Merge
 
     /// What reconciling one Mac's preferences with the shared file produced.
@@ -99,6 +180,8 @@ enum OPNCloudSyncSettingsRegistry {
         now: Date = Date()
     ) -> MergeResult {
         var file = remote
+        file.schemaVersion = OPNCloudSyncLayout.schemaVersion
+        file.deviceName = OPNCloudSyncDevice.name
         // Drop any entry that must never travel: an older build may have written one before the
         // deny-list grew, and it would otherwise sit in iCloud Drive forever.
         file.entries = file.entries.filter { !isDenied($0.key) }

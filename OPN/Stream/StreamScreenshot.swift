@@ -51,6 +51,11 @@ public enum StreamScreenshotLibraryError: LocalizedError {
 }
 
 public enum StreamScreenshotLibrary {
+    /// Posted after any screenshot or album file is written or removed, and by iCloud sync once it
+    /// copies files into the library directory. The page reads the directory once, so without this
+    /// an iCloud download or an out-of-band capture leaves it showing what it scanned at launch.
+    public static let didChangeNotification = Notification.Name("OPNStreamScreenshotLibraryDidChange")
+
     /// Beside the recordings, under the vendor's own folder, so both live in one place a reader can
     /// find from Finder and OpenNOW owns the screen capture directory.
     public static var screenshotsDirectory: URL {
@@ -94,6 +99,7 @@ public enum StreamScreenshotLibrary {
         } catch {
             throw StreamScreenshotLibraryError.metadataWriteFailed(error.localizedDescription)
         }
+        NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 
     /// Writes the PNG and its sidecar. The image is encoded before the metadata, so a failure leaves
@@ -140,6 +146,7 @@ public enum StreamScreenshotLibrary {
         if FileManager.default.fileExists(atPath: screenshot.metadataURL.path) {
             try FileManager.default.removeItem(at: screenshot.metadataURL)
         }
+        NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 
     private static func writeMetadata(_ screenshot: StreamScreenshot) throws {
@@ -149,6 +156,7 @@ public enum StreamScreenshotLibrary {
         } catch {
             throw StreamScreenshotLibraryError.metadataWriteFailed(error.localizedDescription)
         }
+        NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 
     private static func screenshotMetadataURLs() -> [URL] {

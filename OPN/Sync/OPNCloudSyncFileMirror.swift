@@ -1,9 +1,10 @@
 import Foundation
 
-/// Copies the screenshot library between this Mac and the iCloud container. The copy is additive and
-/// newer-file-wins in both directions, so a reader's library cannot be destroyed by a sync that runs
-/// before another Mac has uploaded.
-enum OPNCloudSyncScreenshotMirror {
+/// Copies a flat directory of small files between this Mac and the iCloud container — the screenshot
+/// library and the collection icon images. The copy is additive and newer-file-wins in both
+/// directions, so a reader's files cannot be destroyed by a sync that runs before another Mac has
+/// uploaded.
+enum OPNCloudSyncFileMirror {
     struct MirrorResult: Sendable, Equatable {
         var copied = 0
         var skipped = 0

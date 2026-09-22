@@ -29,8 +29,31 @@ struct CloudSyncSettingsPage: View {
             if case .failed(let message) = coordinator.status {
                 SettingsMessageView(message: message, systemImage: "exclamationmark.triangle.fill", uiScale: uiScale)
             }
+            ForEach(coordinator.pendingConflicts) { conflict in
+                conflictCard(conflict)
+            }
             syncCard
             statusCard
+        }
+    }
+
+    private func conflictCard(_ conflict: OPNCloudSyncConflict) -> some View {
+        SettingsCard(title: "Sync Conflict — \(conflict.category.title)", uiScale: uiScale) {
+            SettingsMessageView(
+                message: "This Mac and \(conflict.remoteDisplayName) both changed your \(conflict.category.title.lowercased()) since the last sync. Choose which copy to keep.",
+                systemImage: "exclamationmark.triangle.fill",
+                uiScale: uiScale
+            )
+            SettingsDivider(uiScale: uiScale)
+            HStack(spacing: 10 * uiScale) {
+                SettingsActionButton(title: "Keep This Mac", tone: .primary, uiScale: uiScale) {
+                    coordinator.resolveConflictKeepingLocal(conflict)
+                }
+                SettingsActionButton(title: "Use \(conflict.remoteDisplayName)", tone: .secondary, uiScale: uiScale) {
+                    coordinator.resolveConflictUsingRemote(conflict)
+                }
+                Spacer(minLength: 0)
+            }
         }
     }
 
@@ -87,6 +110,9 @@ struct CloudSyncSettingsPage: View {
         case .unavailable: return "iCloud unavailable"
         case .syncing: return "Syncing..."
         case .idle: return "Up to date"
+        case .conflict(let conflicts):
+            guard let first = conflicts.first else { return "Conflicts need a choice" }
+            return conflicts.count == 1 ? "Conflict with \(first.remoteDisplayName)" : "\(conflicts.count) sync conflicts"
         case .failed: return "Last attempt failed"
         }
     }

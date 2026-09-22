@@ -32,6 +32,11 @@ enum OPNHomeCustomization {
     static let orderKey = "OpenNOW.Interface.HomeRailOrder"
     static let hiddenKey = "OpenNOW.Interface.HomeRailsHidden"
 
+    /// Posted after any write to the arrangement. Most writes are the reader's own, through the view
+    /// model that already holds the new value; iCloud sync also writes it straight into `UserDefaults`
+    /// from a background actor, and that write has no other channel to the live view model.
+    static let didChangeNotification = Notification.Name("OPNHomeCustomizationDidChange")
+
     static var arrangement: Arrangement {
         get {
             Arrangement(
@@ -42,6 +47,7 @@ enum OPNHomeCustomization {
         set {
             OPNAppPreferenceStorage.standard.set(newValue.order, forKey: orderKey)
             OPNAppPreferenceStorage.standard.set(Array(newValue.hidden).sorted(), forKey: hiddenKey)
+            NotificationCenter.default.post(name: didChangeNotification, object: nil)
         }
     }
 

@@ -350,6 +350,12 @@ struct CatalogView: View {
                             .zIndex(25)
                     }
 
+                    if viewModel.isCollectionsIconPickerPresented {
+                        CatalogCollectionIconPickerOverlay(viewModel: viewModel)
+                            .transition(.opacity)
+                            .zIndex(27)
+                    }
+
                     if viewModel.isCollectionsNoticePresented {
                         CatalogCollectionsNoticeOverlay(viewModel: viewModel)
                             .transition(.opacity)
