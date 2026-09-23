@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.11.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.10.0...v0.11.0) (2026-09-23)
+
+
+### Features
+
+* add background recording instant replay ([bc8f97c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/bc8f97c6fd47d6eced894b4a0039f931e3ddc82f))
+* add screenshot editor ([198ca4c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/198ca4ca8a6e7b3c553e36dd715443aab49be3e2))
+* add session insights ([fdfbd9d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/fdfbd9d8ea3698cb86e795c86795fbd06d332301))
+* add stats settings ([009a9a2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/009a9a211708caa946b99c53a07896f1bc359ee7))
+* customize oauth completed screen ([ad6da8b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/ad6da8ba35cc0a8e0fa40d232d948e040120583a))
+
+
+### Bug Fixes
+
+* hold diagram snapshot width steady so scaled heights grow ([a783f07](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a783f0724456b47c3b34243dbc2f8b21b288b99a))
+* membership placeholder ([5807357](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5807357275f8764846464eec5e380d2f3c967b98))
+
 ## [0.10.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.9.0...v0.10.0) (2026-09-22)
 
 
