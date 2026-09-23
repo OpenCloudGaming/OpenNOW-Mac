@@ -148,7 +148,7 @@ struct CatalogTopBar: View {
                                         .catalogFont(size: 15, weight: .medium)
                                         .foregroundStyle(OPNDesign.Text.primary)
                                         .lineLimit(1)
-                                    Text(viewModel.subscriptionStatus.membershipTier)
+                                    Text(viewModel.displayMembershipTier)
                                         .catalogFont(size: 12, weight: .medium)
                                         .foregroundStyle(OPNDesign.Text.secondary)
                                 }

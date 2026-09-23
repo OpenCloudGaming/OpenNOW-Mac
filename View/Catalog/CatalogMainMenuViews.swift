@@ -70,7 +70,7 @@ struct CatalogMainMenuPanel: View {
                 .fill(OPNDesign.Stroke.subtle)
                 .frame(height: 1)
 
-            CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, activeStreamProgress: viewModel.activeStreamProgress)
+            CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, membershipTier: viewModel.displayMembershipTier, activeStreamProgress: viewModel.activeStreamProgress)
                 .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                 .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
 
@@ -207,6 +207,7 @@ struct CatalogMainMenuSectionLabel: View {
 
 struct CatalogMainMenuPlaytimeCard: View {
     let status: CatalogSubscriptionStatus
+    let membershipTier: String
     let activeStreamProgress: StreamProgress?
 
     @Environment(\.opnUIScale) private var uiScale
@@ -221,7 +222,7 @@ struct CatalogMainMenuPlaytimeCard: View {
                         .tracking(1.1)
                         .foregroundStyle(OPNDesign.Text.tertiary)
                     Spacer(minLength: 0)
-                    Text(status.membershipTier.uppercased())
+                    Text(membershipTier.uppercased())
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))

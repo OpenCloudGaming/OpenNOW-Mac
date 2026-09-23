@@ -61,7 +61,7 @@ struct CatalogAccountDropdownPanel: View {
                         .catalogFont(size: 15, weight: .medium)
                         .foregroundStyle(OPNDesign.Text.primary)
                         .lineLimit(1)
-                    Text(viewModel.subscriptionStatus.membershipTier.uppercased())
+                    Text(viewModel.displayMembershipTier.uppercased())
                         .catalogFont(size: 10, weight: .bold)
                         .tracking(0.6)
                         .foregroundStyle(.black.opacity(0.86))

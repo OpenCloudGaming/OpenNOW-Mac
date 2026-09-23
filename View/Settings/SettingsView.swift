@@ -44,9 +44,7 @@ struct SettingsAccountSnapshot: Sendable {
     }
 
     @MainActor private static func membershipTier(viewModel: CatalogViewModel) -> String {
-        if viewModel.subscriptionStatus.isAvailable { return viewModel.subscriptionStatus.membershipTier }
-        if !viewModel.account.membershipTier.isEmpty { return viewModel.account.membershipTier }
-        return viewModel.subscriptionStatus.membershipTier
+        viewModel.displayMembershipTier
     }
 
     private static func providerName(_ value: String) -> String {

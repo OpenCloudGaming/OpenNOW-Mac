@@ -310,7 +310,12 @@ struct CatalogRecentlyPlayed: Codable, Equatable {
 }
 
 struct CatalogSubscriptionStatus: Equatable {
-    static let unavailable = CatalogSubscriptionStatus(membershipTier: "Performance", remainingPlaytimeText: "Unavailable", usageText: "Playtime refresh pending", isAvailable: false)
+    /// The tier stays empty until the request resolves. A placeholder here made the chrome show
+    /// "Performance" and then change once the account's own saved tier was known.
+    static let unavailable = CatalogSubscriptionStatus(membershipTier: "", remainingPlaytimeText: "Unavailable", usageText: "Playtime refresh pending", isAvailable: false)
+
+    /// Brand tier used only when a live subscription returned no tier name at all.
+    static let fallbackMembershipTier = "Performance"
 
     let membershipTier: String
     let remainingPlaytimeText: String
@@ -322,14 +327,14 @@ struct CatalogSubscriptionStatus: Equatable {
     }
 
     init(membershipTier: String, remainingPlaytimeText: String, usageText: String, isAvailable: Bool) {
-        self.membershipTier = membershipTier.isEmpty ? "Performance" : membershipTier
+        self.membershipTier = membershipTier
         self.remainingPlaytimeText = remainingPlaytimeText
         self.usageText = usageText
         self.isAvailable = isAvailable
     }
 
     init(subscription: OPNSubscriptionInfo) {
-        let tier = subscription.membershipTier.isEmpty ? "Performance" : subscription.membershipTier.capitalized
+        let tier = subscription.membershipTier.isEmpty ? Self.fallbackMembershipTier : subscription.membershipTier.capitalized
         if subscription.isUnlimited {
             self.init(membershipTier: tier, remainingPlaytimeText: "Unlimited", usageText: "No monthly playtime cap", isAvailable: true)
             return
