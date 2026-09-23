@@ -10,7 +10,6 @@ import Foundation
 import Metal
 import MetalKit
 import QuartzCore
-import WebRTC
 
 extension CGColorSpace {
     static let sRGBForRender: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
@@ -197,17 +196,17 @@ extension OPNMetalVideoView {
 
     /// The frame this refresh should draw, or nil when there is nothing new. `smooth` hands out
     /// its queue oldest first; the other modes hand out the newest frame once.
-    func nextFrameToDraw() -> (frame: RTCVideoFrame, serial: UInt64, sourceSize: CGSize, requiresCustomRenderPath: Bool, output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)? {
+    func nextFrameToDraw() -> (frame: OPNVideoFrame, serial: UInt64, sourceSize: CGSize, output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)? {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
         let output = (desiredOutputFormat, desiredTransfer)
         if presentationMode == .smooth {
             guard !pendingFrames.isEmpty else { return nil }
             let next = pendingFrames.removeFirst()
-            return (next.frame, next.serial, sourceFrameSize, cachedRequiresCustomRenderPath, output, next.receivedAt)
+            return (next.frame, next.serial, sourceFrameSize, output, next.receivedAt)
         }
         guard let frame = videoFrame, frameSerial > 0, frameSerial != lastDrawnFrameSerial else { return nil }
-        return (frame, frameSerial, sourceFrameSize, cachedRequiresCustomRenderPath, output, latestFrameReceivedAt)
+        return (frame, frameSerial, sourceFrameSize, output, latestFrameReceivedAt)
     }
 
     /// Hooks the drawable every render path is about to present (MTKView hands the same one to
@@ -296,11 +295,8 @@ extension OPNMetalVideoView {
                 metalLayer.edrMetadata = nil
             }
         }
-        // libwebrtc's renderers compile their pipeline state against the view's format at attach
-        // time, so a format change invalidates them; they rebuild lazily on the next 8-bit frame.
-        rendererNV12 = nil
-        rendererRGB = nil
-        rendererI420 = nil
+        // The drawable format changed, so the current draw is skipped: the drawable already vended
+        // for this pass has the old format, and the next display tick is a few milliseconds away.
         OPNLog.info(.stream, "Video output format \(Self.outputFormatName(previous)) -> \(Self.outputFormatName(format)) transfer=\(transfer) edr=\(transfer.isHDR)")
         return true
     }

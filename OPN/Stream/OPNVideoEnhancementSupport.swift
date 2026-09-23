@@ -8,7 +8,6 @@ import Foundation
 import Metal
 import MetalKit
 import QuartzCore
-import WebRTC
 import MetalFX
 
 extension OPNVideoEnhancementRenderer {
@@ -30,30 +29,10 @@ extension OPNVideoEnhancementRenderer {
         result.enhancedPixelBuffer = nil
     }
 
-    func image(for frame: RTCVideoFrame, result: OPNVideoEnhancementResult) -> CIImage? {
-        let buffer = frame.buffer
-        if let cvBuffer = buffer as? RTCCVPixelBuffer {
-            let pixelBuffer = cvBuffer.pixelBuffer
-            result.frameSource = "CVPixelBuffer"
-            result.pixelFormat = pixelFormatName(CVPixelBufferGetPixelFormatType(pixelBuffer))
-            var image = CIImage(cvPixelBuffer: pixelBuffer)
-            if cvBuffer.requiresCropping(), cvBuffer.cropWidth > 0, cvBuffer.cropHeight > 0 {
-                let crop = CGRect(x: CGFloat(cvBuffer.cropX), y: CGFloat(cvBuffer.cropY), width: CGFloat(cvBuffer.cropWidth), height: CGFloat(cvBuffer.cropHeight))
-                image = image.cropped(to: crop)
-            }
-            return image
-        }
-
-        let i420Frame = frame.newI420()
-        guard let i420 = i420Frame.buffer as? RTCI420Buffer,
-              let pixelBuffer = newBGRAFramebuffer(from: i420) else {
-            result.frameSource = Self.frameBufferClassName(buffer) as String
-            result.pixelFormat = "I420"
-            result.fallbackReason = "I420 frame conversion failed"
-            return nil
-        }
-        result.frameSource = Self.frameBufferClassName(buffer) as String
-        result.pixelFormat = "I420"
+    func image(for frame: OPNVideoFrame, result: OPNVideoEnhancementResult) -> CIImage? {
+        let pixelBuffer = frame.pixelBuffer
+        result.frameSource = "CVPixelBuffer"
+        result.pixelFormat = pixelFormatName(CVPixelBufferGetPixelFormatType(pixelBuffer))
         return CIImage(cvPixelBuffer: pixelBuffer)
     }
 
@@ -138,41 +117,6 @@ extension OPNVideoEnhancementRenderer {
         return pool
     }
 
-    func newBGRAFramebuffer(from i420: RTCI420Buffer) -> CVPixelBuffer? {
-        let width = Int(i420.width)
-        let height = Int(i420.height)
-        guard width > 0, height > 0 else { return nil }
-        let pool = i420BGRAFramebufferPool(width: width, height: height)
-        var pixelBuffer: CVPixelBuffer?
-        guard let pool,
-              CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer) == kCVReturnSuccess,
-              let pixelBuffer else { return nil }
-        return i420BGRAConverter.copy(i420, toBGRAOutput: pixelBuffer) ? pixelBuffer : nil
-    }
-
-    func i420BGRAFramebufferPool(width: Int, height: Int) -> CVPixelBufferPool? {
-        if i420PixelBufferPool != nil, i420PixelBufferPoolWidth == width, i420PixelBufferPoolHeight == height {
-            return i420PixelBufferPool
-        }
-        let attributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
-            kCVPixelBufferMetalCompatibilityKey as String: true,
-            kCVPixelBufferCGImageCompatibilityKey as String: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
-        ]
-        let poolAttributes: [String: Any] = [
-            kCVPixelBufferPoolMinimumBufferCountKey as String: 3,
-        ]
-        var pool: CVPixelBufferPool?
-        guard CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes as CFDictionary, attributes as CFDictionary, &pool) == kCVReturnSuccess else { return nil }
-        i420PixelBufferPool = pool
-        i420PixelBufferPoolWidth = width
-        i420PixelBufferPoolHeight = height
-        return pool
-    }
-
     func recordDrop(in result: OPNVideoEnhancementResult) {
         droppedFrames += 1
         result.droppedFrames = droppedFrames
@@ -238,13 +182,4 @@ extension OPNVideoEnhancementRenderer {
         SIMD2<Float>(-0.1875, 0.1875),
         SIMD2<Float>(0.3125, -0.3125),
     ]
-
-    static func textureFrameUsesFullCrop(_ textureFrame: OPNVideoTextureFrame) -> Bool {
-        let crop = textureFrame.cropRect
-        return crop.minX <= 0.0001 && crop.minY <= 0.0001 && crop.width >= 0.9999 && crop.height >= 0.9999
-    }
-
-    static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {
-        NSStringFromClass(type(of: buffer) as AnyClass) as NSString
-    }
 }

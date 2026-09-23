@@ -5,7 +5,6 @@ import Foundation
 import Metal
 import MetalKit
 import QuartzCore
-import WebRTC
 #if canImport(MetalFX)
 import MetalFX
 #endif
@@ -14,9 +13,6 @@ import MetalFX
 final class OPNVideoTextureSource: NSObject {
     let device: (any MTLDevice)?
     private var textureCache: CVMetalTextureCache?
-    private var i420LumaTexture: (any MTLTexture)?
-    private var i420ChromaUTexture: (any MTLTexture)?
-    private var i420ChromaVTexture: (any MTLTexture)?
 
     @objc init(device: (any MTLDevice)?) {
         self.device = device
@@ -34,65 +30,27 @@ final class OPNVideoTextureSource: NSObject {
         }
     }
 
-    @objc(newTextureFrameForFrame:pixelFormat:frameSource:fallback:)
+    @objc(newTextureFrameForPixelBuffer:pixelFormat:frameSource:fallback:)
     func newTextureFrame(
-        for frame: RTCVideoFrame?,
+        for pixelBuffer: CVPixelBuffer,
         pixelFormat: AutoreleasingUnsafeMutablePointer<NSString?>?,
         frameSource: AutoreleasingUnsafeMutablePointer<NSString?>?,
         fallback: AutoreleasingUnsafeMutablePointer<NSString?>?
     ) -> Any? {
-        guard let frame, let textureCache else {
+        guard let textureCache else {
             fallback?.pointee = "texture source unavailable"
             return nil
         }
-
-        let buffer = frame.buffer
-        guard let cvBuffer = buffer as? RTCCVPixelBuffer else {
-            return i420TextureFrame(frame, buffer: buffer, pixelFormat: pixelFormat, frameSource: frameSource, fallback: fallback)
-        }
-        return pixelBufferTextureFrame(cvBuffer, textureCache: textureCache, pixelFormat: pixelFormat, frameSource: frameSource, fallback: fallback)
-    }
-
-    /// A frame that is not already a `CVPixelBuffer` is converted to I420 and uploaded plane by
-    /// plane into reused textures.
-    private func i420TextureFrame(_ frame: RTCVideoFrame,
-                                  buffer: any RTCVideoFrameBuffer,
-                                  pixelFormat: AutoreleasingUnsafeMutablePointer<NSString?>?,
-                                  frameSource: AutoreleasingUnsafeMutablePointer<NSString?>?,
-                                  fallback: AutoreleasingUnsafeMutablePointer<NSString?>?) -> Any? {
-        let i420Frame = frame.newI420()
-        guard let i420 = i420Frame.buffer as? RTCI420Buffer, i420.width > 0, i420.height > 0 else {
-            frameSource?.pointee = Self.frameBufferClassName(buffer)
-            pixelFormat?.pointee = "I420"
-            fallback?.pointee = "I420 frame unavailable"
-            return nil
-        }
-
-        let textureFrame = OPNVideoTextureFrame()
-        textureFrame.kind = 2
-        textureFrame.cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
-        textureFrame.contentWidth = UInt(i420.width)
-        textureFrame.contentHeight = UInt(i420.height)
-        textureFrame.lumaTexture = reusablePlaneTexture(&i420LumaTexture, width: Int(i420.width), height: Int(i420.height), bytes: i420.dataY, bytesPerRow: Int(i420.strideY), label: "OpenNOW I420 Y")
-        textureFrame.chromaUTexture = reusablePlaneTexture(&i420ChromaUTexture, width: Int(i420.chromaWidth), height: Int(i420.chromaHeight), bytes: i420.dataU, bytesPerRow: Int(i420.strideU), label: "OpenNOW I420 U")
-        textureFrame.chromaVTexture = reusablePlaneTexture(&i420ChromaVTexture, width: Int(i420.chromaWidth), height: Int(i420.chromaHeight), bytes: i420.dataV, bytesPerRow: Int(i420.strideV), label: "OpenNOW I420 V")
-        frameSource?.pointee = Self.frameBufferClassName(buffer)
-        pixelFormat?.pointee = "I420"
-        guard textureFrame.lumaTexture != nil, textureFrame.chromaUTexture != nil, textureFrame.chromaVTexture != nil else {
-            fallback?.pointee = "I420 GPU plane upload failed"
-            return nil
-        }
-        return textureFrame
+        return pixelBufferTextureFrame(pixelBuffer, textureCache: textureCache, pixelFormat: pixelFormat, frameSource: frameSource, fallback: fallback)
     }
 
     /// The zero-copy path: BGRA and bi-planar buffers are wrapped as Metal textures straight out of
     /// the texture cache.
-    private func pixelBufferTextureFrame(_ cvBuffer: RTCCVPixelBuffer,
+    private func pixelBufferTextureFrame(_ pixelBuffer: CVPixelBuffer,
                                          textureCache: CVMetalTextureCache,
                                          pixelFormat: AutoreleasingUnsafeMutablePointer<NSString?>?,
                                          frameSource: AutoreleasingUnsafeMutablePointer<NSString?>?,
                                          fallback: AutoreleasingUnsafeMutablePointer<NSString?>?) -> Any? {
-        let pixelBuffer = cvBuffer.pixelBuffer
         let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
         pixelFormat?.pointee = Self.pixelFormatName(format) as NSString
         frameSource?.pointee = "CVPixelBuffer"
@@ -113,7 +71,11 @@ final class OPNVideoTextureSource: NSObject {
 
         let textureFrame = OPNVideoTextureFrame()
         textureFrame.kind = isBiPlanar ? 1 : 0
-        applyCropRect(cvBuffer, width: width, height: height, to: textureFrame)
+        // The decoded surface is sampled whole: VideoToolbox's clean-aperture trim is display
+        // geometry, applied when the picture is fitted to the drawable, not a crop of the planes.
+        textureFrame.cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+        textureFrame.contentWidth = UInt(max(1, width))
+        textureFrame.contentHeight = UInt(max(1, height))
         textureFrame.colorMatrix = OPNVideoColorMatrix.from(pixelBuffer: pixelBuffer).rawValue
         textureFrame.transferFunction = OPNVideoTransferFunction.from(pixelBuffer: pixelBuffer).rawValue
         textureFrame.isFullRange = !isBiPlanar || Self.isFullRangeBiPlanarFormat(format)
@@ -166,49 +128,6 @@ final class OPNVideoTextureSource: NSObject {
         return CVMetalTextureGetTexture(chromaMetalTexture)
     }
 
-    /// The decoder can hand back a buffer larger than the picture; the crop rect keeps the shader
-    /// sampling only the real content.
-    private func applyCropRect(_ cvBuffer: RTCCVPixelBuffer, width: Int, height: Int, to textureFrame: OPNVideoTextureFrame) {
-        var contentWidth = width
-        var contentHeight = height
-        var cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
-        if cvBuffer.requiresCropping(), cvBuffer.cropWidth > 0, cvBuffer.cropHeight > 0 {
-            let cropX = max(CGFloat(0), CGFloat(cvBuffer.cropX))
-            let cropY = max(CGFloat(0), CGFloat(cvBuffer.cropY))
-            let cropWidth = min(CGFloat(cvBuffer.cropWidth), CGFloat(width) - cropX)
-            let cropHeight = min(CGFloat(cvBuffer.cropHeight), CGFloat(height) - cropY)
-            if cropWidth > 0, cropHeight > 0 {
-                cropRect = CGRect(x: cropX / CGFloat(width), y: cropY / CGFloat(height), width: cropWidth / CGFloat(width), height: cropHeight / CGFloat(height))
-                contentWidth = Int(cropWidth.rounded())
-                contentHeight = Int(cropHeight.rounded())
-            }
-        }
-        textureFrame.cropRect = cropRect
-        textureFrame.contentWidth = UInt(max(1, contentWidth))
-        textureFrame.contentHeight = UInt(max(1, contentHeight))
-    }
-
-    private func reusablePlaneTexture(
-        _ texture: inout (any MTLTexture)?,
-        width: Int,
-        height: Int,
-        bytes: UnsafePointer<UInt8>?,
-        bytesPerRow: Int,
-        label: String
-    ) -> (any MTLTexture)? {
-        guard let device, let bytes, width > 0, height > 0, bytesPerRow > 0 else { return nil }
-        if texture == nil || texture?.width != width || texture?.height != height || texture?.pixelFormat != .r8Unorm {
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm, width: width, height: height, mipmapped: false)
-            descriptor.usage = .shaderRead
-            descriptor.storageMode = .shared
-            texture = device.makeTexture(descriptor: descriptor)
-            texture?.label = label
-        }
-        guard let existing = texture else { return nil }
-        existing.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: bytes, bytesPerRow: bytesPerRow)
-        return existing
-    }
-
     private static let pixelFormatNames: [OSType: String] = [
         kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange: "420v/NV12",
         kCVPixelFormatType_420YpCbCr8BiPlanarFullRange: "420f/NV12",
@@ -245,23 +164,7 @@ final class OPNVideoTextureSource: NSObject {
         }
     }
 
-    /// Whether a decoded surface must go through our own Metal path rather than WebRTC's built-in
-    /// renderers. `RTCMTLNV12Renderer` binds only 8-bit 4:2:0 and `RTCMTLRGBRenderer` only BGRA;
-    /// everything else falls to `RTCMTLI420Renderer`, whose `RTCCVPixelBuffer toI420` has no case
-    /// for any other layout and hands back an unfilled buffer — every pixel Y=0 Cb=0 Cr=0, which
-    /// draws as a flat green screen. 8-bit 4:2:2 and 4:4:4 surfaces hit that; so does every
-    /// 10-bit one. `OPNVideoTextureSource` binds them all directly.
-    static func requiresCustomRenderPath(_ format: OSType) -> Bool {
-        switch format {
-        case kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_420YpCbCr8BiPlanarFullRange:
-            return false
-        default:
-            return isSupportedBiPlanarFormat(format)
-        }
-    }
-
-    /// The HUD's render tier for a surface drawn by our own path with enhancement off:
-    /// `Native 10-bit`, `Native 4:4:4`, `Native 10-bit 4:4:4`.
+    /// The HUD's render tier for a surface: `Native 10-bit`, `Native 4:4:4`, `Native 10-bit 4:4:4`.
     static func nativeRenderTierLabel(_ format: OSType) -> String {
         var parts = ["Native"]
         if isTenBitBiPlanarFormat(format) { parts.append("10-bit") }
@@ -299,9 +202,4 @@ final class OPNVideoTextureSource: NSObject {
             return false
         }
     }
-
-    private static func frameBufferClassName(_ buffer: any RTCVideoFrameBuffer) -> NSString {
-        NSStringFromClass(type(of: buffer) as AnyClass) as NSString
-    }
-
 }

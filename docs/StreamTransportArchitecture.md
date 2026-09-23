@@ -87,6 +87,24 @@ rate, with positive audio energy while speaking, before treating microphone timi
 3. **Native media boundary.** Make the NVST rendering/enhancement path consume `CVPixelBuffer`
    and native timing/diagnostics directly. Keep RTC conversion at the Co-Op boundary. Validate
    HDR/10-bit/4:4:4 rendering, presentation modes, upscaling, pillarbox fill, screenshots, and capture.
+   Implemented as `OPNVideoFrame`: the decoded buffer plus capture time, rotation and keyframe, with
+   the clean-aperture display geometry. `NvstBifrostFreeVideoRenderer` constructs it, `OPNMetalVideoView`,
+   `OPNVideoTextureSource`, `OPNVideoEnhancementRenderer` and its output/support extensions consume it,
+   and every frame — enhanced or not — is drawn by the app's own spatial pass. RTC frame types are
+   converted once, at `OPNRemoteCoOpGuestVideoRenderer` (a received guest track) and the Co-Op host
+   relay's `renderPixelBuffer` (already native). Two consequences to validate: the plain 8-bit NV12
+   case now shares the spatial pass instead of a peer renderer, and the drawable is no longer
+   write-only because a snapshot reads it back. Known limitation carried forward: the plane sampling
+   covers the whole coded surface, not the clean aperture, so a padded stream (1080p coded 1920x1088)
+   is stretched by the padding rows. `RTCCVPixelBuffer(pixelBuffer:)` behaved the same way, so this is
+   pre-existing rather than introduced; cropping to `OPNVideoFrame.displaySize` is a follow-up.
+   Pillarbox fill and the upscaler are structurally exclusive: a fill is reprojected against the
+   texture the shader writes into, and the MetalFX/temporal staging renders into an intermediate
+   sized to the source, so its fill geometry would be computed against the wrong aspect — and when
+   the scaler declines (it cannot downscale, so a 5120x2160 stream in a smaller window fails it) the
+   fallback was the Core Image path, which applies no fill at all. A selected fill mode therefore
+   takes the spatial pass straight into the drawable and the upscaler is skipped, with one log line
+   per session saying so; `fillTakesSpatialPass` is the decision, pinned by test.
 4. **Native connection and audio.** Select and validate an interoperable ICE/DTLS/SCTP/SRTP
    implementation before replacing `NvstWebRtcBundle` in place. Preserve reliable/partial input,
    feedback, reconnect, key handling, Opus jitter/loss recovery, stereo/surround, device changes,

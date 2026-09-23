@@ -5,7 +5,6 @@ import Foundation
 import Metal
 import MetalKit
 import QuartzCore
-import WebRTC
 #if canImport(MetalFX)
 import MetalFX
 #endif

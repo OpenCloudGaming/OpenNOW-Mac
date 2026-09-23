@@ -1,15 +1,15 @@
+import AppKit
 import CoreImage
 import CoreMedia
 import CoreVideo
 import Foundation
-@preconcurrency import WebRTC
 
-/// Presents the Bifrost-free NVST video path on the existing Metal surface.
+/// Presents the Bifrost-free NVST video path on the shared Metal surface.
 ///
-/// Decoded `CVPixelBuffer`s are wrapped as `RTCVideoFrame`s and handed to `OPNMetalVideoView`,
-/// which is the same renderer the WebRTC path uses — so HDR/10-bit handling, the video
-/// enhancement pass, and the pillarbox fill all come along unchanged instead of being
-/// reimplemented for this transport.
+/// Decoded `CVPixelBuffer`s are handed straight to `OPNMetalVideoView` as `OPNVideoFrame`s — the
+/// renderer takes the decoded surface itself, so HDR/10-bit handling, the video enhancement pass,
+/// and the pillarbox fill all come along unchanged instead of being reimplemented for this
+/// transport, and nothing on this path depends on a peer library's frame types.
 @MainActor
 public final class NvstBifrostFreeVideoRenderer {
     private let videoView: OPNMetalVideoView
@@ -89,7 +89,8 @@ public final class NvstBifrostFreeVideoRenderer {
             latestPixelBuffer = pixelBuffer
             lock.unlock()
             guard let videoView else { return }
-            let size = Self.displaySize(of: pixelBuffer)
+            let frame = OPNVideoFrame(pixelBuffer: pixelBuffer, presentationTime: presentationTime, isKeyframe: isKeyframe)
+            let size = frame.displaySize
             lock.lock()
             let sizeChanged = size != lastSize
             if sizeChanged { lastSize = size }
@@ -99,27 +100,7 @@ public final class NvstBifrostFreeVideoRenderer {
                 videoView.setSize(size)
                 announceDecodedSize(size, buffer: pixelBuffer)
             }
-            let buffer = RTCCVPixelBuffer(pixelBuffer: pixelBuffer)
-            // The renderer only reads the timestamp for cadence diagnostics; nanoseconds keep it
-            // monotonic across the 90 kHz RTP clock.
-            let timestampNs = presentationTime.isValid ? Int64(CMTimeGetSeconds(presentationTime) * 1_000_000_000) : 0
-            let frame = RTCVideoFrame(buffer: buffer, rotation: ._0, timeStampNs: timestampNs)
             videoView.renderFrame(frame)
-        }
-
-        /// The frame's *display* geometry, which is what the surface is letterboxed to and what
-        /// absolute pointer coordinates are measured against.
-        ///
-        /// VideoToolbox attaches a clean aperture when the coded frame is padded out to a
-        /// macroblock multiple — a 1080p H.264 stream is coded 1920x1088 and displayed 1920x1080 —
-        /// and returns the full buffer rect when there is nothing to trim. Row padding never
-        /// reaches here at all: that lives in `bytesPerRow`, not in the width.
-        static func displaySize(of pixelBuffer: CVPixelBuffer) -> CGSize {
-            let clean = CVImageBufferGetCleanRect(pixelBuffer)
-            guard clean.width >= 1, clean.height >= 1 else {
-                return CGSize(width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
-            }
-            return CGSize(width: clean.width.rounded(), height: clean.height.rounded())
         }
 
         /// Hands the new geometry to the main actor. Called off the lock and asynchronously: the

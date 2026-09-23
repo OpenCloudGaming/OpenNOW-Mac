@@ -9,7 +9,6 @@ import Foundation
 import Metal
 import MetalKit
 import QuartzCore
-import WebRTC
 
 extension OPNVideoEnhancementRenderer {
     func encodeSpatialTextureFrame(

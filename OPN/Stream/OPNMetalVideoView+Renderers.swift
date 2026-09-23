@@ -1,5 +1,5 @@
-//  Renderer selection (libwebrtc's NV12/RGB/I420 Metal renderers vs the custom enhancement path),
-//  per-second diagnostics and draw-cadence bookkeeping for `OPNMetalVideoView`.
+//  Enhancement overrides, per-second diagnostics and draw-cadence bookkeeping for
+//  `OPNMetalVideoView`.
 //
 
 import AppKit
@@ -7,7 +7,6 @@ import Foundation
 import Metal
 import MetalKit
 import QuartzCore
-import WebRTC
 
 struct VideoEnhancement {
     var mode: Int32
@@ -23,9 +22,9 @@ struct VideoEnhancement {
 
 struct RenderDiagnostics {
     var pixelFormat = "unknown"
-    var renderMode = "I420"
-    var frameSource = "unknown"
-    var renderPath = "RTCMTLI420Renderer"
+    var renderMode = "BiPlanar"
+    var frameSource = "CVPixelBuffer"
+    var renderPath = "OPNMetalSpatialUpscalerSwift"
     var fallback = ""
     var enhancementConfiguredTier = "Off"
     var enhancementActiveTier = "Native"
@@ -41,65 +40,6 @@ struct RenderDiagnostics {
 }
 
 extension OPNMetalVideoView {
-    func rendererForFrame(_ frame: RTCVideoFrame, diagnostics: inout RenderDiagnostics) -> OPNRTCMetalRenderer? {
-        if let buffer = frame.buffer as? RTCCVPixelBuffer {
-            diagnostics.frameSource = "CVPixelBuffer"
-            let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
-            let isNV12 = format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange || format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
-            let isRGB = format == kCVPixelFormatType_32BGRA || format == kCVPixelFormatType_32ARGB
-            diagnostics.pixelFormat = pixelFormatName(format)
-            if isNV12 {
-                var fallback = ""
-                if rendererNV12 == nil { rendererNV12 = newRenderer(named: "RTCMTLNV12Renderer", fallback: &fallback) }
-                if let rendererNV12 {
-                    diagnostics.renderMode = "NV12"
-                    diagnostics.renderPath = "RTCMTLNV12Renderer"
-                    return rendererNV12
-                }
-                diagnostics.fallback = fallback.isEmpty ? "NV12 unavailable; using I420" : fallback
-            } else if isRGB {
-                var fallback = ""
-                if rendererRGB == nil { rendererRGB = newRenderer(named: "RTCMTLRGBRenderer", fallback: &fallback) }
-                if let rendererRGB {
-                    diagnostics.renderMode = "RGB"
-                    diagnostics.renderPath = "RTCMTLRGBRenderer"
-                    return rendererRGB
-                }
-                diagnostics.fallback = fallback.isEmpty ? "NV12 preferred; RGB unavailable; using I420" : fallback
-            } else {
-                diagnostics.fallback = "NV12 preferred; unsupported CVPixelBuffer; using I420"
-            }
-        } else {
-            diagnostics.frameSource = NSStringFromClass(type(of: frame.buffer as AnyObject))
-            diagnostics.pixelFormat = "I420"
-        }
-        diagnostics.renderMode = "I420"
-        diagnostics.renderPath = "RTCMTLI420Renderer"
-        return i420Renderer(fallback: &diagnostics.fallback)
-    }
-
-    func newRenderer(named className: String, fallback: inout String) -> OPNRTCMetalRenderer? {
-        guard let rendererClass = NSClassFromString(className) as? NSObject.Type else {
-            fallback = "\(className) unavailable"
-            return nil
-        }
-        guard let renderer = OPNObjCMetalRenderer(rendererClass.init()) else {
-            fallback = "\(className) does not expose renderer selectors"
-            return nil
-        }
-        guard renderer.addRenderingDestination(metalView) else {
-            fallback = "\(className) rejected MTKView"
-            return nil
-        }
-        metalView.preferredFramesPerSecond = targetFps
-        return renderer
-    }
-
-    func i420Renderer(fallback: inout String) -> OPNRTCMetalRenderer? {
-        if rendererI420 == nil { rendererI420 = newRenderer(named: "RTCMTLI420Renderer", fallback: &fallback) }
-        return rendererI420
-    }
-
     func emitDiagnosticsIfNeeded(_ diagnostics: RenderDiagnostics, force: Bool) {
         let now = CACurrentMediaTime()
         guard force || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
@@ -161,12 +101,6 @@ extension OPNMetalVideoView {
     /// a path with no fill pass, which is what a pointer needs to know before reprojecting a click.
     var committedPillarboxFill: OPNCommittedPillarboxFill {
         enhancementRenderer?.pillarboxFillCommit.value ?? .notApplied
-    }
-
-    func setCustomDrawableRenderingEnabled(_ enabled: Bool) {
-        guard customDrawableRenderingEnabled != enabled else { return }
-        customDrawableRenderingEnabled = enabled
-        metalView.framebufferOnly = !enabled
     }
 
     func recordDrawCadence() {

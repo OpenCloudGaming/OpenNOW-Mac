@@ -399,8 +399,8 @@ struct RemoteCoOpGuestView: View {
     }
 }
 
-/// The guest's video: the stream surface's own Metal view, driven owner-less (enhancement
-/// overrides off, plain rendering) straight from the received track.
+/// The guest's video: the stream surface's own Metal view, driven through the Co-Op boundary
+/// renderer that converts the received track's RTC frames to native ones.
 private struct RemoteCoOpGuestVideoSurface: NSViewRepresentable {
     let track: RTCVideoTrack
 
@@ -409,6 +409,8 @@ private struct RemoteCoOpGuestVideoSurface: NSViewRepresentable {
     /// the second track never rendered and `dismantleNSView` released the wrong one.
     final class Coordinator {
         var track: RTCVideoTrack
+        var renderer: OPNRemoteCoOpGuestVideoRenderer?
+
         init(track: RTCVideoTrack) { self.track = track }
     }
 
@@ -423,20 +425,25 @@ private struct RemoteCoOpGuestVideoSurface: NSViewRepresentable {
         // preset the host chose, and the value is a ceiling the system clamps to the actual display
         // refresh, so asking for the higher one costs nothing on a 60 Hz panel.
         let view = OPNMetalVideoView(frame: .zero, targetFps: 120)
-        track.add(view)
+        let renderer = OPNRemoteCoOpGuestVideoRenderer(view: view)
+        context.coordinator.renderer = renderer
+        track.add(renderer)
         return view
     }
 
     func updateNSView(_ nsView: OPNMetalVideoView, context: Context) {
         guard context.coordinator.track !== track else { return }
-        context.coordinator.track.remove(nsView)
+        if let renderer = context.coordinator.renderer {
+            context.coordinator.track.remove(renderer)
+            track.add(renderer)
+        }
         context.coordinator.track = track
-        track.add(nsView)
     }
 
     // The track retains its renderers, so a view that is going away must be removed explicitly or
     // libwebrtc keeps decoding into it.
     static func dismantleNSView(_ nsView: OPNMetalVideoView, coordinator: Coordinator) {
-        coordinator.track.remove(nsView)
+        guard let renderer = coordinator.renderer else { return }
+        coordinator.track.remove(renderer)
     }
 }

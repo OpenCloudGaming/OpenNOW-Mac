@@ -6,49 +6,17 @@ import Metal
 import MetalKit
 import ObjectiveC
 import QuartzCore
-@preconcurrency import WebRTC
 
-@objc protocol OPNRTCMetalRenderer: NSObjectProtocol {
-    @objc(addRenderingDestination:)
-    func addRenderingDestination(_ view: MTKView) -> Bool
-
-    @objc(drawFrame:)
-    func drawFrame(_ frame: RTCVideoFrame)
-}
-
-final class OPNObjCMetalRenderer: NSObject, OPNRTCMetalRenderer {
-    private let renderer: NSObject
-    private let addDestinationSelector = NSSelectorFromString("addRenderingDestination:")
-    private let drawFrameSelector = NSSelectorFromString("drawFrame:")
-
-    init?(_ renderer: NSObject) {
-        guard renderer.responds(to: addDestinationSelector), renderer.responds(to: drawFrameSelector) else { return nil }
-        self.renderer = renderer
-    }
-
-    func addRenderingDestination(_ view: MTKView) -> Bool {
-        typealias AddRenderingDestination = @convention(c) (AnyObject, Selector, AnyObject) -> Bool
-        let implementation = renderer.method(for: addDestinationSelector)
-        let call = unsafeBitCast(implementation, to: AddRenderingDestination.self)
-        return call(renderer, addDestinationSelector, view)
-    }
-
-    func drawFrame(_ frame: RTCVideoFrame) {
-        typealias DrawFrame = @convention(c) (AnyObject, Selector, AnyObject) -> Void
-        let implementation = renderer.method(for: drawFrameSelector)
-        let call = unsafeBitCast(implementation, to: DrawFrame.self)
-        call(renderer, drawFrameSelector, frame)
-    }
-}
-
+/// The shared stream surface.
+///
+/// It renders `OPNVideoFrame`s — decoded `CVPixelBuffer`s with native timing — so no peer-library
+/// frame type reaches the Metal, enhancement or snapshot paths. Remote Co-Op's edges convert to
+/// this type once; see `OPNRemoteCoOpGuestVideoRenderer`.
 @objc(OPNMetalVideoView)
 @MainActor
-final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
+final class OPNMetalVideoView: NSView, MTKViewDelegate {
     let metalView: MTKView
-    nonisolated(unsafe) var videoFrame: RTCVideoFrame?
-    var rendererNV12: OPNRTCMetalRenderer?
-    var rendererRGB: OPNRTCMetalRenderer?
-    var rendererI420: OPNRTCMetalRenderer?
+    nonisolated(unsafe) var videoFrame: OPNVideoFrame?
     var commandQueue: (any MTLCommandQueue)?
     var enhancementRenderer: OPNVideoEnhancementRenderer?
     nonisolated(unsafe) var sourceFrameSize = CGSize.zero
@@ -68,19 +36,11 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     private var enhancementOverBudgetCount = 0
     private var lastLoggedFallbackReason = ""
     private var adaptiveEnhancementPenalty = 0
-    var customDrawableRenderingEnabled = false
     nonisolated(unsafe) var enhancementOverride: (Int32, Int32, Int32, Int32, Int32, Int32, Int32)?
     nonisolated(unsafe) var enhancementOverrideLock = os_unfair_lock_s()
     nonisolated(unsafe) var frameLock = os_unfair_lock_s()
-    nonisolated(unsafe) private var cachedPixelFormat: OSType = 0
-    /// True when WebRTC's built-in renderers cannot draw the latest surface (any bi-planar layout
-    /// other than 8-bit 4:2:0) and the frame has to go through our own Metal path even with
-    /// enhancement off. Re-read whenever the surface format changes, not once per session: a
-    /// decoder rebuild can move between 4:2:0 and 4:4:4 at a keyframe without changing size.
-    nonisolated(unsafe) var cachedRequiresCustomRenderPath = false
     /// The drawable format and transfer function the latest frame wants. Re-read on every frame:
-    /// a stream can switch to 10-bit or HDR at a keyframe without changing size, which is the only
-    /// event the older per-size cache above keyed on.
+    /// a stream can switch to 10-bit or HDR at a keyframe without changing size.
     nonisolated(unsafe) var desiredOutputFormat: MTLPixelFormat = .bgra8Unorm
     nonisolated(unsafe) var desiredTransfer = OPNVideoTransferFunction.sdr
     var appliedTransfer = OPNVideoTransferFunction.sdr
@@ -89,7 +49,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
     nonisolated(unsafe) var presentationMode = OPNVideoPresentationMode.balanced
     /// `smooth` only: frames waiting for a refresh, oldest first. Capped at two so a stall cannot
     /// build a latency debt; anything older than the newest two is dropped like `balanced` does.
-    nonisolated(unsafe) var pendingFrames: [(frame: RTCVideoFrame, serial: UInt64, receivedAt: CFTimeInterval)] = []
+    nonisolated(unsafe) var pendingFrames: [(frame: OPNVideoFrame, serial: UInt64, receivedAt: CFTimeInterval)] = []
     /// When the newest frame reached `renderFrame`, for the presented-time measurement.
     nonisolated(unsafe) var latestFrameReceivedAt: CFTimeInterval = 0
     /// Presented-time accounting, filled from the drawable's presented handler on a Metal thread.
@@ -124,7 +84,9 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         metalView.frame = bounds
         metalView.autoresizingMask = [.width, .height]
-        metalView.framebufferOnly = true
+        // Every frame this surface draws goes through our own pass, and a snapshot reads the drawable
+        // back, so the drawable is never write-only.
+        metalView.framebufferOnly = false
         metalView.colorPixelFormat = .bgra8Unorm
         metalView.depthStencilPixelFormat = .invalid
         metalView.sampleCount = 1
@@ -198,24 +160,14 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         }
     }
 
-    nonisolated func renderFrame(_ frame: RTCVideoFrame?) {
+    /// Hands a decoded frame to the surface. Both `OPNMetalVideoView.renderFrame` and `setSize` are
+    /// nonisolated, so frames never have to hop to the main actor.
+    nonisolated func renderFrame(_ frame: OPNVideoFrame?) {
         guard let frame else { return }
-        var output: (MTLPixelFormat, OPNVideoTransferFunction)?
-        if let buffer = frame.buffer as? RTCCVPixelBuffer {
-            output = Self.desiredOutput(for: buffer.pixelBuffer)
-        }
+        let output = Self.desiredOutput(for: frame.pixelBuffer)
         os_unfair_lock_lock(&frameLock)
-        if let buffer = frame.buffer as? RTCCVPixelBuffer {
-            let format = CVPixelBufferGetPixelFormatType(buffer.pixelBuffer)
-            if format != cachedPixelFormat {
-                cachedPixelFormat = format
-                cachedRequiresCustomRenderPath = OPNVideoTextureSource.requiresCustomRenderPath(format)
-            }
-        }
-        if let output {
-            desiredOutputFormat = output.0
-            desiredTransfer = output.1
-        }
+        desiredOutputFormat = output.0
+        desiredTransfer = output.1
         videoFrame = frame
         frameSerial += 1
         framesReceived &+= 1
@@ -279,51 +231,30 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
 
         guard let next = nextFrameToDraw(), next.frame.width > 0, next.frame.height > 0 else { return }
         let frame = next.frame
-        let snapshot = (frame, next.serial, next.sourceSize, next.requiresCustomRenderPath)
         if applyOutputFormatIfNeeded(next.output.0, transfer: next.output.1) { return }
         attachPresentedHandler(receivedAt: next.receivedAt)
 
-        let sourceSize = snapshot.2.width > 0 && snapshot.2.height > 0 ? snapshot.2 : CGSize(width: Int(frame.width), height: Int(frame.height))
+        let sourceSize = next.sourceSize.width > 0 && next.sourceSize.height > 0
+            ? next.sourceSize
+            : CGSize(width: frame.width, height: frame.height)
         var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize), drawableResolution: videoResolutionString(metalView.drawableSize))
         let enhancement = budgetedEnhancement()
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
-        let needsCustomPath = enhancement.mode > 0 || enhancement.fillMode.needsCustomRenderPath
-        if needsCustomPath {
-            setCustomDrawableRenderingEnabled(true)
-        }
-        if needsCustomPath, renderEnhancedFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
+        if enhancement.mode > 0,
+           renderEnhancedFrame(frame, drawSerial: next.serial, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
             captureDrawableIfRequested()
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
         }
-
-        // 10-bit, 4:2:2 and 4:4:4 surfaces never reach WebRTC's renderers: its NV12 renderer
-        // binds only 8-bit 4:2:0 and its I420 fallback cannot convert anything else, so they are
-        // drawn by our own pass even with every enhancement off.
-        let customSurface = snapshot.3
-        if customSurface {
-            setCustomDrawableRenderingEnabled(true)
-        }
-        if customSurface, renderCustomSurfaceFrame(frame, drawSerial: snapshot.1, sourceSize: sourceSize, diagnostics: &diagnostics) {
+        // Enhancement off, or the enhanced pass declined the frame: the plain spatial pass still
+        // draws it. That shader set is the only converter that reads every decoded surface — 8-bit
+        // NV12 through 10-bit 4:4:4 — and it applies whatever pillarbox fill is selected, so the
+        // picture and its committed geometry stay correct on one path.
+        if renderPlainFrame(frame, drawSerial: next.serial, sourceSize: sourceSize, diagnostics: &diagnostics) {
             captureDrawableIfRequested()
             emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
             return
-        }
-
-        setCustomDrawableRenderingEnabled(false)
-        // libwebrtc's renderers draw the decoded frame as it is: no fill pass runs, so whatever
-        // geometry an earlier frame committed must not be left standing for the pointer to
-        // reproject clicks with.
-        enhancementRenderer?.pillarboxFillCommit.clear()
-        let renderer = rendererForFrame(frame, diagnostics: &diagnostics)
-        if let renderer {
-            renderer.drawFrame(frame)
-            lastDrawnFrameSerial = snapshot.1
-            recordDrawCadence()
-            captureDrawableIfRequested()
-        } else {
-            diagnostics.fallback = "renderer unavailable"
         }
         lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
         emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
@@ -447,7 +378,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         return enhancement
     }
 
-    private func renderEnhancedFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
+    private func renderEnhancedFrame(_ frame: OPNVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
         guard let enhancementRenderer else { return false }
         let settings = configuredEnhancementSettings(enhancement: enhancement, sourceSize: sourceSize, renderer: enhancementRenderer)
         let diagnosticsNow = CACurrentMediaTime()
@@ -464,7 +395,7 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
             return true
         }
 
-        diagnostics.fallback = result.fallbackReason.isEmpty ? "processed renderer unavailable; using WebRTC renderer" : result.fallbackReason
+        diagnostics.fallback = result.fallbackReason.isEmpty ? "processed renderer unavailable; using the plain spatial pass" : result.fallbackReason
         diagnostics.enhancementConfiguredTier = result.configuredTier.isEmpty ? "Upscaler" : result.configuredTier
         diagnostics.enhancementActiveTier = "Native fallback"
         diagnostics.enhancementFallbackReason = result.tierFallbackReason.isEmpty ? diagnostics.fallback : result.tierFallbackReason
@@ -475,12 +406,11 @@ final class OPNMetalVideoView: NSView, RTCVideoRenderer, MTKViewDelegate {
         return false
     }
 
-    /// Draws a surface WebRTC's renderers cannot (10-bit, 4:2:2, 4:4:4) through the enhancement
-    /// renderer's plain spatial pass: no sharpening, no denoise, just the YCbCr conversion and the
-    /// pillarbox fill the user asked for.
-    private func renderCustomSurfaceFrame(_ frame: RTCVideoFrame, drawSerial: UInt64, sourceSize: CGSize, diagnostics: inout RenderDiagnostics) -> Bool {
+    /// Draws any decoded surface through the spatial shader's cheapest form: the YCbCr conversion and
+    /// the pillarbox fill the user asked for, with no sharpening and no denoise.
+    private func renderPlainFrame(_ frame: OPNVideoFrame, drawSerial: UInt64, sourceSize: CGSize, diagnostics: inout RenderDiagnostics) -> Bool {
         guard let enhancementRenderer else { return false }
-        let surfaceFormat = (frame.buffer as? RTCCVPixelBuffer).map { CVPixelBufferGetPixelFormatType($0.pixelBuffer) } ?? 0
+        let surfaceFormat = CVPixelBufferGetPixelFormatType(frame.pixelBuffer)
         let settings = enhancementSettings
         settings.configuredTier = .spatial
         let enhancement = localVideoEnhancement()
