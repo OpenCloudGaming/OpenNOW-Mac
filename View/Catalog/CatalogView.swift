@@ -150,6 +150,13 @@ struct CatalogView: View {
     @State private var viewModel: CatalogViewModel
     @State private var showsMainMenu = false
     @State private var showsAccountMenu = false
+    /// The shared iCloud coordinator. Read in `body`, so a conflict a background pass detects
+    /// reaches this page as an observation change and can raise the prompt below.
+    private let cloudSync = OPNCloudSyncCoordinator.shared
+    /// Categories already offered through the prompt. A waved-away conflict stays quiet for the
+    /// session, while one that is resolved and later re-diverges is offered again.
+    @State private var promptedSyncConflicts: Set<OPNCloudSyncCategory> = []
+    @State private var isSyncConflictAlertPresented = false
     /// The theme the catalog page has actually been rebuilt for. It lags `themeIdentity` while
     /// Settings is open so picking a colour repaints Settings instantly without rebuilding every
     /// rail and tile behind it; the catalog catches up when the reader returns to it.
@@ -162,6 +169,55 @@ struct CatalogView: View {
     }
 
     private var isCatalogPageActive: Bool { viewModel.selectedMainPage == .games }
+
+    /// Pending iCloud conflicts the reader has not already been shown a prompt for.
+    private var unpromptedSyncConflicts: [OPNCloudSyncConflict] {
+        cloudSync.pendingConflicts.filter { !promptedSyncConflicts.contains($0.category) }
+    }
+
+    /// The prompt belongs to the home page, so it stays off the settings page that owns the resolve
+    /// controls and off a stream or an open launch flow it would otherwise cover.
+    private var canPresentSyncConflictAlert: Bool {
+        isCatalogPageActive
+            && viewModel.activeStreamConfiguration == nil
+            && !viewModel.isLaunchFlowVisible
+            && !viewModel.isGameInfoVisible
+    }
+
+    private var syncConflictAlertTitle: String {
+        let conflicts = cloudSync.pendingConflicts
+        guard let first = conflicts.first else { return "Sync Conflict" }
+        return conflicts.count == 1 ? "Sync Conflict — \(first.category.title)" : "\(conflicts.count) Sync Conflicts"
+    }
+
+    private var syncConflictAlertMessage: String {
+        let conflicts = cloudSync.pendingConflicts
+        guard let first = conflicts.first else {
+            return "Open iCloud settings to choose which copy to keep."
+        }
+        guard conflicts.count == 1 else {
+            let categories = conflicts.map { $0.category.title.lowercased() }.joined(separator: ", ")
+            return "This Mac and the shared backup both changed your \(categories) since the last sync. Open iCloud settings to choose which copies to keep."
+        }
+        return "This Mac and \(first.remoteDisplayName) both changed your \(first.category.title.lowercased()) since the last sync. Open iCloud settings to choose which copy to keep."
+    }
+
+    /// Offers the prompt once per diverged category, and forgets a category that is no longer in
+    /// conflict so a fresh divergence asks again.
+    private func refreshSyncConflictAlert() {
+        promptedSyncConflicts.formIntersection(Set(cloudSync.pendingConflicts.map(\.category)))
+        guard !isSyncConflictAlertPresented, canPresentSyncConflictAlert else { return }
+        let unprompted = unpromptedSyncConflicts
+        guard !unprompted.isEmpty else { return }
+        promptedSyncConflicts.formUnion(unprompted.map(\.category))
+        isSyncConflictAlertPresented = true
+    }
+
+    /// Clears the prompt and lands the reader on the iCloud page, where a conflict card resolves it.
+    private func openICloudSettingsFromSyncConflictAlert() {
+        isSyncConflictAlertPresented = false
+        viewModel.showSettings(.iCloud)
+    }
 
     /// The saved accounts reduced to the menu bar's snapshot shape, so a change the view's SwiftData
     /// query reports — a rename, a new account, a sign-out — is something `onChange` can compare.
@@ -404,7 +460,10 @@ struct CatalogView: View {
         .onChange(of: menuBarAccountsSignature, initial: true) { @MainActor _, _ in
             viewModel.updateMenuBarAccounts(accounts, signedOutAccountEmails: signedOutAccountEmails)
         }
-        .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in updateWindowTitleForActiveStream() }
+        .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in
+            updateWindowTitleForActiveStream()
+            refreshSyncConflictAlert()
+        }
         .onChange(of: themeIdentity, initial: true) { @MainActor _, newIdentity in
             guard isCatalogPageActive else { return }
             appliedCatalogThemeIdentity = newIdentity
@@ -412,11 +471,24 @@ struct CatalogView: View {
         .onChange(of: viewModel.selectedMainPage) { @MainActor _, _ in
             guard isCatalogPageActive else { return }
             appliedCatalogThemeIdentity = themeIdentity
+            refreshSyncConflictAlert()
         }
+        .onChange(of: cloudSync.pendingConflicts) { @MainActor _, _ in refreshSyncConflictAlert() }
+        .onAppear { @MainActor in refreshSyncConflictAlert() }
         .onDisappear { @MainActor in
             viewModel.detachMenuBarSurface()
             onWindowTitleChange(nil)
         }
+        .opnConfirmation(
+            isPresented: $isSyncConflictAlertPresented,
+            eyebrow: "ICLOUD SYNC",
+            title: syncConflictAlertTitle,
+            message: syncConflictAlertMessage,
+            actions: [
+                OPNConfirmationAction("NOT NOW", role: .cancel) { isSyncConflictAlertPresented = false },
+                OPNConfirmationAction("OPEN SETTINGS") { openICloudSettingsFromSyncConflictAlert() }
+            ]
+        )
         .preferredColorScheme(preferredColorScheme)
     }
 
