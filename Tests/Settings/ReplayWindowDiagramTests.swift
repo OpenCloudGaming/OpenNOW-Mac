@@ -50,11 +50,17 @@ import Testing
 
     /// On the card's own surface and padding: a bare render judges the track fill and the caption's
     /// descenders against transparency instead of what the reader sees.
+    ///
+    /// The frame width is held fixed across scales on purpose. Scaling it too would let the caption
+    /// reflow onto fewer lines as the width grows and the font grows — at 1.5 it fits one line
+    /// where 1.25 needs two — so a whole-diagram height comparison would dip even though every
+    /// layout constant scales. Holding the width steady keeps the line count constant, leaving the
+    /// scaled heights as the only thing that moves.
     private func diagramOnCardSurface(scale: CGFloat) -> some View {
         ReplayWindowDiagram(windowSeconds: 7_200, clipSeconds: 45, uiScale: scale)
             .padding(.horizontal, OPNDesign.Spacing.large(scale: scale))
             .padding(.vertical, OPNDesign.Spacing.small(scale: scale))
-            .frame(width: 520 * scale, alignment: .leading)
+            .frame(width: 520, alignment: .leading)
             .background(OPNDesign.Surface.panel)
     }
 
