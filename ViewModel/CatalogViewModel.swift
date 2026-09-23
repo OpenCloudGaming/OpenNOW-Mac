@@ -309,6 +309,9 @@ final class CatalogViewModel {
     var microphoneLevelProbe: OPNMicrophoneLevelProbe?
     var microphoneTestAutoStop: Task<Void, Never>?
     var previousGameSession = CatalogPreviousGameSession.load()
+    /// The summary of the stream that just ended, until the reader dismisses it. Nil when nothing
+    /// is pending, the preference is off, or the session left nothing worth summarising.
+    var sessionInsights: SessionInsights?
     var playtimeStatistics = CatalogPlaytimeStatistics.empty
     var recentlyPlayed = CatalogRecentlyPlayed.empty {
         didSet { invalidateDerivedCatalogCaches() }

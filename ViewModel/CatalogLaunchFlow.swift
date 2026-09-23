@@ -331,6 +331,14 @@ extension CatalogViewModel {
         errorMessage = ""
     }
 
+    /// Clears the post-session summary. `isOptingOut` turns the preference off for the next stream.
+    func dismissSessionInsights(isOptingOut: Bool) {
+        if isOptingOut {
+            OPNSessionInsightsPreferences.isEnabled = false
+        }
+        sessionInsights = nil
+    }
+
     func finishActiveStream(success: Bool, message: String, report: StreamReport?) {
         let finishedConfiguration = activeStreamConfiguration
         cancelActiveStreamAdPlayback()
@@ -367,6 +375,7 @@ extension CatalogViewModel {
                 statistics.save(accountIdentifier: Self.playtimeAccountIdentifier(account: account, session: self.session))
             }
         }
+        presentSessionInsights(report: report)
         if !success, !message.isEmpty {
             reportLaunchFailure(message)
             return
@@ -375,6 +384,19 @@ extension CatalogViewModel {
             actionMessage = report.message
         }
         checkActiveHomeSession()
+    }
+
+    /// Builds the summary of a stream that actually ran, when the preference is on.
+    private func presentSessionInsights(report: StreamReport?) {
+        guard let report, OPNSessionInsightsPreferences.isEnabled,
+              let insights = SessionInsights(
+                  report: report,
+                  fallbackResolution: "\(streamProfile.resolution.width)x\(streamProfile.resolution.height)",
+                  fallbackCodec: streamProfile.codec.value,
+                  fallbackFrameRate: streamProfile.fps
+              )
+        else { return }
+        sessionInsights = insights
     }
 
     func updateActiveStreamProgress(_ progress: StreamProgress) {
@@ -461,6 +483,7 @@ extension CatalogViewModel {
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         OPNSessionReadyAction.prepareAuthorizationIfNeeded()
         activeStreamConfiguration = configuration
+        sessionInsights = nil
         clearLaunchFlow()
     }
 

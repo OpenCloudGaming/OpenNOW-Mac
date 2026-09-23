@@ -388,6 +388,16 @@ struct CatalogView: View {
                         .zIndex(19)
                     }
 
+                    if let insights = viewModel.sessionInsights {
+                        SessionInsightsOverlay(
+                            insights: insights,
+                            uiScale: uiScale,
+                            dismiss: { isOptingOut in viewModel.dismissSessionInsights(isOptingOut: isOptingOut) }
+                        )
+                        .transition(.opacity)
+                        .zIndex(22)
+                    }
+
                     if viewModel.isCollectionsPickerPresented {
                         CatalogCollectionsPickerOverlay(viewModel: viewModel)
                             .transition(.opacity)

@@ -394,6 +394,8 @@ public actor NativeNVSTStreamingPath {
         terminalTask?.cancel()
         terminalTask = nil
         let durationSeconds = streamDurationSeconds()
+        // Read while the transport is still connected: a disconnected transport has no stats left.
+        let insights = await (transport as? any StreamInsightsReporting)?.streamInsightsMetadata() ?? [:]
         self.activeSession = nil
         activeAllocation = nil
         launchConfiguration = nil
@@ -414,6 +416,7 @@ public actor NativeNVSTStreamingPath {
         await mediaSession.finish()
         var metadata = ["transport": "nvst"]
         metadata.merge(diagnostics) { current, _ in current }
+        metadata.merge(insights) { current, _ in current }
         if let finishError {
             metadata["cloudFinishError"] = Self.message(for: finishError)
         }
@@ -590,12 +593,15 @@ extension NativeNVSTStreamingPath {
             reason = .failed
             message = failure.message.isEmpty ? "Native NVST transport failed." : failure.message
         }
+        // Read while the transport is still connected: a disconnected transport has no stats left.
+        let insights = await (transport as? any StreamInsightsReporting)?.streamInsightsMetadata() ?? [:]
         let diagnostics = await transport.diagnosticMetadata()
         await transport.disconnect()
         try? await sessionProvider.finishSession(activeSession, reason: reason)
         await mediaSession.finish()
         var metadata = ["transport": "nvst"]
         metadata.merge(diagnostics) { current, _ in current }
+        metadata.merge(insights) { current, _ in current }
         let report = StreamReport(title: activeSession.title, success: reason != .failed, reason: reason, message: message, durationSeconds: durationSeconds, metadata: metadata)
         state = .ended(report)
         publish(report)

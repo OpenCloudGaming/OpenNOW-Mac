@@ -944,6 +944,30 @@ channel draws. It opens and closes with the same `Motion.panel` entrance as the 
 the scrim cross-fades while the panel springs up from 0.96 scale with a fade, collapsing to a plain
 cross-fade under Reduce Motion.
 
+### Session Insights Modal (`SessionInsightsOverlay`)
+
+The post-session summary, mounted by `CatalogView` over the catalog when a stream ends and the
+session actually ran. Follows the modal spec (Panel background, 1px Stroke Regular, 2px accent
+top bar, modal shadow #000000 @ 0.58 radius 28 y 20, App Bar header with a 10pt bold accent
+"SESSION INSIGHTS" eyebrow, the game title as a 20pt bold title, and the shared 28×28 close
+control). The panel is up to 560 wide and shrinks to the window minus 2 × 40 (Page Horizontal)
+with a 320 floor; only the body scrolls, so the header and footer stay put at a high interface
+scale.
+
+The body opens on the outcome headline (15pt bold — Text Primary, or Danger when the session
+failed) beside the transport name as an eyebrow chip, then "Played for …", then the stream shape
+(Resolution · FPS · Codec). Measurements the transports wrote into `StreamReport.metadata` while
+the session was still connected render as a three-column grid of metric cards (Row Fill @ 0.045,
+1px Stroke Subtle, 9pt bold muted label over a 15pt bold value; a reading outside its budget —
+latency over 60 ms, decode over the frame budget, packet loss over 1 %, or any non-zero drop,
+decode error or recovery — carries Warning). A transport that measured nothing contributes no
+cards. An accent-bar notice (`OPNReportIssueNotice`) closes the body with the session's own
+verdict. The footer carries a square "Don't show this again" checkbox
+(`OPNReportIssueCheckbox`, left) and DONE (`VendorGetInButtonStyle`, Enter). Checking the box and
+confirming — by DONE, the close control, scrim tap, or Escape — turns the `Session Insights`
+preference off; leaving it unchecked keeps it on. The summary is gated by
+Settings → General → Session Ready → Session Insights (default on).
+
 ### Controller Sheets (test / mapping)
 
 The controller tester (`SteamControllerTestView`) opens from Settings → Input → Controller

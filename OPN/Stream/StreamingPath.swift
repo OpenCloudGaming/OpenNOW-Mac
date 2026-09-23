@@ -185,16 +185,21 @@ public actor StreamingPath {
         guard let activeSession else { throw StreamingPathError.notRunning }
         OPNStreamTelemetry.capture("webrtc.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": String(describing: reason)])
         cancelIceCandidateForwarding()
+        // Read while the transport is still connected: a disconnected transport has no stats left.
+        let insights = await (transport as? any StreamInsightsReporting)?.streamInsightsMetadata() ?? [:]
         await transport.disconnect()
         try await sessionProvider.finishSession(activeSession, reason: reason)
         await mediaSession.finish()
 
+        var metadata = ["transport": "webrtc"]
+        metadata.merge(insights) { current, _ in current }
         let report = StreamReport(
             title: activeSession.title,
             success: reason != .failed,
             reason: reason,
             message: message,
-            durationSeconds: streamDurationSeconds()
+            durationSeconds: streamDurationSeconds(),
+            metadata: metadata
         )
         self.activeSession = nil
         startedAt = nil

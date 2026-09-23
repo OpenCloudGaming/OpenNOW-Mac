@@ -122,6 +122,7 @@ enum SettingsSearchIndex {
 
     private static let generalEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("When the Stream Is Ready", .general, "session-ready", keywords: ["notification", "alert", "queue", "bring to front", "focus", "off", "disable"]),
+        SettingsSearchEntry("Session Insights", .general, "session-ready", keywords: ["post session", "after stream", "summary", "report", "session report", "stream summary", "insights", "stats", "duration"]),
         SettingsSearchEntry("Menu Bar Item", .general, "window-closing", keywords: ["menu bar", "status item", "hide", "opt out", "turn off", "background", "icon"]),
         SettingsSearchEntry("When the Last Window Closes", .general, "window-closing", keywords: ["menu bar", "status item", "background", "windowless", "close button", "close window", "minimize", "dock", "stay running", "quit"]),
         SettingsSearchEntry("Launch at Login", .general, "window-closing", keywords: ["login", "login item", "startup", "start up", "auto start", "boot", "open at login", "sign in"]),

@@ -10,6 +10,7 @@ struct InterfaceSettingsPage: View {
     @AppStorage(OPNMenuBarPreferences.showsStatusItemKey) private var showsMenuBarItem = OPNMenuBarPreferences.defaultShowsStatusItem
     @AppStorage(OPNLaunchPreferences.startupPresentationKey) private var startupPresentationRawValue = OPNLaunchPreferences.defaultStartupPresentation.rawValue
     @State private var launchesAtLogin = OPNLoginItemController.isEnabled
+    @State private var isSessionInsightsEnabled = OPNSessionInsightsPreferences.isEnabled
 
     /// Menu-bar-only mode hides the Dock icon, so without the status item it has nothing to be
     /// reached by. It is offered as unavailable and the row says why rather than silently
@@ -77,6 +78,18 @@ struct InterfaceSettingsPage: View {
                     sessionReadyActionRawValue = mode.rawValue
                     if mode == .notification { OPNSessionReadyAction.prepareAuthorizationIfNeeded() }
                 }
+                SettingsDivider(uiScale: uiScale)
+                SettingsToggleRow(
+                    title: "Session Insights",
+                    subtitle: "Show a summary of what a stream measured about itself — how long it ran, its shape, and any dropped frames, decode errors or recoveries — when the stream ends. The summary carries a Don't show this again option.",
+                    isOn: isSessionInsightsEnabled,
+                    isNew: OPNNewSettings.isNew(.sessionInsights),
+                    uiScale: uiScale
+                ) { newValue in
+                    OPNNewSettings.acknowledge(.sessionInsights)
+                    isSessionInsightsEnabled = newValue
+                    OPNSessionInsightsPreferences.isEnabled = newValue
+                }
             }
             .settingsSection("session-ready")
             SettingsCard(title: "Window & Menu Bar", uiScale: uiScale) {
@@ -133,7 +146,10 @@ struct InterfaceSettingsPage: View {
             }
             .settingsSection("window-closing")
         }
-        .onAppear { launchesAtLogin = OPNLoginItemController.isEnabled }
+        .onAppear {
+            launchesAtLogin = OPNLoginItemController.isEnabled
+            isSessionInsightsEnabled = OPNSessionInsightsPreferences.isEnabled
+        }
     }
 }
 
