@@ -623,7 +623,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The seat's `0x010e` HDR mode notification, for the HUD and the log.
     public internal(set) var onHdrModeChanged: (@MainActor @Sendable (NvstHdrModeNotification) -> Void)?
     public internal(set) var lastHdrMode: NvstHdrModeNotification?
+}
 
+extension NvstBifrostFreeTransport {
     /// The stream profile this session negotiates with, after the app's configured overrides.
     static func resolvedStreamProfile(allocation: NativeNVSTSessionAllocation,
                                               configuredFps: Int?,
@@ -663,9 +665,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         return profile
     }
 
-}
-
-extension NvstBifrostFreeTransport {
     /// What the RTSP negotiator is asked for: the resolved profile plus the client-side switches.
     func negotiationInput(sessionID: String, endpoints: [String], profile: StreamProfile) -> NvstRtspNegotiationInput {
         NvstRtspNegotiationInput(
@@ -754,21 +753,7 @@ extension NvstBifrostFreeTransport {
         // After the closing summary, not before it: a recovery negotiates a fresh session on this
         // same actor, and carrying the peaks over made the next session's verdict line report the
         // previous one's best interval as its own.
-        peakIntervalFps = 0
-        peakIntervalMbps = 0
-        lastSummaryFrames = 0
-        lastSummaryMediaSeconds = 0
-        // The next receiver restarts its counters at zero, so a surviving cursor suppresses its
-        // first reports — `lastRtpStatsFrame` sat above the new frame count and muted RTP stats.
-        lastRtpStatsFrame = 0
-        qosSequence = 0
-        lastQosBytesReceived = 0
-        lastQosDelayMicroseconds = 0
-        controlStatsLastSentAt = nil
-        lastIdrRequestAt = nil
-        lastInvalidationAt = nil
-        inputSequence = 0
-        gamepadSequences.removeAll()
+        resetSessionCounters()
         feedbackSender?.stop()
         feedbackSender = nil
         // The media receivers and pipeline stop before the bundle closes, so in-flight frame acks
@@ -802,5 +787,23 @@ extension NvstBifrostFreeTransport {
         terminationContinuation?.finish()
         terminationContinuation = nil
         terminationStream = nil
+    }
+
+    private func resetSessionCounters() {
+        peakIntervalFps = 0
+        peakIntervalMbps = 0
+        lastSummaryFrames = 0
+        lastSummaryMediaSeconds = 0
+        // The next receiver restarts its counters at zero, so a surviving cursor suppresses its
+        // first reports — `lastRtpStatsFrame` sat above the new frame count and muted RTP stats.
+        lastRtpStatsFrame = 0
+        qosSequence = 0
+        lastQosBytesReceived = 0
+        lastQosDelayMicroseconds = 0
+        controlStatsLastSentAt = nil
+        lastIdrRequestAt = nil
+        lastInvalidationAt = nil
+        inputSequence = 0
+        gamepadSequences.removeAll()
     }
 }

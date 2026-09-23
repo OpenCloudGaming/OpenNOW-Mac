@@ -16,14 +16,14 @@ import Testing
                      metadata: metadata)
     }
 
-    private func insights(_ report: StreamReport) -> SessionInsights? {
+    private func makeInsights(_ report: StreamReport) -> SessionInsights? {
         SessionInsights(report: report,
                         fallbackResolution: "1920x1080",
                         fallbackCodec: "h265",
                         fallbackFrameRate: 60)
     }
 
-    @Test func summarisesAMeasuredNativeSession() {
+    @Test func summarisesAMeasuredNativeSession() throws {
         let report = report(metadata: [
             StreamInsightsKey.transport: "nvst",
             StreamInsightsKey.resolution: "2560x1440",
@@ -33,50 +33,50 @@ import Testing
             StreamInsightsKey.bitrateMbps: "48.5",
             StreamInsightsKey.decodeMs: "6.2",
         ])
-        let insights = try? #require(insights(report))
-        #expect(insights?.transportName == "Native NVST")
-        #expect(insights?.streamShapeText == "2560 × 1440  ·  120 FPS  ·  AV1")
-        #expect(insights?.outcome == .endedNormally)
-        #expect(insights?.metrics.contains { $0.id == StreamInsightsKey.latencyMs && $0.value == "24 ms" } == true)
-        #expect(insights?.metrics.contains { $0.id == StreamInsightsKey.bitrateMbps && $0.value == "48.5 Mbps" } == true)
+        let insights = try #require(makeInsights(report))
+        #expect(insights.transportName == "Native NVST")
+        #expect(insights.streamShapeText == "2560 × 1440  ·  120 FPS  ·  AV1")
+        #expect(insights.outcome == .endedNormally)
+        #expect(insights.metrics.contains { $0.id == StreamInsightsKey.latencyMs && $0.value == "24 ms" })
+        #expect(insights.metrics.contains { $0.id == StreamInsightsKey.bitrateMbps && $0.value == "48.5 Mbps" })
     }
 
-    @Test func omitsMetricsTheTransportDidNotMeasure() {
+    @Test func omitsMetricsTheTransportDidNotMeasure() throws {
         let report = report(metadata: [StreamInsightsKey.transport: "webrtc"])
-        let insights = try? #require(insights(report))
-        #expect(insights?.metrics.isEmpty == true)
-        #expect(insights?.outcome == .endedNormally)
-        #expect(insights?.guidance == "No decoder errors or lost frames were recorded.")
+        let insights = try #require(makeInsights(report))
+        #expect(insights.metrics.isEmpty)
+        #expect(insights.outcome == .endedNormally)
+        #expect(insights.guidance == "No decoder errors or lost frames were recorded.")
     }
 
-    @Test func flagsDecoderErrorsAndDroppedFramesAsWarnings() {
+    @Test func flagsDecoderErrorsAndDroppedFramesAsWarnings() throws {
         let report = report(metadata: [
             StreamInsightsKey.transport: "nvst",
             StreamInsightsKey.decoderErrors: "3",
             StreamInsightsKey.droppedFrames: "12",
         ])
-        let insights = try? #require(insights(report))
-        #expect(insights?.outcome == .endedWithWarnings)
-        #expect(insights?.metrics.contains { $0.id == StreamInsightsKey.decoderErrors && $0.tone == .caution } == true)
-        #expect(insights?.metrics.contains { $0.id == StreamInsightsKey.droppedFrames && $0.tone == .caution } == true)
-        #expect(insights?.guidance == "The decoder reported 3 frame errors.")
+        let insights = try #require(makeInsights(report))
+        #expect(insights.outcome == .endedWithWarnings)
+        #expect(insights.metrics.contains { $0.id == StreamInsightsKey.decoderErrors && $0.tone == .caution })
+        #expect(insights.metrics.contains { $0.id == StreamInsightsKey.droppedFrames && $0.tone == .caution })
+        #expect(insights.guidance == "The decoder reported 3 frame errors.")
     }
 
-    @Test func fallsBackToTheConfiguredProfileForTheShape() {
-        let insights = try? #require(insights(report()))
-        #expect(insights?.streamShapeText == "1920 × 1080  ·  60 FPS  ·  H265")
+    @Test func fallsBackToTheConfiguredProfileForTheShape() throws {
+        let insights = try #require(makeInsights(report()))
+        #expect(insights.streamShapeText == "1920 × 1080  ·  60 FPS  ·  H265")
     }
 
     @Test func refusesAPausedOrZeroLengthSession() {
-        #expect(insights(report(reason: .paused, metadata: [:])) == nil)
-        #expect(insights(report(duration: 0, metadata: [:])) == nil)
+        #expect(makeInsights(report(reason: .paused, metadata: [:])) == nil)
+        #expect(makeInsights(report(duration: 0, metadata: [:])) == nil)
     }
 
-    @Test func reportsAFailedSessionWithItsOwnMessage() {
+    @Test func reportsAFailedSessionWithItsOwnMessage() throws {
         let report = report(reason: .failed, success: false, message: "The seat refused the title.")
-        let insights = try? #require(insights(report))
-        #expect(insights?.outcome == .failed)
-        #expect(insights?.guidance == "The seat refused the title.")
+        let insights = try #require(makeInsights(report))
+        #expect(insights.outcome == .failed)
+        #expect(insights.guidance == "The seat refused the title.")
     }
 
     @Test func formatsDurationAcrossMinutesAndHours() {
