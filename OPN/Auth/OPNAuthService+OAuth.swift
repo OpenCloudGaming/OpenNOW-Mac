@@ -62,8 +62,44 @@ extension OPNAuthService {
     /// leg open for the whole window.
     static let oauthCallbackReceiveTimeout: TimeInterval = 10
 
-    static let oauthCallbackCompletePage = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in complete</h1><p>You can close this window and return to OpenNOW.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
-    static let oauthCallbackCancelledPage = "<!doctype html><html><head><meta charset=\"utf-8\"><title>OpenNOW Sign In</title></head><body style=\"background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0\"><main><h1>Sign in cancelled</h1><p>Return to OpenNOW to try again.</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>"
+    static var oauthCallbackCompletePage: String {
+        oauthCallbackResultPage(title: "Sign in complete", message: "You can close this window and return to OpenNOW.")
+    }
+
+    static var oauthCallbackCancelledPage: String {
+        oauthCallbackResultPage(title: "Sign in cancelled", message: "Return to OpenNOW to try again.")
+    }
+
+    /// The page the browser lands on when the leg ends. It is served by the callback listener
+    /// itself, so the brand mark rides along as a data URI: a linked asset would be a second
+    /// request the single-shot listener never gets to answer.
+    static func oauthCallbackResultPage(title: String, message: String) -> String {
+        let mark = oauthCallbackLogoDataURI().map {
+            "<img class=\"mark\" alt=\"OpenNOW\" src=\"\($0)\">"
+        } ?? ""
+        return """
+        <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>OpenNOW Sign In</title><style>
+        :root{color-scheme:dark}
+        body{margin:0;min-height:100vh;background:#050807;color:#f1fff7;font:16px -apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;display:grid;place-items:center;text-align:center}
+        main{padding:32px;max-width:30rem}
+        .mark{width:180px;height:auto;margin-bottom:28px}
+        .eyebrow{margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#75e61a}
+        h1{margin:0 0 12px;font-size:34px;font-weight:700;letter-spacing:-0.4px}
+        .message{margin:0;color:rgba(241,255,247,0.72)}
+        </style></head><body><main>\(mark)<p class="eyebrow">OpenNOW</p><h1>\(title)</h1><p class="message">\(message)</p></main><script>setTimeout(function(){window.close()},1200)</script></body></html>
+        """
+    }
+
+    /// The isolated logo as a data URI, resolved from the app bundle so the served HTML carries
+    /// the same mark the login wall and startup lockup draw.
+    static func oauthCallbackLogoDataURI() -> String? {
+        for subdirectory in ["OPN", "Resources/OPN", nil] as [String?] {
+            guard let url = Bundle.main.url(forResource: "logo-isolated", withExtension: "svg", subdirectory: subdirectory),
+                  let data = try? Data(contentsOf: url) else { continue }
+            return "data:image/svg+xml;base64,\(data.base64EncodedString())"
+        }
+        return nil
+    }
 
     /// The loopback leg of the browser sign-in. The listener stays open until the authorization
     /// response arrives or the window closes.
