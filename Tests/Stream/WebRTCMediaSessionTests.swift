@@ -283,9 +283,23 @@ struct StreamingPathTests {
         #expect(settings.upscalingSharpness == 10)
     }
 
-    @Test("normalizes legacy upscaling modes to MetalFX")
-    func normalizesLegacyUpscalingModesToMetalFX() {
-        for legacyMode in 1...4 {
+    @Test("preserves the Spatial upscaling tier instead of promoting it to MetalFX")
+    func preservesSpatialUpscalingTier() {
+        // Spatial (2) must survive: a range match used to promote it to MetalFX (3).
+        for preservedMode in [2, 3] {
+            let settings = WebRTCMediaStreamSettingsResolver.resolve(
+                profile: WebRTCMediaStreamProfile(upscalingMode: preservedMode),
+                capabilities: WebRTCMediaDeviceCapabilities()
+            )
+
+            #expect(settings.upscalingMode == preservedMode)
+        }
+    }
+
+    @Test("coalesces legacy upscaling modes to MetalFX")
+    func coalescesLegacyUpscalingModesToMetalFX() {
+        // 1 and 4 predate explicit tier selection and only ever meant "some enhancement".
+        for legacyMode in [1, 4] {
             let settings = WebRTCMediaStreamSettingsResolver.resolve(
                 profile: WebRTCMediaStreamProfile(upscalingMode: legacyMode),
                 capabilities: WebRTCMediaDeviceCapabilities()

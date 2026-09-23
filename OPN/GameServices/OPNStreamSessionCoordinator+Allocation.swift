@@ -42,8 +42,11 @@ extension OPNStreamSessionCoordinator {
     }
 
     func claimSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
-        try await withCheckedThrowingContinuation { continuation in
-            sessionManager.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: false) { success, info, error in
+        // Claiming is the resume path by definition; the flag describes what this call is actually
+        // doing, so the claim log no longer reports `recovery=false` for every resumed session.
+        let isRecovery = !configuration.resumeSessionID.isEmpty
+        return try await withCheckedThrowingContinuation { continuation in
+            sessionManager.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: isRecovery) { success, info, error in
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
                 } else {

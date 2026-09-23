@@ -643,6 +643,12 @@ final class RecordingEditorViewModel: ObservableObject {
             return recording
         } catch {
             isExporting = false
+            // A user-initiated cancel is not a failure: the status line stays quiet and the
+            // progress bar resets rather than reporting the cancellation as an error.
+            guard (error as? StreamRecordingEditorError) != .exportCancelled else {
+                exportProgress = 0
+                throw error
+            }
             errorMessage = error.localizedDescription
             throw error
         }

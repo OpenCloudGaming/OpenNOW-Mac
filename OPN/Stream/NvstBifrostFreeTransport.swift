@@ -222,6 +222,17 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// Set the moment teardown begins, so a late channel-open callback cannot restart a feedback
     /// loop teardown has just cancelled.
     var isTornDown = false
+    /// Incremented on every bundle install and at teardown. A callback whose captured generation
+    /// has moved on belongs to a replaced bundle and must not touch the current connection's state.
+    var bundleGeneration: UInt64 = 0
+
+    /// Runs `action` only when `generation` is still the live bundle's. The check and the work run
+    /// in one actor hop, so a teardown or reconnect cannot slip between them.
+    func withCurrentBundleGeneration(_ generation: UInt64,
+                                     _ action: @Sendable (isolated NvstBifrostFreeTransport) -> Void) {
+        guard bundleGeneration == generation else { return }
+        action(self)
+    }
 
     /// The frame rate the user configured, passed in from the view that already holds it reliably.
     /// The allocation JSON is re-parsed as a fallback, but that has proven fragile — when its fps
@@ -705,6 +716,9 @@ extension NvstBifrostFreeTransport {
 
     func teardown(reason: String) async {
         isTornDown = true
+        // Invalidates every callback the closing bundle installed, closing the window between the
+        // teardown and the next install during which a stale callback could still fire.
+        bundleGeneration &+= 1
         heartbeatTask?.cancel()
         heartbeatTask = nil
         invalidationFlushTask?.cancel()
@@ -744,6 +758,17 @@ extension NvstBifrostFreeTransport {
         peakIntervalMbps = 0
         lastSummaryFrames = 0
         lastSummaryMediaSeconds = 0
+        // The next receiver restarts its counters at zero, so a surviving cursor suppresses its
+        // first reports — `lastRtpStatsFrame` sat above the new frame count and muted RTP stats.
+        lastRtpStatsFrame = 0
+        qosSequence = 0
+        lastQosBytesReceived = 0
+        lastQosDelayMicroseconds = 0
+        controlStatsLastSentAt = nil
+        lastIdrRequestAt = nil
+        lastInvalidationAt = nil
+        inputSequence = 0
+        gamepadSequences.removeAll()
         feedbackSender?.stop()
         feedbackSender = nil
         // The media receivers and pipeline stop before the bundle closes, so in-flight frame acks

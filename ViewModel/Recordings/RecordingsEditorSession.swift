@@ -173,6 +173,9 @@ extension RecordingsViewModel {
                 self.editedRecordingSaved(recording)
             } catch {
                 self?.editorExportTask = nil
+                // A cancel is not a failure: the editor's export path already reset its own
+                // state, so the status line must not surface the cancellation as an error.
+                guard (error as? StreamRecordingEditorError) != .exportCancelled else { return }
                 editorViewModel.errorMessage = error.localizedDescription
             }
         }

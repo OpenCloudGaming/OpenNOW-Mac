@@ -143,6 +143,9 @@ public actor NativeNVSTStreamingPath {
     /// True while a recovery is rebuilding the transport, so a termination event the teardown
     /// itself produces, or a second caller, cannot start a parallel one or end the session.
     private var isRecovering = false
+    /// A seat-commanded end delivered while a recovery was rebuilding the transport. The retry
+    /// loop aborts and the end path reports the seat's reason, not the failure that began recovery.
+    private var seatTerminationDuringRecovery: NativeNVSTSessionTermination?
     /// The replay window the session was buffering, so an in-place recovery can start a fresh one
     /// once the decoder is back. A window cannot span the rebuild.
     private var replayBufferConfiguration: StreamReplayBufferConfiguration?
@@ -402,6 +405,7 @@ public actor NativeNVSTStreamingPath {
         startedAt = nil
         recoveryAttempts = 0
         recoveryWindowStartedAt = nil
+        seatTerminationDuringRecovery = nil
         replayBufferConfiguration = nil
         OPNStreamTelemetry.capture("nvst.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": reason.rawValue])
         await transport.disconnect()
@@ -442,6 +446,7 @@ public actor NativeNVSTStreamingPath {
         startedAt = nil
         recoveryAttempts = 0
         recoveryWindowStartedAt = nil
+        seatTerminationDuringRecovery = nil
         replayBufferConfiguration = nil
         OPNStreamTelemetry.capture("nvst.path.pause", level: .info, message: message, attributes: ["sessionId": activeSession.id])
         do {
@@ -558,9 +563,12 @@ extension NativeNVSTStreamingPath {
 
     private func handleTransportTermination(_ termination: NativeNVSTTransportTermination) async {
         guard let activeSession else { return }
-        // A recovery in flight tears the transport down itself; the termination that produces is
-        // not a second failure.
-        guard !isRecovering else { return }
+        // A recovery tears the transport down itself, so its termination is not a second failure;
+        // a seat-commanded end is definitive, and is recorded for the retry loop and the end path.
+        guard !isRecovering else {
+            recordSeatTerminationIfCommanded(termination)
+            return
+        }
         terminalTask = nil
         if automaticRecovery == .singleAttempt, NativeNVSTRecoveryPolicy.permitsRecovery(termination), activeAllocation != nil, launchConfiguration != nil {
             let reason: String = switch termination {
@@ -572,6 +580,10 @@ extension NativeNVSTStreamingPath {
             }
         }
         guard self.activeSession?.id == activeSession.id else { return }
+        // Prefer a seat end that arrived during the failed recovery over the transient failure
+        // that triggered it: the seat's verdict is the accurate diagnosis.
+        let reportedTermination = seatTerminationDuringRecovery.map(NativeNVSTTransportTermination.sessionTerminated) ?? termination
+        seatTerminationDuringRecovery = nil
         let durationSeconds = streamDurationSeconds()
         self.activeSession = nil
         activeAllocation = nil
@@ -581,7 +593,7 @@ extension NativeNVSTStreamingPath {
         recoveryWindowStartedAt = nil
         let reason: StreamEndReason
         let message: String
-        switch termination {
+        switch reportedTermination {
         case .sessionTerminated(let info):
             // `.paused` keeps the cloud session alive; `.remoteEnded` tells the session
             // provider to stop it, which would quit the game.
@@ -607,6 +619,12 @@ extension NativeNVSTStreamingPath {
         publish(report)
     }
 
+    /// Records a seat-commanded end that arrived while recovery owned the transport.
+    private func recordSeatTerminationIfCommanded(_ termination: NativeNVSTTransportTermination) {
+        guard case .sessionTerminated(let info) = termination else { return }
+        seatTerminationDuringRecovery = info
+    }
+
     /// Whether a reconnect to the current session is still allowed by the attempt budget.
     public func canRecoverInPlace() -> Bool {
         guard automaticRecovery == .singleAttempt, activeSession != nil, activeAllocation != nil, launchConfiguration != nil, !isRecovering else { return false }
@@ -628,6 +646,7 @@ extension NativeNVSTStreamingPath {
     public func recoverInPlace(reason: String) async -> Bool {
         guard canRecoverInPlace(), let session = activeSession, let configuration = launchConfiguration else { return false }
         isRecovering = true
+        seatTerminationDuringRecovery = nil
         defer { isRecovering = false }
         terminalTask?.cancel()
         terminalTask = nil
@@ -637,6 +656,9 @@ extension NativeNVSTStreamingPath {
         }
         if recoveryWindowStartedAt == nil { recoveryWindowStartedAt = .now }
         while recoveryAttempts < Self.maximumRecoveryAttempts {
+            // A seat end delivered while the transport was down or rebuilding ends the loop: the
+            // remaining attempts cannot succeed against a session the seat has closed.
+            guard seatTerminationDuringRecovery == nil else { return false }
             let attempt = recoveryAttempts
             recoveryAttempts += 1
             let delay = Self.recoveryAttemptDelays[min(attempt, Self.recoveryAttemptDelays.count - 1)]
@@ -644,9 +666,11 @@ extension NativeNVSTStreamingPath {
                 try? await Task.sleep(for: delay)
             }
             guard activeSession?.id == session.id, !Task.isCancelled else { return false }
+            guard seatTerminationDuringRecovery == nil else { return false }
             OPNStreamTelemetry.capture("nvst.path.recovery.attempt", level: .info, message: "Reconnecting native NVST session in place.", attributes: ["sessionId": session.id, "attempt": String(attempt + 1), "reason": reason])
             if await recover(session: session, configuration: configuration, attempt: attempt + 1) {
-                return true
+                // The reconnect landed, but a seat end that raced it invalidates the recovery.
+                return seatTerminationDuringRecovery == nil
             }
         }
         return false

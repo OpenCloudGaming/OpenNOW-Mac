@@ -482,10 +482,14 @@ public enum WebRTCMediaStreamSettingsResolver {
         return mode
     }
 
+    /// Keeps Off (0), Spatial (2) and MetalFX (3) distinct. Modes 1 and 4 are legacy and coalesce
+    /// to MetalFX; a range match used to coerce Spatial (2) into MetalFX.
     private static func normalizedUpscalingMode(_ mode: Int) -> Int {
         switch mode {
         case 0: return 0
-        case 1...4: return 3
+        case 2: return 2
+        case 3: return 3
+        case 1, 4: return 3
         default: return 0
         }
     }
