@@ -19,19 +19,15 @@ enum StreamLaunchLoadingStage {
         switch stepIndex {
         case StreamLaunchStep.checkNetworkRoute.rawValue: "Checking connection"
         case StreamLaunchStep.allocateCloudSession.rawValue: "Finding a server"
-        case StreamLaunchStep.receiveStreamOffer.rawValue: "Preparing stream"
-        case StreamLaunchStep.negotiateWebRTC.rawValue: "Connecting"
+        case StreamLaunchStep.prepareTransport.rawValue: "Preparing stream"
+        case StreamLaunchStep.connectTransport.rawValue: "Connecting"
         case StreamLaunchStep.connected.rawValue: "Ready"
         default: "Starting"
         }
     }
 }
 
-/// Full-cover screen shown between the user clicking Play and the first video frame, on all three
-/// transports (native NVST, WebRTC, and the catalog's ad-gated free-tier launch). The hero rides
-/// centered with the cancel button directly beneath it: the plate stage keeps the hero at the
-/// plate's own height, the ad swells it to 16:9, and the vertical budget cap keeps short (windowed)
-/// sizes from clipping the title.
+/// Shared loading screen for NVST connection setup and the catalog's ad-gated free-tier launch.
 struct StreamLaunchLoadingScreen<Accessory: View>: View {
     let title: String
     let stepIndex: Int

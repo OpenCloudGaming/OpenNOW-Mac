@@ -40,7 +40,7 @@ extension OPNStreamPreferences {
 
     public static func fetchServerType(token: String, streamingBaseUrl: String) async throws -> Int? {
         let baseUrl = streamingBaseUrl.isEmpty ? defaultStreamingBaseUrl : streamingBaseUrl
-        var request = serverInfoRequest(baseUrl: baseUrl, token: token, headers: .streamSession(transportMode: "nvst"))
+        var request = serverInfoRequest(baseUrl: baseUrl, token: token, headers: .streamSession())
         request.timeoutInterval = 4
         let (data, response) = try await OPNURLSessionHTTPTransport.send(request, operation: "stream.fetchServerType", invalidHTTPResponseError: URLError(.badServerResponse))
         guard response.statusCode == 200,
@@ -95,10 +95,6 @@ extension OPNStreamPreferences {
     public static func saveCodecIndex(_ value: Int) { storage.set(clamp(value, 0, codecOptions.count - 1), forKey: k.codecIndex) }
     public static func saveBitrateIndex(_ value: Int) { storage.set(clamp(value, 0, bitrateOptions.count - 1), forKey: k.bitrateIndex) }
     public static func saveColorQualityIndex(_ value: Int) { storage.set(clamp(value, 0, colorQualityOptions.count - 1), forKey: k.colorQualityIndex) }
-    public static func saveTransportModeIndex(_ value: Int) { storage.set(clamp(value, 0, transportModeOptions.count - 1), forKey: k.transportModeIndex) }
-    public static var legacyTransportNoticeDismissed: Bool { storage.bool(forKey: k.legacyTransportNoticeDismissed) }
-    public static func saveLegacyTransportNoticeDismissed(_ value: Bool) { storage.set(value, forKey: k.legacyTransportNoticeDismissed) }
-    public static func saveNVSTTransportEnabled(_ value: Bool) { saveTransportModeIndex(value ? 1 : 0) }
     public static func saveStreamingQualityProfileIndex(_ value: Int) {
         let index = clamp(value, 0, streamingQualityProfileOptions.count - 1)
         storage.set(index, forKey: k.streamingQualityProfileIndex)
@@ -260,8 +256,6 @@ extension OPNStreamPreferences {
         profile.maxBitrateMbps = profile.bitrate.mbps
         profile.colorQualityIndex = clampedInt(dictionary, k.colorQualityIndex, 0, colorQualityOptions.count)
         profile.colorQuality = colorQualityOptions[profile.colorQualityIndex]
-        profile.transportModeIndex = clampedInt(dictionary, k.transportModeIndex, 1, transportModeOptions.count)
-        profile.transportMode = transportModeOptions[profile.transportModeIndex]
         profile.streamingQualityProfileIndex = clampedInt(dictionary, k.streamingQualityProfileIndex, 0, streamingQualityProfileOptions.count)
         profile.streamingQualityProfileOption = streamingQualityProfileOptions[profile.streamingQualityProfileIndex]
         profile.streamingQualityProfile = profile.streamingQualityProfileOption.value
@@ -387,7 +381,6 @@ extension OPNStreamPreferences {
             k.codecIndex: profile.codecIndex,
             k.bitrateIndex: profile.bitrateIndex,
             k.colorQualityIndex: profile.colorQualityIndex,
-            k.transportModeIndex: profile.transportModeIndex,
             k.streamingQualityProfileIndex: profile.streamingQualityProfileIndex,
             k.cloudGsyncEnabled: profile.enableCloudGsync,
             k.fallbackToLogicalResolution: profile.fallbackToLogicalResolution,

@@ -459,7 +459,7 @@ struct RemoteCoOpHostingTests {
 
 /// Guest slots and local controller slots come from the same 4-pad space, and were assigned into it
 /// independently. One local pad on index 0 with a guest on 1 never collided; a *second* local
-/// controller also lands on 1 - the first free index `NativeWebRTCGamepadMonitor.update` hands out -
+/// controller also lands on 1 - the first free index `NativeGamepadMonitor.update` hands out -
 /// and approving a guest at that point silently doubled up a real player's controller and the
 /// guest's, on both the NVST and WebRTC input paths, which each key a pad purely by index.
 @Suite struct RemoteCoOpLocalControllerSlotTests {

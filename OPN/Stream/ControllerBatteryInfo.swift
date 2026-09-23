@@ -26,7 +26,7 @@ public struct ControllerBatteryInfo: Identifiable, Equatable, Sendable {
     @MainActor
     public static func currentSnapshot() -> [ControllerBatteryInfo] {
         var batteries = collapsed(SteamControllerHIDMonitor.shared.batteryPresences)
-        let nativeControllers = NativeWebRTCGamepadMonitor.availableNativeControllers()
+        let nativeControllers = NativeGamepadMonitor.availableNativeControllers()
         for controller in nativeControllers {
             let percent = controller.battery.flatMap { percentage(level: $0.batteryLevel, state: $0.batteryState) } ?? -1
             let charging = controller.battery?.batteryState == .charging

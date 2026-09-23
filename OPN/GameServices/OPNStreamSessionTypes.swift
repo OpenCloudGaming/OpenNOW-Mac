@@ -228,8 +228,6 @@ public enum OPNStreamSessionError: LocalizedError, Sendable {
     case activeSessionConflict(StreamSessionConflict)
     case sessionAllocationFailed(String)
     case sessionStopFailed(String)
-    case signalingFailed(String)
-    case signalingUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -237,10 +235,8 @@ public enum OPNStreamSessionError: LocalizedError, Sendable {
             conflict.isResumable
                 ? "A GeForce NOW session is already active. Resume it or end it before launching another game."
                 : "A GeForce NOW session is already active. End it before launching another game."
-        case .sessionAllocationFailed(let message), .sessionStopFailed(let message), .signalingFailed(let message):
+        case .sessionAllocationFailed(let message), .sessionStopFailed(let message):
             message
-        case .signalingUnavailable:
-            "Signaling is not connected."
         }
     }
 }

@@ -23,12 +23,12 @@ extension OPNSessionManager {
         let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
         let clientId = UUID().uuidString.lowercased()
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        let headers = CloudMatchClientHeaders.streamSession(transportMode: streamTransportMode(settings))
+        let headers = CloudMatchClientHeaders.streamSession()
         guard var validationRequest = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, timeoutInterval: 30, headers: headers) else {
             completion(false, [:], "Invalid validation URL")
             return
         }
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) transport=\(streamTransportMode(settings)) resolution=\(string(settings["resolution"])) fps=\(int(settings["fps"], fallback: 60)) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)"))
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) transport=nvst resolution=\(string(settings["resolution"])) fps=\(int(settings["fps"], fallback: 60)) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)"))
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let context = ClaimContext(sessionId: sessionId,
                                                        serverIp: serverIp,
@@ -129,7 +129,7 @@ extension OPNSessionManager {
             // SESSION_NOT_PAUSED, which `finishClaimRejection` already polls through.
             return false
         case .initializing, .resuming:
-            pollClaimSession(sessionId: context.sessionId, serverIp: context.serverIp, deviceId: context.deviceId, clientId: context.clientId, headers: context.headers, initialProfile: initialProfile, requiresNvstControlEndpoint: streamTransportMode(context.settings) == "nvst", completion: completion)
+            pollClaimSession(sessionId: context.sessionId, serverIp: context.serverIp, deviceId: context.deviceId, clientId: context.clientId, headers: context.headers, initialProfile: initialProfile, completion: completion)
         case .pausedUnintentional, .pausedIntentional:
             return false
         case .finished:
@@ -142,7 +142,6 @@ extension OPNSessionManager {
     func sendClaimSession(sessionId: String, serverIp: String, appId: OPNResolvedLaunchAppId, settings: [String: Any], token: String, deviceId: String, clientId: String, initialProfile: [String: Any] = [:], completion: @escaping (Bool, [String: Any], String) -> Void) {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let hdrEnabled = bool(settings["enableHdr"]) && capabilities.hdrDisplaySupported
-        let transportMode = streamTransportMode(settings)
         let selectedStore = string(settings["selectedStore"]).isEmpty ? "unknown" : string(settings["selectedStore"])
         logInGameSettingsPersistenceRequest(settings)
         // A claim sends the same session request the create path does — the seat resumes against
@@ -154,7 +153,6 @@ extension OPNSessionManager {
                                                      internalTitle: NSNull(),
                                                      settings: settings,
                                                      capabilities: capabilities,
-                                                     transportMode: transportMode,
                                                      hdrEnabled: hdrEnabled,
                                                      deviceId: deviceId,
                                                      selectedStore: selectedStore),
@@ -171,13 +169,13 @@ extension OPNSessionManager {
             return
         }
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        let headers = CloudMatchClientHeaders.streamSession(transportMode: transportMode)
+        let headers = CloudMatchClientHeaders.streamSession()
         guard var request = CloudMatchRequestFactory.claimSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData, headers: headers) else {
             completion(false, [:], "Invalid claim URL")
             return
         }
         nonisolated(unsafe) let completion = completion
-        let target = ClaimPollTarget(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: initialProfile, requiresNvstControlEndpoint: transportMode == "nvst")
+        let target = ClaimPollTarget(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: initialProfile)
         let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.claimSession")
         let tracedRequest = request
         OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { [weak self] data, response, error in
@@ -197,7 +195,6 @@ extension OPNSessionManager {
         /// The profile the validation poll already reported, kept as the base for whatever the
         /// claim response and the poll that follows do not restate.
         let initialProfile: [String: Any]
-        let requiresNvstControlEndpoint: Bool
     }
 
     func handleClaimResponse(data: Data?,
@@ -236,7 +233,7 @@ extension OPNSessionManager {
             return
         }
         let claimProfile = (json["session"] as? [String: Any]).map { self.negotiatedStreamProfile(from: $0) } ?? target.initialProfile
-        pollClaimSession(sessionId: target.sessionId, serverIp: target.serverIp, deviceId: target.deviceId, clientId: target.clientId, headers: target.headers, initialProfile: claimProfile, requiresNvstControlEndpoint: target.requiresNvstControlEndpoint, completion: completion)
+        pollClaimSession(sessionId: target.sessionId, serverIp: target.serverIp, deviceId: target.deviceId, clientId: target.clientId, headers: target.headers, initialProfile: claimProfile, completion: completion)
     }
 
     /// A claim the seat refused. "Not paused" means the session is already coming up, so polling
@@ -247,7 +244,7 @@ extension OPNSessionManager {
                                       target: ClaimPollTarget,
                                       completion: @escaping (Bool, [String: Any], String) -> Void) {
         if notPaused {
-            pollClaimSession(sessionId: target.sessionId, serverIp: target.serverIp, deviceId: target.deviceId, clientId: target.clientId, headers: target.headers, initialProfile: target.initialProfile, requiresNvstControlEndpoint: target.requiresNvstControlEndpoint, completion: completion)
+            pollClaimSession(sessionId: target.sessionId, serverIp: target.serverIp, deviceId: target.deviceId, clientId: target.clientId, headers: target.headers, initialProfile: target.initialProfile, completion: completion)
             return
         }
         if let staleMessage = CloudMatchResponseParser.staleActiveSessionClaimMessage(data) {
@@ -262,7 +259,7 @@ extension OPNSessionManager {
         completion(false, [:], fallback)
     }
 
-    func pollClaimSession(sessionId: String, serverIp: String, deviceId: String, clientId: String, headers: CloudMatchClientHeaders, initialProfile: [String: Any], requiresNvstControlEndpoint: Bool, completion: @escaping (Bool, [String: Any], String) -> Void) {
+    func pollClaimSession(sessionId: String, serverIp: String, deviceId: String, clientId: String, headers: CloudMatchClientHeaders, initialProfile: [String: Any], completion: @escaping (Bool, [String: Any], String) -> Void) {
         OPNPollClaimSessionContext(manager: self,
                                    sessionId: sessionId,
                                    base: CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp),
@@ -271,7 +268,6 @@ extension OPNSessionManager {
                                    clientId: clientId,
                                    headers: headers,
                                    initialProfile: initialProfile,
-                                   requiresNvstControlEndpoint: requiresNvstControlEndpoint,
                                    completion: completion).poll(attempt: 0)
     }
 
@@ -287,7 +283,7 @@ extension OPNSessionManager {
                 context.complete(false, [:], "Resume returned a different session id")
                 return
             }
-            if context.requiresNvstControlEndpoint, attempt < Self.nvstControlEndpointGraceAttempts,
+            if attempt < Self.nvstControlEndpointGraceAttempts,
                !hasAdvertisedNvstControlEndpoint(session) {
                 // The seat reports the session ready while still provisioned for the client that
                 // created it. Connecting now reaches a host with no RTSP service (HTTP 501), so

@@ -378,7 +378,7 @@ import Testing
     }
 
     /// A Steam Controller reaches the seat through the same `GamepadState` path as a native pad, and
-    /// `NativeWebRTCGamepadMonitor` puts its slot in the same topology
+    /// `NativeGamepadMonitor` puts its slot in the same topology
     /// (`Array(newControllerSlots.values) + Array(newSteamSlots.values)`). A Steam Controller on
     /// player 1 alongside a native pad on player 2 must therefore announce both.
     @Test func aSteamControllerSlotIsAnnouncedLikeAnyOtherPad() async {

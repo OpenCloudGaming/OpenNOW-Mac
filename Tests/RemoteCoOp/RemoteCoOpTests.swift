@@ -414,9 +414,9 @@ struct RemoteCoOpTests {
 
     @Test("stream settings advertise reserved controller bitmap")
     func streamSettingsAdvertiseReservedControllerBitmap() {
-        let settings = WebRTCMediaStreamSettingsResolver.resolve(
-            profile: WebRTCMediaStreamProfile(),
-            capabilities: WebRTCMediaDeviceCapabilities(connectedGamepadCount: 4)
+        let settings = StreamSettingsResolver.resolve(
+            profile: StreamProfile(),
+            capabilities: StreamDeviceCapabilities(connectedGamepadCount: 4)
         )
 
         #expect(settings.remoteControllersBitmap == 0x0f)

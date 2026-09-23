@@ -442,7 +442,7 @@ extension NvstBifrostFreeTransport {
             NvstRemoteInput.mouseButton(Self.wireButton(button), isPressed: isPressed)
         case .keyboard(let event):
             NvstRemoteInput.keyboard(
-                virtualKey: NativeWebRTCTransport.keyboardCodes(forMacKeyCode: event.keyCode).keyCode,
+                virtualKey: NativeKeyboardMapping.keyboardCodes(forMacKeyCode: event.keyCode).keyCode,
                 modifiers: event.modifiers.rawValue & 0x000f,
                 isPressed: event.isPressed
             )
@@ -482,7 +482,7 @@ extension NvstBifrostFreeTransport {
                 throw NativeNVSTError.transportFailed("The NVST bundle negotiated no microphone channel, so capture cannot start.")
             }
             throw NativeNVSTError.transportFailed(
-                "This seat streams the microphone over its legacy transport, which OpenNOW has not recovered yet. Voice chat needs the WebRTC transport for now.")
+                "This seat uses a legacy NVST microphone transport that OpenNOW does not support. Voice chat is unavailable for this session.")
         }
         bundle.setMicrophoneCaptureEnabled(enabled)
         logger?("NVST microphone \(enabled ? "enabled" : "disabled")")

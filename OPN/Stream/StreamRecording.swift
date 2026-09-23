@@ -3,7 +3,6 @@ import CoreMedia
 import CoreVideo
 import Foundation
 import QuartzCore
-@preconcurrency import WebRTC
 
 public struct StreamRecording: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
@@ -159,7 +158,7 @@ public enum StreamRecordingStatus: Equatable, Sendable {
     }
 }
 
-final class WebRTCStreamRecorder: @unchecked Sendable {
+final class StreamRecorder: @unchecked Sendable {
     /// Converts surfaces the asset-writer adaptor was not declared for. See `encoderCompatiblePixelBuffer`.
     let pixelTransfer = OPNPixelBufferTransfer()
     /// Written by whoever owns the recorder, read on `queue` by `emit`. Locked because those are
@@ -184,7 +183,6 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     }
 
     let queue = DispatchQueue(label: "io.opencg.opennow.recording.writer")
-    private let conversionQueue = DispatchQueue(label: "io.opencg.opennow.recording.conversion", qos: .userInitiated)
     let frameLock = NSLock()
     let firstFrameTimeout: DispatchTimeInterval
     let maxQueuedEnhancedVideoFrames = 4
@@ -195,10 +193,6 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
     var configuration: StreamRecordingConfiguration?
     var id = UUID()
     var outputURL: URL?
-    let i420BGRAConverter = WebRTCI420BGRAConverter()
-    var i420PixelBufferPool: CVPixelBufferPool?
-    var i420PixelBufferPoolWidth = 0
-    var i420PixelBufferPoolHeight = 0
     var createdAt = Date()
     var startedAt: Date?
     var firstHostTime: CFTimeInterval?
@@ -272,41 +266,6 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
         queue.async { self.finish() }
     }
 
-    func appendVideoFrame(_ frame: RTCVideoFrame) {
-        guard let recordingId = beginVideoFrameAppend(source: .native) else { return }
-        let captureHostTime = CACurrentMediaTime()
-        if let buffer = frame.buffer as? RTCCVPixelBuffer, Self.isWritableBGRA(buffer.pixelBuffer) {
-            appendPixelBuffer(buffer.pixelBuffer, recordingId: recordingId, source: .native, captureHostTime: captureHostTime)
-            return
-        }
-        let retainedFrame = UInt(bitPattern: Unmanaged.passRetained(frame).toOpaque())
-        conversionQueue.async {
-            guard let framePointer = UnsafeRawPointer(bitPattern: retainedFrame) else {
-                self.finishVideoFrameAppend(recordingId: recordingId, source: .native)
-                return
-            }
-            let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeRetainedValue()
-            let i420Frame = frame.newI420()
-            guard let i420 = i420Frame.buffer as? RTCI420Buffer,
-                  let pixelBuffer = self.newBGRAFramebuffer(from: i420) else {
-                self.finishVideoFrameAppend(recordingId: recordingId, source: .native)
-                return
-            }
-            let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
-            self.queue.async {
-                defer { self.finishVideoFrameAppend(recordingId: recordingId, source: .native) }
-                guard let pixelBufferPointer = UnsafeRawPointer(bitPattern: retainedPixelBuffer) else { return }
-                let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(pixelBufferPointer).takeRetainedValue()
-                guard self.isActiveRecording(recordingId) else { return }
-                self.appendPixelBufferOnQueue(pixelBuffer, source: .native, captureHostTime: captureHostTime)
-            }
-        }
-    }
-
-    /// Appends a decoded frame that is already a `CVPixelBuffer`, with no libwebrtc frame around
-    /// it. The native NVST transport owns its VideoToolbox decoder, so its frames arrive here
-    /// directly instead of through `appendVideoFrame`, skipping the I420/BGRA conversion that path
-    /// needs — the writer takes the decoder's format as-is.
     func appendNativePixelBuffer(_ pixelBuffer: CVPixelBuffer) {
         guard let recordingId = beginVideoFrameAppend(source: .native) else { return }
         appendPixelBuffer(pixelBuffer, recordingId: recordingId, source: .native, captureHostTime: CACurrentMediaTime())
@@ -363,7 +322,7 @@ final class WebRTCStreamRecorder: @unchecked Sendable {
 
 }
 
-enum WebRTCStreamRecorderError: LocalizedError {
+enum StreamRecorderError: LocalizedError {
     case noFramesCaptured
     case unableToAddVideoInput
     case videoFramesUnavailable

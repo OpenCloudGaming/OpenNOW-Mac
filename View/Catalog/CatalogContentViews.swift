@@ -54,10 +54,6 @@ struct CatalogContentView: View {
                         // Driven from the anchor rather than the game so a selection moving from
                         // one rail to another animates as one move.
                         VStack(alignment: .leading, spacing: 26) {
-                            if viewModel.showsLegacyTransportNotice {
-                                CatalogLegacyTransportNotice(viewModel: viewModel)
-                                    .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
-                            }
                             if viewModel.isActiveHomeSessionVisible, let session = viewModel.activeHomeSession {
                                 VendorActiveSessionHomeBanner(
                                     title: viewModel.activeHomeSessionTitle,

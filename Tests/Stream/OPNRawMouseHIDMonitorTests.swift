@@ -76,7 +76,7 @@ struct OPNRawMouseHIDMonitorTests {
         var total = (x: 0, y: 0)
         let reports = [OPNRawMouseDelta(x: 7, y: -2), OPNRawMouseDelta(x: 1, y: 0), OPNRawMouseDelta(x: 2, y: -2)]
         for report in reports {
-            let scaled = NativeWebRTCStreamView.scaledMouseDelta(deltaX: CGFloat(report.x),
+            let scaled = NativeStreamView.scaledMouseDelta(deltaX: CGFloat(report.x),
                                                                  deltaY: CGFloat(report.y),
                                                                  sensitivity: 0.5,
                                                                  remainder: &remainder)
@@ -89,7 +89,7 @@ struct OPNRawMouseHIDMonitorTests {
 
     @MainActor @Test func rawCountsSaturateAtTheSeatsInt16Limit() {
         var remainder = CGPoint.zero
-        let scaled = NativeWebRTCStreamView.scaledMouseDelta(deltaX: CGFloat(Int32.max),
+        let scaled = NativeStreamView.scaledMouseDelta(deltaX: CGFloat(Int32.max),
                                                              deltaY: CGFloat(Int32.min),
                                                              sensitivity: 1.0,
                                                              remainder: &remainder)

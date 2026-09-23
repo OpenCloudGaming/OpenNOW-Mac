@@ -2,7 +2,7 @@
 //  enhancement controls, microphone, anti-AFK, pointer lock, the on-screen keyboard, stats polling
 //  and the network governor.
 //
-//  AppKit is imported for the same reason as the main file: `NativeWebRTCStreamView` is the stream
+//  AppKit is imported for the same reason as the main file: `NativeStreamView` is the stream
 //  surface these controls act on. See the note there.
 //
 //  swiftlint:disable:next no_appkit_in_view_model
@@ -686,8 +686,6 @@ extension NativeNVSTHostViewModel {
         OPNStreamTelemetry.capture("nvst.ui.upscaling.target", level: .info, message: "Native NVST upscaling target changed.", attributes: ["applicationID": configuration.applicationID, "targetHeight": String(targetHeight)])
     }
 
-    /// Mirrors `WebRTCMediaStreamSurface.updateVideoEnhancement`'s sharpness/denoise handling for
-    /// the native NVST panel, which never got its own Clarity/Noise Reduction controls.
     func updateNativeUpscalingClarity(sharpness: Int? = nil, denoise: Int? = nil) {
         if let sharpness { upscalingSharpness = min(max(sharpness, 0), 15) }
         if let denoise { upscalingDenoise = min(max(denoise, 0), 20) }
@@ -698,7 +696,7 @@ extension NativeNVSTHostViewModel {
         OPNStreamTelemetry.capture("nvst.ui.upscaling.clarity", level: .info, message: "Native NVST clarity/noise reduction changed.", attributes: ["applicationID": configuration.applicationID, "sharpness": String(upscalingSharpness), "denoise": String(upscalingDenoise)])
     }
 
-    static func nativeVideoSurfaceHandle(for view: NativeWebRTCStreamView) -> UInt? {
+    static func nativeVideoSurfaceHandle(for view: NativeStreamView) -> UInt? {
         guard let videoWindow = view.nativeNVSTVideoWindow() else { return nil }
         return UInt(bitPattern: Unmanaged.passUnretained(videoWindow).toOpaque())
     }

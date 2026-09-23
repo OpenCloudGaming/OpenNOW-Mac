@@ -207,10 +207,10 @@ extension OPNStreamSessionCoordinator {
 
     func settingsByApplyingCloudVariables(_ settings: [String: Any], variables: OPNStreamCloudVariables) -> [String: Any] {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
-        let resolved = WebRTCMediaStreamSettingsResolver.resolve(
-            profile: webRTCMediaProfile(from: settings),
-            capabilities: webRTCMediaCapabilities(from: capabilities),
-            cloudVariables: webRTCMediaCloudVariables(from: variables)
+        let resolved = StreamSettingsResolver.resolve(
+            profile: streamProfile(from: settings),
+            capabilities: streamDeviceCapabilities(from: capabilities),
+            cloudVariables: streamCloudVariables(from: variables)
         )
         var result = settings
         result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"], fallback: OPNLocale.currentGFNLocale()), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }

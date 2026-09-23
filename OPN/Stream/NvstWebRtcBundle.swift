@@ -282,10 +282,11 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     /// Mic chat bytes sent, sampled from libwebrtc's `outbound-rtp` audio counters; feeds the
     /// `0x208` report's `micChatTotalSentDataBytes` field.
     var microphoneSentDataBytes: UInt64 = 0
-    /// RTP packets the *seat* reports receiving on the mic stream, from its RTCP Receiver
-    /// Reports (`remote-inbound-rtp`). Separates "we send but the seat never binds a receiver"
-    /// from "the seat receives and the guest-side routing is the problem".
-    var microphoneSeatReportedPackets: UInt64 = 0
+    var microphoneCaptureLevel: Double?
+    var microphoneCapturePeakLevel = 0.0
+    var microphoneCaptureReadingCount: UInt64 = 0
+    var microphoneLastCaptureNanoseconds: UInt64?
+    var microphoneSignalStatistics = "source=unknown,rtp=unknown,remoteReport=unknown"
     /// What libwebrtc actually packetizes on the mic sender (`outbound-rtp.codecId` resolved to
     /// its `codec` entry), e.g. `audio/red:63` or `audio/opus:111`. Proves the RED A/B took.
     var microphoneOutboundCodec: String?
@@ -315,10 +316,11 @@ public final class NvstWebRtcBundle: NSObject, RTCPeerConnectionDelegate, RTCDat
     /// and the track itself. Push-to-talk and voice-activity drive this per key press; the HUD
     /// toggle drives it per click.
     public func setMicrophoneCaptureEnabled(_ enabled: Bool) {
-        lock.lock()
-        microphoneCaptureEnabled = enabled
-        microphoneTrack?.isEnabled = enabled
-        lock.unlock()
+        let track = lock.withLock {
+            microphoneCaptureEnabled = enabled
+            return microphoneTrack
+        }
+        track?.isEnabled = enabled
     }
 
     /// Gain on the mic source, 0…1. Applied by libwebrtc ahead of encoding, the same lever the
@@ -346,6 +348,15 @@ extension NvstWebRtcBundle: OPNCoreAudioRTCDeviceOwner {
     }
 
     func handleCapturedMicrophoneLevel(_ level: Double) {
+        if level.isFinite {
+            lock.withLock {
+                guard microphoneNegotiated else { return }
+                microphoneCaptureLevel = level
+                microphoneCapturePeakLevel = max(microphoneCapturePeakLevel, level)
+                microphoneCaptureReadingCount &+= 1
+                microphoneLastCaptureNanoseconds = DispatchTime.now().uptimeNanoseconds
+            }
+        }
         onMicrophoneLevel?(level)
     }
 

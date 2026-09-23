@@ -52,20 +52,20 @@ enum OPNRemoteCoOpTLSIdentity {
     /// the address it dialled even while overriding trust, so an identity minted for `127.0.0.1`
     /// produces a second, non-overridable complaint when reached over the LAN. Changing hosts
     /// therefore regenerates.
-    static func identity(for host: String) throws -> SecIdentity {
-        let directory = try storeDirectory()
+    static func identity(for host: String, directory: URL? = nil, passphrase: String? = nil) throws -> SecIdentity {
+        let directory = try directory ?? storeDirectory()
         let p12URL = directory.appendingPathComponent("server-identity.p12")
         let hostURL = directory.appendingPathComponent("server-identity.host")
         let storedHost = (try? String(contentsOf: hostURL, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let passphrase = try storedOrNewPassphrase()
+        let passphrase = try passphrase ?? storedOrNewPassphrase()
         if storedHost == host, let data = try? Data(contentsOf: p12URL), let identity = try? importIdentity(p12: data, passphrase: passphrase) {
             return identity
         }
 
         let data = try generateP12(host: host, passphrase: passphrase, directory: directory)
-        try data.write(to: p12URL, options: [.atomic, .completeFileProtection])
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: p12URL.path)
+        try data.write(to: p12URL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: p12URL.path)
         try Data(host.utf8).write(to: hostURL, options: .atomic)
         return try importIdentity(p12: data, passphrase: passphrase)
     }

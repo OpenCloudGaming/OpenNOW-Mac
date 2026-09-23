@@ -31,21 +31,6 @@ struct RemoteCoOpSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
-            if !OPNRemoteCoOpPreferencesStore.isNativeTransportSelected {
-                SettingsCard(title: "Transport Required", uiScale: uiScale) {
-                    VStack(alignment: .leading, spacing: 6 * uiScale) {
-                        Text("Remote Co-Op needs the Native/NVST transport")
-                            .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                            .foregroundStyle(OPNDesign.Semantic.destructive)
-                        Text("Your streams are set to WebRTC, where hosting is not supported: that path decodes inside libwebrtc and gives no way to share frames without decoding and encoding them a second time, which guests experienced as a sluggish picture. Everything below is still editable, but no invite can be created until you switch Settings > Streaming > Transport to Native/NVST and relaunch.")
-                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OPNDesign.Text.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-
             SettingsCard(title: "Session", uiScale: uiScale) {
                 SettingsToggleRow(
                     title: "Enable Remote Co-Op",

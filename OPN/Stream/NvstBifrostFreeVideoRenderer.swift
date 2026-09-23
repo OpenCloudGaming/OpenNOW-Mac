@@ -138,7 +138,7 @@ public final class NvstBifrostFreeVideoRenderer {
     }
 
     public init(parentView: NSView, targetFps: Int32) {
-        let videoView = OPNMetalVideoView(frame: parentView.bounds, targetFps: targetFps, owner: nil)
+        let videoView = OPNMetalVideoView(frame: parentView.bounds, targetFps: targetFps)
         videoView.autoresizingMask = [.width, .height]
         videoView.wantsLayer = true
         videoView.layer?.backgroundColor = NSColor.black.cgColor
@@ -187,11 +187,6 @@ public final class NvstBifrostFreeVideoRenderer {
 
     public var renderedFrameCount: UInt64 { sink.renderedFrameCount }
 
-    /// Applies the enhancement and pillarbox-fill settings. There is no `OPNLibWebRTCStreamSession`
-    /// on this transport — we own the decoder — so the view is told directly instead of pulling
-    /// from an owner. Everything downstream is the WebRTC path's: the enhancement pass, the
-    /// pillarbox detector that measures the baked bars from the luma plane, and the fill shader
-    /// that paints/reprojects them. All fill modes (mirror, zoom, stretch, crop) work as a result.
     public func setVideoEnhancement(mode: Int,
                                     sharpness: Int,
                                     denoise: Int,

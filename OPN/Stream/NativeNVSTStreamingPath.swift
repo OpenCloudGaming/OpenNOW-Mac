@@ -11,7 +11,9 @@ public protocol NativeNVSTSessionProvider: Sendable {
     func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict?
 }
 
-extension OPNStreamSessionCoordinator: NativeNVSTSessionProvider {}
+public protocol StreamSessionStartCancellable: Sendable {
+    func cancelSessionStart() async
+}
 
 public extension NativeNVSTSessionProvider {
     func recoverNativeNVSTSession(configuration: StreamLaunchConfiguration, session: StreamSessionDescriptor) async throws -> NativeNVSTSessionAllocation {
@@ -234,9 +236,9 @@ public actor NativeNVSTStreamingPath {
 
         do {
             try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
-            try await publishProgress(configuration: configuration, step: .receiveStreamOffer, message: "Preparing native NVST transport...", progress: progress)
+            try await publishProgress(configuration: configuration, step: .prepareTransport, message: "Preparing native NVST transport...", progress: progress)
             try validate(allocation: allocation)
-            try await publishProgress(configuration: configuration, step: .negotiateWebRTC, message: "Connecting native NVST secure RTSP transport...", progress: progress)
+            try await publishProgress(configuration: configuration, step: .connectTransport, message: "Connecting native NVST secure RTSP transport...", progress: progress)
             _ = try await transport.connect(allocation: allocation, mediaReceiver: mediaSession)
             try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
         } catch {

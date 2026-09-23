@@ -60,7 +60,7 @@ struct GenericControllerInputSnapshot: Equatable {
     init() {}
 
     init(gamepad: GCExtendedGamepad) {
-        buttons = NativeWebRTCGamepadMonitor.buttons(from: gamepad)
+        buttons = NativeGamepadMonitor.buttons(from: gamepad)
         leftTrigger = gamepad.leftTrigger.value
         rightTrigger = gamepad.rightTrigger.value
         leftStickX = gamepad.leftThumbstick.xAxis.value

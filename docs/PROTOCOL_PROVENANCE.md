@@ -19,7 +19,7 @@ This statement covers:
 - `GFN/NetworkTest` — network preflight
 - `GFN/NVST` — the native streaming path (`BifrostFree`, `Rtsp`, `Signaling`, `SDP`,
   `Geronimo` input wire types, the `Mjolnir` video receiver)
-- `OPN/Stream` — the WebRTC and native NVST transports, VideoToolbox decode, upscaling, and
+- `OPN/Stream` — the native NVST transport, connection bundle, VideoToolbox decode, upscaling, and
   controller input that consume the above
 
 ## What this repository contains

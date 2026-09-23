@@ -145,7 +145,7 @@ extension NvstWebRtcBundle {
     ) async throws -> (sdp: String, usesOfficialCredentials: Bool) {
         // Surround rides the local answer only: the seat never sees this SDP, but libwebrtc builds
         // its receive codec from it, and `multiopus` is decodable while never being offered.
-        let surroundAnswer = WebRTCSdp.applyingSurroundAudio(answer.sdp, channels: audioChannelCount)
+        let surroundAnswer = NvstBundleAudioSDP.applyingSurroundAudio(answer.sdp, channels: audioChannelCount)
         if surroundAnswer != answer.sdp {
             let audioLines = surroundAnswer.components(separatedBy: "\r\n").filter { $0.hasPrefix("a=rtpmap:") || $0.hasPrefix("a=fmtp:") }
             logger?("NVST bundle answer audio munged to \(audioChannelCount)-channel multiopus: \(audioLines.joined(separator: " | "))")
@@ -371,13 +371,17 @@ extension NvstWebRtcBundle {
             guard let self else { return }
             let sample = Self.roundTripMilliseconds(in: report)
             let micBytes = Self.outboundAudioSentBytes(in: report)
-            let micSeatPackets = Self.remoteInboundAudioPacketsReceived(in: report)
+            let microphoneSignalStatistics = Self.microphoneSignalStatistics(in: report)
             let micCodec = Self.outboundAudioCodec(in: report)
             lock.lock()
+            guard peerConnection === connection else {
+                lock.unlock()
+                return
+            }
             statisticsRequestInFlight = false
             if let sample { lastRoundTripMilliseconds = sample }
             if let micBytes { microphoneSentDataBytes = micBytes }
-            if let micSeatPackets { microphoneSeatReportedPackets = micSeatPackets }
+            self.microphoneSignalStatistics = microphoneSignalStatistics
             if let micCodec { microphoneOutboundCodec = micCodec }
             let shouldDescribe = sample == nil && !didDescribeStatistics
             if shouldDescribe { didDescribeStatistics = true }
@@ -436,18 +440,31 @@ extension NvstWebRtcBundle {
         return nil
     }
 
-    /// What the seat's RTCP says about the mic stream: `remote-inbound-rtp` only exists once the
-    /// remote sends Receiver Reports for one of our send streams, so its `packetsReceived` counts
-    /// RTP packets the seat itself reports receiving. A mic with climbing `tx` but a zero here is
-    /// a stream the seat never bound a receive pipeline to.
-    static func remoteInboundAudioPacketsReceived(in report: RTCStatisticsReport) -> UInt64? {
-        for statistic in report.statistics.values where statistic.type == "remote-inbound-rtp" {
+    static func microphoneSignalStatistics(in report: RTCStatisticsReport) -> String {
+        let sender = report.statistics.values.first { statistic in
             let kind = (statistic.values["kind"] as? String) ?? (statistic.values["mediaType"] as? String)
-            guard kind == "audio" else { continue }
-            if let packets = statistic.values["packetsReceived"] as? NSNumber { return packets.uint64Value }
-            return 0
+            return statistic.type == "outbound-rtp" && kind == "audio"
         }
-        return nil
+        guard let sender else { return "source=unknown,rtp=unknown,remoteReport=unknown" }
+        let source = (sender.values["mediaSourceId"] as? String).flatMap { report.statistics[$0] }
+        let remote = report.statistics.values.first { statistic in
+            statistic.type == "remote-inbound-rtp" && statistic.values["localId"] as? String == sender.id
+        }
+        func metric(_ statistic: RTCStatistics?, _ key: String) -> String {
+            (statistic?.values[key] as? NSNumber)?.stringValue ?? "unknown"
+        }
+        return [
+            "sourceLevel=\(metric(source, "audioLevel"))",
+            "sourceEnergy=\(metric(source, "totalAudioEnergy"))",
+            "sourceSeconds=\(metric(source, "totalSamplesDuration"))",
+            "rtpPackets=\(metric(sender, "packetsSent"))",
+            "rtpSsrc=\(metric(sender, "ssrc"))",
+            "rtpActive=\(metric(sender, "active"))",
+            "remoteReport=\(remote == nil ? "unknown" : "present")",
+            "remoteLost=\(metric(remote, "packetsLost"))",
+            "remoteFractionLost=\(metric(remote, "fractionLost"))",
+            "remoteRttMeasurements=\(metric(remote, "roundTripTimeMeasurements"))",
+        ].joined(separator: ",")
     }
 
     /// Builds the factory with our own audio device rather than libwebrtc's default: its playout
@@ -493,8 +510,13 @@ extension NvstWebRtcBundle {
         microphoneSenderSsrc = nil
         microphoneCaptureEnabled = false
         microphoneSentDataBytes = 0
-        microphoneSeatReportedPackets = 0
+        microphoneCaptureLevel = nil
+        microphoneCapturePeakLevel = 0
+        microphoneCaptureReadingCount = 0
+        microphoneLastCaptureNanoseconds = nil
+        microphoneSignalStatistics = "source=unknown,rtp=unknown,remoteReport=unknown"
         microphoneOutboundCodec = nil
+        statisticsRequestInFlight = false
         negotiatedInputProtocolVersion = nil
         openCustomChannels = [:]
         peerConnection = nil
@@ -629,17 +651,15 @@ extension NvstWebRtcBundle {
     }
 
     public var isInputChannelOpen: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return openInputChannel?.readyState == .open
+        let channel = lock.withLock { openInputChannel }
+        return channel?.readyState == .open
     }
 
     /// Input is accepted once the control channel — which is where the official client actually
     /// sends remote input — is open and the seat has announced its protocol version.
     public var isInputReady: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return openControlChannel?.readyState == .open && negotiatedInputProtocolVersion != nil
+        let state = lock.withLock { (channel: openControlChannel, version: negotiatedInputProtocolVersion) }
+        return state.version != nil && state.channel?.readyState == .open
     }
 
     public var inputProtocolVersion: UInt16? {
@@ -663,25 +683,33 @@ extension NvstWebRtcBundle {
     }
 
     public var isControlChannelOpen: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return openControlChannel?.readyState == .open
+        let channel = lock.withLock { openControlChannel }
+        return channel?.readyState == .open
     }
 
     public var isFeedbackChannelOpen: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return openFeedbackChannel?.readyState == .open
+        let channel = lock.withLock { openFeedbackChannel }
+        return channel?.readyState == .open
     }
 
     public var diagnosticSummary: String {
-        lock.lock()
-        defer { lock.unlock() }
-        let perLabel = inboundMessagesByLabel.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
-        let microphone = microphoneNegotiated
-            ? "on(ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),gate=\(microphoneCaptureEnabled),tx=\(microphoneSentDataBytes),rr=\(microphoneSeatReportedPackets),codec=\(microphoneOutboundCodec ?? "?"),rec=\(audioDevice?.isRecording == true),track=\(microphoneTrack?.isEnabled == true))"
+        let snapshot = lock.withLock {
+            let perLabel = inboundMessagesByLabel.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ",")
+            let captureLevel = microphoneCaptureLevel.map { String(format: "%.5f", $0) } ?? "unknown"
+            let captureAge = microphoneLastCaptureNanoseconds.map {
+                let now = DispatchTime.now().uptimeNanoseconds
+                return String((now >= $0 ? now - $0 : 0) / 1_000_000)
+            } ?? "unknown"
+            let capture = "captureMeter=\(captureLevel),capturePeak=\(String(format: "%.5f", microphoneCapturePeakLevel)),captureReadings=\(microphoneCaptureReadingCount),captureAgeMs=\(captureAge)"
+            let microphone = "ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),gate=\(microphoneCaptureEnabled),tx=\(microphoneSentDataBytes),codec=\(microphoneOutboundCodec ?? "?"),\(capture),\(microphoneSignalStatistics)"
+            let bundle = "ice=\(iceStateDescription) channels=\(createdChannels.count) inboundBytes=\(inboundFeedbackBytes) inbound=[\(perLabel)] sendFailures=\(feedbackSendFailures) controlOut=\(controlMessagesSent) controlFailed=\(controlSendFailures) inputOut=\(inputMessagesSent) inputFailed=\(inputSendFailures)"
+            return (bundle: bundle, microphone: microphone, isMicrophoneNegotiated: microphoneNegotiated,
+                    feedbackChannel: openFeedbackChannel, microphoneTrack: microphoneTrack, audioDevice: audioDevice)
+        }
+        let microphone = snapshot.isMicrophoneNegotiated
+            ? "on(\(snapshot.microphone),rec=\(snapshot.audioDevice?.isRecording == true),track=\(snapshot.microphoneTrack?.isEnabled == true))"
             : "off"
-        return "ice=\(iceStateDescription) channels=\(createdChannels.count) feedbackOpen=\(openFeedbackChannel?.readyState == .open) inboundBytes=\(inboundFeedbackBytes) inbound=[\(perLabel)] sendFailures=\(feedbackSendFailures) controlOut=\(controlMessagesSent) controlFailed=\(controlSendFailures) inputOut=\(inputMessagesSent) inputFailed=\(inputSendFailures) mic=\(microphone)"
+        return "\(snapshot.bundle) feedbackOpen=\(snapshot.feedbackChannel?.readyState == .open) mic=\(microphone)"
     }
 
     /// Creates the official channel set in order so each label lands on the stream id the seat

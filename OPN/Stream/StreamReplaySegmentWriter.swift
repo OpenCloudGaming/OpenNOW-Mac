@@ -72,7 +72,7 @@ final class StreamReplaySegmentWriter {
         // Capped first, so the writer is declared at the size that is actually encoded and a small
         // tier never pays for a full-resolution frame.
         guard let scaled = pixelTransfer.scaled(pixelBuffer, maxHeight: maxHeight),
-              let compatible = WebRTCStreamRecorder.encoderCompatiblePixelBuffer(scaled, using: pixelTransfer) else { return false }
+              let compatible = StreamRecorder.encoderCompatiblePixelBuffer(scaled, using: pixelTransfer) else { return false }
         guard prepareWriterIfNeeded(pixelBuffer: compatible) else { return false }
         guard let writer, let input = videoInput, let adaptor = pixelBufferAdaptor else { return false }
         if writer.status == .unknown {
@@ -94,7 +94,7 @@ final class StreamReplaySegmentWriter {
         let seconds = hostTime - originHostTime
         guard seconds >= 0 else { return false }
         let presentationTime = CMTime(seconds: seconds, preferredTimescale: 600)
-        guard let sampleBuffer = WebRTCStreamRecorder.makeAudioSampleBuffer(
+        guard let sampleBuffer = StreamRecorder.makeAudioSampleBuffer(
             data: data,
             frameCount: frameCount,
             sampleRate: sampleRate,
@@ -153,7 +153,7 @@ final class StreamReplaySegmentWriter {
             writer.shouldOptimizeForNetworkUse = false
             let videoInput = AVAssetWriterInput(
                 mediaType: .video,
-                outputSettings: WebRTCStreamRecorder.videoSettings(
+                outputSettings: StreamRecorder.videoSettings(
                     configuration: configuration,
                     width: width,
                     height: height,
@@ -162,16 +162,16 @@ final class StreamReplaySegmentWriter {
             )
             videoInput.expectsMediaDataInRealTime = true
             let attributes: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: WebRTCStreamRecorder.adaptorPixelFormat(for: pixelBuffer),
+                kCVPixelBufferPixelFormatTypeKey as String: StreamRecorder.adaptorPixelFormat(for: pixelBuffer),
                 kCVPixelBufferWidthKey as String: width,
                 kCVPixelBufferHeightKey as String: height,
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:],
             ]
             let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: attributes)
-            guard writer.canAdd(videoInput) else { throw WebRTCStreamRecorderError.unableToAddVideoInput }
+            guard writer.canAdd(videoInput) else { throw StreamRecorderError.unableToAddVideoInput }
             writer.add(videoInput)
 
-            let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: WebRTCStreamRecorder.audioSettings(configuration: configuration))
+            let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: StreamRecorder.audioSettings(configuration: configuration))
             audioInput.expectsMediaDataInRealTime = true
             if writer.canAdd(audioInput) { writer.add(audioInput); self.audioInput = audioInput }
 

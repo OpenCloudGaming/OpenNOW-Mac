@@ -55,7 +55,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The stream recorder, deliberately off this actor. Both feeds reach it from a realtime
     /// thread — the VideoToolbox decode callback and the CoreAudio playout callback — and neither
     /// may `await`; the recorder does its own locking and queueing.
-    nonisolated let recorder = WebRTCStreamRecorder()
+    nonisolated let recorder = StreamRecorder()
     /// The rolling instant-replay buffer, off the actor for the same reason as the recorder: both
     /// realtime callbacks feed it, and neither may `await`.
     nonisolated let replayBuffer = StreamReplayBuffer()

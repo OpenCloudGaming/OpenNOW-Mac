@@ -13,9 +13,7 @@ private let coreAudioRecordingCallback: AURenderCallback = { refCon, actionFlags
     return device.captureRecording(actionFlags: actionFlags, timestamp: timestamp, busNumber: Int(busNumber), frameCount: frameCount)
 }
 
-/// What the CoreAudio RTC device needs from whoever owns it. NVST has no libwebrtc session, but it
-/// does need the playout tee this device provides, because that is the only place decoded game
-/// audio crosses out of libwebrtc and into our code.
+/// Audio callbacks for the native bundle's recording and Remote Co-Op feeds.
 protocol OPNCoreAudioRTCDeviceOwner: AnyObject {
     func handleGameAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32)
     func handleMicrophoneAudioFrame(_ audioBufferList: UnsafeRawPointer?, frameCount: UInt32, sampleRate: Double, channels: UInt32)
@@ -31,7 +29,6 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     private var recordingUnit: AudioUnit?
     var outputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var inputDevice = AudioDeviceID(kAudioObjectUnknown)
-    private var recordingScratch = [Int16]()
     let monitorsDefaultDeviceChanges: Bool
     /// Channels the negotiated stream carries (2, 6 or 8). The playout format always follows it:
     /// libwebrtc's mixer cannot fold a 6- or 8-channel decode down to fewer channels, so a device
@@ -74,13 +71,6 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
         audioQueue.sync { outputDevice != AudioDeviceID(kAudioObjectUnknown) }
     }
 
-    /// Follows the default output device itself instead of waiting to be told.
-    ///
-    /// `OPNLibWebRTCAudio` drives `handleDefaultDeviceChange()` for the libwebrtc session, but it is
-    /// tied to an `OPNLibWebRTCSessionImpl` the NVST bundle never creates — so without this the
-    /// bundle's playout unit stays pinned to whatever device was default when the stream started,
-    /// and plugging in headphones mid-session leaves the game playing out the speakers. Off by
-    /// default so the WebRTC path keeps its single driver and does not hot-swap twice per change.
     init(owner: (any OPNCoreAudioRTCDeviceOwner)?, monitorsDefaultDeviceChanges: Bool = false, playoutChannelCount: Int = 2) {
         self.owner = owner
         self.monitorsDefaultDeviceChanges = monitorsDefaultDeviceChanges
@@ -190,28 +180,17 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
 
     func captureRecording(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, timestamp: UnsafePointer<AudioTimeStamp>?, busNumber: Int, frameCount: UInt32) -> OSStatus {
         guard let delegate, let recordingUnit, let actionFlags, let timestamp else { return noErr }
-        let format = streamFormat(sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
-        let requiredSamples = Int(frameCount) * Int(format.mChannelsPerFrame)
-        let requiredBytes = requiredSamples * MemoryLayout<Int16>.size
-        if recordingScratch.count < requiredSamples { recordingScratch = [Int16](unsafeUninitializedCapacity: requiredSamples) { buffer, initializedCount in initializedCount = requiredSamples } }
-        return recordingScratch.withUnsafeMutableBufferPointer { scratchBuffer in
-            guard let baseAddress = scratchBuffer.baseAddress else { return noErr }
-            var inputData = AudioBufferList(
-                mNumberBuffers: 1,
-                mBuffers: AudioBuffer(mNumberChannels: UInt32(inputNumberOfChannels), mDataByteSize: UInt32(requiredBytes), mData: baseAddress)
-            )
-            let renderStatus = AudioUnitRender(recordingUnit, actionFlags, timestamp, 1, frameCount, &inputData)
+        return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, nil, nil) { [self] renderFlags, renderTimestamp, _, requestedFrames, inputData, _ in
+            let renderStatus = AudioUnitRender(recordingUnit, renderFlags, renderTimestamp, 1, requestedFrames, inputData)
             guard renderStatus == noErr else { return renderStatus }
             guard owner?.isMicrophoneCaptureEnabled() == true else {
-                clearAudioBufferList(&inputData)
-                reportMicrophoneLevelIfNeeded(inputData: &inputData)
-                return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, &inputData, nil, nil)
+                clearAudioBufferList(inputData)
+                reportMicrophoneLevelIfNeeded(inputData: inputData)
+                return noErr
             }
-            reportMicrophoneLevelIfNeeded(inputData: &inputData)
-            withUnsafePointer(to: &inputData) { pointer in
-                owner?.handleMicrophoneAudioFrame(UnsafeRawPointer(pointer), frameCount: frameCount, sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
-            }
-            return delegate.deliverRecordedData(actionFlags, timestamp, busNumber, frameCount, &inputData, nil, nil)
+            reportMicrophoneLevelIfNeeded(inputData: inputData)
+            owner?.handleMicrophoneAudioFrame(UnsafeRawPointer(inputData), frameCount: requestedFrames, sampleRate: deviceInputSampleRate, channels: UInt32(inputNumberOfChannels))
+            return noErr
         }
     }
 
@@ -383,8 +362,8 @@ final class OPNCoreAudioRTCDevice: NSObject, RTCAudioDevice, @unchecked Sendable
     }
 
     private func updateDeviceParameters() {
-        inputDevice = OPNLibWebRTCAudio.defaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice)
-        outputDevice = OPNLibWebRTCAudio.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
+        inputDevice = OPNCoreAudioDeviceLookup.defaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice)
+        outputDevice = OPNCoreAudioDeviceLookup.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
         let preferredInputSampleRate = delegate?.preferredInputSampleRate ?? 0
         let preferredOutputSampleRate = delegate?.preferredOutputSampleRate ?? 0
         deviceInputSampleRate = nominalSampleRate(for: inputDevice, fallback: preferredInputSampleRate > 0 ? preferredInputSampleRate : 48_000)

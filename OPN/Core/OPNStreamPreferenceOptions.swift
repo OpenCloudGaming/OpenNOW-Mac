@@ -150,16 +150,6 @@ public struct OPNStreamReplayQualityOption: Equatable, Sendable {
     }
 }
 
-public struct OPNStreamTransportModeOption: Equatable, Sendable {
-    public var label: String
-    public var value: String
-
-    public init(label: String, value: String) {
-        self.label = label
-        self.value = value
-    }
-}
-
 public struct OPNStreamQualityProfileOption: Equatable, Sendable {
     public var label: String
     public var value: Int
@@ -317,7 +307,6 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var codecIndex = 0
     public var bitrateIndex = 2
     public var colorQualityIndex = 0
-    public var transportModeIndex = 1
     public var streamingQualityProfileIndex = 0
     public var hudStreamingModeIndex = 0
     public var sdrColorSpaceIndex = 2
@@ -350,7 +339,6 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var recordingReplayQualityIndex = 0
     /// The ceiling on every retained replay window, in decimal gigabytes.
     public var recordingReplayStorageBudgetGB = StreamReplayRetentionLibrary.defaultBudgetGigabytes
-    public var transportMode = OPNStreamPreferences.transportModeOptions[1]
     public var streamingQualityProfile = 0
     public var streamingQualityProfileOption = OPNStreamPreferences.streamingQualityProfileOptions[0]
     public var enableCloudGsync = false

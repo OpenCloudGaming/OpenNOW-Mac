@@ -27,8 +27,7 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     /// bytes short and tagged as a payload kind that has no length prefix. The seat could register
     /// the pad (a different message) and then silently ignore every state update — exactly the
     /// symptom. Ground truth is `libBifrost2`'s `RiClientBackend::sendGamepadEvent`
-    /// (size `0x22` selects event type `0x0c`) plus our own pre-bifrost-free encoder,
-    /// `WebRTCInputProtocol.encodeGamepadState` / `wrapGamepadPartiallyReliable`, which worked.
+    /// (size `0x22` selects event type `0x0c`) plus the validated legacy wire fixture in tests.
     static let eventLength = 38
     static let capturedBody: [UInt8] = [
         0x0c, 0x00, 0x00, 0x00, 0x1a, 0x00, 0x00, 0x00, 0x01, 0x00,
@@ -53,7 +52,7 @@ public struct NvstGamepadPacket: Equatable, Sendable {
 
     /// The connected bitmap, u16 at event[8] — `updateGamepadsBitmap(unsigned short)` writes a u16
     /// at `this+0x18` (raw byte 4). Bit i marks gamepad i connected; bit (i+8) marks that same pad
-    /// as an XInput-style device, which is how `NativeWebRTCGamepadMonitor` built it on the vendored
+    /// as an XInput-style device, which is how `NativeGamepadMonitor` built it on the vendored
     /// path — `1 << index | 1 << (index + 8)` — in the build where the pad worked. 3 (0b11)
     /// announces gamepads 0 AND 1, which was the "two controllers in Steam" symptom.
     /// 0x0101 = pad 0 connected, XInput-style.
@@ -185,9 +184,7 @@ public struct NvstGamepadPacket: Equatable, Sendable {
     }
 
     /// `[0x23][u64 BE outer µs][0x26][gamepad index][u16 BE sequence][0x21][u16 BE 38][event]`,
-    /// matching `WebRTCInputProtocol.wrapGamepadPartiallyReliable` — the encoder from the vendored
-    /// path, where the gamepad worked. The `0x21` tag and its two length bytes are the part that was
-    /// missing; see `capturedBody`.
+    /// preserving the validated legacy encoder's length-prefixed partially-reliable envelope.
     public var payload: Data {
         var writer = NvstByteWriter(capacity: Self.payloadLength)
         writer.u8(GeronimoInputEnvelope.headerByte)

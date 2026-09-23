@@ -63,7 +63,7 @@ final class ControllerMappingDevices: ObservableObject {
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
     func refresh() {
-        let native = NativeWebRTCGamepadMonitor.availableNativeControllers()
+        let native = NativeGamepadMonitor.availableNativeControllers()
         nativeIDs = identities.update(native.map(ObjectIdentifier.init))
         controllers.removeAll()
         var next = SteamControllerHIDMonitor.shared.activeDeviceIDs.enumerated().map { index, id in

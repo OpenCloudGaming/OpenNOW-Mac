@@ -243,6 +243,44 @@ import Testing
             _ = try OPNRemoteCoOpTLSIdentity.importIdentity(p12: p12, passphrase: "wrong")
         }
     }
+
+    @Test("a persisted TLS identity is owner-only and reused for the same host")
+    func persistsAReusableIdentityWithOwnerOnlyPermissions() throws {
+        let directory = try scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let archiveURL = directory.appendingPathComponent("server-identity.p12")
+        let hostURL = directory.appendingPathComponent("server-identity.host")
+
+        let identity = try OPNRemoteCoOpTLSIdentity.identity(for: "127.0.0.1", directory: directory, passphrase: "test-passphrase")
+        let archive = try Data(contentsOf: archiveURL)
+        let fingerprint = try #require(OPNRemoteCoOpTLSIdentity.fingerprint(for: identity))
+        let attributes = try FileManager.default.attributesOfItem(atPath: archiveURL.path)
+        #expect(attributes[.posixPermissions] as? Int == 0o600)
+        #expect(try String(contentsOf: hostURL, encoding: .utf8) == "127.0.0.1")
+
+        let reloaded = try OPNRemoteCoOpTLSIdentity.identity(for: "127.0.0.1", directory: directory, passphrase: "test-passphrase")
+        #expect(OPNRemoteCoOpTLSIdentity.fingerprint(for: reloaded) == fingerprint)
+        #expect(try Data(contentsOf: archiveURL) == archive)
+    }
+
+    @Test("changing hosts replaces the persisted TLS identity")
+    func replacesIdentityWhenHostChanges() throws {
+        let directory = try scratchDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = try OPNRemoteCoOpTLSIdentity.identity(for: "127.0.0.1", directory: directory, passphrase: "test-passphrase")
+        let originalFingerprint = try #require(OPNRemoteCoOpTLSIdentity.fingerprint(for: original))
+
+        let replacement = try OPNRemoteCoOpTLSIdentity.identity(for: "127.0.0.2", directory: directory, passphrase: "test-passphrase")
+        let replacementFingerprint = try #require(OPNRemoteCoOpTLSIdentity.fingerprint(for: replacement))
+        #expect(replacementFingerprint != originalFingerprint)
+        #expect(try String(contentsOf: directory.appendingPathComponent("server-identity.host"), encoding: .utf8) == "127.0.0.2")
+
+        var certificate: SecCertificate?
+        #expect(SecIdentityCopyCertificate(replacement, &certificate) == errSecSuccess)
+        #expect(certificate.flatMap { SecCertificateCopySubjectSummary($0) as String? } == "127.0.0.2")
+        let reloaded = try OPNRemoteCoOpTLSIdentity.identity(for: "127.0.0.2", directory: directory, passphrase: "test-passphrase")
+        #expect(OPNRemoteCoOpTLSIdentity.fingerprint(for: reloaded) == replacementFingerprint)
+    }
 }
 
 /// The embedded server end to end: a real TLS listener, a real HTTPS fetch of the guest page, and a

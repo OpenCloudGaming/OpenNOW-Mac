@@ -58,26 +58,6 @@ import Foundation
     #expect(selected.streamingServiceUrl == "https://prod.DIG.geforcenow.nvidiagrid.net/")
 }
 
-@Test func streamCoordinatorRejectsZeroApplicationIdBeforeNetworkWork() async {
-    let coordinator = OPNStreamSessionCoordinator()
-    let configuration = StreamLaunchConfiguration(
-        title: "Invalid Launch",
-        applicationID: "0",
-        accessToken: "token",
-        accountLinked: true,
-        selectedStore: "Steam"
-    )
-
-    do {
-        _ = try await coordinator.startSession(configuration: configuration)
-        Issue.record("Expected coordinator to reject appId 0 before session allocation")
-    } catch let error as OPNStreamSessionError {
-        #expect(error.errorDescription == "This game does not include a launchable GeForce NOW app id.")
-    } catch {
-        Issue.record("Unexpected error type: \(error)")
-    }
-}
-
 @Test func streamCoordinatorNativeNVSTRejectsZeroApplicationIdBeforeNetworkWork() async {
     let coordinator = OPNStreamSessionCoordinator()
     let configuration = StreamLaunchConfiguration(
@@ -95,35 +75,6 @@ import Foundation
         #expect(error.errorDescription == "This game does not include a launchable GeForce NOW app id.")
     } catch {
         Issue.record("Unexpected error type: \(error)")
-    }
-}
-
-@Test func streamCoordinatorNativeNVSTRequiresNVSTTransportSelectionBeforeNetworkWork() async {
-    // Holds the transport preference for the whole test: another suite writes the same key, and its
-    // write landing between the save below and the coordinator's read made this fail with "No access
-    // token" - the coordinator getting past a transport check that was supposed to stop it.
-    await streamPreferencesTestIsolationLock.withLock {
-        let originalTransportModeIndex = OPNStreamPreferences.loadProfile().transportModeIndex
-        OPNStreamPreferences.saveNVSTTransportEnabled(false)
-        defer { OPNStreamPreferences.saveTransportModeIndex(originalTransportModeIndex) }
-
-        let coordinator = OPNStreamSessionCoordinator()
-        let configuration = StreamLaunchConfiguration(
-            title: "WebRTC Selected",
-            applicationID: "987654321",
-            accessToken: "",
-            accountLinked: true,
-            selectedStore: "Steam"
-        )
-
-        do {
-            _ = try await coordinator.startNativeNVSTSession(configuration: configuration)
-            Issue.record("Expected native NVST coordinator to reject WebRTC transport selection")
-        } catch let error as OPNStreamSessionError {
-            #expect(error.errorDescription == "Native NVST session requested while WebRTC transport is selected.")
-        } catch {
-            Issue.record("Unexpected error type: \(error)")
-        }
     }
 }
 

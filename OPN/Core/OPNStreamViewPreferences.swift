@@ -15,7 +15,6 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
     @objc public let gameVolume: Double
     @objc public let microphoneVolume: Double
     @objc public let maxBitrateMbps: Int
-    @objc public let transportMode: String
     @objc public let streamingQualityProfile: Int
     @objc public let enableCloudGsync: Bool
     @objc public let fallbackToLogicalResolution: Bool
@@ -39,7 +38,6 @@ public final class OPNStreamViewPreferenceSnapshot: NSObject {
         gameVolume = profile.gameVolume
         microphoneVolume = profile.microphoneVolume
         maxBitrateMbps = profile.maxBitrateMbps
-        transportMode = profile.transportMode.value
         streamingQualityProfile = profile.streamingQualityProfile
         enableCloudGsync = profile.enableCloudGsync
         fallbackToLogicalResolution = profile.fallbackToLogicalResolution

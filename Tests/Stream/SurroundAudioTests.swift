@@ -5,7 +5,7 @@ import Testing
 /// Surround sound is one channel count threaded through four places that must agree: the
 /// resolver, the session request, the SDP the decoder is built from, and the NVST announce.
 @Suite struct SurroundAudioTests {
-    private typealias Resolver = WebRTCMediaStreamSettingsResolver
+    private typealias Resolver = StreamSettingsResolver
 
     @Test func theChannelCountFollowsDeviceEntitlementAndMode() {
         #expect(Resolver.audioChannelCount(surroundMode: "auto", deviceOutputChannels: 2, entitledChannels: 0) == 2)
@@ -56,15 +56,15 @@ import Testing
 
     @Test func resolvedSettingsCarryTheChannelCountAndMode() {
         let resolved = Resolver.resolve(
-            profile: WebRTCMediaStreamProfile(surroundMode: "5.1"),
-            capabilities: WebRTCMediaDeviceCapabilities(audioOutputChannelCount: 8)
+            profile: StreamProfile(surroundMode: "5.1"),
+            capabilities: StreamDeviceCapabilities(audioOutputChannelCount: 8)
         )
         #expect(resolved.audioChannelCount == 6)
         let dictionary = resolved.dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "STEAM")
         #expect(dictionary["audioChannelCount"] as? Int == 6)
         #expect(dictionary["surroundMode"] as? String == "5.1")
         // The dictionary round-trips through the bridge without losing the mode.
-        #expect(webRTCMediaProfile(from: dictionary).surroundMode == "5.1")
+        #expect(streamProfile(from: dictionary).surroundMode == "5.1")
     }
 
     @Test func theSessionRequestNamesTheAudioFormatTheWayTheOfficialClientDoes() {
@@ -89,17 +89,17 @@ import Testing
             "a=fmtp:96 packetization-mode=1",
             "",
         ].joined(separator: "\r\n")
-        let surround = WebRTCSdp.applyingSurroundAudio(answer, channels: 6).components(separatedBy: "\r\n")
+        let surround = NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 6).components(separatedBy: "\r\n")
         #expect(surround.contains("a=rtpmap:111 multiopus/48000/6"))
         #expect(surround.contains("a=fmtp:111 minptime=10;useinbandfec=1;channel_mapping=0,4,1,2,3,5;num_streams=4;coupled_streams=2"))
         #expect(surround.contains("a=rtpmap:63 red/48000/2"))
         #expect(surround.contains("a=fmtp:63 111/111"))
         #expect(surround.contains("a=fmtp:96 packetization-mode=1"))
-        let sevenOne = WebRTCSdp.applyingSurroundAudio(answer, channels: 8).components(separatedBy: "\r\n")
+        let sevenOne = NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 8).components(separatedBy: "\r\n")
         #expect(sevenOne.contains("a=rtpmap:111 multiopus/48000/8"))
         #expect(sevenOne.contains("a=fmtp:111 minptime=10;useinbandfec=1;channel_mapping=0,6,1,2,3,4,5,7;num_streams=5;coupled_streams=3"))
-        #expect(WebRTCSdp.applyingSurroundAudio(answer, channels: 2) == answer)
-        #expect(WebRTCSdp.applyingSurroundAudio(answer, channels: 4) == answer)
+        #expect(NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 2) == answer)
+        #expect(NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 4) == answer)
     }
 
     @Test func theSynthesizedBundleOfferStaysStereoAndTheAnswerCarriesSurround() {
@@ -126,7 +126,7 @@ import Testing
             "a=mid:1",
             "",
         ].joined(separator: "\r\n")
-        let munged = WebRTCSdp.applyingSurroundAudio(answer, channels: 6).components(separatedBy: "\r\n")
+        let munged = NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 6).components(separatedBy: "\r\n")
         #expect(munged.contains("a=rtpmap:111 multiopus/48000/6"))
         #expect(munged.contains("a=fmtp:111 minptime=10;useinbandfec=1;channel_mapping=0,4,1,2,3,5;num_streams=4;coupled_streams=2"))
         #expect(munged.contains("a=rtpmap:63 red/48000/2"))
@@ -243,16 +243,16 @@ import Testing
     }
 
     @Test func hdrLiftsTheColourTierAndNeedsAModernCodec() {
-        let capabilities = WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true, hdrDisplaySupported: true)
-        let hevc = Resolver.resolve(profile: WebRTCMediaStreamProfile(codec: "H265", colorQuality: "8bit_420", enableHdr: true), capabilities: capabilities)
+        let capabilities = StreamDeviceCapabilities(h265HardwareDecodeSupported: true, hdrDisplaySupported: true)
+        let hevc = Resolver.resolve(profile: StreamProfile(codec: "H265", colorQuality: "8bit_420", enableHdr: true), capabilities: capabilities)
         #expect(hevc.enableHdr)
         #expect(hevc.colorQuality == "10bit_420")
-        let hevcFull = Resolver.resolve(profile: WebRTCMediaStreamProfile(codec: "H265", colorQuality: "10bit_444", enableHdr: true), capabilities: capabilities)
+        let hevcFull = Resolver.resolve(profile: StreamProfile(codec: "H265", colorQuality: "10bit_444", enableHdr: true), capabilities: capabilities)
         #expect(hevcFull.colorQuality == "10bit_444")
-        let h264 = Resolver.resolve(profile: WebRTCMediaStreamProfile(codec: "H264", colorQuality: "8bit_420", enableHdr: true), capabilities: capabilities)
+        let h264 = Resolver.resolve(profile: StreamProfile(codec: "H264", colorQuality: "8bit_420", enableHdr: true), capabilities: capabilities)
         #expect(!h264.enableHdr)
         #expect(h264.colorQuality == "8bit_420")
-        let sdrDisplay = Resolver.resolve(profile: WebRTCMediaStreamProfile(codec: "H265", enableHdr: true), capabilities: WebRTCMediaDeviceCapabilities(h265HardwareDecodeSupported: true))
+        let sdrDisplay = Resolver.resolve(profile: StreamProfile(codec: "H265", enableHdr: true), capabilities: StreamDeviceCapabilities(h265HardwareDecodeSupported: true))
         #expect(!sdrDisplay.enableHdr)
         #expect(sdrDisplay.colorQuality == "8bit_420")
     }

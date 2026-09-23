@@ -422,7 +422,7 @@ private struct RemoteCoOpGuestVideoSurface: NSViewRepresentable {
         // would be decoded and then dropped at the last step. The guest has no way to know which
         // preset the host chose, and the value is a ceiling the system clamps to the actual display
         // refresh, so asking for the higher one costs nothing on a 60 Hz panel.
-        let view = OPNMetalVideoView(frame: .zero, targetFps: 120, owner: nil)
+        let view = OPNMetalVideoView(frame: .zero, targetFps: 120)
         track.add(view)
         return view
     }

@@ -57,6 +57,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     /// handed the configuration from invite-creation time.
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     private let logger: @Sendable (String) -> Void
+    private let providedTLSIdentity: SecIdentity?
     private var listener: NWListener?
     private var connections: [UUID: Connection] = [:]
     private var unauthenticatedConnections: Set<UUID> = []
@@ -77,10 +78,12 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
     public init(inviteProvider: @escaping @Sendable () async -> OPNRemoteCoOpInvite?,
                 participantOwnership: OPNRemoteCoOpParticipantOwnership,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
+                identity: SecIdentity? = nil,
                 logger: @escaping @Sendable (String) -> Void = { _ in }) {
         self.inviteProvider = inviteProvider
         self.participantOwnership = participantOwnership
         self.networkConfiguration = networkConfiguration
+        self.providedTLSIdentity = identity
         self.logger = logger
     }
 
@@ -179,7 +182,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         let host = OPNRemoteCoOpLocalAddress.advertisedHost()
         let identity: SecIdentity
         do {
-            identity = try OPNRemoteCoOpTLSIdentity.identity(for: host)
+            identity = try providedTLSIdentity ?? OPNRemoteCoOpTLSIdentity.identity(for: host)
         } catch {
             logger("Native Remote Co-Op could not load its TLS identity: \(error.localizedDescription)")
             return

@@ -95,36 +95,6 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
-    /// WebRTC is the legacy path: it still streams, but every feature since the native transport
-    /// landed (Remote Co-Op hosting, HDR, 4:4:4, 120 fps, rumble, the cursor protocol) is
-    /// NVST-only. Home says so once, with the switch attached, rather than leaving a user to
-    /// discover it one missing feature at a time.
-    var usesLegacyWebRTCTransport: Bool {
-        streamProfile.transportModeIndex == 0
-    }
-
-    var showsLegacyTransportNotice: Bool {
-        usesLegacyWebRTCTransport && !OPNStreamPreferences.legacyTransportNoticeDismissed
-    }
-
-    func dismissLegacyTransportNotice() {
-        OPNStreamPreferences.saveLegacyTransportNoticeDismissed(true)
-        loadSettingsPreferences()
-    }
-
-    /// The notice's own button. Switches the transport and clears any earlier dismissal, so a user
-    /// who later goes back to WebRTC is told again.
-    func switchToNativeTransportFromNotice() {
-        OPNStreamPreferences.saveLegacyTransportNoticeDismissed(false)
-        setNVSTTransportEnabled(true)
-    }
-
-    func setNVSTTransportEnabled(_ enabled: Bool) {
-        OPNStreamPreferences.saveNVSTTransportEnabled(enabled)
-        actionMessage = enabled ? "Native/NVST stream transport selected." : "WebRTC stream transport selected."
-        loadSettingsPreferences()
-    }
-
     func setStreamingQualityProfileIndex(_ index: Int) {
         // Choosing a preset by hand answers the notice, whichever way it goes.
         didSwitchToCustomStreamingProfile = false
@@ -623,7 +593,7 @@ extension CatalogViewModel {
     var surroundModeSubtitle: String {
         let deviceChannels = streamCapabilities.audioOutputChannelCount
         let entitled = OPNStreamPreferences.loadEntitledAudioChannelCount()
-        let negotiated = WebRTCMediaStreamSettingsResolver.audioChannelCount(surroundMode: streamProfile.surroundMode.value, deviceOutputChannels: deviceChannels, entitledChannels: entitled)
+        let negotiated = StreamSettingsResolver.audioChannelCount(surroundMode: streamProfile.surroundMode.value, deviceOutputChannels: deviceChannels, entitledChannels: entitled)
         let layout = negotiated >= 8 ? "7.1" : (negotiated >= 6 ? "5.1" : "stereo")
         var text = "Output device has \(deviceChannels) channel\(deviceChannels == 1 ? "" : "s"); next session streams \(layout)."
         if entitled > 0, entitled < 6 { text += " Membership is limited to stereo." }

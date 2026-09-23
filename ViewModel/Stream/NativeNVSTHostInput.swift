@@ -3,7 +3,7 @@
 //
 
 //  AppKit is imported deliberately here for the same reason NativeNVSTHostViewModel.swift does:
-//  `NativeWebRTCStreamView` *is* the stream surface, and the input wiring below is a set of real
+//  `NativeStreamView` *is* the stream surface, and the input wiring below is a set of real
 //  side effects on it. See that file's note for the full rationale.
 //
 //  swiftlint:disable:next no_appkit_in_view_model
@@ -11,7 +11,7 @@ import AppKit
 import Foundation
 
 extension NativeNVSTHostViewModel {
-    func configureNativeView(_ view: NativeWebRTCStreamView) {
+    func configureNativeView(_ view: NativeStreamView) {
         guard !didEnd, !isEnding else {
             view.remoteInputEnabled = false
             view.setNativeNVSTVideoVisible(false)
@@ -52,7 +52,7 @@ extension NativeNVSTHostViewModel {
 
     /// The HUD's full-screen tile reads `streamWindowIsFullScreen` rather than the style mask, so it
     /// also stays honest when the window is toggled by the green button, ⌃⌘F or the menu bar.
-    func installNativeFullScreenObservers(for view: NativeWebRTCStreamView) {
+    func installNativeFullScreenObservers(for view: NativeStreamView) {
         removeNativeFullScreenObservers()
         guard let window = view.window else { return }
         streamWindowIsFullScreen = window.styleMask.contains(.fullScreen)
@@ -109,7 +109,7 @@ extension NativeNVSTHostViewModel {
     /// and the session would never deallocate.
     /// Where one input event goes. The on-screen keyboard takes gamepad input for itself while it
     /// is up, but still forwards a neutral state so the game does not see a button stuck down.
-    func routeInputEvent(_ event: UserInputEvent, view: NativeWebRTCStreamView) {
+    func routeInputEvent(_ event: UserInputEvent, view: NativeStreamView) {
         if onScreenKeyboardVisible, !isEnding, !didEnd, case .gamepad(let state) = event {
             onScreenKeyboard.handleGamepadState(state)
             if isConnected {
@@ -130,7 +130,7 @@ extension NativeNVSTHostViewModel {
         inputDispatcher?.enqueue(event)
     }
 
-    func configureInput(for view: NativeWebRTCStreamView) {
+    func configureInput(for view: NativeStreamView) {
         view.onInputEvent = { [weak self, weak view] event in
             guard let self, let view else { return }
             self.routeInputEvent(event, view: view)

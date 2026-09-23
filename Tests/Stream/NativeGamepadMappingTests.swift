@@ -50,7 +50,7 @@ import Testing
         let suite = "NativeGamepadMappingTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let monitor = NativeWebRTCGamepadMonitor(mappingProvider: ControllerMappingStore(defaults: defaults))
+        let monitor = NativeGamepadMonitor(mappingProvider: ControllerMappingStore(defaults: defaults))
         monitor.mappingsEnabled = false
         var events: [UserInputEvent] = []
         monitor.onInputEvent = { events.append($0) }

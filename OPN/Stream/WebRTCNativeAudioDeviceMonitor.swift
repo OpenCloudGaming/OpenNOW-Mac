@@ -1,11 +1,3 @@
-//  Lets `OPNCoreAudioRTCDevice` follow the default output device on its own.
-//
-//  `OPNLibWebRTCAudio` already does this for the libwebrtc session, but it is tied to an
-//  `OPNLibWebRTCSessionImpl` that the native NVST bundle never creates. Without this the bundle's
-//  playout unit stays pinned to whatever device was default when the stream started, so plugging in
-//  headphones mid-game leaves the audio on the speakers.
-//
-
 import AudioUnit
 import CoreAudio
 import Foundation
@@ -53,7 +45,7 @@ extension OPNCoreAudioRTCDevice {
     }
 
     private func applySelfDeviceChange(generation: UInt64, attempt: Int) {
-        let current = OPNLibWebRTCAudio.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
+        let current = OPNCoreAudioDeviceLookup.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
         guard current != AudioDeviceID(kAudioObjectUnknown) else {
             guard attempt < 10 else {
                 OPNStreamTelemetry.capture("webrtc.native.audio.self_monitor.unavailable", level: .warning, message: "Default output device stayed unavailable after a hotplug.")

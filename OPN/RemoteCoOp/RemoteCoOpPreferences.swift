@@ -27,19 +27,6 @@ public enum OPNRemoteCoOpPreferencesStore {
         return rawValue == "relayOnly" ? .directOnly : .automatic
     }
 
-    /// Whether the launched stream is on the transport Remote Co-Op needs.
-    ///
-    /// The WebRTC path decodes inside libwebrtc and exposes no frame tap comparable to the native
-    /// decoder's, so hosting there meant re-rendering the guest's picture: a second decode and encode
-    /// per frame on the host, for a stream guests found sluggish. NVST hands over the decoder's own
-    /// `CVPixelBuffer`, which is what makes the relay cheap enough to be worth having at all.
-    ///
-    /// Read from the same preference the stream itself uses, so this can never disagree with the
-    /// transport that actually launches.
-    public static var isNativeTransportSelected: Bool {
-        OPNStreamPreferences.loadProfile().transportMode.value == "nvst"
-    }
-
     public static func load() -> OPNRemoteCoOpPreferences {
         let latencyMode = migratedLatencyMode()
         return OPNRemoteCoOpPreferences(

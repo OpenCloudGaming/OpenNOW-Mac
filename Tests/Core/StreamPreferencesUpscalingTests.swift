@@ -91,26 +91,60 @@ import Testing
         }
     }
 
-    /// Shares the transport-mode preference key with the native NVST coordinator tests, so the two
-    /// have to take turns: `withPreservedPreferences` restores this test's changes afterwards, but
-    /// "afterwards" can be in the middle of the other test's read-back.
-    @Test func streamTransportSelectionSurvivesQualityProfileChanges() async {
-        await streamPreferencesTestIsolationLock.withLock {
-            withPreservedPreferences(streamingProfileKeys) {
-                OPNStreamPreferences.restoreStreamingProfileDefaults()
+    @Test func legacyWebRTCPreferencesPreserveSettingsForNVSTLaunches() async throws {
+        try await streamPreferencesTestIsolationLock.withLock {
+            let legacyTransportKey = "OpenNOW.Stream.TransportModeIndex"
+            let legacyNoticeKey = "OpenNOW.Stream.LegacyTransportNoticeDismissed"
+            let keys = OPNStreamPreferences.streamingProfileKeys + [
+                legacyTransportKey,
+                legacyNoticeKey,
+                gameProfilesKey,
+                steamBigPictureModeKey,
+                OPNStreamPreferences.Keys.selectedRegionUrl,
+                OPNStreamPreferences.Keys.persistInGameSettings
+            ]
+            try withPreservedPreferences(keys) {
+                for key in keys { removePreferenceValue(key) }
+                OPNStreamPreferences.saveRecordingMode(.off)
+                OPNStreamPreferences.saveAspectIndex(0)
+                OPNStreamPreferences.saveResolutionIndex(3)
+                OPNStreamPreferences.saveBitrateIndex(3)
+                OPNStreamPreferences.saveGameVolume(0.6)
+                OPNStreamPreferences.saveMicrophoneVolume(0.4)
+                OPNStreamPreferences.saveSteamBigPictureMode(true)
+                OPNStreamPreferences.saveUpscalingSettings(mode: 2, sharpness: 7, denoise: 3)
+                let globalProfile = OPNStreamPreferences.loadProfile()
+                let appId = "123"
+                var gameProfile = globalProfile
+                gameProfile.upscalingModeIndex = 1
+                gameProfile.upscalingMode = 3
+                gameProfile.upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[1]
+                gameProfile.upscalingSharpness = 12
+                gameProfile.pillarboxFillDim = 80
+                gameProfile.gameVolume = 0.3
+                OPNStreamPreferences.saveProfile(forGame: appId, profile: gameProfile)
+                let expectedLaunchProfile = OPNStreamPreferences.launchProfile(forGame: appId, capabilities: OPNStreamDeviceCapabilities())
+                let storage = OPNAppPreferenceStorage.standard
+                var storedGameProfile = try #require(storage.dictionary(forKey: gameProfilesKey)?[appId] as? [String: Any])
+                storedGameProfile[legacyTransportKey] = 0
+                storage.set([appId: storedGameProfile], forKey: gameProfilesKey)
+                storage.set(0, forKey: legacyTransportKey)
+                storage.set(true, forKey: legacyNoticeKey)
 
-                OPNStreamPreferences.saveTransportModeIndex(1)
-                OPNStreamPreferences.saveStreamingQualityProfileIndex(3)
+                let loadedGlobalProfile = OPNStreamPreferences.loadProfile()
+                let loadedGameProfile = try #require(OPNStreamPreferences.loadProfile(forGame: appId))
+                let launchProfile = OPNStreamPreferences.launchProfile(forGame: appId, capabilities: OPNStreamDeviceCapabilities())
 
-                var profile = OPNStreamPreferences.loadProfile()
-                #expect(profile.streamingQualityProfileIndex == 3)
-                #expect(profile.transportMode.value == "nvst")
-                #expect(profile.transportMode.label == "Native/NVST")
-
-                OPNStreamPreferences.saveStreamingQualityProfileIndex(4)
-                profile = OPNStreamPreferences.loadProfile()
-                #expect(profile.streamingQualityProfileIndex == 4)
-                #expect(profile.transportMode.value == "nvst")
+                #expect(loadedGlobalProfile == globalProfile)
+                #expect(loadedGameProfile == gameProfile)
+                #expect(launchProfile == expectedLaunchProfile)
+                for profile in [loadedGlobalProfile, loadedGameProfile, launchProfile] {
+                    try expectNVSTRequestPreservesProfile(profile)
+                }
+                OPNStreamPreferences.saveProfile(forGame: appId, profile: loadedGameProfile)
+                let savedGameProfile = try #require(storage.dictionary(forKey: gameProfilesKey)?[appId] as? [String: Any])
+                #expect(savedGameProfile[legacyTransportKey] == nil)
+                #expect(OPNStreamPreferences.loadProfile(forGame: appId) == gameProfile)
             }
         }
     }
@@ -302,7 +336,40 @@ import Testing
         }
     }
 
-    private func withPreservedPreferences(_ keys: [String], _ body: () -> Void) {
+    private func expectNVSTRequestPreservesProfile(_ profile: OPNStreamPreferenceProfile) throws {
+        let settings = StreamSettingsResolver.resolve(
+            profile: streamProfile(from: profile),
+            capabilities: StreamDeviceCapabilities()
+        ).dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "Steam")
+        let request = OPNSessionManager().sessionRequestData(
+            launchAppId: try #require(OPNLaunchAppId.resolve("123")),
+            internalTitle: "Legacy Preference Game",
+            settings: settings,
+            capabilities: OPNStreamDeviceCapabilities(),
+            hdrEnabled: false,
+            deviceId: "test-device",
+            selectedStore: "Steam"
+        )
+        let metadata = try #require(request["metaData"] as? [[String: String]])
+        let monitor = try #require((request["clientRequestMonitorSettings"] as? [[String: Any]])?.first)
+        let features = try #require(request["requestedStreamingFeatures"] as? [String: Any])
+
+        #expect(settings["transportMode"] as? String == "nvst")
+        #expect(settings["upscalingMode"] as? Int == profile.upscalingMode)
+        #expect(settings["upscalingSharpness"] as? Int == profile.upscalingSharpness)
+        #expect(settings["gameVolume"] as? Double == profile.gameVolume)
+        #expect(settings["microphoneVolume"] as? Double == profile.microphoneVolume)
+        #expect(request["clientPlatformName"] as? String == "windows")
+        #expect(request["secureRTSPSupported"] as? Bool == true)
+        #expect(request["appLaunchMode"] as? Int == 2)
+        #expect(!metadata.contains { $0["key"] == "GSStreamerType" })
+        #expect(monitor["widthInPixels"] as? Int == profile.resolution.width)
+        #expect(monitor["heightInPixels"] as? Int == profile.resolution.height)
+        #expect(monitor["framesPerSecond"] as? Int == profile.fps)
+        #expect(features["maxBitrateKbps"] as? Int == profile.maxBitrateMbps * 1_000)
+    }
+
+    private func withPreservedPreferences(_ keys: [String], _ body: () throws -> Void) rethrows {
         preferenceDomainTestLock.lock()
         defer { preferenceDomainTestLock.unlock() }
         let defaults = UserDefaults.standard
@@ -329,7 +396,7 @@ import Testing
             }
             defaults.synchronize()
         }
-        body()
+        try body()
     }
 
     private var streamingProfileKeys: [String] {
@@ -340,7 +407,6 @@ import Testing
             "OpenNOW.Stream.CodecIndex",
             "OpenNOW.Stream.BitrateIndex",
             "OpenNOW.Stream.ColorQualityIndex",
-            "OpenNOW.Stream.TransportModeIndex",
             "OpenNOW.Stream.StreamingQualityProfileIndex",
             "OpenNOW.Stream.CloudGsyncEnabled",
             "OpenNOW.Stream.FallbackToLogicalResolution",

@@ -8,7 +8,7 @@ are always plain rectangles.
 Token sources of truth:
 
 - App shell: `View/OPNDesign.swift` (`OPNDesign`), `View/Login/LoginStyles.swift`
-- Stream HUD: `OPN/Stream/WebRTCMediaStreamSurface.swift` (`StreamHUDTheme`)
+- Stream HUD: `View/Stream/StreamHUDComponents.swift` (`StreamHUDTheme`)
 - Typography: `View/Design/OPNUIFont.swift` (`OPNUIFont`)
 
 ## Colors
@@ -170,7 +170,7 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   are redrawn. Never bypass it with per-layer `contentsScale` edits elsewhere.
 - **Applied to**: catalog chrome including controller mode and overlays (`CatalogView`
   non-stream branch), the login window (`LoginView`), and the stream HUD chrome layer
-  (`hudChrome` in `WebRTCMediaStreamSurface`). Full-bleed backdrops and transient
+  (`nativeUnifiedHUD` in `NativeNVSTMediaStreamSurface`). Full-bleed backdrops and transient
   splash/loading screens stay at 100 %.
 - **Setting**: Settings → General → Interface → Display, "Interface Scale" slider
   (5 % steps, shown as a percentage).
@@ -796,14 +796,14 @@ Buttons. Escape (`.cancelAction`) maps to the primary dismiss action.
 
 ### Stats HUD
 
-The floating stream-statistics overlay: `NativeNVSTStatsPanel` on the native NVST surface, and
-the WebRTC surface's own stats panel. It is toggle-only from the shortcut and the CONTROLS tile —
+The floating stream-statistics overlay is `NativeNVSTStatsPanel` on the native NVST surface.
+It is toggle-only from the shortcut and the CONTROLS tile —
 shown or hidden — and its shape is chosen in the unified HUD's STATS panel.
 
 Two stored preferences give its shape:
 
-- **Detail** — Minimum, Compact, Advanced. Minimum is the headline readings alone: every frame
-  rate the transport exposes (GAME and STREAM on native NVST, one FPS on WebRTC) plus latency.
+- **Detail** — Minimum, Compact, Advanced. Minimum is the headline readings alone: GAME and
+  STREAM frame rates plus latency.
   Compact keeps the headline readings and one overview group — Resolution, Codec, Bandwidth,
   Packet Loss, Frame Loss. Advanced keeps every group. The header and the panel's padding and
   width are the same at every level; the level only decides how many detail rows follow.
@@ -819,8 +819,8 @@ activate.
 
 ### On-Screen Keyboard (`StreamOnScreenKeyboardOverlay`)
 
-Bottom-anchored panel invoked in-stream with Steam + X (Steam Deck-style chord);
-works on both the WebRTC and native NVST paths. Panel background @ 0.985, 2px accent
+Bottom-anchored panel invoked in-stream with Steam + X (Steam Deck-style chord)
+on the native NVST surface. Panel background @ 0.985, 2px accent
 top bar, 1px Divider stroke. App Bar header strip holds the eyebrow label, a live
 echo of recently typed text (12pt medium Text Primary, head-truncated), and accent
 state badges for latched Shift and the symbols layer. The key grid is 10 columns ×
