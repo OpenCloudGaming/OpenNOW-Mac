@@ -171,8 +171,9 @@ struct RecordingEditorHeaderBar: View {
     private var exportSummary: String {
         let length = recordingEditorDurationText(viewModel.outputDurationSeconds)
         let clips = "\(viewModel.segments.count) clip\(viewModel.segments.count == 1 ? "" : "s")"
+        let resolution = viewModel.croppedOutputDescription
         let method = viewModel.exportQuality == .highest && viewModel.isTrimOnlyEdit ? "copied without re-encoding" : "re-encoded"
-        return "\(length) from \(clips), \(method). The original recording is left alone."
+        return "\(length) at \(resolution) from \(clips), \(method). The original recording is left alone."
     }
 
     private func coalescedUndoable<Value>(_ keyPath: ReferenceWritableKeyPath<RecordingEditorViewModel, Value>, token: String) -> Binding<Value> {

@@ -68,7 +68,10 @@ struct RecordingsView: View {
                 RecordingRightsNotice(onAcknowledge: { rightsNoticeAcknowledged = true }, uiScale: uiScale)
             }
         }
-        .onAppear { model.reload(showMessage: false) }
+        .onAppear {
+            model.reload(showMessage: false)
+            model.observeRetentionChanges()
+        }
         .onChange(of: controllerPageCommand) { _, pageCommand in
             guard let pageCommand else { return }
             model.applyControllerCommand(pageCommand.command, in: visibleRecordings)
@@ -112,6 +115,21 @@ struct RecordingsView: View {
                 .padding(.horizontal, 18 * uiScale)
                 .padding(.top, 14 * uiScale)
                 .zIndex(1)
+
+            if !model.retainedWindows.isEmpty {
+                RetainedReplaySection(
+                    windows: model.retainedWindows,
+                    keepingWindowID: model.keepingWindowID,
+                    watchedWindowID: model.retainedPreview?.window.id,
+                    message: model.retainedWindowMessage,
+                    usageText: model.retainedReplayUsageText,
+                    uiScale: uiScale,
+                    onWatch: { model.watchRetainedWindow($0) },
+                    onClip: { model.startEditingRetainedWindow($0) },
+                    onKeep: { model.keepRetainedWindow($0) },
+                    onDiscard: { model.discardRetainedWindow($0) }
+                )
+            }
 
             if model.recordings.isEmpty {
                 RecordingEmptyState(kind: .library, action: { model.reload(showMessage: true) }, uiScale: uiScale)
@@ -275,8 +293,8 @@ struct RecordingsView: View {
         // The backdrop is a `.background`, never a ZStack sibling: an `ignoresSafeArea` child in a
         // ZStack drew its blend-mode grid over the content instead of under it.
         Group {
-            if let selectedRecording = model.selectedRecording, let player = model.player {
-                selectedPlayer(recording: selectedRecording, player: player)
+            if let recording = model.playerPaneRecording, let player = model.player {
+                selectedPlayer(recording: recording, player: player)
             } else {
                 RecordingEmptyPlayer(message: model.message, uiScale: uiScale)
             }
@@ -325,36 +343,49 @@ struct RecordingsView: View {
 
     private var discardEditsDialogPresented: Binding<Bool> {
         Binding(
-            get: { model.pendingEditorDiscardSelection != nil || model.isPendingEditorClose },
+            get: { model.pendingEditorDiscardSelection != nil || model.pendingEditorDiscardWindow != nil || model.isPendingEditorClose },
             set: { if !$0 { model.cancelPendingEditorDiscard() } }
         )
     }
 
-    /// The editor's header replaces the recording's while an edit is open: same row, different job.
+    /// The editor's header replaces the recording's while an edit is open, and a watched replay's
+    /// replaces it while one is playing. The three states are exclusive, so each branch names its own.
     @ViewBuilder
     private func pageHeader(recording: StreamRecording, editorViewModel: RecordingEditorViewModel?) -> some View {
         if let editorViewModel {
-            RecordingEditorHeaderBar(
-                viewModel: editorViewModel,
-                isControllerFocused: controllerPageCommand != nil && model.controllerFocus == .editor,
-                onCancel: model.requestCloseEditor,
-                onExport: model.startEditorExport,
-                onCancelExport: model.cancelEditorExport
-            )
-        } else {
-            RecordingInspector(
-                recording: recording,
-                isPathCopied: model.copiedPathRecordingID == recording.id,
-                message: model.message,
-                uiScale: uiScale,
-                onRestart: { model.restart(recording) },
-                onEdit: { model.startEditing(recording) },
-                onOpen: { model.open(recording) },
-                onReveal: { model.reveal(recording) },
-                onCopyPath: { model.copyPath(recording) },
-                onDelete: { model.pendingDelete = recording }
-            )
+            editorHeader(editorViewModel)
         }
+        if editorViewModel == nil, let preview = model.retainedPreview {
+            RetainedReplayPreviewHeader(window: preview.window, onStop: model.stopWatchingRetainedWindow, uiScale: uiScale)
+        }
+        if editorViewModel == nil, model.retainedPreview == nil {
+            inspector(recording)
+        }
+    }
+
+    private func editorHeader(_ viewModel: RecordingEditorViewModel) -> some View {
+        RecordingEditorHeaderBar(
+            viewModel: viewModel,
+            isControllerFocused: controllerPageCommand != nil && model.controllerFocus == .editor,
+            onCancel: model.requestCloseEditor,
+            onExport: model.startEditorExport,
+            onCancelExport: model.cancelEditorExport
+        )
+    }
+
+    private func inspector(_ recording: StreamRecording) -> some View {
+        RecordingInspector(
+            recording: recording,
+            isPathCopied: model.copiedPathRecordingID == recording.id,
+            message: model.message,
+            uiScale: uiScale,
+            onRestart: { model.restart(recording) },
+            onEdit: { model.startEditing(recording) },
+            onOpen: { model.open(recording) },
+            onReveal: { model.reveal(recording) },
+            onCopyPath: { model.copyPath(recording) },
+            onDelete: { model.pendingDelete = recording }
+        )
     }
 
     private var deleteDialogPresented: Binding<Bool> {
@@ -609,22 +640,5 @@ private enum RecordingThumbnailLoader {
             guard let cgImage else { return nil }
             return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         }.value
-    }
-}
-
-private struct RecordingPill: View {
-    let text: String
-    let isActive: Bool
-    let uiScale: CGFloat
-
-    var body: some View {
-        Text(text)
-            .font(.recordingsFont(size: 9 * uiScale, weight: .bold))
-            .foregroundStyle(isActive ? .black.opacity(0.86) : OPNDesign.Text.secondary)
-            .lineLimit(1)
-            .padding(.horizontal, 7 * uiScale)
-            .frame(height: 20 * uiScale)
-            .background(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle)
-            .overlay { Rectangle().stroke(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

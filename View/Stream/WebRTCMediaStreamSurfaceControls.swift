@@ -22,12 +22,21 @@ extension WebRTCMediaStreamSurface {
         [
             StreamHUDFocusEntry(id: "microphone", isDisabled: runtimeSettings.microphoneMode == "disabled", group: "controls", columns: 8, action: toggleMicrophone),
             StreamHUDFocusEntry(id: "recording", isDisabled: !isStreamReady || recordingIsBusy, group: "controls", columns: 8, action: toggleRecording),
+        ]
+        + replayBufferFocusEntries
+        + [
             StreamHUDFocusEntry(id: "screenshot", isDisabled: !isStreamReady || screenshotTask != nil, group: "controls", columns: 8, action: takeScreenshot),
             StreamHUDFocusEntry(id: "anti-afk", isDisabled: !isStreamReady, group: "controls", columns: 8, action: toggleAntiAFKMouseMovement),
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "controls", columns: 8, action: openControllerMapping),
             StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "controls", columns: 8, action: openControllerOrder),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "controls", columns: 8, action: { showQuitMenu() }),
         ]
+    }
+
+    /// Offered only in Instant Replay mode, matching the stream's recording mode.
+    private var replayBufferFocusEntries: [StreamHUDFocusEntry] {
+        guard runtimeSettings.isInstantReplayEnabled else { return [] }
+        return [StreamHUDFocusEntry(id: "replay", isDisabled: !isStreamReady || !replayBufferState.isBuffering || replayBufferState.isSaving, group: "controls", columns: 8, action: saveReplayClip)]
     }
 
     func handleHUDGamepad(_ state: GamepadState) {
@@ -111,6 +120,76 @@ extension WebRTCMediaStreamSurface {
     func recordingElapsedText(_ elapsedSeconds: Double) -> String {
         let seconds = max(0, Int(elapsedSeconds.rounded(.down)))
         return String(format: "%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
+    }
+
+    // MARK: - Instant Replay
+
+    var replayBufferStatusText: String {
+        if let reason = replayBufferState.pauseReason, !reason.isEmpty { return reason }
+        if replayBufferState.isSaving { return "Saving clip…" }
+        guard replayBufferState.isBuffering else { return "Off" }
+        guard replayBufferState.availableSeconds >= 1 else { return "Warming up" }
+        return "Last \(replayBufferState.availableText) ready"
+    }
+
+    func startReplayBufferIfEnabled(transport: NativeWebRTCTransport) {
+        guard runtimeSettings.isInstantReplayEnabled else { return }
+        let recording = StreamRecordingConfiguration(
+            title: configuration.title,
+            applicationID: configuration.applicationID,
+            width: runtimeSettings.resolutionWidth,
+            height: runtimeSettings.resolutionHeight,
+            fps: runtimeSettings.fps,
+            videoBitrateMbps: runtimeSettings.recordingVideoBitrateMbps,
+            audioBitrateKbps: runtimeSettings.recordingAudioBitrateKbps,
+            // The rolling window records the decoded stream, so the clip is never labelled as
+            // carrying the enhanced readback.
+            enhancedVideoEnabled: false
+        )
+        let quality = OPNStreamPreferences.replayQualityOptions[min(max(runtimeSettings.recordingReplayQualityIndex, 0), OPNStreamPreferences.replayQualityOptions.count - 1)]
+        let buffer = StreamReplayBufferConfiguration(
+            recording: recording,
+            windowSeconds: Double(runtimeSettings.recordingReplayBufferWindowSeconds),
+            clipSeconds: Double(runtimeSettings.recordingReplayClipSeconds),
+            maxHeight: quality.maxHeight,
+            bitrateCeilingMbps: quality.bitrateCeilingMbps,
+            retainedBudgetBytes: StreamReplayRetentionLibrary.configuredBudgetBytes
+        )
+        _ = transport.startReplayBuffer(configuration: buffer)
+        OPNStreamTelemetry.capture("webrtc.ui.replay.start", level: .info, message: "Stream instant replay started.", attributes: ["applicationID": configuration.applicationID, "windowSeconds": String(Int(buffer.windowSeconds))])
+    }
+
+    func saveReplayClip() {
+        guard isStreamReady, !isEndingStream, !didEndStream, let transport else { return }
+        guard replayBufferState.isBuffering else {
+            showTransientStreamMessage("Replay not buffering")
+            OPNStreamTelemetry.capture("webrtc.ui.replay.save.unavailable", level: .warning, message: "Replay save requested while the buffer was not running.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        guard !replayBufferState.isSaving else { return }
+        replayBufferState.isSaving = true
+        showTransientStreamMessage("Saving Replay")
+        transport.saveReplayClip()
+        OPNStreamTelemetry.capture("webrtc.ui.replay.save", level: .info, message: "Stream replay save requested.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    func handleReplayBufferStateChanged(_ state: StreamReplayBufferState) {
+        let previous = replayBufferState
+        replayBufferState = state
+        if let clip = state.lastClip, clip.id != previous.lastClip?.id {
+            showTransientStreamMessage("Replay Saved")
+            OPNStreamTelemetry.capture("webrtc.ui.replay.saved", level: .info, message: "Stream replay clip saved.", attributes: ["applicationID": configuration.applicationID, "durationSeconds": String(format: "%.1f", clip.durationSeconds), "resolution": "\(clip.width)x\(clip.height)"])
+            return
+        }
+        if let message = state.failureMessage, message != previous.failureMessage {
+            showTransientStreamMessage("Replay Failed")
+            OPNStreamTelemetry.capture("webrtc.ui.replay.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        if let reason = state.pauseReason, !reason.isEmpty, reason != previous.pauseReason {
+            showTransientStreamMessage("Replay Paused")
+            OPNStreamTelemetry.capture("webrtc.ui.replay.paused", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
+        }
     }
 
     func takeScreenshot() {

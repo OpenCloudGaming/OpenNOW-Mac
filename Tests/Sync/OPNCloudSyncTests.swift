@@ -19,6 +19,16 @@ import Testing
         #expect(OPNCloudSyncSettingsRegistry.isSyncable(KeybindingAction.takeScreenshot.rawValue))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable(OPNUpdatePreferences.automaticUpdateChecksEnabledKey))
 
+        // The Instant Replay settings travel with the stream settings, storage budget included. The
+        // allow-list is prefix-based, so this pins the family against a rename that drops the prefix.
+        for key in ["OpenNOW.Stream.RecordingMode",
+                    "OpenNOW.Stream.RecordingReplayBufferWindowSeconds",
+                    "OpenNOW.Stream.RecordingReplayClipSeconds",
+                    "OpenNOW.Stream.RecordingReplayQualityIndex",
+                    "OpenNOW.Stream.RecordingReplayStorageBudgetGB"] {
+            #expect(OPNCloudSyncSettingsRegistry.isSyncable(key), "\(key) must travel with the settings")
+        }
+
         // Credentials, runtime state, and machine-bound values stay local even though they match a prefix.
         for key in OPNCloudSyncSettingsRegistry.deniedKeys {
             #expect(!OPNCloudSyncSettingsRegistry.isSyncable(key), "\(key) must never sync")

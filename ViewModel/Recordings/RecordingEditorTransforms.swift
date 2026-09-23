@@ -6,6 +6,21 @@ import Combine
 import Foundation
 
 extension RecordingEditorViewModel {
+    // MARK: - Timeline arithmetic
+
+    var selectedSegment: RecordingEditorSegment? {
+        guard let selectedSegmentID else { return segments.first }
+        return segments.first { $0.id == selectedSegmentID }
+    }
+
+    var totalSourceDurationSeconds: Double {
+        segments.reduce(0) { $0 + $1.durationSeconds }
+    }
+
+    var outputDurationSeconds: Double {
+        totalSourceDurationSeconds / max(0.25, playbackRate)
+    }
+
     func applyCropPreset(_ preset: RecordingEditorCropPreset) {
         recordUndo()
         if let crop = preset.crop(sourceAspect: sourceAspect) {
@@ -67,10 +82,9 @@ extension RecordingEditorViewModel {
     func resetEdits() {
         recordUndo()
         setAdjustingCrop(false)
-        let segment = RecordingEditorSegment(recording: primaryRecording, startSeconds: 0, endSeconds: primaryRecording.durationSeconds)
-        outputTitle = primaryRecording.title + " Edit"
-        segments = [segment]
-        selectedSegmentID = segment.id
+        outputTitle = defaultOutputTitle
+        segments = initialSegments
+        selectedSegmentID = initialSegments.first?.id
         markInSeconds = nil
         markOutSeconds = nil
         cropEnabled = false

@@ -91,17 +91,67 @@ extension RecordingsViewModel {
         if selectedRecording?.id != recording.id { select(recording, autoplay: false) }
         player?.pause()
         editorViewModel = RecordingEditorViewModel(recording: recording, library: recordings)
+        editingRetainedWindowID = nil
         controllerFocus = .editor
         refreshEditedPreview(debounce: false, preservePlaybackTime: false)
         message = "Editing \(recording.title). Export saves a new video."
     }
 
+    /// Opens the quick editor over a replay window: a ring of segment files rather than a library
+    /// recording, so there is nothing to select and the window stays on disk until it is discarded.
+    func startEditingRetainedWindow(_ window: StreamReplayRetainedWindow) {
+        guard !isExportingEditor else {
+            message = "Finish or cancel the export before editing a replay."
+            return
+        }
+        if let editorViewModel, editingRetainedWindowID != window.id, editorViewModel.hasUnsavedEdits {
+            pendingEditorDiscardWindow = window
+            return
+        }
+        openRetainedWindowEditor(window)
+    }
+
+    private func openRetainedWindowEditor(_ window: StreamReplayRetainedWindow) {
+        // Measuring a ring reads every segment file; a second click would build a second editor.
+        guard !isLoadingRetainedWindowEditor else { return }
+        isLoadingRetainedWindowEditor = true
+        player?.pause()
+        selectedRecording = nil
+        retainedPreview = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isLoadingRetainedWindowEditor = false }
+            guard let editor = await RetainedReplayEditing.makeEditor(for: window, library: self.recordings) else {
+                self.message = "That replay could not be opened: none of its segments could be read."
+                return
+            }
+            self.cancelEditorPreview()
+            self.editorViewModel = editor
+            self.editingRetainedWindowID = window.id
+            let nextPlayer = AVPlayer()
+            self.player = nextPlayer
+            self.playerTimeSeconds = 0
+            self.observePlaybackStatus(of: nextPlayer)
+            self.attachPlayheadObserver(to: nextPlayer)
+            self.controllerFocus = .editor
+            self.refreshEditedPreview(debounce: false, preservePlaybackTime: false)
+            self.message = "Clipping \(window.title). Export saves a clip; the replay stays until you discard it."
+        }
+    }
+
     func closeEditor() {
         cancelEditorPreview()
         editorViewModel = nil
+        editingRetainedWindowID = nil
         controllerFocus = .library
-        if let selectedRecording { select(selectedRecording, autoplay: false) }
         message = "Editor closed."
+        // A replay-window edit left no library selection behind, so the pane has to be handed the
+        // empty state rather than a recording that is no longer selected.
+        guard let selectedRecording else {
+            select(nil, autoplay: false)
+            return
+        }
+        select(selectedRecording, autoplay: false)
     }
 
     var isExportingEditor: Bool { editorViewModel?.isExporting ?? false }
@@ -136,6 +186,7 @@ extension RecordingsViewModel {
     func editedRecordingSaved(_ recording: StreamRecording) {
         cancelEditorPreview()
         editorViewModel = nil
+        editingRetainedWindowID = nil
         controllerFocus = .library
         reload(showMessage: false)
         if let refreshed = recordings.first(where: { $0.id == recording.id }) {
@@ -325,6 +376,13 @@ extension RecordingsViewModel {
             message = "Edits discarded."
             return
         }
+        if let window = pendingEditorDiscardWindow {
+            pendingEditorDiscardWindow = nil
+            isPendingEditorClose = false
+            openRetainedWindowEditor(window)
+            message = "Edits discarded."
+            return
+        }
         isPendingEditorClose = false
         closeEditor()
         message = "Edits discarded."
@@ -332,6 +390,7 @@ extension RecordingsViewModel {
 
     func cancelPendingEditorDiscard() {
         pendingEditorDiscardSelection = nil
+        pendingEditorDiscardWindow = nil
         isPendingEditorClose = false
     }
 }

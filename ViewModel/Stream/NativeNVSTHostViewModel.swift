@@ -183,6 +183,8 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var hudFocusID: String?
     var hudGamepadTracker = StreamHUDGamepadTracker()
     @Published var recordingStatus = StreamRecordingStatus.idle
+    /// The rolling instant-replay window's state, mirrored from the transport.
+    @Published var replayBufferState = StreamReplayBufferState()
     var recordingStatusResetTask: Task<Void, Never>?
     /// In flight while a screenshot is being rendered and written, so a held key cannot start a
     /// second capture before the first has landed.
@@ -358,6 +360,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
             await transport.setRecordingStatusHandler { status in
                 self?.handleRecordingStatusChanged(status)
             }
+            await transport.setReplayBufferStateHandler { state in
+                self?.handleReplayBufferStateChanged(state)
+            }
         }
         return transport
     }
@@ -458,6 +463,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
         enterNativeFullScreenWhenSessionReady()
         startNativeStatsPolling(path: path)
         refreshAntiAFKMouseMovementTask()
+        startReplayBufferIfEnabled()
         let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
         pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
         nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)

@@ -49,6 +49,7 @@ public struct WebRTCMediaStreamSurface: View {
     @State var remoteCoOpEnabled = false
     @State var microphoneEnabled = false
     @State var recordingStatus = StreamRecordingStatus.idle
+    @State var replayBufferState = StreamReplayBufferState()
     @State var recordingNotificationTask: Task<Void, Never>?
     @State var screenshotTask: Task<Void, Never>?
     @State var antiAFKMouseMovementTask: Task<Void, Never>?

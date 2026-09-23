@@ -27,7 +27,6 @@ struct StreamRecordingSettingsTests {
 
     @Test("the automatic bitrate is capped so 5K120 does not ask for 166 Mbps")
     func automaticBitrateIsCappedAtHighResolutions() {
-        let recorder = WebRTCStreamRecorder()
         func automaticBitrate(width: Int, height: Int, fps: Int) -> Int {
             let configuration = StreamRecordingConfiguration(
                 title: "Bitrate Regression",
@@ -39,7 +38,7 @@ struct StreamRecordingSettingsTests {
                 audioBitrateKbps: 128,
                 enhancedVideoEnabled: false
             )
-            let settings = recorder.videoSettings(configuration: configuration, width: width, height: height)
+            let settings = WebRTCStreamRecorder.videoSettings(configuration: configuration, width: width, height: height)
             let compression = settings[AVVideoCompressionPropertiesKey] as? [String: Any]
             return compression?[AVVideoAverageBitRateKey] as? Int ?? 0
         }
@@ -57,7 +56,7 @@ struct StreamRecordingSettingsTests {
             audioBitrateKbps: 128,
             enhancedVideoEnabled: false
         )
-        let settings = recorder.videoSettings(configuration: explicit, width: 5120, height: 2160)
+        let settings = WebRTCStreamRecorder.videoSettings(configuration: explicit, width: 5120, height: 2160)
         let compression = settings[AVVideoCompressionPropertiesKey] as? [String: Any]
         #expect(compression?[AVVideoAverageBitRateKey] as? Int == 150_000_000)
     }

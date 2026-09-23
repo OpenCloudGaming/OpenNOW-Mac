@@ -9,6 +9,9 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
 
     let session = OPNLibWebRTCStreamSession()
     private let recorder = WebRTCStreamRecorder()
+    /// The rolling instant-replay buffer. Fed from the same decode and audio taps as the recorder,
+    /// off the main actor.
+    private let replayBuffer = StreamReplayBuffer()
     /// The screenshot tap. Fed from the same decoded-frame callback as the recorder and off the main
     /// actor, so it can render the next frame without hopping.
     private let screenshotCapture = StreamScreenshotCapture()
@@ -75,6 +78,7 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
                 let frame = Unmanaged<RTCVideoFrame>.fromOpaque(framePointer).takeUnretainedValue()
                 self?.offerScreenshot(frame)
                 self?.recorder.appendVideoFrame(frame)
+                self?.replayBuffer.appendVideoFrame(frame)
             }
             self.session.onEnhancedVideoFrame = { [weak self] pixelBufferPointer in
                 guard let pixelBufferPointer else { return }
@@ -83,6 +87,7 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
             }
             self.session.onGameAudioFrame = { [weak self] audioBufferList, frameCount, sampleRate, channels in
                 self?.recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+                self?.replayBuffer.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             }
             session.setNativeWindow(nativeWindowAddress.map { UnsafeMutableRawPointer(bitPattern: $0) } ?? nil)
             var sessionInfo = offer.metadata["sessionInfoJSON"].flatMap(Self.dictionaryValue) ?? offer.metadata
@@ -177,6 +182,27 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
         session.setEnhancedVideoFrameCaptureEnabled(recorder.wantsEnhancedVideo)
     }
 
+    /// Starts keeping the rolling replay window. False without a connected session, so the surface
+    /// never advertises a window that cannot fill.
+    @discardableResult
+    public func startReplayBuffer(configuration: StreamReplayBufferConfiguration) -> Bool {
+        guard !isDisconnecting else { return false }
+        replayBuffer.start(configuration: configuration)
+        return true
+    }
+
+    public func stopReplayBuffer() {
+        replayBuffer.stop()
+    }
+
+    public func saveReplayClip() {
+        replayBuffer.saveClip()
+    }
+
+    public func setReplayBufferStateHandler(_ handler: (@MainActor @Sendable (StreamReplayBufferState) -> Void)?) {
+        replayBuffer.onStateChanged = handler
+    }
+
     public func takeScreenshot() async -> StreamScreenshotImage? {
         await screenshotCapture.capture()
     }
@@ -216,6 +242,7 @@ public final class NativeWebRTCTransport: NSObject, StreamTransport, @unchecked 
         statsTelemetryTask = nil
         let pendingContinuation = takeContinuation()
         recorder.stop()
+        replayBuffer.retain()
         screenshotCapture.cancel()
         session.setEnhancedVideoFrameCaptureEnabled(false)
         localIceLock.withLock {

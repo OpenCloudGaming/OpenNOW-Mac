@@ -131,6 +131,10 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
     public var recordingVideoBitrateMbps: Int
     public var recordingAudioBitrateKbps: Int
     public var recordingEnhancedVideoEnabled: Bool
+    public var recordingMode: OPNRecordingMode
+    public var recordingReplayBufferWindowSeconds: Int
+    public var recordingReplayClipSeconds: Int
+    public var recordingReplayQualityIndex: Int
     /// `auto`, `stereo`, `5.1` or `7.1`; see `OPNStreamPreferences.surroundModeOptions`.
     public var surroundMode: String
 
@@ -179,6 +183,10 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
                 recordingVideoBitrateMbps: Int = 0,
                 recordingAudioBitrateKbps: Int = 160,
                 recordingEnhancedVideoEnabled: Bool = true,
+                recordingMode: OPNRecordingMode = .off,
+                recordingReplayBufferWindowSeconds: Int = Int(StreamReplayBufferConfiguration.defaultWindowSeconds),
+                recordingReplayClipSeconds: Int = Int(StreamReplayBufferConfiguration.defaultClipSeconds),
+                recordingReplayQualityIndex: Int = 0,
                 surroundMode: String = "auto") {
         self.surroundMode = surroundMode
         self.resolution = resolution
@@ -226,6 +234,16 @@ public struct WebRTCMediaStreamProfile: Equatable, Sendable {
         self.recordingVideoBitrateMbps = max(0, min(recordingVideoBitrateMbps, 200))
         self.recordingAudioBitrateKbps = max(64, min(recordingAudioBitrateKbps, 320))
         self.recordingEnhancedVideoEnabled = recordingEnhancedVideoEnabled
+        self.recordingMode = recordingMode
+        self.recordingReplayBufferWindowSeconds = min(
+            max(recordingReplayBufferWindowSeconds, Int(StreamReplayBufferConfiguration.minimumWindowSeconds)),
+            Int(StreamReplayBufferConfiguration.maximumWindowSeconds)
+        )
+        self.recordingReplayClipSeconds = min(
+            max(recordingReplayClipSeconds, Int(StreamReplayBufferConfiguration.minimumClipSeconds)),
+            min(self.recordingReplayBufferWindowSeconds, Int(StreamReplayBufferConfiguration.maximumClipSeconds))
+        )
+        self.recordingReplayQualityIndex = min(max(recordingReplayQualityIndex, 0), OPNStreamPreferences.replayQualityOptions.count - 1)
     }
 }
 
@@ -276,6 +294,10 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
     public var recordingVideoBitrateMbps: Int
     public var recordingAudioBitrateKbps: Int
     public var recordingEnhancedVideoEnabled: Bool
+    public var recordingMode: OPNRecordingMode
+    public var recordingReplayBufferWindowSeconds: Int
+    public var recordingReplayClipSeconds: Int
+    public var recordingReplayQualityIndex: Int
     public var remoteControllersBitmap: UInt32
     public var supportedHidDevices: UInt32
     public var availableSupportedControllers: [String]
@@ -331,6 +353,10 @@ public struct WebRTCMediaResolvedStreamSettings: Equatable, Sendable {
             "recordingVideoBitrateMbps": recordingVideoBitrateMbps,
             "recordingAudioBitrateKbps": recordingAudioBitrateKbps,
             "recordingEnhancedVideoEnabled": recordingEnhancedVideoEnabled,
+            "recordingMode": recordingMode.rawValue,
+            "recordingReplayBufferWindowSeconds": recordingReplayBufferWindowSeconds,
+            "recordingReplayClipSeconds": recordingReplayClipSeconds,
+            "recordingReplayQualityIndex": recordingReplayQualityIndex,
             "gameLanguage": gameLanguage,
             "accountLinked": accountLinked,
             "selectedStore": selectedStore,
@@ -353,9 +379,20 @@ public enum WebRTCMediaStreamSettingsResolver {
         return codec
     }
 
-    public static func resolve(profile: WebRTCMediaStreamProfile,
-                               capabilities: WebRTCMediaDeviceCapabilities,
-                               cloudVariables: WebRTCMediaCloudVariables = WebRTCMediaCloudVariables()) -> WebRTCMediaResolvedStreamSettings {
+    /// The tier the session will actually negotiate: the codec the seat allows, the colour depth it
+    /// can carry, and the caps the cloud and this Mac put on rate, prefilter and channels.
+    private struct ResolvedTarget {
+        let codec: String
+        let enableHdr: Bool
+        let colorQuality: String
+        let prefilterMode: Int
+        let maxBitrateMbps: Int
+        let audioChannelCount: Int
+    }
+
+    private static func resolvedTarget(profile: WebRTCMediaStreamProfile,
+                                       capabilities: WebRTCMediaDeviceCapabilities,
+                                       cloudVariables: WebRTCMediaCloudVariables) -> ResolvedTarget {
         let codec = permittedCodec(profile: profile, capabilities: capabilities, cloudVariables: cloudVariables)
         // HDR is a 10-bit HEVC/AV1 stream by definition: an 8-bit request with HDR on would have
         // the seat encode PQ into a bit depth the decoder then flattens, so the tier is lifted here
@@ -365,21 +402,34 @@ public enum WebRTCMediaStreamSettingsResolver {
         if enableHdr, !colorQuality.lowercased().hasPrefix("10bit") { colorQuality = "10bit_420" }
         let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables)
         let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
-        let negotiatedAudioChannels = audioChannelCount(surroundMode: profile.surroundMode,
-                                                        deviceOutputChannels: capabilities.audioOutputChannelCount,
-                                                        entitledChannels: cloudVariables.entitledAudioChannelCount)
+        return ResolvedTarget(
+            codec: codec,
+            enableHdr: enableHdr,
+            colorQuality: colorQuality,
+            prefilterMode: prefilterMode,
+            maxBitrateMbps: max(1, min(requestedMaxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
+            audioChannelCount: audioChannelCount(surroundMode: profile.surroundMode,
+                                                 deviceOutputChannels: capabilities.audioOutputChannelCount,
+                                                 entitledChannels: cloudVariables.entitledAudioChannelCount)
+        )
+    }
+
+    public static func resolve(profile: WebRTCMediaStreamProfile,
+                               capabilities: WebRTCMediaDeviceCapabilities,
+                               cloudVariables: WebRTCMediaCloudVariables = WebRTCMediaCloudVariables()) -> WebRTCMediaResolvedStreamSettings {
+        let target = resolvedTarget(profile: profile, capabilities: capabilities, cloudVariables: cloudVariables)
         return WebRTCMediaResolvedStreamSettings(
             resolution: profile.resolution.value,
             fps: profile.enablePowerSaver ? min(profile.fps, 30) : profile.fps,
-            codec: codec,
-            colorQuality: colorQuality,
-            maxBitrateMbps: max(1, min(requestedMaxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
-            prefilterMode: prefilterMode,
-            prefilterSharpness: prefilterMode == 0 ? 0 : profile.prefilterSharpness,
-            prefilterDenoise: prefilterMode == 0 ? 0 : profile.prefilterDenoise,
-            prefilterModel: prefilterMode == 0 ? 0 : profile.prefilterModel,
+            codec: target.codec,
+            colorQuality: target.colorQuality,
+            maxBitrateMbps: target.maxBitrateMbps,
+            prefilterMode: target.prefilterMode,
+            prefilterSharpness: target.prefilterMode == 0 ? 0 : profile.prefilterSharpness,
+            prefilterDenoise: target.prefilterMode == 0 ? 0 : profile.prefilterDenoise,
+            prefilterModel: target.prefilterMode == 0 ? 0 : profile.prefilterModel,
             enableL4S: cloudVariables.allowL4S && profile.enableL4S,
-            enableHdr: enableHdr,
+            enableHdr: target.enableHdr,
             enableReflex: cloudVariables.allowReflex && profile.enableReflex,
             transportMode: normalizedTransportMode(profile.transportMode),
             streamingQualityProfile: min(max(profile.streamingQualityProfile, 0), 4),
@@ -413,10 +463,14 @@ public enum WebRTCMediaStreamSettingsResolver {
             recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
             recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
+            recordingMode: profile.recordingMode,
+            recordingReplayBufferWindowSeconds: profile.recordingReplayBufferWindowSeconds,
+            recordingReplayClipSeconds: profile.recordingReplayClipSeconds,
+            recordingReplayQualityIndex: profile.recordingReplayQualityIndex,
             remoteControllersBitmap: controllerBitmap(count: capabilities.connectedGamepadCount),
             supportedHidDevices: 0,
             availableSupportedControllers: [],
-            audioChannelCount: negotiatedAudioChannels,
+            audioChannelCount: target.audioChannelCount,
             surroundMode: profile.surroundMode
         )
     }

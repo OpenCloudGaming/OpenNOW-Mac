@@ -239,6 +239,10 @@ struct OPNApp: App {
                     _ = StreamSessionLifecycle.sendCommand(.toggleRecording)
                 }
                 .opnKeyboardShortcut(keybindings.combo(for: .toggleRecording))
+                Button("Save Replay") {
+                    _ = StreamSessionLifecycle.sendCommand(.saveReplay)
+                }
+                .opnKeyboardShortcut(keybindings.combo(for: .saveReplay))
                 Button("Take Screenshot") {
                     _ = StreamSessionLifecycle.sendCommand(.takeScreenshot)
                 }

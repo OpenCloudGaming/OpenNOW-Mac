@@ -18,6 +18,8 @@ extension NativeNVSTHostViewModel {
             toggleNativeMicrophone()
         case .toggleRecording:
             toggleNativeRecording()
+        case .saveReplay:
+            saveNativeReplayClip()
         case .takeScreenshot:
             takeNativeScreenshot()
         case .toggleAntiAFK:

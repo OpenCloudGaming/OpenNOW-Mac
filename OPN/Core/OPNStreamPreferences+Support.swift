@@ -9,7 +9,9 @@ import Foundation
 import VideoToolbox
 
 extension OPNStreamPreferences {
-    /// Every preference key captured in a per-game profile dictionary.
+    /// Every preference key the streaming profile owns, cleared together by Restore Defaults. Most
+    /// are captured in a per-game profile dictionary; the retained-replay storage budget is not,
+    /// because the store it bounds is shared by every title rather than owned by one.
     static let streamingProfileKeys = [
         Keys.aspectIndex,
         Keys.resolutionIndex,
@@ -37,6 +39,11 @@ extension OPNStreamPreferences {
         Keys.recordingVideoBitrateMbps,
         Keys.recordingAudioBitrateKbps,
         Keys.recordingEnhancedVideoEnabled,
+        Keys.recordingReplayBufferWindowSeconds,
+        Keys.recordingReplayClipSeconds,
+        Keys.recordingReplayQualityIndex,
+        Keys.recordingReplayStorageBudgetGB,
+        Keys.recordingMode,
         Keys.cloudGsyncEnabled,
         Keys.fallbackToLogicalResolution,
         Keys.l4sEnabled,
@@ -532,6 +539,13 @@ extension OPNStreamPreferences {
         static let recordingVideoBitrateMbps = "OpenNOW.Stream.RecordingVideoBitrateMbps"
         static let recordingAudioBitrateKbps = "OpenNOW.Stream.RecordingAudioBitrateKbps"
         static let recordingEnhancedVideoEnabled = "OpenNOW.Stream.RecordingEnhancedVideoEnabled"
+        static let recordingReplayBufferWindowSeconds = "OpenNOW.Stream.RecordingReplayBufferWindowSeconds"
+        static let recordingReplayClipSeconds = "OpenNOW.Stream.RecordingReplayClipSeconds"
+        static let recordingReplayQualityIndex = "OpenNOW.Stream.RecordingReplayQualityIndex"
+        static let recordingReplayStorageBudgetGB = "OpenNOW.Stream.RecordingReplayStorageBudgetGB"
+        static let recordingMode = "OpenNOW.Stream.RecordingMode"
+        /// The boolean the first Instant Replay build wrote. Read once to migrate, then cleared.
+        static let legacyRecordingReplayBufferEnabled = "OpenNOW.Stream.RecordingReplayBufferEnabled"
         static let l4sEnabled = "OpenNOW.Stream.L4SEnabled"
         static let reflexEnabled = "OpenNOW.Stream.ReflexEnabled"
         static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"

@@ -149,6 +149,11 @@ final class RecordingEditorViewModel: ObservableObject {
     static let sectionJoinTolerance = 0.05
 
     let primaryRecording: StreamRecording
+    /// The timeline the editor opened with, which is what Reset restores. Mainly for a replay
+    /// window: its ring is several files, so "the original" is not one recording.
+    let initialSegments: [RecordingEditorSegment]
+    /// What the title field starts at and returns to on Reset.
+    let defaultOutputTitle: String
     @Published var library: [StreamRecording]
     @Published var outputTitle: String
     @Published var segments: [RecordingEditorSegment]
@@ -198,31 +203,32 @@ final class RecordingEditorViewModel: ObservableObject {
     /// one undo step rather than one per keystroke.
     var coalescedUndoToken: String?
 
-    init(recording: StreamRecording, library: [StreamRecording]) {
-        primaryRecording = recording
-        self.library = library
-        outputTitle = recording.title + " Edit"
+    convenience init(recording: StreamRecording, library: [StreamRecording]) {
         let segment = RecordingEditorSegment(recording: recording, startSeconds: 0, endSeconds: max(0, recording.durationSeconds))
-        segments = [segment]
-        selectedSegmentID = segment.id
+        self.init(primaryRecording: recording, initialSegments: [segment], library: library)
     }
 
-    var selectedSegment: RecordingEditorSegment? {
-        guard let selectedSegmentID else { return segments.first }
-        return segments.first { $0.id == selectedSegmentID }
+    /// The editor over a timeline that has already been built: a retained replay window is a ring of
+    /// finished files rather than one recording, so its clips arrive here instead of being derived
+    /// from `primaryRecording`. `primaryRecording` is then the window as a whole, for the header's
+    /// title and application.
+    init(primaryRecording: StreamRecording,
+         initialSegments: [RecordingEditorSegment],
+         library: [StreamRecording],
+         outputTitle: String? = nil) {
+        let resolvedOutputTitle = outputTitle ?? primaryRecording.title + " Edit"
+        self.primaryRecording = primaryRecording
+        self.initialSegments = initialSegments
+        self.defaultOutputTitle = resolvedOutputTitle
+        self.library = library
+        self.outputTitle = resolvedOutputTitle
+        segments = initialSegments
+        selectedSegmentID = initialSegments.first?.id
     }
 
     var selectedSegmentIndex: Int? {
         guard let selectedSegmentID else { return segments.indices.first }
         return segments.firstIndex { $0.id == selectedSegmentID }
-    }
-
-    var totalSourceDurationSeconds: Double {
-        segments.reduce(0) { $0 + $1.durationSeconds }
-    }
-
-    var outputDurationSeconds: Double {
-        totalSourceDurationSeconds / max(0.25, playbackRate)
     }
 
     /// The engine renders against the first clip's frame, so the crop presets have to solve against

@@ -22,6 +22,9 @@ extension WebRTCMediaStreamSurface {
         transport.onRecordingStatusChanged = { status in
             handleRecordingStatusChanged(status)
         }
+        transport.setReplayBufferStateHandler { state in
+            handleReplayBufferStateChanged(state)
+        }
         nativeView.onInputEvent = { event in
             routeStreamInput(event, transport: transport)
         }
@@ -95,6 +98,7 @@ extension WebRTCMediaStreamSurface {
                 nativeView.setStreamContentSize(width: runtimeSettings.resolutionWidth, height: runtimeSettings.resolutionHeight)
                 lastAcceptedStreamInputAt = Date()
                 refreshAntiAFKMouseMovementTask()
+                startReplayBufferIfEnabled(transport: transport)
             }
         } catch {
             guard !(error is CancellationError), !Task.isCancelled else {
@@ -250,6 +254,8 @@ extension WebRTCMediaStreamSurface {
             toggleMicrophone()
         case .toggleRecording:
             toggleRecording()
+        case .saveReplay:
+            saveReplayClip()
         case .takeScreenshot:
             takeScreenshot()
         case .toggleAntiAFK:

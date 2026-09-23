@@ -25,6 +25,9 @@ extension NvstBifrostFreeTransport {
         // when the surface is hidden, and so nothing on the decode thread has to reach the main
         // actor. It costs one uncontended lock per frame while idle.
         let recorder = self.recorder
+        // The rolling replay window rides the same decode tap as the recorder: full quality, no
+        // renderer involvement, and one uncontended lock per frame while buffering is off.
+        let replayBuffer = self.replayBuffer
         // The screenshot tap rides the same decoded-frame callback. It does nothing while no capture
         // is waiting, so a running session pays one uncontended lock per frame.
         let screenshotCapture = self.screenshotCapture
@@ -40,6 +43,7 @@ extension NvstBifrostFreeTransport {
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             screenshotCapture.deliver(pixelBuffer)
             recorder.appendNativePixelBuffer(pixelBuffer)
+            replayBuffer.appendNativePixelBuffer(pixelBuffer)
             coOpVideoRelay.renderPixelBuffer(pixelBuffer, presentationTime: presentationTime)
             sink?(pixelBuffer, presentationTime, isKeyframe)
         }
@@ -251,9 +255,11 @@ extension NvstBifrostFreeTransport {
         // Straight to the recorder, no actor hop: this runs on the CoreAudio render thread, where
         // waiting on anything is a priority inversion. The recorder copies and returns.
         let recorder = self.recorder
+        let replayBuffer = self.replayBuffer
         let coOpAudioRelay = self.remoteCoOpAudioRelay
         bundle.onGameAudioFrame = { audioBufferList, frameCount, sampleRate, channels in
             recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            replayBuffer.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             coOpAudioRelay.renderAudioFrame(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         bundle.onPartiallyReliableControlOpen = { [weak self] in

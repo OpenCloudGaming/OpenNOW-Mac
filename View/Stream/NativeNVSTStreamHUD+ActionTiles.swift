@@ -46,6 +46,9 @@ extension NativeNVSTMediaStreamSurface {
                           isActive: model.recordingCanStop,
                           isDisabled: !model.sidebarCapabilities.supports(.recording) || !model.isConnected || model.recordingIsBusy,
                           action: model.toggleNativeRecording),
+        ]
+        + replayControlTiles
+        + [
             NativeHUDTile(id: "screenshot",
                           title: "Screenshot",
                           subtitle: "Save current frame",
@@ -68,6 +71,19 @@ extension NativeNVSTMediaStreamSurface {
                           isDisabled: model.nativeView?.window == nil,
                           action: model.toggleNativeFullScreen),
         ]
+    }
+
+    /// The replay tile is drawn only in Instant Replay mode, the way Steam's manual mode offers no
+    /// "save the last N" action at all.
+    private var replayControlTiles: [NativeHUDTile] {
+        guard model.isInstantReplayEnabled else { return [] }
+        return [NativeHUDTile(id: "replay",
+                              title: "Save Replay",
+                              subtitle: model.replayBufferStatusText,
+                              systemName: "film.stack",
+                              isActive: model.isReplayBufferActive,
+                              isDisabled: !model.sidebarCapabilities.supports(.recording) || !model.isConnected || !model.isReplayBufferActive || model.replayBufferState.isSaving,
+                              action: model.saveNativeReplayClip)]
     }
 
     var nativeHUDInputTiles: [NativeHUDTile] {

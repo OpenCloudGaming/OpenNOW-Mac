@@ -43,6 +43,12 @@ public protocol NativeNVSTTransport: Sendable {
     func startRecording(configuration: StreamRecordingConfiguration) async
     func stopRecording() async
     func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async
+    /// Starts keeping a rolling window of the stream. Returns false when there is no session to
+    /// buffer, so the caller never shows a window that will never fill.
+    func startReplayBuffer(configuration: StreamReplayBufferConfiguration) async -> Bool
+    func stopReplayBuffer() async
+    func saveReplayClip() async
+    func setReplayBufferStateHandler(_ handler: (@MainActor @Sendable (StreamReplayBufferState) -> Void)?) async
     /// Renders the next decoded frame to an image. Nil when no frame arrives before the capture
     /// times out, which is the honest answer for a paused or stalled stream.
     func takeScreenshot() async -> StreamScreenshotImage?
@@ -75,6 +81,13 @@ public extension NativeNVSTTransport {
     func startRecording(configuration: StreamRecordingConfiguration) async {}
     func stopRecording() async {}
     func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async {}
+
+    /// Instant Replay is optional for the same reason, but a transport that cannot buffer says so
+    /// rather than accepting the request and never emitting a state.
+    func startReplayBuffer(configuration: StreamReplayBufferConfiguration) async -> Bool { false }
+    func stopReplayBuffer() async {}
+    func saveReplayClip() async {}
+    func setReplayBufferStateHandler(_ handler: (@MainActor @Sendable (StreamReplayBufferState) -> Void)?) async {}
 
     func pause() async throws {
         throw NativeNVSTError.notRunning
@@ -130,6 +143,9 @@ public actor NativeNVSTStreamingPath {
     /// True while a recovery is rebuilding the transport, so a termination event the teardown
     /// itself produces, or a second caller, cannot start a parallel one or end the session.
     private var isRecovering = false
+    /// The replay window the session was buffering, so an in-place recovery can start a fresh one
+    /// once the decoder is back. A window cannot span the rebuild.
+    private var replayBufferConfiguration: StreamReplayBufferConfiguration?
     private var reportContinuations: [UUID: AsyncStream<StreamReport>.Continuation] = [:]
 
     /// How many reconnects to the same cloud session are attempted before the stream is declared
@@ -303,6 +319,30 @@ public actor NativeNVSTStreamingPath {
         await transport.setRecordingStatusHandler(handler)
     }
 
+    /// Returns whether buffering actually started. Like `startRecording`, the caller shows the
+    /// window optimistically and only this answer decides otherwise.
+    @discardableResult
+    public func startReplayBuffer(configuration: StreamReplayBufferConfiguration) async -> Bool {
+        guard activeSession != nil else { return false }
+        let started = await transport.startReplayBuffer(configuration: configuration)
+        replayBufferConfiguration = started ? configuration : nil
+        return started
+    }
+
+    public func stopReplayBuffer() async {
+        replayBufferConfiguration = nil
+        await transport.stopReplayBuffer()
+    }
+
+    public func saveReplayClip() async {
+        guard activeSession != nil else { return }
+        await transport.saveReplayClip()
+    }
+
+    public func setReplayBufferStateHandler(_ handler: (@MainActor @Sendable (StreamReplayBufferState) -> Void)?) async {
+        await transport.setReplayBufferStateHandler(handler)
+    }
+
     /// Renders the next decoded frame. Guarded by the active session so a torn-down path answers nil
     /// instead of reaching a transport that is about to be discarded.
     public func takeScreenshot() async -> StreamScreenshotImage? {
@@ -360,6 +400,7 @@ public actor NativeNVSTStreamingPath {
         startedAt = nil
         recoveryAttempts = 0
         recoveryWindowStartedAt = nil
+        replayBufferConfiguration = nil
         OPNStreamTelemetry.capture("nvst.path.stop", level: .info, message: message, attributes: ["sessionId": activeSession.id, "reason": reason.rawValue])
         await transport.disconnect()
         let diagnostics = await transport.diagnosticMetadata()
@@ -398,6 +439,7 @@ public actor NativeNVSTStreamingPath {
         startedAt = nil
         recoveryAttempts = 0
         recoveryWindowStartedAt = nil
+        replayBufferConfiguration = nil
         OPNStreamTelemetry.capture("nvst.path.pause", level: .info, message: message, attributes: ["sessionId": activeSession.id])
         do {
             try await transport.pause()
@@ -620,6 +662,9 @@ extension NativeNVSTStreamingPath {
             }
             activeAllocation = refreshed
             monitorTransportTermination()
+            if let replayBufferConfiguration {
+                _ = await transport.startReplayBuffer(configuration: replayBufferConfiguration)
+            }
             OPNStreamTelemetry.capture("nvst.path.recovered", level: .info, message: "Native NVST session recovered.", attributes: ["sessionId": session.id, "attempt": String(attempt)])
             return true
         } catch {

@@ -255,11 +255,17 @@ extension WebRTCStreamRecorder {
     /// still honoured as-is — this only bounds the guess.
     static let automaticVideoBitrateCeiling = 60_000_000
 
-    func videoSettings(configuration: StreamRecordingConfiguration, width: Int, height: Int) -> [String: Any] {
-        let bitrate = configuration.videoBitrateMbps > 0
+    /// The video bitrate the writer would use, so the replay buffer's disk estimate and the
+    /// settings page agree with what the encoder actually asks for.
+    static func videoBitrate(configuration: StreamRecordingConfiguration, width: Int, height: Int) -> Int {
+        configuration.videoBitrateMbps > 0
             ? configuration.videoBitrateMbps * 1_000_000
-            : min(Self.automaticVideoBitrateCeiling, max(4_000_000, width * height * configuration.fps / 8))
-        let codec = Self.videoCodec(width: width, height: height)
+            : min(automaticVideoBitrateCeiling, max(4_000_000, width * height * configuration.fps / 8))
+    }
+
+    static func videoSettings(configuration: StreamRecordingConfiguration, width: Int, height: Int, bitrateCeiling: Int? = nil) -> [String: Any] {
+        let bitrate = min(videoBitrate(configuration: configuration, width: width, height: height), bitrateCeiling ?? Int.max)
+        let codec = videoCodec(width: width, height: height)
         var compression: [String: Any] = [
             AVVideoAverageBitRateKey: bitrate,
             AVVideoExpectedSourceFrameRateKey: configuration.fps,
@@ -284,7 +290,7 @@ extension WebRTCStreamRecorder {
         do {
             let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
             writer.shouldOptimizeForNetworkUse = false
-            let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings(configuration: configuration, width: width, height: height))
+            let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: Self.videoSettings(configuration: configuration, width: width, height: height))
             videoInput.expectsMediaDataInRealTime = true
             // Take the format from the frame rather than forcing BGRA. The NVST decoder emits NV12,
             // which is the encoder's native input — declaring BGRA here would mean a full-frame
@@ -299,7 +305,7 @@ extension WebRTCStreamRecorder {
             guard writer.canAdd(videoInput) else { throw WebRTCStreamRecorderError.unableToAddVideoInput }
             writer.add(videoInput)
 
-            let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings(configuration: configuration))
+            let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: Self.audioSettings(configuration: configuration))
             audioInput.expectsMediaDataInRealTime = true
             if writer.canAdd(audioInput) { writer.add(audioInput); self.audioInput = audioInput } else { self.audioInput = nil }
 
@@ -315,7 +321,7 @@ extension WebRTCStreamRecorder {
         }
     }
 
-    func audioSettings(configuration: StreamRecordingConfiguration) -> [String: Any] {
+    static func audioSettings(configuration: StreamRecordingConfiguration) -> [String: Any] {
         [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
             AVSampleRateKey: 48_000,

@@ -211,6 +211,9 @@ extension WebRTCMediaStreamSurface {
         StreamHUDWrappingRow(minimumItemWidth: 84) {
             hudMetricCard(title: "Mic", value: microphoneStatusText, isPositive: microphoneEnabled && runtimeSettings.microphoneMode != "disabled")
             hudMetricCard(title: "Rec", value: recordingStatusText, isPositive: recordingStatus.isRecording)
+            if runtimeSettings.isInstantReplayEnabled {
+                hudMetricCard(title: "Replay", value: replayBufferState.shortStatusText, isPositive: replayBufferState.isBuffering)
+            }
             hudMetricCard(title: "AFK", value: runtimeSettings.antiAFKMouseMovementEnabled ? "On" : "Off", isPositive: runtimeSettings.antiAFKMouseMovementEnabled)
             if sessionLimit != nil {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -310,6 +313,17 @@ extension WebRTCMediaStreamSurface {
                     isFocused: hudFocusID == "recording",
                     action: toggleRecording
                 )
+                if runtimeSettings.isInstantReplayEnabled {
+                    StreamHUDActionRow(
+                        title: "Save Replay",
+                        subtitle: replayBufferStatusText,
+                        systemName: "film.stack",
+                        isActive: replayBufferState.isBuffering,
+                        isDisabled: !sidebarCapabilities.supports(.recording) || !isStreamReady || !replayBufferState.isBuffering || replayBufferState.isSaving,
+                        isFocused: hudFocusID == "replay",
+                        action: saveReplayClip
+                    )
+                }
                 StreamHUDActionRow(
                     title: "Screenshot",
                     subtitle: screenshotTask == nil ? "Save current frame" : "Saving…",

@@ -138,6 +138,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Video Bitrate", .recording, "recording", keywords: ["record", "capture", "quality", "file size"]),
         SettingsSearchEntry("Audio Bitrate", .recording, "recording", keywords: ["record", "capture", "sound"]),
         SettingsSearchEntry("Record Enhanced Video", .recording, "recording", keywords: ["record", "capture", "upscaled", "metalfx"]),
+        SettingsSearchEntry("Recording Mode", .recording, "recording", keywords: ["replay", "clip", "buffer", "rolling", "last minutes", "shadowplay", "highlights", "instant replay", "manual", "off", "length", "window", "duration", "2 hours", "clip length", "last seconds", "save"]),
         SettingsSearchEntry("Your recordings", .recording, "library", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
     ]
 

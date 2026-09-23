@@ -31,6 +31,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
     case toggleStatsHUD
     case toggleMicrophone
     case toggleRecording
+    case saveReplay
     case takeScreenshot
     case toggleAntiAFK
     case togglePointerCapture
@@ -41,7 +42,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
 
     var section: KeybindingSection {
         switch self {
-        case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu:
+        case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .saveReplay, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu:
             return .stream
         case .openSearch:
             return .catalog
@@ -54,6 +55,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleStatsHUD: return "Toggle Stats"
         case .toggleMicrophone: return "Toggle Microphone"
         case .toggleRecording: return "Toggle Recording"
+        case .saveReplay: return "Save Replay"
         case .takeScreenshot: return "Take Screenshot"
         case .toggleAntiAFK: return "Toggle Anti-AFK"
         case .togglePointerCapture: return "Release Pointer"
@@ -68,6 +70,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleStatsHUD: return "Show or hide the stream statistics overlay."
         case .toggleMicrophone: return "Mute or unmute the stream microphone."
         case .toggleRecording: return "Start or stop recording the session."
+        case .saveReplay: return "Save the last few minutes of the stream as a clip."
         case .takeScreenshot: return "Save the current stream frame as a screenshot."
         case .toggleAntiAFK: return "Toggle the anti-AFK mouse movement."
         case .togglePointerCapture: return "Give the pointer back to the Mac while a game holds it."
@@ -82,6 +85,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleStatsHUD: return OPNKeyCombo(keyCode: 45, modifiers: .command)
         case .toggleMicrophone: return OPNKeyCombo(keyCode: 46, modifiers: .command)
         case .toggleRecording: return OPNKeyCombo(keyCode: 15, modifiers: .command)
+        case .saveReplay: return OPNKeyCombo(keyCode: 15, modifiers: [.command, .shift])
         case .takeScreenshot: return OPNKeyCombo(keyCode: 1, modifiers: [.command, .shift])
         case .toggleAntiAFK: return OPNKeyCombo(keyCode: 40, modifiers: .command)
         case .togglePointerCapture: return OPNKeyCombo(keyCode: 35, modifiers: .command)
@@ -96,6 +100,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleStatsHUD: return .toggleStatsHUD
         case .toggleMicrophone: return .toggleMicrophone
         case .toggleRecording: return .toggleRecording
+        case .saveReplay: return .saveReplay
         case .takeScreenshot: return .takeScreenshot
         case .toggleAntiAFK: return .toggleAntiAFK
         case .togglePointerCapture: return .togglePointerCapture

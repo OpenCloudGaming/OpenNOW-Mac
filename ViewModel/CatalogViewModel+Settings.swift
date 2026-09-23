@@ -571,6 +571,33 @@ extension CatalogViewModel {
         loadSettingsPreferences()
     }
 
+    func setRecordingMode(_ mode: OPNRecordingMode) {
+        OPNNewSettings.acknowledge(.instantReplay)
+        OPNStreamPreferences.saveRecordingMode(mode)
+        loadSettingsPreferences()
+    }
+
+    func setRecordingReplayBufferWindowSeconds(_ value: Double) {
+        OPNStreamPreferences.saveRecordingReplayBufferWindowSeconds(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setRecordingReplayClipSeconds(_ value: Double) {
+        OPNStreamPreferences.saveRecordingReplayClipSeconds(Int(value.rounded()))
+        loadSettingsPreferences()
+    }
+
+    func setRecordingReplayQualityIndex(_ value: Int) {
+        OPNStreamPreferences.saveRecordingReplayQualityIndex(value)
+        loadSettingsPreferences()
+    }
+
+    func setRecordingReplayStorageBudgetGB(_ value: Double) {
+        OPNStreamPreferences.saveRecordingReplayStorageBudgetGB(Int(value.rounded()))
+        StreamReplayRetentionLibrary.enforceBudget(StreamReplayRetentionLibrary.bytes(forGigabytes: OPNStreamPreferences.loadRecordingReplayStorageBudgetGB()))
+        loadSettingsPreferences()
+    }
+
     func setGameVolume(_ value: Double) {
         OPNStreamPreferences.saveGameVolume(value)
         loadSettingsPreferences()

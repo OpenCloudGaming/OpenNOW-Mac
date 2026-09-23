@@ -16,11 +16,21 @@ extension NativeNVSTHostViewModel {
     /// panels are 4-wide icon grids, everything else is a full-width row. Pad navigation reads this
     /// list, so it has to follow the screen — it used to run mic → audio → record → pointer → …,
     /// crossing from one panel into the next mid-row.
+    /// The replay window's focus entry exists only in Instant Replay mode: a manual-only session
+    /// has no rolling window to save, which is the same separation Steam's modes draw.
+    var replayBufferFocusEntries: [StreamHUDFocusEntry] {
+        guard isInstantReplayEnabled else { return [] }
+        return [StreamHUDFocusEntry(id: "replay", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || !isReplayBufferActive || replayBufferState.isSaving, group: "controls", columns: 4, action: saveNativeReplayClip)]
+    }
+
     var hudFocusEntries: [StreamHUDFocusEntry] {
         [
             StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "controls", columns: 4, action: toggleNativeMicrophone),
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "controls", columns: 4, action: toggleNativeLocalAudioMute),
             StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, group: "controls", columns: 4, action: toggleNativeRecording),
+        ]
+        + replayBufferFocusEntries
+        + [
             StreamHUDFocusEntry(id: "screenshot", isDisabled: !sidebarCapabilities.supports(.screenshot) || !isConnected || screenshotTask != nil, group: "controls", columns: 4, action: takeNativeScreenshot),
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "controls", columns: 4, action: toggleNativeStatsHUD),
             StreamHUDFocusEntry(id: "full-screen", isDisabled: nativeView?.window == nil, group: "controls", columns: 4, action: toggleNativeFullScreen),

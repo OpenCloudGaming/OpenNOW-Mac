@@ -20,6 +20,9 @@ import Testing
     private static let gatedByAnotherSetting: Set<String> = [
         "Protocol", "Host", "Port", "Username", "Password", "Scope",
         "Edge Dimming",
+        // These only exist while Recording Mode is Instant Replay, so their words ride that picker
+        // rather than a result that would scroll to a control that is not on screen.
+        "Replay Length", "Clip Length", "Replay Quality", "Storage Budget",
     ]
 
     private static var settingsDirectory: URL {

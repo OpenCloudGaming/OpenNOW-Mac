@@ -108,4 +108,91 @@ extension NativeNVSTHostViewModel {
             self.recordingStatus = .idle
         }
     }
+
+    // MARK: - Instant Replay
+
+    var isReplayBufferActive: Bool { replayBufferState.isBuffering }
+
+    /// Whether the launch profile put this session in Instant Replay mode. The HUD offers the replay
+    /// tile on this, so a manual-only session cannot present an action it has no window for.
+    var isInstantReplayEnabled: Bool { resolvedStreamSettings?.recordingMode == .instantReplay }
+
+    var replayBufferStatusText: String {
+        if let reason = replayBufferState.pauseReason, !reason.isEmpty { return reason }
+        if replayBufferState.isSaving { return "Saving clip…" }
+        guard replayBufferState.isBuffering else { return "Off" }
+        guard replayBufferState.availableSeconds >= 1 else { return "Warming up" }
+        return "Last \(replayBufferState.availableText) ready"
+    }
+
+    /// Starts the rolling window when the launch profile asked for one. Called once the session is
+    /// up: a buffer started before the first frame would only time out.
+    func startReplayBufferIfEnabled() {
+        guard let settings = resolvedStreamSettings, settings.recordingMode == .instantReplay else { return }
+        guard let path else { return }
+        let size = Self.recordingResolution(settings.resolution)
+        let recording = StreamRecordingConfiguration(
+            title: configuration.title,
+            applicationID: configuration.applicationID,
+            width: size.width,
+            height: size.height,
+            fps: settings.fps,
+            videoBitrateMbps: settings.recordingVideoBitrateMbps,
+            audioBitrateKbps: settings.recordingAudioBitrateKbps,
+            // The enhancement readback is not wired on this transport, so the window is the decoded
+            // stream, exactly as a manual recording is here.
+            enhancedVideoEnabled: false
+        )
+        let quality = OPNStreamPreferences.replayQualityOptions[min(max(settings.recordingReplayQualityIndex, 0), OPNStreamPreferences.replayQualityOptions.count - 1)]
+        let buffer = StreamReplayBufferConfiguration(
+            recording: recording,
+            windowSeconds: Double(settings.recordingReplayBufferWindowSeconds),
+            clipSeconds: Double(settings.recordingReplayClipSeconds),
+            maxHeight: quality.maxHeight,
+            bitrateCeilingMbps: quality.bitrateCeilingMbps,
+            retainedBudgetBytes: StreamReplayRetentionLibrary.configuredBudgetBytes
+        )
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let started = await path.startReplayBuffer(configuration: buffer)
+            guard !started else { return }
+            var failure = StreamReplayBufferState()
+            failure.failureMessage = "Instant Replay could not start for this session."
+            self.handleReplayBufferStateChanged(failure)
+        }
+        OPNStreamTelemetry.capture("nvst.ui.replay.start", level: .info, message: "Native NVST instant replay started.", attributes: ["applicationID": configuration.applicationID, "windowSeconds": String(Int(buffer.windowSeconds))])
+    }
+
+    func saveNativeReplayClip() {
+        guard let path, isConnected, !isEnding, !didEnd else { return }
+        guard replayBufferState.isBuffering else {
+            showNativeTransientStreamMessage("Replay not buffering")
+            OPNStreamTelemetry.capture("nvst.ui.replay.save.unavailable", level: .warning, message: "Replay save requested while the buffer was not running.", attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        guard !replayBufferState.isSaving else { return }
+        replayBufferState.isSaving = true
+        showNativeTransientStreamMessage("Saving Replay")
+        Task { await path.saveReplayClip() }
+        OPNStreamTelemetry.capture("nvst.ui.replay.save", level: .info, message: "Native NVST replay save requested.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    func handleReplayBufferStateChanged(_ state: StreamReplayBufferState) {
+        let previous = replayBufferState
+        replayBufferState = state
+        if let clip = state.lastClip, clip.id != previous.lastClip?.id {
+            showNativeTransientStreamMessage("Replay Saved")
+            OPNStreamTelemetry.capture("nvst.ui.replay.saved", level: .info, message: "Native NVST replay clip saved.", attributes: ["applicationID": configuration.applicationID, "durationSeconds": String(format: "%.1f", clip.durationSeconds), "resolution": "\(clip.width)x\(clip.height)"])
+            return
+        }
+        if let message = state.failureMessage, message != previous.failureMessage {
+            showNativeTransientStreamMessage("Replay Failed")
+            OPNStreamTelemetry.capture("nvst.ui.replay.failed", level: .error, message: message, attributes: ["applicationID": configuration.applicationID])
+            return
+        }
+        if let reason = state.pauseReason, !reason.isEmpty, reason != previous.pauseReason {
+            showNativeTransientStreamMessage("Replay Paused")
+            OPNStreamTelemetry.capture("nvst.ui.replay.paused", level: .warning, message: reason, attributes: ["applicationID": configuration.applicationID])
+        }
+    }
 }

@@ -50,10 +50,16 @@ enum RecordingFormat {
     }
 
     static func qualityText(_ recording: StreamRecording) -> String {
-        if recording.width >= 3840 || recording.height >= 2160 { return "4K" }
-        if recording.width >= 2560 || recording.height >= 1440 { return "1440p" }
-        if recording.width >= 1920 || recording.height >= 1080 { return "1080p" }
-        if recording.height > 0 { return "\(recording.height)p" }
+        qualityText(width: recording.width, height: recording.height)
+    }
+
+    /// The same tiers for anything that knows its encoded shape but is not a library recording: a
+    /// retained replay window is a ring of files with no `StreamRecording` of its own.
+    static func qualityText(width: Int, height: Int) -> String {
+        if width >= 3840 || height >= 2160 { return "4K" }
+        if width >= 2560 || height >= 1440 { return "1440p" }
+        if width >= 1920 || height >= 1080 { return "1080p" }
+        if height > 0 { return "\(height)p" }
         return "Auto"
     }
 

@@ -38,6 +38,14 @@ struct StreamRuntimeSettings: Equatable {
     var recordingVideoBitrateMbps = 0
     var recordingAudioBitrateKbps = 160
     var recordingEnhancedVideoEnabled = true
+    var recordingMode = OPNRecordingMode.off
+    var recordingReplayBufferWindowSeconds = Int(StreamReplayBufferConfiguration.defaultWindowSeconds)
+    var recordingReplayClipSeconds = Int(StreamReplayBufferConfiguration.defaultClipSeconds)
+    var recordingReplayQualityIndex = 0
+
+    /// True only in Instant Replay mode; the HUD and the transport both read this rather than the
+    /// raw mode.
+    var isInstantReplayEnabled: Bool { recordingMode == .instantReplay }
 
     var upscalingModeLabel: String {
         switch upscalingMode {
@@ -87,6 +95,16 @@ struct StreamRuntimeSettings: Equatable {
         recordingVideoBitrateMbps = Self.int(dictionary["recordingVideoBitrateMbps"])
         recordingAudioBitrateKbps = Self.int(dictionary["recordingAudioBitrateKbps"], fallback: 160)
         recordingEnhancedVideoEnabled = Self.bool(dictionary["recordingEnhancedVideoEnabled"], fallback: true)
+        recordingMode = OPNRecordingMode(rawValue: Self.string(dictionary["recordingMode"], fallback: OPNRecordingMode.off.rawValue)) ?? .off
+        recordingReplayBufferWindowSeconds = min(
+            max(Self.int(dictionary["recordingReplayBufferWindowSeconds"], fallback: Int(StreamReplayBufferConfiguration.defaultWindowSeconds)), Int(StreamReplayBufferConfiguration.minimumWindowSeconds)),
+            Int(StreamReplayBufferConfiguration.maximumWindowSeconds)
+        )
+        recordingReplayClipSeconds = min(
+            max(Self.int(dictionary["recordingReplayClipSeconds"], fallback: Int(StreamReplayBufferConfiguration.defaultClipSeconds)), Int(StreamReplayBufferConfiguration.minimumClipSeconds)),
+            min(recordingReplayBufferWindowSeconds, Int(StreamReplayBufferConfiguration.maximumClipSeconds))
+        )
+        recordingReplayQualityIndex = min(max(Self.int(dictionary["recordingReplayQualityIndex"]), 0), OPNStreamPreferences.replayQualityOptions.count - 1)
     }
 
     static func string(_ value: Any?, fallback: String = "") -> String {

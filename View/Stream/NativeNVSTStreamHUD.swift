@@ -26,6 +26,9 @@ extension NativeNVSTMediaStreamSurface {
         StreamHUDWrappingRow(minimumItemWidth: 84) {
             StreamHUDMetricCard(title: "Mic", value: nativeMicrophoneStatusText, isPositive: model.microphoneEnabled && model.microphoneAvailable)
             StreamHUDMetricCard(title: "Rec", value: model.recordingStatusText, isPositive: model.recordingCanStop)
+            if model.isInstantReplayEnabled {
+                StreamHUDMetricCard(title: "Replay", value: model.replayBufferState.shortStatusText, isPositive: model.isReplayBufferActive)
+            }
             StreamHUDMetricCard(title: "AFK", value: model.antiAFKMouseMovementEnabled ? "On" : "Off", isPositive: model.antiAFKMouseMovementEnabled)
             if model.sessionLimit != nil {
                 TimelineView(.periodic(from: .now, by: 1)) { context in

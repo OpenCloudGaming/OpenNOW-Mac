@@ -56,6 +56,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// thread — the VideoToolbox decode callback and the CoreAudio playout callback — and neither
     /// may `await`; the recorder does its own locking and queueing.
     nonisolated let recorder = WebRTCStreamRecorder()
+    /// The rolling instant-replay buffer, off the actor for the same reason as the recorder: both
+    /// realtime callbacks feed it, and neither may `await`.
+    nonisolated let replayBuffer = StreamReplayBuffer()
     /// The screenshot tap, off the actor for the same reason as the recorder: every decoded frame
     /// reaches it from the VideoToolbox callback, and a capture is rendered there.
     nonisolated let screenshotCapture = StreamScreenshotCapture()
@@ -81,7 +84,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// drains it.
     var mediaFrameContinuation: AsyncStream<NativeNVSTVideoFrame>.Continuation?
     var mediaForwardingTask: Task<Void, Never>?
-    private var connection: NativeNVSTTransportConnection?
+    var connection: NativeNVSTTransportConnection?
     var terminationContinuation: AsyncStream<NativeNVSTTransportTermination>.Continuation?
     private var terminationStream: AsyncStream<NativeNVSTTransportTermination>?
     var lastHandoff: NVSTVideoHandoff?
@@ -517,6 +520,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // Teardown before the writer is closed would strand a half-written file with no metadata,
         // so every exit closes the recording first.
         recorder.stop()
+        // The stream is over, not the reader's interest in it: the ring is retained so the footage
+        // can still be saved from the recordings screen.
+        replayBuffer.retain()
         screenshotCapture.cancel()
         // Guests outlive nothing: dropping the sinks here stops frames being encoded for peers
         // whose connection is about to be torn down anyway.
@@ -531,6 +537,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // and a recovered session can come back at a different resolution than the adaptor was
         // sized for. Close the recording and keep what was captured.
         recorder.stop()
+        // The replay window cannot cross a decoder rebuild: a clip would splice two sessions'
+        // frames onto one clock. The host restarts the buffer once the session is back.
+        replayBuffer.stop()
         screenshotCapture.cancel()
         await teardown(reason: "recovery")
     }

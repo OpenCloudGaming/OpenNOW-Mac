@@ -149,6 +149,42 @@ extension OPNStreamPreferences {
     public static func saveEntitledInGameSettingsPersistence(_ value: Bool) { storage.set(value, forKey: k.entitledInGameSettingsPersistence) }
     public static func loadEntitledInGameSettingsPersistence() -> Bool { bool(storage.object(forKey: k.entitledInGameSettingsPersistence), false) }
     public static func saveRecordingEnhancedVideoEnabled(_ value: Bool) { storage.set(value, forKey: k.recordingEnhancedVideoEnabled) }
+    public static func saveRecordingMode(_ mode: OPNRecordingMode) { storage.set(mode.rawValue, forKey: k.recordingMode) }
+    /// Clamped to the window the buffer can honestly keep, in whole seconds.
+    public static func saveRecordingReplayBufferWindowSeconds(_ value: Int) {
+        let clamped = min(max(value, Int(StreamReplayBufferConfiguration.minimumWindowSeconds)), Int(StreamReplayBufferConfiguration.maximumWindowSeconds))
+        storage.set(clamped, forKey: k.recordingReplayBufferWindowSeconds)
+        // A clip can never be longer than the window it is cut from.
+        if loadRecordingReplayClipSeconds() > clamped {
+            storage.set(clamped, forKey: k.recordingReplayClipSeconds)
+        }
+    }
+
+    public static func saveRecordingReplayClipSeconds(_ value: Int) {
+        let upperBound = min(loadRecordingReplayBufferWindowSeconds(), Int(StreamReplayBufferConfiguration.maximumClipSeconds))
+        let clamped = min(max(value, Int(StreamReplayBufferConfiguration.minimumClipSeconds)), max(upperBound, Int(StreamReplayBufferConfiguration.minimumClipSeconds)))
+        storage.set(clamped, forKey: k.recordingReplayClipSeconds)
+    }
+
+    public static func saveRecordingReplayQualityIndex(_ value: Int) {
+        storage.set(clamp(value, 0, replayQualityOptions.count - 1), forKey: k.recordingReplayQualityIndex)
+    }
+
+    public static func saveRecordingReplayStorageBudgetGB(_ value: Int) {
+        storage.set(clamp(value, StreamReplayRetentionLibrary.minimumBudgetGigabytes, StreamReplayRetentionLibrary.maximumBudgetGigabytes), forKey: k.recordingReplayStorageBudgetGB)
+    }
+
+    public static func loadRecordingReplayBufferWindowSeconds() -> Int {
+        clamp(int(storage.object(forKey: k.recordingReplayBufferWindowSeconds), Int(StreamReplayBufferConfiguration.defaultWindowSeconds)), Int(StreamReplayBufferConfiguration.minimumWindowSeconds), Int(StreamReplayBufferConfiguration.maximumWindowSeconds))
+    }
+
+    public static func loadRecordingReplayClipSeconds() -> Int {
+        clamp(int(storage.object(forKey: k.recordingReplayClipSeconds), Int(StreamReplayBufferConfiguration.defaultClipSeconds)), Int(StreamReplayBufferConfiguration.minimumClipSeconds), Int(StreamReplayBufferConfiguration.maximumClipSeconds))
+    }
+
+    public static func loadRecordingReplayStorageBudgetGB() -> Int {
+        clamp(int(storage.object(forKey: k.recordingReplayStorageBudgetGB), StreamReplayRetentionLibrary.defaultBudgetGigabytes), StreamReplayRetentionLibrary.minimumBudgetGigabytes, StreamReplayRetentionLibrary.maximumBudgetGigabytes)
+    }
     public static func saveL4SEnabled(_ value: Bool) { storage.set(value, forKey: k.l4sEnabled) }
     public static func saveReflexEnabled(_ value: Bool) { storage.set(value, forKey: k.reflexEnabled) }
     public static func saveHDREnabled(_ value: Bool) { storage.set(value, forKey: k.hdrEnabled) }
@@ -272,11 +308,45 @@ extension OPNStreamPreferences {
         profile.vsyncMode = vsyncModeOptions[profile.vsyncModeIndex].value
     }
 
+    /// The stored recording mode, migrating the boolean the first Instant Replay build wrote. The
+    /// legacy key is cleared so a later defaults reset cannot migrate it a second time.
+    static func storedRecordingMode(_ dictionary: [String: Any]?) -> OPNRecordingMode {
+        if let mode = OPNRecordingMode(rawValue: string(value(dictionary, k.recordingMode), "")) {
+            return mode
+        }
+        guard bool(value(dictionary, k.legacyRecordingReplayBufferEnabled), false) else { return .off }
+        storage.removeObject(forKey: k.legacyRecordingReplayBufferEnabled)
+        return .instantReplay
+    }
+
     /// Recording output plus the per-session behaviour toggles.
     static func applyCaptureSettings(_ profile: inout OPNStreamPreferenceProfile, _ dictionary: [String: Any]?) {
         profile.recordingVideoBitrateMbps = clampedInt(dictionary, k.recordingVideoBitrateMbps, 0, 201)
         profile.recordingAudioBitrateKbps = Int(clampedDouble(dictionary, k.recordingAudioBitrateKbps, 160, 64, 320).rounded())
         profile.recordingEnhancedVideoEnabled = bool(value(dictionary, k.recordingEnhancedVideoEnabled), true)
+        profile.recordingMode = storedRecordingMode(dictionary)
+        profile.recordingReplayBufferWindowSeconds = Int(clampedDouble(
+            dictionary,
+            k.recordingReplayBufferWindowSeconds,
+            StreamReplayBufferConfiguration.defaultWindowSeconds,
+            StreamReplayBufferConfiguration.minimumWindowSeconds,
+            StreamReplayBufferConfiguration.maximumWindowSeconds
+        ).rounded())
+        profile.recordingReplayClipSeconds = Int(clampedDouble(
+            dictionary,
+            k.recordingReplayClipSeconds,
+            StreamReplayBufferConfiguration.defaultClipSeconds,
+            StreamReplayBufferConfiguration.minimumClipSeconds,
+            min(Double(profile.recordingReplayBufferWindowSeconds), StreamReplayBufferConfiguration.maximumClipSeconds)
+        ).rounded())
+        profile.recordingReplayQualityIndex = clampedInt(dictionary, k.recordingReplayQualityIndex, 0, replayQualityOptions.count)
+        profile.recordingReplayStorageBudgetGB = Int(clampedDouble(
+            dictionary,
+            k.recordingReplayStorageBudgetGB,
+            Double(StreamReplayRetentionLibrary.defaultBudgetGigabytes),
+            Double(StreamReplayRetentionLibrary.minimumBudgetGigabytes),
+            Double(StreamReplayRetentionLibrary.maximumBudgetGigabytes)
+        ).rounded())
         profile.enableL4S = bool(value(dictionary, k.l4sEnabled), false)
         profile.enableReflex = bool(value(dictionary, k.reflexEnabled), true)
         profile.enableHdr = bool(value(dictionary, k.hdrEnabled), false)
@@ -340,6 +410,10 @@ extension OPNStreamPreferences {
             k.recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
             k.surroundModeIndex: profile.surroundModeIndex,
             k.recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
+            k.recordingReplayBufferWindowSeconds: profile.recordingReplayBufferWindowSeconds,
+            k.recordingReplayClipSeconds: profile.recordingReplayClipSeconds,
+            k.recordingReplayQualityIndex: profile.recordingReplayQualityIndex,
+            k.recordingMode: profile.recordingMode.rawValue,
             k.l4sEnabled: profile.enableL4S,
             k.reflexEnabled: profile.enableReflex,
             k.hdrEnabled: profile.enableHdr,

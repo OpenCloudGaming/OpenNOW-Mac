@@ -79,6 +79,10 @@ func webRTCMediaProfile(from profile: OPNStreamPreferenceProfile) -> WebRTCMedia
         recordingVideoBitrateMbps: profile.recordingVideoBitrateMbps,
         recordingAudioBitrateKbps: profile.recordingAudioBitrateKbps,
         recordingEnhancedVideoEnabled: profile.recordingEnhancedVideoEnabled,
+        recordingMode: profile.recordingMode,
+        recordingReplayBufferWindowSeconds: profile.recordingReplayBufferWindowSeconds,
+        recordingReplayClipSeconds: profile.recordingReplayClipSeconds,
+        recordingReplayQualityIndex: profile.recordingReplayQualityIndex,
         surroundMode: profile.surroundMode.value
     )
 }
@@ -132,6 +136,10 @@ func webRTCMediaProfile(from settings: [String: Any]) -> WebRTCMediaStreamProfil
         recordingVideoBitrateMbps: bridgeInt(settings["recordingVideoBitrateMbps"]),
         recordingAudioBitrateKbps: bridgeInt(settings["recordingAudioBitrateKbps"], fallback: 160),
         recordingEnhancedVideoEnabled: bridgeBool(settings["recordingEnhancedVideoEnabled"], fallback: true),
+        recordingMode: OPNRecordingMode(rawValue: bridgeString(settings["recordingMode"])) ?? .off,
+        recordingReplayBufferWindowSeconds: bridgeInt(settings["recordingReplayBufferWindowSeconds"], fallback: Int(StreamReplayBufferConfiguration.defaultWindowSeconds)),
+        recordingReplayClipSeconds: bridgeInt(settings["recordingReplayClipSeconds"], fallback: Int(StreamReplayBufferConfiguration.defaultClipSeconds)),
+        recordingReplayQualityIndex: bridgeInt(settings["recordingReplayQualityIndex"]),
         surroundMode: bridgeString(settings["surroundMode"], fallback: "auto")
     )
 }

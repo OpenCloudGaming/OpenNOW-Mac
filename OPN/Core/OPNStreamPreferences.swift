@@ -105,6 +105,15 @@ public enum OPNStreamPreferences {
         OPNStreamSurroundModeOption(label: "5.1 Surround", value: "5.1"),
         OPNStreamSurroundModeOption(label: "7.1 Surround", value: "7.1")
     ]
+    /// Instant Replay's own quality. The ceiling is what keeps a capped tier from costing the same
+    /// as the full-resolution stream it was cut down from.
+    public static let replayQualityOptions = [
+        OPNStreamReplayQualityOption(label: "Match Stream", maxHeight: 0, bitrateCeilingMbps: 0),
+        OPNStreamReplayQualityOption(label: "1440p", maxHeight: 1440, bitrateCeilingMbps: 20),
+        OPNStreamReplayQualityOption(label: "1080p", maxHeight: 1080, bitrateCeilingMbps: 12),
+        OPNStreamReplayQualityOption(label: "720p", maxHeight: 720, bitrateCeilingMbps: 6),
+        OPNStreamReplayQualityOption(label: "480p", maxHeight: 480, bitrateCeilingMbps: 3)
+    ]
 
     static let nvClientId = GFNClientMetadata.clientId
     static let nvCloudVariablesClientVersion = GFNClientMetadata.appVersion

@@ -225,6 +225,46 @@ spacing is, and the eye catches a two-point difference. Three tiers, in
 - **Advanced panel** (28, `.compactControlHeight`): small buttons, dropdown triggers, chip
   pickers.
 
+### Recording Fact Pill (`RecordingPill`)
+
+One recording fact as a 20-high square chip: 9pt bold Hanken label, 7 horizontal padding, Stroke
+Subtle fill at rest and accent when active (label black @ 0.86 over accent), 1px `strokeBorder` in
+the matching tone. Library rows carry duration, quality and size in that order; the retained replay
+rows and the watched-window header carry the same three, so a window's quality is readable before it
+is kept. The label comes from `RecordingFormat.qualityText`, which maps the encoded shape to 4K /
+1440p / 1080p / `<height>p` / Auto and therefore takes a raw width and height: a replay window is a
+ring of files and has no `StreamRecording` of its own.
+
+### Retained Replay Section (`RetainedReplaySection`, `RetainedReplayRow`)
+
+Recordings: the replay windows finished streams left on disk, above the library because they are the
+footage from the sessions just played. The header is a Text Muted eyebrow with the store's usage
+(`used of limit`) on the trailing edge. Each row is a raised fill with a 1px Stroke Subtle, a play
+glyph, the game title, a three-pill fact row (`RecordingPill`: duration, quality, size) and three
+26-high square actions: **CLIP** (filled accent with `OPNDesign.onAccent` — the ink for text on an
+accent fill, not `accentInk`, which is the accent as text on the page and resolves to the accent
+itself in the dark palette), **SAVE ALL** and **DISCARD** (both outlined). The actions disable while
+a whole-window save runs, and the row then reads "Saving…".
+
+The facts block is the play control, not a fourth action: pressing it composes the whole ring and
+plays it in the player pane, so the footage can be watched before any of the three actions is
+chosen. While it plays the row strokes accent and the glyph becomes a pause; pressing it again
+stops. The pane header becomes `RetainedReplayPreviewHeader` — "REPLAY WINDOW", the title, the same
+fact pills, and **BACK TO LIBRARY** — because the window is not a library recording, so
+`RecordingInspector`'s Open/Reveal/Delete would not apply to a ring.
+
+**CLIP** opens the quick editor over the ring: each segment file becomes one timeline clip in capture
+order, so a trim cuts across the whole window rather than only its last file. A multi-file ring
+always re-encodes (the exporter's passthrough needs a single segment from the head of one file), so
+**SAVE ALL** remains the cheap whole-window path.
+
+One window is shown per title: it has no expiry, and the next session of that title rolls it forward
+rather than replacing it. The whole store is held to the Storage Budget the settings page sets,
+oldest title first — only a single title larger than the budget has its own oldest footage cut.
+DISCARD and SAVE ALL refuse while that window's own edit is open, and if the budget evicts a window
+that is being watched or edited, the pane returns to the library rather than failing later on the
+missing files.
+
 ### Borders on Filled Controls
 
 Use `Rectangle().strokeBorder(...)`, never `Rectangle().stroke(...)`, on anything with a
@@ -599,8 +639,20 @@ measured decode time reaches the target, muted "fits ~‹fps› fps" when it doe
 row fill and a subtle stroke. Tiers this build does not offer are dropped before display, because
 the measurement store is append-only and also holds superseded and test tiers.
 
-### Settings Reorder List (`HomeCategorySettingsCard`)
+### Replay Window Diagram (`ReplayWindowDiagram`)
 
+Settings → Recording → Instant Replay: the model as one picture, because the two numbers it draws
+are the two readers mix up. A full-width 8-high square bar is the window kept on disk; its trailing
+edge carries the accent fill for the slice a save takes, never narrower than a 12-wide sliver — a
+1-minute clip against a 2-hour window is 0.8%, and a hairline reads as a rendering fault. The labels
+sit on the bar's own ends: the kept duration as a Text Muted eyebrow, the shortcut and clip duration
+in `OPNDesign.accentInk`, so the action is written on the side of the bar it acts on. One 12pt Text
+Tertiary line under it names the consequence. The bar measures in an overlay rather than as the
+stack's own child: a `GeometryReader` in the stack takes the height it is offered and collapses the
+caption. The diagram owns the single duration vocabulary both sliders above and below it read
+(`45 s`, `1 min`, `1 h 30 min`).
+
+### Settings Reorder List (`HomeCategorySettingsCard`)
 Settings → Look → Home Categories: the reader's own order for the home rails, and which are drawn.
 The card sits last on the Look page and wears the NEW tag. Each rail is a stroked row - 12 padding,
 subtle fill, 1pt Stroke Subtle border - holding an 18-wide
@@ -647,9 +699,11 @@ a shortcut reads the same here as in Controller Mapping, and a bare modifier key
 than stored. A Reset card appears only while something is customised.
 
 ### Settings Card Badge (`SettingsCardBadge`, `SettingsCardTag`)
-
 `SettingsCard(title:badge:uiScale:)` renders BETA or EXPERIMENTAL beside the card title, 8pt bold,
-tracking 0.7, accent @ 0.78 on accent @ 0.12. Scope is the card. A destination in
+tracking 0.7, accent @ 0.78 on accent @ 0.12. Scope is the card, and it qualifies what the card
+holds alone: Instant Replay is BETA, the Recording Mode row that offers Off, Instant Replay and
+Manual is not, so the tag stays on the card rather than moving to the row that reaches it.
+A destination in
 `SettingsTabBar.betaGroups` wears the tag in the rail instead, and only when every card on it is
 beta - one unsettled card in a settled tab is a card badge, not a destination tag.
 `SettingsCard(title:badge:isNew:uiScale:)` also lets a card wear the solid NEW tag when it qualifies

@@ -134,6 +134,22 @@ public struct OPNStreamUpscalingTargetOption: Equatable, Sendable {
     }
 }
 
+/// How much of the stream's own quality an Instant Replay window keeps. Size follows the encoded
+/// pixel count and the bitrate, so each tier caps both.
+public struct OPNStreamReplayQualityOption: Equatable, Sendable {
+    public var label: String
+    /// 0 keeps the stream's own height.
+    public var maxHeight: Int
+    /// 0 lets the recording bitrate setting decide, with no extra ceiling.
+    public var bitrateCeilingMbps: Int
+
+    public init(label: String, maxHeight: Int, bitrateCeilingMbps: Int) {
+        self.label = label
+        self.maxHeight = maxHeight
+        self.bitrateCeilingMbps = bitrateCeilingMbps
+    }
+}
+
 public struct OPNStreamTransportModeOption: Equatable, Sendable {
     public var label: String
     public var value: String
@@ -325,6 +341,15 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var recordingVideoBitrateMbps = 0
     public var recordingAudioBitrateKbps = 160
     public var recordingEnhancedVideoEnabled = true
+    /// What a stream captures. Instant Replay keeps the last
+    /// `recordingReplayBufferWindowSeconds` on disk; manual records only when asked.
+    public var recordingMode = OPNRecordingMode.off
+    public var recordingReplayBufferWindowSeconds = Int(StreamReplayBufferConfiguration.defaultWindowSeconds)
+    public var recordingReplayClipSeconds = Int(StreamReplayBufferConfiguration.defaultClipSeconds)
+    /// Index into `OPNStreamPreferences.replayQualityOptions`: the replay's own encoded size.
+    public var recordingReplayQualityIndex = 0
+    /// The ceiling on every retained replay window, in decimal gigabytes.
+    public var recordingReplayStorageBudgetGB = StreamReplayRetentionLibrary.defaultBudgetGigabytes
     public var transportMode = OPNStreamPreferences.transportModeOptions[1]
     public var streamingQualityProfile = 0
     public var streamingQualityProfileOption = OPNStreamPreferences.streamingQualityProfileOptions[0]
