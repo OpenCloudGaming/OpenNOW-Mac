@@ -17,6 +17,10 @@ struct ScreenshotSelectionOverlay: View {
     }
 
     var body: some View {
+        selectionActions(describedSelection(interactionSurface))
+    }
+
+    private var interactionSurface: some View {
         GeometryReader { proxy in
             let imageFrame = ScreenshotSelectionGeometry.imageFrame(in: proxy.size, imageSize: model.imageSize)
             ZStack(alignment: .topLeading) {
@@ -35,24 +39,32 @@ struct ScreenshotSelectionOverlay: View {
         .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow], phases: [.down, .repeat], action: handleArrow)
         .onChange(of: model.imageSize) { drag = nil }
         .allowsHitTesting(model.isReady)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Screenshot selection")
-        .accessibilityValue(model.selection == nil ? "No selection" : model.dimensionsDescription)
-        .accessibilityHint("Drag to select. Arrow keys move the selection. Option and arrow keys resize it. Shift uses ten-pixel steps.")
-        .accessibilityAction(named: "Select All", model.selectAll)
-        .accessibilityAction(named: "Clear Selection", model.clearSelection)
-        .accessibilityAction(named: "Crop", model.applyCrop)
-        .accessibilityAction(named: "Move Left") { model.moveSelection(by: CGSize(width: -1, height: 0)) }
-        .accessibilityAction(named: "Move Right") { model.moveSelection(by: CGSize(width: 1, height: 0)) }
-        .accessibilityAction(named: "Move Up") { model.moveSelection(by: CGSize(width: 0, height: -1)) }
-        .accessibilityAction(named: "Move Down") { model.moveSelection(by: CGSize(width: 0, height: 1)) }
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: model.resizeSelection(by: CGSize(width: 1, height: 1))
-            case .decrement: model.resizeSelection(by: CGSize(width: -1, height: -1))
-            @unknown default: break
+    }
+
+    private func describedSelection(_ surface: some View) -> some View {
+        surface
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Screenshot selection"))
+            .accessibilityValue(Text(model.selection == nil ? "No selection" : model.dimensionsDescription))
+            .accessibilityHint(Text("Drag to select. Arrow keys move the selection. Option and arrow keys resize it. Shift uses ten-pixel steps."))
+    }
+
+    private func selectionActions(_ view: some View) -> some View {
+        view
+            .accessibilityAction(named: Text("Select All")) { model.selectAll() }
+            .accessibilityAction(named: Text("Clear Selection")) { model.clearSelection() }
+            .accessibilityAction(named: Text("Crop")) { model.applyCrop() }
+            .accessibilityAction(named: Text("Move Left")) { model.moveSelection(by: CGSize(width: -1, height: 0)) }
+            .accessibilityAction(named: Text("Move Right")) { model.moveSelection(by: CGSize(width: 1, height: 0)) }
+            .accessibilityAction(named: Text("Move Up")) { model.moveSelection(by: CGSize(width: 0, height: -1)) }
+            .accessibilityAction(named: Text("Move Down")) { model.moveSelection(by: CGSize(width: 0, height: 1)) }
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: model.resizeSelection(by: CGSize(width: 1, height: 1))
+                case .decrement: model.resizeSelection(by: CGSize(width: -1, height: -1))
+                @unknown default: break
+                }
             }
-        }
     }
 
     private func selectionChrome(_ rectangle: CGRect, imageFrame: CGRect) -> some View {
