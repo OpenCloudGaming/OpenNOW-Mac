@@ -66,4 +66,12 @@ struct NativeNVSTHUDFocusEntryParityTests {
         let ids = makeSurface().model.hudFocusEntries.map(\.id)
         #expect(Set(ids).count == ids.count)
     }
+
+    /// The STATS panel's two selectors are full-width rows, not tiles, so nothing but this contract
+    /// keeps them reachable from a pad.
+    @Test func statsShapeControlsAreReachableFromAPad() {
+        let ids = makeSurface().model.hudFocusEntries.map(\.id)
+        #expect(ids.contains("stats-detail"))
+        #expect(ids.contains("stats-position"))
+    }
 }

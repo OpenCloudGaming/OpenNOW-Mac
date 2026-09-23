@@ -28,6 +28,10 @@ public struct WebRTCMediaStreamSurface: View {
     @State var loadingStepIndex = -1
     @State var pointerLocked = false
     @State var statsVisible = false
+    /// The overlay's stored shape, chosen in the unified HUD: how much detail it shows and which
+    /// corner it occupies. The visible toggle above is per-session; these two persist.
+    @State var statsDetail = OPNStreamStatsHUDSettings.detailLevel
+    @State var statsPosition = OPNStreamStatsHUDSettings.position
     @State var unifiedHUDVisible = false
     @State var restorePointerLockOnHUDHide = false
     @State var quitMenuVisible = false

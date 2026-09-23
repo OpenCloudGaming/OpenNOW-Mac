@@ -46,7 +46,7 @@ extension NativeNVSTHostViewModel {
 
     /// Controller/keyboard step through the HUD row: cycles Off → On → Adaptive and wraps.
     func cycleNativeVsyncMode() {
-        let nextModeValue = wrappingNext(after: vsyncModeIndex, in: OPNStreamPreferences.vsyncModeOptions.map(\.value))
+        let nextModeValue = OPNStreamPreferences.vsyncModeOptions.map(\.value).wrappingNext(after: vsyncModeIndex)
         updateNativeVsyncMode(modeValue: nextModeValue)
     }
 }

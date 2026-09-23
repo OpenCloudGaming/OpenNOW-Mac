@@ -21,42 +21,61 @@ extension WebRTCMediaStreamSurface {
     }
 
     var statsHUD: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 0) {
+        statsPanelChrome {
+            VStack(alignment: .leading, spacing: 8) {
+                statsHeroRow
+                if statsDetail != .minimum {
+                    statsHorizontalDivider
+                    statsDetailRows
+                }
+            }
+        }
+        .opnTransition(.scale(scale: 0.94, anchor: statsPosition.transitionAnchor).combined(with: .opacity))
+        .streamStatsHUDPosition(statsPosition, isSidebarVisible: unifiedHUDVisible)
+        .allowsHitTesting(false)
+    }
+
+    static let statsPanelWidth: CGFloat = 244
+
+    var statsHeroRow: some View {
+        HStack(spacing: 0) {
+            if statsDetail != .minimum {
                 statsCompactBox(value: "--", label: "FPS", color: StreamHUDTheme.textPrimary)
                 statsVerticalDivider
-                statsCompactBox(value: wholeNumber(latestStats?.renderFps), label: "FPS", color: fpsColor)
-                statsVerticalDivider
-                statsCompactBox(value: wholeNumber(latestStats?.latencyMs), label: "MS", color: latencyColor)
             }
-            .frame(height: 48)
+            statsCompactBox(value: wholeNumber(latestStats?.renderFps), label: "FPS", color: fpsColor)
+            statsVerticalDivider
+            statsCompactBox(value: wholeNumber(latestStats?.latencyMs), label: "MS", color: latencyColor)
+        }
+        .frame(height: 48)
+    }
 
-            statsHorizontalDivider
-
-            VStack(alignment: .leading, spacing: 5) {
-                statsStandardRow(label: "Frame Loss", value: String(latestStats?.framesDropped ?? 0), detail: "(0 Total)", color: frameLossColor)
-                statsStandardRow(label: "Packet Loss", value: percentage(latestStats?.packetLossPercent), detail: packetLossTotalText, color: packetLossColor)
-                statsStandardRow(label: "Bandwidth Used", value: megabits(latestStats?.inboundBitrateMbps), detail: "Mbps", color: StreamHUDTheme.textPrimary)
-                statsStandardRow(label: "Resolution", value: nonEmpty(latestStats?.resolution), detail: nil, color: StreamHUDTheme.textPrimary)
-                statsStandardRow(label: "Codec", value: nonEmpty(latestStats?.codec), detail: nil, color: StreamHUDTheme.textPrimary)
+    @ViewBuilder
+    var statsDetailRows: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            statsStandardRow(label: "Frame Loss", value: String(latestStats?.framesDropped ?? 0), detail: "(0 Total)", color: frameLossColor)
+            statsStandardRow(label: "Packet Loss", value: percentage(latestStats?.packetLossPercent), detail: packetLossTotalText, color: packetLossColor)
+            statsStandardRow(label: "Bandwidth Used", value: megabits(latestStats?.inboundBitrateMbps), detail: "Mbps", color: StreamHUDTheme.textPrimary)
+            statsStandardRow(label: "Resolution", value: nonEmpty(latestStats?.resolution), detail: nil, color: StreamHUDTheme.textPrimary)
+            statsStandardRow(label: "Codec", value: nonEmpty(latestStats?.codec), detail: nil, color: StreamHUDTheme.textPrimary)
+            if statsDetail == .advanced {
                 statsStandardRow(label: "Server Location", value: "--", detail: nil, color: StreamHUDTheme.textPrimary)
             }
         }
-        .padding(10)
-        .frame(width: 244, alignment: .topLeading)
-        .background(Color.black.opacity(0.90))
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(StreamHUDTheme.accent)
-                .frame(height: 2)
-        }
-        .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
-        .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
-        .opnTransition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
-        .padding(.top, 5)
-        .padding(.trailing, 5)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        .allowsHitTesting(false)
+    }
+
+    func statsPanelChrome<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(10)
+            .frame(width: Self.statsPanelWidth, alignment: .topLeading)
+            .background(Color.black.opacity(0.90))
+            .overlay(alignment: .top) {
+                Rectangle()
+                    .fill(StreamHUDTheme.accent)
+                    .frame(height: 2)
+            }
+            .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
+            .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
     }
 
     /// Presentation is decided here rather than by an `if` at the call site so the scrim and the
@@ -344,7 +363,7 @@ extension WebRTCMediaStreamSurface {
                 )
                 StreamHUDActionRow(
                     title: statsVisible ? "Hide Floating Stats" : "Show Floating Stats",
-                    subtitle: "Detailed overlay",
+                    subtitle: "\(statsDetail.title) overlay",
                     systemName: "chart.line.uptrend.xyaxis",
                     isActive: statsVisible,
                     isDisabled: false,

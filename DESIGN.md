@@ -796,8 +796,26 @@ Buttons. Escape (`.cancelAction`) maps to the primary dismiss action.
 
 ### Stats HUD
 
-252-wide top-trailing panel, Panel background @ 0.92, 1px accent @ 0.28 stroke, 14
-padding, eyebrow header, label/value stat rows (11pt).
+The floating stream-statistics overlay: `NativeNVSTStatsPanel` on the native NVST surface, and
+the WebRTC surface's own stats panel. It is toggle-only from the shortcut and the CONTROLS tile —
+shown or hidden — and its shape is chosen in the unified HUD's STATS panel.
+
+Two stored preferences give its shape:
+
+- **Detail** — Minimum, Compact, Advanced. Minimum is the headline readings alone: every frame
+  rate the transport exposes (GAME and STREAM on native NVST, one FPS on WebRTC) plus latency.
+  Compact keeps the headline readings and one overview group — Resolution, Codec, Bandwidth,
+  Packet Loss, Frame Loss. Advanced keeps every group. The header and the panel's padding and
+  width are the same at every level; the level only decides how many detail rows follow.
+- **Position** — Top Left, Top Right, Bottom Left, Bottom Right. A leading corner steps clear of
+  the unified sidebar by its own width while the sidebar is open, so the overlay is never buried
+  behind the dock; Bottom Right sits above the circular microphone toggle. Reveal and hide
+  travel from the chosen corner.
+
+The panel keeps its chrome and its geometry at every level — Panel background, 2px accent top
+bar, 1px stroke, floating-layer shadow — and only how many detail rows follow the headline
+readings changes. Both selectors are square `StreamHUDDropdown` rows, and a pad cycles each on
+activate.
 
 ### On-Screen Keyboard (`StreamOnScreenKeyboardOverlay`)
 

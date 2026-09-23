@@ -58,7 +58,7 @@ extension NativeNVSTMediaStreamSurface {
                           action: model.takeNativeScreenshot),
             NativeHUDTile(id: "floating-stats",
                           title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
-                          subtitle: "Detailed overlay",
+                          subtitle: "\(model.statsDetail.title) overlay",
                           systemName: "chart.line.uptrend.xyaxis",
                           isActive: model.nativeStatsVisible,
                           isDisabled: !model.sidebarCapabilities.supports(.floatingStats),

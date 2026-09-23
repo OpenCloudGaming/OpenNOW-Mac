@@ -30,6 +30,8 @@ extension WebRTCMediaStreamSurface {
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "controls", columns: 8, action: openControllerMapping),
             StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "controls", columns: 8, action: openControllerOrder),
             StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "controls", columns: 8, action: { showQuitMenu() }),
+            StreamHUDFocusEntry(id: "stats-detail", isDisabled: false, action: cycleStatsDetail),
+            StreamHUDFocusEntry(id: "stats-position", isDisabled: false, action: cycleStatsPosition),
         ]
     }
 
@@ -286,6 +288,31 @@ extension WebRTCMediaStreamSurface {
     func toggleStatsHUD() {
         statsVisible.toggle()
         OPNStreamTelemetry.capture("webrtc.ui.stats.toggle", level: .info, message: statsVisible ? "Stats HUD shown." : "Stats HUD hidden.", attributes: ["visible": String(statsVisible)])
+    }
+
+    /// The overlay's shape lives in the unified HUD's STATS panel; the shortcut and the CONTROLS
+    /// tile only toggle it on and off, so re-showing it always brings back the chosen level and
+    /// corner.
+    func setStatsDetail(_ level: StreamStatsDetailLevel) {
+        guard statsDetail != level else { return }
+        statsDetail = level
+        OPNStreamStatsHUDSettings.detailLevel = level
+        OPNStreamTelemetry.capture("webrtc.ui.stats.detail", level: .info, message: "Stats HUD detail changed.", attributes: ["detail": level.rawValue])
+    }
+
+    func setStatsPosition(_ position: StreamStatsHUDPosition) {
+        guard statsPosition != position else { return }
+        statsPosition = position
+        OPNStreamStatsHUDSettings.position = position
+        OPNStreamTelemetry.capture("webrtc.ui.stats.position", level: .info, message: "Stats HUD position changed.", attributes: ["position": position.rawValue])
+    }
+
+    func cycleStatsDetail() {
+        setStatsDetail(StreamStatsDetailLevel.allCases.wrappingNext(after: statsDetail))
+    }
+
+    func cycleStatsPosition() {
+        setStatsPosition(StreamStatsHUDPosition.allCases.wrappingNext(after: statsPosition))
     }
 
     func pasteClipboardIntoStream() {

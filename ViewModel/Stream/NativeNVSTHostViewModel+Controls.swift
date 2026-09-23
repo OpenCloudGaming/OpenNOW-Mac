@@ -53,6 +53,8 @@ extension NativeNVSTHostViewModel {
         ]
         + remoteCoOpParticipantFocusEntries
         + [
+            StreamHUDFocusEntry(id: "stats-detail", isDisabled: false, action: cycleNativeStatsDetail),
+            StreamHUDFocusEntry(id: "stats-position", isDisabled: false, action: cycleNativeStatsPosition),
             StreamHUDFocusEntry(id: "upscaling-tier", isDisabled: !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTier),
             StreamHUDFocusEntry(id: "upscaling-target", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTarget),
             StreamHUDFocusEntry(id: "clarity", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeClarity),
@@ -97,7 +99,7 @@ extension NativeNVSTHostViewModel {
     /// slider or dropdown doesn't need a new interaction primitive to be gamepad-usable.
     func cycleNativeUpscalingTier() {
         let currentValue = OPNStreamPreferences.upscalingModeOptions[upscalingModeIndex].value
-        updateNativeUpscalingTier(value: wrappingNext(after: currentValue, in: Self.upscalingTierDisplayOrder.map(\.value)))
+        updateNativeUpscalingTier(value: Self.upscalingTierDisplayOrder.map(\.value).wrappingNext(after: currentValue))
     }
 
     func cycleNativeUpscalingTarget() {
@@ -146,15 +148,7 @@ extension NativeNVSTHostViewModel {
     }
 
     func cycleNativePillarboxFill() {
-        updateNativePillarboxFill(modeIndex: wrappingNext(after: pillarboxFillModeIndex, in: OPNPillarboxFillMode.pickerCases.map(\.rawValue)))
-    }
-
-    /// Shared by every "cycle this control forward one step" gamepad handler that advances a value
-    /// within a fixed option list, rather than each control re-implementing its own index lookup.
-    func wrappingNext<T: Equatable>(after current: T, in options: [T]) -> T {
-        guard !options.isEmpty else { return current }
-        let currentIndex = options.firstIndex(of: current) ?? 0
-        return options[(currentIndex + 1) % options.count]
+        updateNativePillarboxFill(modeIndex: OPNPillarboxFillMode.pickerCases.map(\.rawValue).wrappingNext(after: pillarboxFillModeIndex))
     }
 
     func handleHUDGamepad(_ state: GamepadState) {

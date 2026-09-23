@@ -211,60 +211,144 @@ struct NativeNVSTStatsPanel: View {
 
 extension NativeNVSTMediaStreamSurface {
     var nativeStatsHUD: some View {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        let streamFramesPerSecond = model.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
-        let resolution = nonEmptyNativeStat(model.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
-        let codec = nonEmptyNativeStat(model.latestNativeStats?.codec, fallback: "--")
-        return NativeNVSTStatsPanel(
+        NativeNVSTStatsPanel(
             transport: "NATIVE NVST",
-            heroes: [
-                NativeNVSTStatsPanel.Hero(label: "GAME", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.gameFramesPerSecond), unit: "fps", color: nativeGameFPSColor(target: streamFramesPerSecond)),
-                NativeNVSTStatsPanel.Hero(label: "STREAM", value: nativeStatsWholeNumber(streamFramesPerSecond), unit: "fps", color: StreamHUDTheme.textPrimary),
-                NativeNVSTStatsPanel.Hero(label: "LATENCY", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.latencyMilliseconds), unit: "ms", color: nativeLatencyColor),
-            ],
-            groups: [
-                NativeNVSTStatsPanel.Group(label: "NETWORK", rows: [
-                    NativeNVSTStatsPanel.Row(label: "Frame Loss", value: nativeStatsCount(model.latestNativeStats?.frameLoss), detail: nativeStatsTotal(model.latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor),
-                    // Percent over the last interval, matching what the WebRTC HUD shows; the
-                    // running count stays alongside it as the detail.
-                    NativeNVSTStatsPanel.Row(label: "Packet Loss", value: nativeStatsPercentage(model.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(model.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor),
-                    NativeNVSTStatsPanel.Row(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: nativeStatsBandwidthDetail),
-                    NativeNVSTStatsPanel.Row(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms"),
-                ]),
-                NativeNVSTStatsPanel.Group(label: "VIDEO", rows: [
-                    NativeNVSTStatsPanel.Row(label: "Resolution", value: resolution),
-                    NativeNVSTStatsPanel.Row(label: "Codec", value: codec, detail: nativeStatsDecoderDetail),
-                    // Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed
-                    // from the HUD rather than from the diagnostic log.
-                    NativeNVSTStatsPanel.Row(label: "Colour", value: nativeStatsColourValue, detail: nativeStatsColourDetail, color: nativeStatsColourColor),
-                    NativeNVSTStatsPanel.Row(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail),
-                ]),
-                NativeNVSTStatsPanel.Group(label: "TIMING", rows: [
-                    // Client-side decode cost. It used to occupy the MS box, where it read as
-                    // network latency and was not one.
-                    NativeNVSTStatsPanel.Row(label: "Decode", value: nativeStatsDecodeValue, detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor),
-                    // Decode-to-glass, the latency a viewer feels from this side, and its jitter.
-                    NativeNVSTStatsPanel.Row(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail),
-                ]),
-                NativeNVSTStatsPanel.Group(label: "AUDIO", rows: [
-                    // The channel layout the bundle actually decodes. Surround is the one setting
-                    // whose outcome cannot be confirmed by looking at the stream, and the seat,
-                    // not the client, has the last word on it.
-                    NativeNVSTStatsPanel.Row(label: "Format", value: nativeStatsAudioValue, detail: nativeStatsAudioDetail, color: nativeStatsAudioColor),
-                    // Video path (decode + present) against audio's jitter-buffer dwell: an
-                    // estimate of which one reaches the viewer later, and by how much.
-                    NativeNVSTStatsPanel.Row(label: "A/V", value: nativeStatsAVValue, detail: nativeStatsAVDetail),
-                ]),
-                NativeNVSTStatsPanel.Group(label: "SESSION", rows: [
-                    NativeNVSTStatsPanel.Row(label: "Rig", value: nativeStatsRigName, detail: nativeStatsRigDetail),
-                    NativeNVSTStatsPanel.Row(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--")),
-                ]),
-            ]
+            heroes: nativeStatsHeroes,
+            groups: nativeStatsGroups(for: model.statsDetail)
         )
-        .opnTransition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
-        .padding([.top, .trailing], OPNDesign.Spacing.small)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        .opnTransition(.scale(scale: 0.94, anchor: model.statsPosition.transitionAnchor).combined(with: .opacity))
+        .streamStatsHUDPosition(model.statsPosition, isSidebarVisible: model.unifiedHUDVisible)
         .allowsHitTesting(false)
+    }
+
+    var nativeStatsHeroes: [NativeNVSTStatsPanel.Hero] {
+        let streamFramesPerSecond = nativeStatsStreamFramesPerSecond
+        return [
+            NativeNVSTStatsPanel.Hero(label: "GAME", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.gameFramesPerSecond), unit: "fps", color: nativeGameFPSColor(target: streamFramesPerSecond)),
+            NativeNVSTStatsPanel.Hero(label: "STREAM", value: nativeStatsWholeNumber(streamFramesPerSecond), unit: "fps", color: StreamHUDTheme.textPrimary),
+            NativeNVSTStatsPanel.Hero(label: "LATENCY", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.latencyMilliseconds), unit: "ms", color: nativeLatencyColor),
+        ]
+    }
+
+    /// The rows the overlay can draw, grouped by what they describe. Minimum takes none of them;
+    /// Compact keeps the handful a session is normally judged by; Advanced keeps every group.
+    func nativeStatsGroups(for level: StreamStatsDetailLevel) -> [NativeNVSTStatsPanel.Group] {
+        switch level {
+        case .minimum:
+            return []
+        case .compact:
+            return [NativeNVSTStatsPanel.Group(label: "OVERVIEW", rows: [
+                nativeStatsResolutionRow,
+                nativeStatsCodecRow,
+                nativeStatsBandwidthRow,
+                nativeStatsPacketLossRow,
+                nativeStatsFrameLossRow,
+            ])]
+        case .advanced:
+            return [
+                NativeNVSTStatsPanel.Group(label: "NETWORK", rows: nativeStatsNetworkRows),
+                NativeNVSTStatsPanel.Group(label: "VIDEO", rows: nativeStatsVideoRows),
+                NativeNVSTStatsPanel.Group(label: "TIMING", rows: nativeStatsTimingRows),
+                NativeNVSTStatsPanel.Group(label: "AUDIO", rows: nativeStatsAudioRows),
+                NativeNVSTStatsPanel.Group(label: "SESSION", rows: nativeStatsSessionRows),
+            ]
+        }
+    }
+
+    var nativeStatsNetworkRows: [NativeNVSTStatsPanel.Row] {
+        [nativeStatsFrameLossRow, nativeStatsPacketLossRow, nativeStatsBandwidthRow, nativeStatsJitterRow]
+    }
+
+    var nativeStatsVideoRows: [NativeNVSTStatsPanel.Row] {
+        [nativeStatsResolutionRow, nativeStatsCodecRow, nativeStatsColourRow, nativeStatsRenderRow]
+    }
+
+    var nativeStatsTimingRows: [NativeNVSTStatsPanel.Row] {
+        [nativeStatsDecodeRow, nativeStatsPresentRow]
+    }
+
+    var nativeStatsAudioRows: [NativeNVSTStatsPanel.Row] {
+        [nativeStatsAudioFormatRow, nativeStatsAVRow]
+    }
+
+    var nativeStatsSessionRows: [NativeNVSTStatsPanel.Row] {
+        [nativeStatsRigRow, nativeStatsServerLocationRow]
+    }
+
+    var nativeStatsStreamFramesPerSecond: Double {
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        return model.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
+    }
+
+    var nativeStatsResolutionRow: NativeNVSTStatsPanel.Row {
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let resolution = nonEmptyNativeStat(model.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
+        return NativeNVSTStatsPanel.Row(label: "Resolution", value: resolution)
+    }
+
+    var nativeStatsCodecRow: NativeNVSTStatsPanel.Row {
+        let codec = nonEmptyNativeStat(model.latestNativeStats?.codec, fallback: "--")
+        return NativeNVSTStatsPanel.Row(label: "Codec", value: codec, detail: nativeStatsDecoderDetail)
+    }
+
+    var nativeStatsFrameLossRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Frame Loss", value: nativeStatsCount(model.latestNativeStats?.frameLoss), detail: nativeStatsTotal(model.latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
+    }
+
+    /// Percent over the last interval, matching what the WebRTC HUD shows; the running count stays
+    /// alongside it as the detail.
+    var nativeStatsPacketLossRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Packet Loss", value: nativeStatsPercentage(model.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(model.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
+    }
+
+    var nativeStatsBandwidthRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: nativeStatsBandwidthDetail)
+    }
+
+    var nativeStatsJitterRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms")
+    }
+
+    /// Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed from the HUD rather
+    /// than from the diagnostic log.
+    var nativeStatsColourRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Colour", value: nativeStatsColourValue, detail: nativeStatsColourDetail, color: nativeStatsColourColor)
+    }
+
+    var nativeStatsRenderRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Render", value: nativeStatsRenderValue, detail: nativeStatsRenderDetail)
+    }
+
+    /// Client-side decode cost. It used to occupy the MS box, where it read as network latency and
+    /// was not one.
+    var nativeStatsDecodeRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Decode", value: nativeStatsDecodeValue, detail: nativeStatsDecodeDetail, color: nativeDecodeBudgetColor)
+    }
+
+    /// Decode-to-glass, the latency a viewer feels from this side, and its jitter.
+    var nativeStatsPresentRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Present", value: nativeStatsPresentValue, detail: nativeStatsPresentDetail)
+    }
+
+    /// The channel layout the bundle actually decodes. Surround is the one setting whose outcome
+    /// cannot be confirmed by looking at the stream, and the seat, not the client, has the last
+    /// word on it.
+    var nativeStatsAudioFormatRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Format", value: nativeStatsAudioValue, detail: nativeStatsAudioDetail, color: nativeStatsAudioColor)
+    }
+
+    /// Video path (decode + present) against audio's jitter-buffer dwell: an estimate of which one
+    /// reaches the viewer later, and by how much.
+    var nativeStatsAVRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "A/V", value: nativeStatsAVValue, detail: nativeStatsAVDetail)
+    }
+
+    var nativeStatsRigRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Rig", value: nativeStatsRigName, detail: nativeStatsRigDetail)
+    }
+
+    var nativeStatsServerLocationRow: NativeNVSTStatsPanel.Row {
+        NativeNVSTStatsPanel.Row(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--"))
     }
 
     /// The headline number: the slowest 1% of recent frames, not the session mean — a mean under

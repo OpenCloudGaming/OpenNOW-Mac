@@ -11,6 +11,13 @@ extension WebRTCMediaStreamSurface {
     var hudStatsPanel: some View {
         hudSection(label: "STATS") {
             VStack(alignment: .leading, spacing: 8) {
+                StreamStatsHUDShapeControls(
+                    detailLevel: statsDetail,
+                    position: statsPosition,
+                    focusedControlID: hudFocusID,
+                    onSelectDetail: { setStatsDetail($0) },
+                    onSelectPosition: { setStatsPosition($0) }
+                )
                 statsRow("Transport", latestStats?.transport.isEmpty == false ? "WebRTC · \(latestStats?.transport ?? "")" : "WebRTC")
                 statsRow("Latency", formatted(latestStats?.latencyMs, suffix: " ms"))
                 statsRow("Jitter", formatted(latestStats?.jitterMs, suffix: " ms"))

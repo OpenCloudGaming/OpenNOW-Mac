@@ -14,6 +14,7 @@ extension NativeNVSTMediaStreamSurface {
                 nativeHUDInputPanel
                 nativeHUDControllersPanel
                 nativeHUDNetworkPanel
+                nativeHUDStatsPanel
                 if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), model.remoteCoOpPreferences.isEnabled {
                     nativeHUDRemoteCoOpPanel
                 }

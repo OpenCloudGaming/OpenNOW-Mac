@@ -57,6 +57,10 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var unifiedHUDVisible = false
     @Published var streamControlsVisible = false
     @Published var nativeStatsVisible = false
+    /// The overlay's stored shape, chosen in the unified HUD: how much detail it shows and which
+    /// corner it occupies. The visible toggle above is per-session; these two persist.
+    @Published var statsDetail: StreamStatsDetailLevel = OPNStreamStatsHUDSettings.detailLevel
+    @Published var statsPosition: StreamStatsHUDPosition = OPNStreamStatsHUDSettings.position
     @Published var latestNativeStats: NativeNVSTPerformanceSnapshot?
     /// The renderer's view of the same second: surface format, drawable format, EDR, drawn/received.
     @Published var latestRenderDiagnostics: OPNVideoRenderDiagnosticsSnapshot?
