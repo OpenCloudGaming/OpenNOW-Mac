@@ -265,6 +265,22 @@ DISCARD and SAVE ALL refuse while that window's own edit is open, and if the bud
 that is being watched or edited, the pane returns to the library rather than failing later on the
 missing files.
 
+### Screenshot Quick Edit (`ScreenshotEditorView`, `ScreenshotSelectionOverlay`)
+
+The screenshot's Edit action opens an inline QUICK EDIT header with the BETA tag. Its square
+36-high controls wrap with the available width: Select, Crop, Undo, Redo, Reset, Cancel, and the
+accent Save as New Screenshot action. Select offers Select All and Clear Selection. The status
+line shows the selection's pixel dimensions or the output size; a pending selection must be
+cropped or cleared before saving. Cancel closes the draft, and Save creates a new PNG with the
+source's application and album membership.
+
+The image stays aspect-fit. A rectangular selection dims the surrounding image with Surface Scrim,
+uses an accent outline and eight 10-point square handles with 20-point hit targets, and carries
+thirds guides in Stroke Strong. Drag outside the selection to replace it, inside to move it, or
+on a handle to resize it. Arrow keys move by one source pixel, Option-arrow resizes, and Shift
+uses ten-pixel steps. All chrome dimensions scale with `opnUIScale`; image coordinates remain
+source pixels. The library is inactive during the edit so the draft stays associated with its image.
+
 ### Borders on Filled Controls
 
 Use `Rectangle().strokeBorder(...)`, never `Rectangle().stroke(...)`, on anything with a

@@ -28,7 +28,8 @@ struct ScreenshotsView: View {
         GeometryReader { proxy in
             HStack(spacing: 0) {
                 libraryList
-                    .frame(width: OPNDesign.clamped(proxy.size.width * 0.34, minimum: 380, maximum: 520))
+                    .frame(width: min(proxy.size.width * 0.45, OPNDesign.clamped(proxy.size.width * 0.34, minimum: 380 * uiScale, maximum: 520 * uiScale)))
+                    .disabled(model.editorViewModel != nil)
                 previewPane
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     // The pane's decorative backdrop ignores the safe area; clipping keeps it inside
@@ -43,6 +44,7 @@ struct ScreenshotsView: View {
         .overlay { albumEditorOverlay }
         .overlay { renameOverlay }
         .onAppear { model.reload(showMessage: false) }
+        .onDisappear { model.closeEditor() }
         .onChange(of: controllerPageCommand) { _, pageCommand in
             guard let pageCommand else { return }
             model.applyControllerCommand(pageCommand.command)
@@ -123,6 +125,7 @@ struct ScreenshotsView: View {
             OPNContextMenuHost(
                 surface: contextSurface,
                 onContextClick: { id, point in
+                    guard model.editorViewModel == nil else { return }
                     guard let screenshot = visibleScreenshots.first(where: { $0.id == id }) else { return }
                     contextMenuScreenshot = screenshot
                     contextMenuAnchor = point
@@ -147,6 +150,7 @@ struct ScreenshotsView: View {
     private func contextMenuItems(for screenshot: StreamScreenshot) -> [OPNDropdownItem] {
         [
             OPNDropdownItem(id: "open", title: "Open Screenshot") { model.open(screenshot) },
+            OPNDropdownItem(id: "edit", title: "Edit Screenshot") { model.startEditing(screenshot) },
             OPNDropdownItem(id: "rename", title: "Rename…") {
                 renamingScreenshot = screenshot
                 screenshotNameDraft = screenshot.title
@@ -165,7 +169,7 @@ struct ScreenshotsView: View {
                 VStack(alignment: .leading, spacing: 5 * uiScale) {
                     Text("SCREENSHOTS")
                         .font(.recordingsFont(size: 11 * uiScale, weight: .bold))
-                        .tracking(1.6)
+                        .tracking(1.6 * uiScale)
                         .foregroundStyle(OPNDesign.accentInk)
                     HStack(alignment: .center, spacing: 10 * uiScale) {
                         Text("Captured Stills")
@@ -207,7 +211,7 @@ struct ScreenshotsView: View {
             HStack(spacing: 8 * uiScale) {
                 Text("ALBUMS")
                     .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
-                    .tracking(1.0)
+                    .tracking(1.0 * uiScale)
                     .foregroundStyle(OPNDesign.Text.muted)
                 Spacer()
                 Button {
@@ -373,9 +377,18 @@ extension ScreenshotsView {
         // The backdrop is a `.background`, never a ZStack sibling: an `ignoresSafeArea` child in a
         // ZStack drew its blend-mode grid over the content instead of under it.
         Group {
-            if let selected = model.selectedScreenshot {
+            if let editor = model.editorViewModel {
+                ScreenshotEditorView(
+                    model: editor,
+                    onCancel: model.closeEditor,
+                    onSave: model.startEditorSave
+                )
+                .id(editor.screenshot.id)
+            }
+            if model.editorViewModel == nil, let selected = model.selectedScreenshot {
                 screenshotDetail(selected)
-            } else {
+            }
+            if model.editorViewModel == nil, model.selectedScreenshot == nil {
                 ScreenshotEmptyPlayer(message: model.message, uiScale: uiScale)
             }
         }
@@ -422,20 +435,28 @@ extension ScreenshotsView {
 
     private func detailFooter(_ screenshot: StreamScreenshot) -> some View {
         VStack(alignment: .leading, spacing: 12 * uiScale) {
-            HStack(spacing: 8 * uiScale) {
+            SettingsFlowLayout(spacing: 8 * uiScale) {
+                Button { model.startEditing(screenshot) } label: {
+                    HStack(spacing: 6 * uiScale) {
+                        Text("Edit")
+                        OPNBetaTag(uiScale: uiScale)
+                    }
+                }
+                    .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
                 Button("Open") { model.open(screenshot) }
                     .buttonStyle(RecordingActionButtonStyle(tone: .primary, uiScale: uiScale))
                 Button("Reveal in Finder") { model.reveal(screenshot) }
                     .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
                 Button("Copy Path") { model.copyPath(screenshot) }
                     .buttonStyle(RecordingActionButtonStyle(tone: .secondary, uiScale: uiScale))
-                Spacer()
+                Button("Delete") { model.pendingDelete = screenshot }
+                    .buttonStyle(RecordingActionButtonStyle(tone: .destructive, uiScale: uiScale))
+            }
+            if !model.message.isEmpty {
                 Text(model.message)
                     .font(.recordingsFont(size: 11 * uiScale, weight: .medium))
                     .foregroundStyle(model.copiedPathScreenshotID == screenshot.id ? OPNDesign.accentInk : OPNDesign.Text.tertiary)
-                    .lineLimit(1)
-                Button("Delete") { model.pendingDelete = screenshot }
-                    .buttonStyle(RecordingActionButtonStyle(tone: .destructive, uiScale: uiScale))
+                    .lineLimit(2)
             }
             albumMembership(screenshot)
         }
@@ -450,7 +471,7 @@ extension ScreenshotsView {
             HStack(spacing: 8 * uiScale) {
                 Text("ALBUMS")
                     .font(.recordingsFont(size: 10 * uiScale, weight: .bold))
-                    .tracking(1.0)
+                    .tracking(1.0 * uiScale)
                     .foregroundStyle(OPNDesign.Text.muted)
                 Spacer()
                 Button {

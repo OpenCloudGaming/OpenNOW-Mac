@@ -41,11 +41,15 @@ public struct ScreenshotAlbum: Codable, Equatable, Identifiable, Sendable {
 public enum StreamScreenshotLibraryError: LocalizedError {
     case encodingFailed
     case metadataWriteFailed(String)
+    case imageReadFailed
+    case invalidCrop
 
     public var errorDescription: String? {
         switch self {
         case .encodingFailed: return "OpenNOW could not encode the screenshot."
         case .metadataWriteFailed(let message): return message
+        case .imageReadFailed: return "OpenNOW could not read this screenshot. The image may be missing or damaged."
+        case .invalidCrop: return "Select an area inside the screenshot before cropping."
         }
     }
 }
@@ -102,23 +106,33 @@ public enum StreamScreenshotLibrary {
         NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 
-    /// Writes the PNG and its sidecar. The image is encoded before the metadata, so a failure leaves
-    /// at most an orphan picture the next scan filters out rather than metadata pointing at nothing.
     @discardableResult
-    public static func save(_ image: StreamScreenshotImage, title: String, applicationID: String) throws -> StreamScreenshot {
-        try ensureWritableDirectory(at: screenshotsDirectory)
+    public static func save(
+        _ image: StreamScreenshotImage,
+        title: String,
+        applicationID: String,
+        albumIDs: [UUID] = [],
+        directory: URL = screenshotsDirectory
+    ) throws -> StreamScreenshot {
+        try Task.checkCancellation()
+        try ensureWritableDirectory(at: directory)
         let id = UUID()
         let fileName = id.uuidString + ".png"
-        let imageURL = screenshotsDirectory.appendingPathComponent(fileName)
+        let imageURL = directory.appendingPathComponent(fileName)
+        var isComplete = false
+        defer {
+            if !isComplete { try? FileManager.default.removeItem(at: imageURL) }
+        }
         guard let destination = CGImageDestinationCreateWithURL(imageURL as CFURL, UTType.png.identifier as CFString, 1, nil) else {
             throw StreamScreenshotLibraryError.encodingFailed
         }
         CGImageDestinationAddImage(destination, image.cgImage, nil)
         guard CGImageDestinationFinalize(destination) else {
-            try? FileManager.default.removeItem(at: imageURL)
             throw StreamScreenshotLibraryError.encodingFailed
         }
-        let fileSizeBytes = (try? FileManager.default.attributesOfItem(atPath: imageURL.path)[.size] as? Int64) ?? 0
+        try Task.checkCancellation()
+        let attributes = try FileManager.default.attributesOfItem(atPath: imageURL.path)
+        let fileSizeBytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         let screenshot = StreamScreenshot(
             id: id,
             title: title.isEmpty ? "GeForce NOW Screenshot" : title,
@@ -128,10 +142,11 @@ public enum StreamScreenshotLibrary {
             height: image.height,
             fileName: fileName,
             fileSizeBytes: fileSizeBytes,
-            albumIDs: [],
-            storageDirectoryPath: screenshotsDirectory.path
+            albumIDs: albumIDs,
+            storageDirectoryPath: directory.path
         )
         try writeMetadata(screenshot)
+        isComplete = true
         return screenshot
     }
 

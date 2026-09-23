@@ -26,6 +26,9 @@ final class ScreenshotsViewModel: ObservableObject {
     @Published var pendingAlbumDelete: ScreenshotAlbum?
     @Published var copiedPathScreenshotID: UUID?
     @Published var message = ""
+    @Published var editorViewModel: ScreenshotEditorViewModel?
+
+    var editorSaveTask: Task<Void, Never>?
 
     private let systemIntegration: any SystemIntegrationServing
     private var reloadTask: Task<Void, Never>?
@@ -39,6 +42,7 @@ final class ScreenshotsViewModel: ObservableObject {
     }
 
     deinit {
+        editorSaveTask?.cancel()
         if let libraryObserver {
             NotificationCenter.default.removeObserver(libraryObserver)
         }
@@ -175,7 +179,20 @@ final class ScreenshotsViewModel: ObservableObject {
     }
 
     func select(_ screenshot: StreamScreenshot?) {
+        guard editorViewModel == nil else { return }
         selectedScreenshot = screenshot
+    }
+
+    func editedScreenshotSaved(_ screenshot: StreamScreenshot) {
+        reloadTask?.cancel()
+        editorViewModel = nil
+        screenshots.removeAll { $0.id == screenshot.id }
+        screenshots.insert(screenshot, at: 0)
+        searchText = ""
+        activeFilters.removeAll()
+        if !visibleScreenshots.contains(where: { $0.id == screenshot.id }) { selectedAlbum = .all }
+        selectedScreenshot = screenshot
+        message = "Saved \(screenshot.title) as a new screenshot."
     }
 
     // MARK: - Search, filters, sort
@@ -344,6 +361,7 @@ final class ScreenshotsViewModel: ObservableObject {
 
     /// Drops the selection when its screenshot is no longer visible.
     func reconcileSelection(withVisibleIDs ids: [UUID]) {
+        guard editorViewModel == nil else { return }
         guard let selectedScreenshot, !ids.contains(selectedScreenshot.id) else { return }
         self.selectedScreenshot = visibleScreenshots.first
     }
@@ -351,6 +369,7 @@ final class ScreenshotsViewModel: ObservableObject {
     /// Pad navigation over the visible list: up/left and down/right walk the selection, confirm
     /// opens the highlighted shot. Selection already shows the image, so moving is enough to browse.
     func applyControllerCommand(_ command: ControllerInputCommand) {
+        guard editorViewModel == nil else { return }
         let screenshots = visibleScreenshots
         guard !screenshots.isEmpty else { return }
         guard let selectedScreenshot, let currentIndex = screenshots.firstIndex(where: { $0.id == selectedScreenshot.id }) else {
