@@ -63,7 +63,7 @@ extension OPNAuthService {
     static let oauthCallbackReceiveTimeout: TimeInterval = 10
 
     static var oauthCallbackCompletePage: String {
-        oauthCallbackResultPage(title: "Sign in complete", message: "You can close this window and return to OpenNOW.")
+        oauthCallbackResultPage(title: "Login Completed", message: "You can close this window and return to OpenNOW.")
     }
 
     static var oauthCallbackCancelledPage: String {
