@@ -27,13 +27,9 @@ let package = Package(
         .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.4.0")
     ],
     targets: [
-        // Prebuilt WebRTC engine (streaming + Remote Co-Op). Committed artifact: the stasel
-        // WebRTC 152.0.0 macOS arm64 slice plus the upstream RTCAudioDevice.h header overlay —
-        // derivation recorded in Resources/Licenses/THIRD_PARTY_NOTICES.md.
-        .binaryTarget(name: "WebRTC", path: "Vendor/WebRTC.xcframework"),
         // The native NVST bundle's protocol libraries (milestone 4), built as *static* frameworks
-        // so nothing has to be embedded or re-signed at runtime — unlike WebRTC above, which is
-        // dynamic. Derivation and pins in Resources/Licenses/THIRD_PARTY_NOTICES.md.
+        // so nothing has to be embedded or re-signed at runtime. Derivation and pins in
+        // Resources/Licenses/THIRD_PARTY_NOTICES.md.
         .binaryTarget(name: "OpenSSL", path: "Vendor/OpenSSL.xcframework"),
         .binaryTarget(name: "usrsctp", path: "Vendor/usrsctp.xcframework"),
         .target(
@@ -41,7 +37,6 @@ let package = Package(
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa"),
                 .product(name: "Ably", package: "ably-cocoa"),
-                "WebRTC",
                 "OpenSSL",
                 "usrsctp"
             ],
@@ -92,7 +87,7 @@ let package = Package(
         ),
         .testTarget(
             name: "OpenNOWTests",
-            dependencies: ["OpenNOW", "WebRTC", "OpenSSL", "usrsctp"],
+            dependencies: ["OpenNOW", "OpenSSL", "usrsctp"],
             path: "Tests",
             cSettings: [
                 .headerSearchPath("../Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),
@@ -109,7 +104,7 @@ let package = Package(
         // did from the test target.
         .executableTarget(
             name: "OpenNOWBenchmarks",
-            dependencies: ["OpenNOW", "WebRTC", "OpenSSL", "usrsctp"],
+            dependencies: ["OpenNOW", "OpenSSL", "usrsctp"],
             path: "Benchmarks",
             cSettings: [
                 .headerSearchPath("../Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),

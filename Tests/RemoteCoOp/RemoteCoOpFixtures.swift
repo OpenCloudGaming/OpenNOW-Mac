@@ -4,8 +4,6 @@
 import Testing
 import AudioUnit
 import Foundation
-import CoreVideo
-@preconcurrency import WebRTC
 @testable import OpenNOW
 
 enum RemoteCoOpFixtures {
@@ -58,18 +56,6 @@ enum RemoteCoOpFixtures {
         domain.removeValue(forKey: key)
         defaults.setPersistentDomain(domain, forName: preferenceDomain)
         defaults.synchronize()
-    }
-
-    static func makeVideoFrame() throws -> RTCVideoFrame {
-        var pixelBuffer: CVPixelBuffer?
-        let status = CVPixelBufferCreate(nil, 2, 2, kCVPixelFormatType_32BGRA, nil, &pixelBuffer)
-        #expect(status == kCVReturnSuccess)
-        let buffer = RTCCVPixelBuffer(pixelBuffer: try #require(pixelBuffer))
-        return RTCVideoFrame(buffer: buffer, rotation: ._0, timeStampNs: 1)
-    }
-
-    static func makeAudioFrame() -> OPNRemoteCoOpHostAudioFrame {
-        OPNRemoteCoOpHostAudioFrame(samples: audioData([1, -1]), frameCount: 1)
     }
 
     static func audioData(_ samples: [Int16]) -> Data {

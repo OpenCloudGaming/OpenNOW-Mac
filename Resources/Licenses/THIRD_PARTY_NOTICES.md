@@ -16,7 +16,6 @@ own source is licensed separately under the MIT License (`LICENSE` in the source
 | Component | Version | License | How it reaches the user |
 | --- | --- | --- | --- |
 | Hanken Grotesk | 3.013, static instances | SIL OFL 1.1 | `Resources/Fonts/*.woff2`, bundled |
-| WebRTC | see *WebRTC build provenance* | BSD 3-Clause | `Vendor/WebRTC.xcframework`, committed |
 | OpenSSL | 3.5.8 | Apache-2.0 | `Vendor/OpenSSL.xcframework`, committed (static) |
 | usrsctp | 0.9.5.0 | BSD 3-Clause | `Vendor/usrsctp.xcframework`, committed (static) |
 | ably-js | 2.28.0 | Apache-2.0 | `Resources/RemoteCoOp/browser/vendor/ably.min.js`, bundled |
@@ -47,70 +46,6 @@ The bundled WOFF2 files are static instances generated from the upstream variabl
 Reserved Font Name restriction is not triggered: the bundled `OFL.txt` declares no Reserved Font
 Name for this family.
 
-## WebRTC
-
-- Copyright (c) 2011, The WebRTC project authors. All rights reserved.
-- License: BSD 3-Clause
-- Bundled as `WebRTC.framework`, sourced from `Vendor/WebRTC.xcframework` (see *WebRTC build
-  provenance*). The committed xcframework carries the license text at its root
-  (`Vendor/WebRTC.xcframework/LICENSE`); the embedded framework slice does not include a
-  standalone license file, so the authoritative redistributed text is the appendix below, which
-  ships inside the application bundle with this file.
-
-`WebRTC.framework` is a self-contained binary whose WebRTC and `third_party` sources are compiled in
-(rather than shipping as an umbrella over separate dependency frameworks). The WebRTC BSD 3-Clause
-license covers the WebRTC project's own code; the components it compiles from WebRTC's `third_party`
-tree carry their own licenses. Components confirmed present in the shipped binary are:
-
-- dav1d (BSD 2-Clause) — AV1 decode
-- libvpx (BSD 3-Clause) — VP8/VP9
-- Opus (BSD 3-Clause) — audio
-- libsrtp (BSD 3-Clause) — SRTP
-- abseil-cpp (Apache-2.0)
-- BoringSSL (OpenSSL and ISC licenses)
-- zlib (zlib license)
-- libyuv (BSD 3-Clause)
-
-H.264 is handled through Apple's VideoToolbox, which is licensed by Apple as part of macOS rather
-than bundled here. No OpenH264 binary from Cisco is present, so no MPEG LA notice applies.
-
-### WebRTC build provenance
-
-`WebRTC.framework` is a prebuilt binary committed to this repository at `Vendor/WebRTC.xcframework`;
-building OpenNOW does not rebuild WebRTC from source. Derivation:
-
-- Base: <https://github.com/stasel/WebRTC/releases/tag/152.0.0> (release `152.0.0`, built by the
-  open-source stasel/WebRTC GitHub Actions pipeline from official WebRTC source, unmodified)
-- Source stamp of the shipped binary: `2026-07-27T04:06:41`
-- Trimmed to the macOS arm64 slice (the application ships arm64-only, matching the previous
-  committed binary); the xcframework `Info.plist` was updated to list that slice only
-- Overlay: the upstream `sdk/objc/components/audio/RTCAudioDevice.h` header (BSD 3-Clause,
-  WebRTC project authors, `#import` line adjusted to the umbrella path) is added to the slice's
-  headers and umbrella, because stock stasel distributions omit that header even though the
-  shipped binary implements the ObjC audio device layer. No binary content is modified.
-- Ad-hoc signed at `Versions/A`; the real signature is applied during "Embed Frameworks"
-- `Versions/A/WebRTC` SHA-256: recorded below for swap detection
-- Consumers: the Xcode app target links `Vendor/WebRTC.xcframework`; the SwiftPM test target
-  consumes the same artifact as a binary target
-
-`Vendor/WebRTC.xcframework/macos-arm64/WebRTC.framework/Versions/A/WebRTC` (Mach-O arm64):
-`e2475a21dea2ff8e3049d98519dc83cc15ceb1f13eac694c88d16ac32f687a5b`
-
-An earlier provenance baseline covered a prebuilt framework committed before tracking existed
-(source stamp 2026-05-10T04:07:40, no upstream revision recoverable). That binary was replaced
-by the traced artifact above in 2026-09; the historical hashes were:
-
-- `WebRTC.framework/Versions/A/WebRTC` (Mach-O arm64 shared library):
-  `1bf31c5f99f0c43649c3bd0f24cf5b3149d3e25917ef608bde2fd7c3f3091b8f`
-- `WebRTC.framework/Versions/A/Resources/LICENSE`:
-  `ab00a482b6a3902e40211b43c5d0441962ea99b6cc7c25c0f243fa270b78d482`
-
-Any future WebRTC update must pick a tagged stasel release, repeat the slice trim and header
-overlay if the upstream packaging still omits `RTCAudioDevice.h`, ad-hoc sign the slice, record
-the new source stamp and SHA-256 in this section, and update the comments in `Package.swift` so
-attribution stays reproducible. The authoritative notices for the `third_party` components above
-are those in the upstream WebRTC tree at the release's source revision.
-
 ## OpenSSL and usrsctp
 
 The native NVST bundle (milestone 4) terminates DTLS/SRTP and SCTP itself instead of relying on
@@ -119,7 +54,7 @@ the app binary: nothing is embedded at runtime and nothing outside the main bina
 
 - OpenSSL 3.5.8 — Apache License 2.0 (appendix below). Provides the DTLS 1.2 client and the SRTP
   keying material export.
-- usrsctp 0.9.5.0 — BSD 3-Clause (same terms as the WebRTC appendix entry). Provides the SCTP
+- usrsctp 0.9.5.0 — BSD 3-Clause (see the BSD 3-Clause license text below). Provides the SCTP
   data channels that carry NVST control and input.
 
 Neither ships a `NOTICE` file; OpenSSL's `LICENSE.txt` is the Apache-2.0 text reproduced in the
@@ -157,7 +92,7 @@ Derivation:
   upstream release needs narrow Xcode 27 warning exclusions for unused-but-set locals, old C
   prototypes and 64-to-32 conversions; other warnings remain errors. It uses its bundled SHA-1
   implementation and does not add an mbedTLS dependency.
-- Both are arm64-only, matching the committed WebRTC slice. Adding x86_64 later means rebuilding
+- Both are arm64-only, matching the committed OpenSSL and usrsctp slices. Adding x86_64 later means rebuilding
   both for that architecture and extending the xcframework slices.
 
 Shipped framework binaries, SHA-256 (for swap detection):
@@ -264,7 +199,7 @@ Use.
 
 ### Apache License 2.0
 
-Applies to: ably-js, ably-cocoa, delta-codec-cocoa, xdelta3, cpp-btree, msgpack-objective-C, abseil-cpp (inside WebRTC).
+Applies to: ably-js, ably-cocoa, delta-codec-cocoa, xdelta3, cpp-btree, msgpack-objective-C.
 
 ~~~
                                  Apache License
@@ -443,40 +378,6 @@ Applies to: ably-js, ably-cocoa, delta-codec-cocoa, xdelta3, cpp-btree, msgpack-
       of your accepting any such warranty or additional liability.
 
    END OF TERMS AND CONDITIONS
-~~~
-
-### BSD 3-Clause — WebRTC
-
-~~~
-Copyright (c) 2011, The WebRTC project authors. All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-  * Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
-
-  * Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in
-    the documentation and/or other materials provided with the
-    distribution.
-
-  * Neither the name of Google nor the names of its contributors may
-    be used to endorse or promote products derived from this software
-    without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~
 
 ### BSD License — SocketRocket

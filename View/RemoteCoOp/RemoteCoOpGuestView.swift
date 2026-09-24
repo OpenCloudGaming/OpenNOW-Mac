@@ -3,7 +3,6 @@
 //
 
 import SwiftUI
-@preconcurrency import WebRTC
 
 struct RemoteCoOpGuestView: View {
     @StateObject private var viewModel = RemoteCoOpGuestViewModel()
@@ -22,8 +21,8 @@ struct RemoteCoOpGuestView: View {
             // bug did exactly that - and rendering it put the game on screen underneath the
             // "waiting for approval" overlay, which is the one thing that overlay promises is not
             // happening. The host is not the only thing that should have to be right about this.
-            if let track = viewModel.videoTrack, viewModel.phase.allowsVideoPlayback {
-                RemoteCoOpGuestVideoSurface(track: track)
+            if viewModel.phase.allowsVideoPlayback {
+                RemoteCoOpNativeVideoSurface(sink: viewModel.nativeFrameSink)
                     .ignoresSafeArea()
             }
             overlayContent
@@ -103,37 +102,33 @@ struct RemoteCoOpGuestView: View {
         case .connecting, .waitingForApproval:
             statusPanel(systemImage: "person.wave.2")
         case .connected:
-            if viewModel.videoTrack == nil {
-                statusPanel(systemImage: "antenna.radiowaves.left.and.right")
-            } else {
-                VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
-                    // No status pill once the video is up. "Watching <title>" restated what the guest
-                    // is already looking at, and the controls next to it are the only part of this
-                    // row that does anything.
-                    HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
-                        leaveButton
-                        statsToggle
-                        qualityMenu
-                        Spacer()
-                    }
-                    .opacity(controlsVisible ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.2), value: controlsVisible)
-                    if viewModel.hasController == false {
-                        controllerMissingNotice
-                    }
-                    if viewModel.statsVisible, let stats = viewModel.stats {
-                        Text([viewModel.connectedHostName, stats.overlayText].compactMap { $0 }.joined(separator: "  ·  "))
-                            .catalogFont(size: 11 * uiScale, weight: .medium)
-                            .monospacedDigit()
-                            .foregroundStyle(OPNDesign.Text.primary)
-                            .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
-                            .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
-                            .background(OPNDesign.Surface.scrim)
-                    }
+            VStack(alignment: .leading, spacing: OPNDesign.Spacing.xxSmall(scale: uiScale)) {
+                // No status pill once the video is up. "Watching <title>" restated what the guest
+                // is already looking at, and the controls next to it are the only part of this
+                // row that does anything.
+                HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+                    leaveButton
+                    statsToggle
+                    qualityMenu
                     Spacer()
                 }
-                .padding(OPNDesign.Spacing.medium(scale: uiScale))
+                .opacity(controlsVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.2), value: controlsVisible)
+                if viewModel.hasController == false {
+                    controllerMissingNotice
+                }
+                if viewModel.statsVisible, let stats = viewModel.stats {
+                    Text([viewModel.connectedHostName, stats.overlayText].compactMap { $0 }.joined(separator: "  ·  "))
+                        .catalogFont(size: 11 * uiScale, weight: .medium)
+                        .monospacedDigit()
+                        .foregroundStyle(OPNDesign.Text.primary)
+                        .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
+                        .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
+                        .background(OPNDesign.Surface.scrim)
+                }
+                Spacer()
             }
+            .padding(OPNDesign.Spacing.medium(scale: uiScale))
         case .failed(let reason):
             failurePanel(reason: reason)
         }
@@ -399,51 +394,38 @@ struct RemoteCoOpGuestView: View {
     }
 }
 
-/// The guest's video: the stream surface's own Metal view, driven through the Co-Op boundary
-/// renderer that converts the received track's RTC frames to native ones.
-private struct RemoteCoOpGuestVideoSurface: NSViewRepresentable {
-    let track: RTCVideoTrack
+/// The guest's video: the stream surface's own Metal view, fed decoded `OPNVideoFrame`s directly.
+/// No WebRTC, no I420 conversion — the media engine already produced the pixel buffer.
+private struct RemoteCoOpNativeVideoSurface: NSViewRepresentable {
+    let sink: RemoteCoOpNativeFrameSink
 
-    /// Holds whichever track the view is currently rendering. `var`, because SwiftUI reuses the
-    /// NSView across a track change and the renderer has to be moved: bound once in `makeNSView`,
-    /// the second track never rendered and `dismantleNSView` released the wrong one.
-    final class Coordinator {
-        var track: RTCVideoTrack
-        var renderer: OPNRemoteCoOpGuestVideoRenderer?
+    /// Retains the view so the media connection's frame callback can render off the main thread.
+    /// Rendering is thread-safe, so no actor hop is needed at stream cadence.
+    final class Renderer: @unchecked Sendable {
+        private let view: OPNMetalVideoView
 
-        init(track: RTCVideoTrack) { self.track = track }
-    }
+        init(view: OPNMetalVideoView) {
+            self.view = view
+        }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(track: track)
+        func render(_ frame: OPNVideoFrame) {
+            view.renderFrame(frame)
+        }
     }
 
     func makeNSView(context: Context) -> OPNMetalVideoView {
-        // 120 rather than 60: this becomes the layer's `preferredFramesPerSecond`, so a 60 here would
-        // cap presentation at 60 even when the host is sending a 120 fps preset - the received frames
-        // would be decoded and then dropped at the last step. The guest has no way to know which
-        // preset the host chose, and the value is a ceiling the system clamps to the actual display
-        // refresh, so asking for the higher one costs nothing on a 60 Hz panel.
+        // 120 rather than 60: a `preferredFramesPerSecond` ceiling the system clamps to the display, so
+        // asking high costs nothing on a 60 Hz panel and does not cap a 120 fps stream.
         let view = OPNMetalVideoView(frame: .zero, targetFps: 120)
-        let renderer = OPNRemoteCoOpGuestVideoRenderer(view: view)
-        context.coordinator.renderer = renderer
-        track.add(renderer)
+        let renderer = Renderer(view: view)
+        sink.set { [renderer] frame in renderer.render(frame) }
         return view
     }
 
-    func updateNSView(_ nsView: OPNMetalVideoView, context: Context) {
-        guard context.coordinator.track !== track else { return }
-        if let renderer = context.coordinator.renderer {
-            context.coordinator.track.remove(renderer)
-            track.add(renderer)
-        }
-        context.coordinator.track = track
-    }
+    func updateNSView(_ nsView: OPNMetalVideoView, context: Context) {}
 
-    // The track retains its renderers, so a view that is going away must be removed explicitly or
-    // libwebrtc keeps decoding into it.
-    static func dismantleNSView(_ nsView: OPNMetalVideoView, coordinator: Coordinator) {
-        guard let renderer = coordinator.renderer else { return }
-        coordinator.track.remove(renderer)
+    static func dismantleNSView(_ nsView: OPNMetalVideoView, coordinator: ()) {
+        // The sink is owned by the view model; the renderer retains the view, so the pair is released
+        // together when the window closes.
     }
 }

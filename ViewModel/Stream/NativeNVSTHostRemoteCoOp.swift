@@ -93,8 +93,7 @@ extension NativeNVSTHostViewModel {
         remoteCoOpPreferences = preferences
         remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode, latencyMode: preferences.latencyMode, sessionQualityPreset: preferences.qualityPreset)
         remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: preferences, invite: remoteCoOpSnapshot.invite, participants: remoteCoOpSnapshot.participants)
-        applyRemoteCoOpVideoScale(preferences: preferences)
-        Task { @MainActor in
+                Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
             await remoteCoOpEmbeddedServer?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
             remoteCoOpNativeServer?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
@@ -105,19 +104,9 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    /// Tells the relay how far down to scale before handing frames to libwebrtc. The native session
-    /// decodes at full resolution - 5120x2160 on a 5K profile - and the guest preset tops out at
-    /// 1080p, so without this every frame would be converted to I420 at source size and then thrown
-    /// away by the encoder's own adaptation.
-    func applyRemoteCoOpVideoScale(preferences: OPNRemoteCoOpPreferences) {
-        // The largest live guest, not the session default: one buffer feeds every encoder, so a smaller
-        // pre-scale would cap the most demanding guest with no way to recover.
-        let preset = remoteCoOpSnapshot.participants
-            .filter { $0.connectionState == .connected && $0.inputEnabled }
-            .map { $0.effectiveQualityPreset(sessionDefault: preferences.qualityPreset) }
-            .max { ($0.width * $0.height) < ($1.width * $1.height) } ?? preferences.qualityPreset
-        remoteCoOpVideoRelay.setPreferredOutputSize(width: preset.width, height: preset.height)
-    }
+    /// The native session forwards the source stream unmodified; per-guest scaling is a later
+    /// milestone, so there is no relay pre-scale to apply.
+    func applyRemoteCoOpVideoScale(preferences _: OPNRemoteCoOpPreferences) {}
 
     /// Retargets one guest's stream, or clears them back to the session default with nil.
     func setRemoteCoOpParticipantQualityPreset(_ preset: OPNRemoteCoOpQualityPreset?, for participantID: UUID) {
@@ -157,8 +146,7 @@ extension NativeNVSTHostViewModel {
         // published *its* invite and copied *its* link, while the only live channel belonged to the
         // second. Every guest opening the copied link was dropped.
         isStartingRemoteCoOpInvite = true
-        applyRemoteCoOpVideoScale(preferences: preferences)
-        Task { @MainActor in
+                Task { @MainActor in
             defer { isStartingRemoteCoOpInvite = false }
             let neutralEvents = await stopRemoteCoOpSession()
             await sendRemoteCoOpNeutralInput(neutralEvents)
@@ -652,9 +640,8 @@ extension NativeNVSTHostViewModel {
             networkConfiguration: remoteCoOpNetworkConfiguration,
             qualityPreset: preferences.qualityPreset,
             latencyMode: preferences.latencyMode,
-            videoRelay: remoteCoOpVideoRelay,
-            audioRelay: remoteCoOpAudioRelay,
-            // Off the main actor: guest packets arrive on libwebrtc's network thread, and hopping to a
+            peerFactory: OPNRemoteCoOpNativeHostPeerFactory(broadcaster: remoteCoOpNativeBroadcaster),
+            // Off the main actor: guest packets arrive on the native socket's queue, and hopping to a
             // main actor that is also driving the Metal surface cost frames. The holder returns nil
             // after teardown, matching what the `isEnding`/`didEnd` guard did.
             forwardInput: { [holder = inputDispatcherHolder] event in
@@ -700,8 +687,7 @@ extension NativeNVSTHostViewModel {
         remoteCoOpListenTask?.cancel()
         remoteCoOpListenTask = nil
         await remoteCoOpPeerController?.removeAll()
-        remoteCoOpVideoRelay.removeAll()
-        remoteCoOpAudioRelay.removeAll()
+        remoteCoOpNativeBroadcaster.removeAll()
         remoteCoOpPeerController = nil
         await remoteCoOpSignalingSession?.close()
         remoteCoOpSignalingSession = nil

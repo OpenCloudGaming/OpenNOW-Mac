@@ -117,7 +117,9 @@ public final class NvstOpusEncoder: @unchecked Sendable {
             mDataByteSize: UInt32(feed.samples.count * MemoryLayout<Float>.size)
         )
         descriptions?.pointee = feed.description
-        packetCount.pointee = 1
+        // The source is PCM with `mFramesPerPacket = 1`, so one input packet is one frame: report the
+        // frame count. Reporting 1 made CoreAudio warn it had been handed 480 packets for 3840 bytes.
+        packetCount.pointee = frames
         return noErr
     }
 

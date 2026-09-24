@@ -43,6 +43,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
 
     let audioQueue = DispatchQueue(label: "io.opencg.opennow.nvst.coreaudio")
     private let requestedPlayoutChannels: Int
+    private let capturesMicrophone: Bool
     private let monitorsDefaultOutput: Bool
     private var playoutUnit: AudioUnit?
     private var captureUnit: AudioUnit?
@@ -74,8 +75,9 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
 
     public var outputPathLatencySeconds: TimeInterval { outputLatency + outputIOBufferDuration }
 
-    public init(playoutChannelCount: Int = 2, monitorsDefaultOutputDevice: Bool = true) {
+    public init(playoutChannelCount: Int = 2, capturesMicrophone: Bool = true, monitorsDefaultOutputDevice: Bool = true) {
         self.requestedPlayoutChannels = NvstCoreAudioFormat.supportedPlayoutChannelCount(playoutChannelCount)
+        self.capturesMicrophone = capturesMicrophone
         self.monitorsDefaultOutput = monitorsDefaultOutputDevice
         super.init()
         audioQueue.sync { updateDeviceParameters() }
@@ -96,7 +98,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         audioQueue.sync {
             updateDeviceParameters()
             _ = startPlayoutLocked()
-            _ = startCaptureLocked()
+            if capturesMicrophone { _ = startCaptureLocked() }
         }
     }
 

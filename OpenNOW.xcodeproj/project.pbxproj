@@ -7,14 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		7729CE862FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */; };
-		7729CE882FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
 		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
 		A00000000000000000000003 /* OPNApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* OPNApp.swift */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
 		A00000000000000000000404 /* Ably in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000406 /* Ably */; };
-		C00000000000000000000001 /* Vendor/WebRTC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */; };
 		D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
 		D00000000000000000000003 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
 		D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000004 /* Vendor/usrsctp.xcframework */; };
@@ -38,7 +35,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				7729CE882FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -47,7 +43,6 @@
 
 /* Begin PBXFileReference section */
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW Dev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "OpenNOW Dev.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/WebRTC.xcframework; sourceTree = "<group>"; };
 		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		A00000000000000000000004 /* OPNApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPNApp.swift; sourceTree = "<group>"; };
@@ -100,7 +95,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */,
-				7729CE862FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Frameworks */,
 				D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */,
 				D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */,
 				A00000000000000000000401 /* Sentry in Frameworks */,
@@ -112,7 +106,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C00000000000000000000001 /* Vendor/WebRTC.xcframework in Frameworks */,
 				D00000000000000000000003 /* Vendor/OpenSSL.xcframework in Frameworks */,
 				D00000000000000000000006 /* Vendor/usrsctp.xcframework in Frameworks */,
 			);
@@ -134,7 +127,6 @@
 				A00000000000000000000002 /* Resources */,
 				A00000000000000000000004 /* OPNApp.swift */,
 				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
-				7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */,
 				D00000000000000000000001 /* Vendor/OpenSSL.xcframework */,
 				D00000000000000000000004 /* Vendor/usrsctp.xcframework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,

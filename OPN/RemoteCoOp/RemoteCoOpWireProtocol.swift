@@ -43,6 +43,30 @@ public enum OPNRemoteCoOpWirePeerSignalKind: String, Codable, Equatable, Sendabl
     case offer
     case answer
     case iceCandidate
+    /// Native transport: the host tells the guest which UDP ports to reach and with what token.
+    case nativeHost
+}
+
+/// What replaces SDP for the native transport: the host's UDP ports and the token that binds the
+/// guest's flow. The guest sends a hello datagram to `mediaPort`; the host learns the guest's
+/// endpoint from that datagram's source and starts forwarding, so no address has to survive NAT.
+public struct OPNRemoteCoOpNativeConnection: Codable, Equatable, Sendable {
+    /// UDP port the host sends video and audio from; the guest's hello and media both land here.
+    public var mediaPort: UInt16
+    /// UDP port the host listens on for guest input.
+    public var inputPort: UInt16
+    /// Short token the guest echoes in its hello and input so a stray datagram cannot inject input.
+    public var token: String
+    /// The host address the guest should reach, when the host can name one. Omitted by a host that
+    /// only knows its signaling peer's address, in which case the guest uses that instead.
+    public var hostAddress: String?
+
+    public init(mediaPort: UInt16, inputPort: UInt16, token: String, hostAddress: String? = nil) {
+        self.mediaPort = mediaPort
+        self.inputPort = inputPort
+        self.token = token
+        self.hostAddress = hostAddress
+    }
 }
 
 public struct OPNRemoteCoOpWirePeerSignal: Codable, Equatable, Sendable {
@@ -51,17 +75,21 @@ public struct OPNRemoteCoOpWirePeerSignal: Codable, Equatable, Sendable {
     public var candidate: String?
     public var sdpMid: String?
     public var sdpMLineIndex: Int?
+    /// Present only for `.nativeHost`.
+    public var nativeConnection: OPNRemoteCoOpNativeConnection?
 
     public init(kind: OPNRemoteCoOpWirePeerSignalKind,
                 sdp: String? = nil,
                 candidate: String? = nil,
                 sdpMid: String? = nil,
-                sdpMLineIndex: Int? = nil) {
+                sdpMLineIndex: Int? = nil,
+                nativeConnection: OPNRemoteCoOpNativeConnection? = nil) {
         self.kind = kind
         self.sdp = sdp
         self.candidate = candidate
         self.sdpMid = sdpMid
         self.sdpMLineIndex = sdpMLineIndex
+        self.nativeConnection = nativeConnection
     }
 }
 

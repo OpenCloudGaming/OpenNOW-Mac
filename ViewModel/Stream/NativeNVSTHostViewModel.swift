@@ -115,8 +115,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
     // transport so they survive `makeTransport` and can be handed to the peer controller: they are
     // the seam between the NVST decode/audio threads and each guest's WebRTC peer.
     let remoteCoOpHostSession = OPNRemoteCoOpHostSession()
-    let remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
-    let remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
+    /// The native transport's per-session media fanout: the source video and PCM audio every native
+    /// guest receives. Fed off the same decode/audio taps the recorder and replay buffer are.
+    let remoteCoOpNativeBroadcaster = RemoteCoOpNativeMediaBroadcaster()
     var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
     var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
     var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
@@ -354,8 +355,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
                 diagnosticLog.append(sanitized)
             },
-            remoteCoOpVideoRelay: remoteCoOpVideoRelay,
-            remoteCoOpAudioRelay: remoteCoOpAudioRelay
+            remoteCoOpNativeBroadcaster: remoteCoOpNativeBroadcaster
         )
         if let bifrostFree = transport as? NvstBifrostFreeTransport {
             attachSeatNotificationHandlers(bifrostFree, nativeView: nativeView)

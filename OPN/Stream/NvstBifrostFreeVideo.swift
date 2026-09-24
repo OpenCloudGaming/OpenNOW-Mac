@@ -31,9 +31,6 @@ extension NvstBifrostFreeTransport {
         // The screenshot tap rides the same decoded-frame callback. It does nothing while no capture
         // is waiting, so a running session pays one uncontended lock per frame.
         let screenshotCapture = self.screenshotCapture
-        // Remote Co-Op guests are fed from the same tap and for the same reasons. The relay is a
-        // no-op until a guest is connected, so a solo session pays one uncontended lock per frame.
-        let coOpVideoRelay = self.remoteCoOpVideoRelay
         // Tried (2026-09-05): building the VideoToolbox session before the first keyframe from
         // parameter sets remembered from an earlier session of the same shape. Two prewarmed
         // sessions started no cleaner than a cold one (slow frames 74/67 vs 42, one latency resync
@@ -44,7 +41,6 @@ extension NvstBifrostFreeTransport {
             screenshotCapture.deliver(pixelBuffer)
             recorder.appendNativePixelBuffer(pixelBuffer)
             replayBuffer.appendNativePixelBuffer(pixelBuffer)
-            coOpVideoRelay.renderPixelBuffer(pixelBuffer, presentationTime: presentationTime)
             sink?(pixelBuffer, presentationTime, isKeyframe)
         }
         self.decoder = decoder
@@ -76,6 +72,14 @@ extension NvstBifrostFreeTransport {
             }
         }
         mediaFrameContinuation = mediaContinuation
+        remoteCoOpSpikeForwarder = OPNRemoteCoOpSpikeForwarder.configured(logger: logger)
+        if let spikeForwarder = remoteCoOpSpikeForwarder {
+            logger?("NVST Co-Op spike forwarding source video to \(spikeForwarder.destination)")
+        }
+        remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in
+            Task { await self?.requestKeyframeOverControlChannel() }
+        }
+        startCoOpKeyframeRequests()
         let pipeline = makeVideoPipeline(handoff: handoff, decoder: decoder, receiver: receiver, mediaContinuation: mediaContinuation)
         videoPipeline = pipeline
         receiver.onAccessUnit = { [weak pipeline] unit in pipeline?.submit(unit) }
@@ -102,6 +106,22 @@ extension NvstBifrostFreeTransport {
     /// `receiver` is passed in rather than read off `self`: this runs before `self.receiver` is
     /// assigned, and a capture list evaluates eagerly, so capturing the property would bind a
     /// permanently nil weak reference and silence every keyframe request the pipeline makes.
+    /// Pulls an IDR from the seat every couple of seconds while a native guest is bound, so a guest
+    /// that joins mid-stream can start. The seat sends no periodic keyframe of its own. It runs for the
+    /// whole session but only asks while a guest is actually connected.
+    private func startCoOpKeyframeRequests() {
+        coOpKeyframeTask?.cancel()
+        coOpKeyframeTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { return }
+                guard let self else { return }
+                guard remoteCoOpNativeBroadcaster.hasBoundGuests else { continue }
+                await requestKeyframeOverControlChannel()
+            }
+        }
+    }
+
     private func makeVideoPipeline(handoff: NVSTVideoHandoff,
                                    decoder: NvstVideoToolboxDecoder,
                                    receiver: NvstMjolnirReceiver,
@@ -114,6 +134,8 @@ extension NvstBifrostFreeTransport {
         // this used to go out as a hardcoded 16000 us (~62.5 Hz) regardless of the real display.
         let displayRefreshRate = OPNStreamPreferences.loadDeviceCapabilities().maxDisplayRefreshRate
         let displayVsyncMicroseconds = displayRefreshRate > 0 ? UInt32(1_000_000 / displayRefreshRate) : 16000
+        let spikeForwarder = remoteCoOpSpikeForwarder
+        let nativeBroadcaster = remoteCoOpNativeBroadcaster
         return NvstVideoPipeline(
             decoder: decoder,
             clock: clock,
@@ -124,7 +146,7 @@ extension NvstBifrostFreeTransport {
             // Nothing on this transport consumes `videoFrames()` — we own the decoder — but the
             // seam stays fed, off the frame's own critical path.
             mediaSink: { unit in
-                mediaContinuation.yield(NativeNVSTVideoFrame(
+                let frame = NativeNVSTVideoFrame(
                     streamID: handoff.rtpSSRC,
                     codec: Self.mediaCodec(handoff.codec),
                     // The 90 kHz RTP clock converted to the shared nanosecond media timestamp.
@@ -134,7 +156,12 @@ extension NvstBifrostFreeTransport {
                     height: 0,
                     isKeyFrame: unit.isKeyframe,
                     payload: unit.bytes
-                ))
+                )
+                mediaContinuation.yield(frame)
+                // M0 spike: the same source access unit the decoder gets, forwarded unmodified so a
+                // guest decodes what the seat encoded. No-op unless the spike is enabled.
+                spikeForwarder?.forward(frame)
+                nativeBroadcaster.forward(video: frame)
             },
             onKeyframeNeeded: { [weak self, weak receiver] in
                 receiver?.requestKeyframe()

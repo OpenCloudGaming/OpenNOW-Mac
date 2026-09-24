@@ -43,6 +43,27 @@ public struct OPNRemoteCoOpGuestInviteLink: Equatable, Sendable {
         signalingURL = derived
     }
 
+    /// The address of the host's pinned native listener, when the link names a host a guest can reach
+    /// directly.
+    ///
+    /// A LAN host's embedded server uses a self-signed certificate, which the WebSocket transport
+    /// rejects because it validates TLS normally (it exists for tunnels, whose certificates are real).
+    /// The raw listener on `32189` pins instead, so a directly reachable link belongs there. A tunnel
+    /// domain is not directly reachable and stays on the WebSocket path.
+    public var nativeAddress: String? {
+        guard let host = signalingURL.host, Self.isDirectlyReachableHost(host) else { return nil }
+        return "\(host):\(OPNRemoteCoOpNativeGuestServer.defaultPort)"
+    }
+
+    static func isDirectlyReachableHost(_ host: String) -> Bool {
+        let lowered = host.lowercased()
+        if lowered == "localhost" || lowered.hasSuffix(".local") { return true }
+        // IPv6 literal, or four all-numeric IPv4 labels.
+        if host.contains(":") { return true }
+        let labels = host.split(separator: ".")
+        return labels.count == 4 && labels.allSatisfy { UInt8($0) != nil }
+    }
+
     /// `https://host[:port]/anything` -> `wss://host[:port]/remote-coop`.
     static func signalingURL(fromPageURL url: URL) -> URL? {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)

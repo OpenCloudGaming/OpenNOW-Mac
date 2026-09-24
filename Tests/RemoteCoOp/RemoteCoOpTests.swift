@@ -2,7 +2,6 @@ import Testing
 import AudioUnit
 import Foundation
 import CoreVideo
-@preconcurrency import WebRTC
 @testable import OpenNOW
 
 @Suite("Remote Co-Op", .serialized)
@@ -467,7 +466,7 @@ final class RecordingRemoteCoOpHostPeerFactory: OPNRemoteCoOpHostPeerFactory, @u
     }
 }
 
-final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHostVideoSink, OPNRemoteCoOpHostAudioSink, @unchecked Sendable {
+final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, @unchecked Sendable {
     let participantID: UUID
     let networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     let qualityPreset: OPNRemoteCoOpQualityPreset
@@ -476,8 +475,6 @@ final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHos
     private let lock = NSLock()
     private var started = 0
     private var closed = 0
-    private var renderedFrames = 0
-    private var renderedAudioFrames = 0
     private var signals: [OPNRemoteCoOpWirePeerSignal] = []
     private var retargetedPresets: [OPNRemoteCoOpQualityPreset] = []
 
@@ -520,14 +517,6 @@ final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHos
         }
     }
 
-    func renderVideoFrame(_ frame: RTCVideoFrame) {
-        lock.withLock { renderedFrames += 1 }
-    }
-
-    func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
-        lock.withLock { renderedAudioFrames += 1 }
-    }
-
     func startCount() -> Int {
         lock.withLock { started }
     }
@@ -538,32 +527,6 @@ final class RecordingRemoteCoOpHostPeer: OPNRemoteCoOpHostPeer, OPNRemoteCoOpHos
 
     func appliedSignals() -> [OPNRemoteCoOpWirePeerSignal] {
         lock.withLock { signals }
-    }
-
-    func renderedVideoFrameCount() -> Int {
-        lock.withLock { renderedFrames }
-    }
-
-    func renderedAudioFrameCount() -> Int {
-        lock.withLock { renderedAudioFrames }
-    }
-}
-
-final class RecordingRemoteCoOpAudioSink: OPNRemoteCoOpHostAudioSink, @unchecked Sendable {
-    let participantID: UUID
-    private let lock = NSLock()
-    private var frames: [OPNRemoteCoOpHostAudioFrame] = []
-
-    init(participantID: UUID) {
-        self.participantID = participantID
-    }
-
-    func renderAudioFrame(_ frame: OPNRemoteCoOpHostAudioFrame) {
-        lock.withLock { frames.append(frame) }
-    }
-
-    func renderedAudioFrames() -> [OPNRemoteCoOpHostAudioFrame] {
-        lock.withLock { frames }
     }
 }
 

@@ -309,34 +309,12 @@ extension CatalogViewModel {
         remoteCoOpTURNSetupMessage = ""
     }
 
-    /// Proves the relay end to end rather than just checking the fields are filled in.
-    ///
-    /// Every way relay credentials go wrong - a wrong password, a URL with no TLS variant, a provider
-    /// that has not activated the account - produces the same symptom: a session that works for
-    /// everyone except the one guest who needed the relay, on a network the host cannot test from.
+    /// The native transport carries media over its own UDP flow and does not use TURN, so there is no
+    /// allocation to prove. The relay fields remain only so an existing profile keeps round-tripping.
     func testRemoteCoOpRelay() {
-        let credentials = OPNRemoteCoOpTURNKeyStore.load()
-        guard credentials.canRelay else {
-            remoteCoOpRelayTestPassed = false
-            remoteCoOpRelayTestMessage = "Configure a relay first."
-            return
-        }
-        remoteCoOpRelayTestInFlight = true
+        remoteCoOpRelayTestInFlight = false
         remoteCoOpRelayTestPassed = false
-        remoteCoOpRelayTestMessage = "Asking the relay for an allocation..."
-        Task { @MainActor in
-            defer { remoteCoOpRelayTestInFlight = false }
-            let servers = await credentials.iceServers()
-            guard !servers.isEmpty else {
-                remoteCoOpRelayTestMessage = credentials.provider == .cloudflare
-                    ? "Cloudflare would not mint credentials. Run setup again."
-                    : "No usable relay URLs. Each needs a turns:, turn: or stun: prefix."
-                return
-            }
-            let result = await OPNRemoteCoOpRelayProbe.run(iceServers: servers)
-            remoteCoOpRelayTestPassed = result.succeeded
-            remoteCoOpRelayTestMessage = result.summary
-        }
+        remoteCoOpRelayTestMessage = "The native transport does not use a relay."
     }
 
     /// Stores the pasted Ably key, or says why it was refused.

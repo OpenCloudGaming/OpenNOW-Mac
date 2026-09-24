@@ -256,6 +256,9 @@ struct OPNApp: App {
                 Button("Join Remote Co-Op as Guest…") {
                     openWindow(id: "remote-coop-guest")
                 }
+                Button("Co-Op Spike (manual port)…") {
+                    openWindow(id: "remote-coop-native-guest")
+                }
                 Button("Toggle Microphone") {
                     _ = StreamSessionLifecycle.sendCommand(.toggleMicrophone)
                 }
@@ -304,6 +307,11 @@ struct OPNApp: App {
             RemoteCoOpGuestView()
         }
         .defaultSize(width: 1280, height: 800)
+
+        Window("Co-Op Spike (manual port)", id: "remote-coop-native-guest") {
+            RemoteCoOpNativeGuestView()
+        }
+        .defaultSize(width: 960, height: 600)
     }
 
 }

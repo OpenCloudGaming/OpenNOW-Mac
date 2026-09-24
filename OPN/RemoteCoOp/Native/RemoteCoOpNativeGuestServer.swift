@@ -205,15 +205,7 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
             retryOnEphemeralPort(after: port)
             return
         }
-        var txtRecordDictionary: [String: String] = ["v": "1"]
-        if let fingerprint, !fingerprint.isEmpty {
-            txtRecordDictionary["fingerprint"] = fingerprint
-        }
-        listener.service = NWListener.Service(
-            name: Host.current().localizedName ?? "OpenNOW Host",
-            type: Self.serviceType,
-            txtRecord: NWTXTRecord(txtRecordDictionary)
-        )
+        listener.service = advertisedService(port: nil)
         listener.stateUpdateHandler = { [weak self, weak listener] state in
             self?.handleListenerState(state, attemptedPort: port, boundPort: listener?.port?.rawValue)
         }
@@ -232,6 +224,9 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         switch state {
         case .ready:
             lock.withLock { boundPort = listenerPort }
+            // Re-advertise with the bound port in the TXT record, so a guest can connect by address and
+            // skip the `.service` resolution that stalls on the same machine.
+            listener?.service = advertisedService(port: listenerPort)
             logger("Native Remote Co-Op listener ready on port \(listenerPort.map(String.init) ?? "unknown")")
         case .failed(let error):
             logger("Native Remote Co-Op listener failed on port \(attemptedPort): \(error.localizedDescription)")
@@ -239,6 +234,24 @@ public final class OPNRemoteCoOpNativeGuestServer: OPNRemoteCoOpSignalingSession
         default:
             break
         }
+    }
+
+    /// The Bonjour record, carrying the address and port a guest should dial directly.
+    ///
+    /// Connecting to the `.service` endpoint is what a guest on the same Mac cannot do — the
+    /// resolution never completes — so the address and port are advertised and the guest uses them.
+    private func advertisedService(port: UInt16?) -> NWListener.Service {
+        var txt: [String: String] = ["v": "1"]
+        if let fingerprint = lock.withLock({ certificateFingerprint }), !fingerprint.isEmpty {
+            txt["fingerprint"] = fingerprint
+        }
+        txt["addr"] = OPNRemoteCoOpLocalAddress.tailscaleIPv4() ?? OPNRemoteCoOpLocalAddress.advertisedHost()
+        if let port { txt["port"] = String(port) }
+        return NWListener.Service(
+            name: Host.current().localizedName ?? "OpenNOW Host",
+            type: Self.serviceType,
+            txtRecord: NWTXTRecord(txt)
+        )
     }
 
     /// A fixed port keeps a guest's muscle memory stable, but a second OpenNOW instance on the

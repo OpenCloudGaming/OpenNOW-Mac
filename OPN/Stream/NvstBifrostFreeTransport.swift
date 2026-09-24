@@ -62,11 +62,16 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The screenshot tap, off the actor for the same reason as the recorder: every decoded frame
     /// reaches it from the VideoToolbox callback, and a capture is rendered there.
     nonisolated let screenshotCapture = StreamScreenshotCapture()
-    /// Remote Co-Op's outbound feeds, off the actor for the same reason as the recorder: both are
-    /// written from the VideoToolbox decode callback and the audio thread. Both relays are always
-    /// allocated and cost one uncontended lock per frame while no guest is connected.
-    nonisolated let remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay
-    nonisolated let remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay
+    /// Native Co-Op's media fanout, off the actor for the same reason as the recorder: it is written
+    /// from the VideoToolbox decode callback and the audio thread. It is a no-op until the host
+    /// session starts it and a guest binds, so a solo session pays one uncontended lock per frame.
+    nonisolated let remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster
+    /// M0 spike only: forwards the host's *source* compressed access units to a UDP guest when
+    /// `OPENNOW_COOP_SPIKE_FORWARD` names one. Nil in every normal run.
+    var remoteCoOpSpikeForwarder: OPNRemoteCoOpSpikeForwarder?
+    /// While a native guest is bound, the host asks the seat for a keyframe periodically: a guest that
+    /// joins mid-stream sees only delta frames otherwise, and the seat sends no periodic IDR of its own.
+    var coOpKeyframeTask: Task<Void, Never>?
     let logger: (@Sendable (String) -> Void)?
     private let controlTimeout: Duration
     var reserver: NvstLocalBundleReserver?
@@ -279,10 +284,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 preferredAudioChannelCount: Int = 0,
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20),
-                remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay = OPNRemoteCoOpHostVideoRelay(),
-                remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay = OPNRemoteCoOpHostAudioRelay()) {
-        self.remoteCoOpVideoRelay = remoteCoOpVideoRelay
-        self.remoteCoOpAudioRelay = remoteCoOpAudioRelay
+                remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster = RemoteCoOpNativeMediaBroadcaster()) {
+        self.remoteCoOpNativeBroadcaster = remoteCoOpNativeBroadcaster
         self.pixelBufferSink = pixelBufferSink
         self.configuredFps = configuredFps
         self.configuredMaxBitrateKbps = configuredMaxBitrateKbps
@@ -501,6 +504,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         if let bundleProbe {
             logger?("NVST probe \(bundleProbe.snapshot.summary)")
         }
+        if let spike = remoteCoOpSpikeForwarder {
+            let counters = spike.snapshot
+            logger?("NVST Co-Op spike → \(spike.destination) frames=\(counters.framesForwarded) dropped=\(counters.framesDropped) datagrams=\(counters.datagramsSent) bytes=\(counters.bytesSent)")
+        }
         if let sender = feedbackSender, let ssrc = receiver.stats.boundSSRC {
             sender.updateMediaSSRC(ssrc)
             sender.updateMediaState(highestExtendedSequence: receiver.stats.highestSequence,
@@ -537,10 +544,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // can still be saved from the recordings screen.
         replayBuffer.retain()
         screenshotCapture.cancel()
-        // Guests outlive nothing: dropping the sinks here stops frames being encoded for peers
-        // whose connection is about to be torn down anyway.
-        remoteCoOpVideoRelay.removeAll()
-        remoteCoOpAudioRelay.removeAll()
         await teardown(reason: "disconnect")
     }
 
@@ -717,6 +720,10 @@ extension NvstBifrostFreeTransport {
 
     func teardown(reason: String) async {
         isTornDown = true
+        remoteCoOpSpikeForwarder?.stop()
+        remoteCoOpSpikeForwarder = nil
+        coOpKeyframeTask?.cancel()
+        coOpKeyframeTask = nil
         // Invalidates every callback the closing bundle installed, closing the window between the
         // teardown and the next install during which a stale callback could still fire.
         bundleGeneration &+= 1
