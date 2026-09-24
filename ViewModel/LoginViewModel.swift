@@ -99,6 +99,7 @@ final class LoginViewModel: ObservableObject {
         prefillLastAccount()
         refreshLoginProviders()
         acceptedTerms = OPNAppPreferenceStorage.standard.bool(forKey: Self.termsAcceptedKey)
+        restoreSavedSessionFromKeychain()
         OPNLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
@@ -445,6 +446,7 @@ final class LoginViewModel: ObservableObject {
         } catch {
             validationMessage = error.localizedDescription
             OPNLog.error(.app, "SwiftData save failed: \(error.localizedDescription)")
+            AuthDiagnosticLog.shared.record("store.save.failed error=\(error.localizedDescription)")
         }
     }
 

@@ -60,12 +60,14 @@ import Testing
 
 /// The SwiftData store is an unencrypted SQLite file any process running as this user can read, so
 /// the tokens live in the keychain instead — keyed by the session id, under the `session.` prefix.
-@Test func loginSessionKeepsTokensInTheKeychainRatherThanTheModelStore() {
-    let identity = "session.keychain-backed-session-id"
+/// Constructing the model must not write to the keychain: a session that is built and then
+/// discarded (a superseded row, a failed insert) would otherwise leak an item nothing can reach.
+@Test func constructingALoginSessionDoesNotWriteToTheKeychain() {
+    let identity = "session.construction-does-not-persist"
     GFNTokenStore.delete(forIdentity: identity)
 
     let session = LoginSession(
-        id: "keychain-backed-session-id",
+        id: "construction-does-not-persist",
         accountEmail: "user@example.com",
         authMethod: "getSessionToken",
         accessToken: "access-value",
@@ -77,12 +79,31 @@ import Testing
         clientTokenExpiresAt: Date(timeIntervalSince1970: 30)
     )
 
+    #expect(GFNTokenStore.load(forIdentity: identity) == nil)
+    #expect(session.accessToken == "access-value")
+
+    session.updateAuthentication(
+        accountEmail: "user@example.com",
+        authMethod: "getSessionToken",
+        accessToken: "access-value",
+        clientToken: "client-value",
+        idToken: "id-value",
+        refreshToken: "refresh-value",
+        userId: "user",
+        idpId: "idp",
+        deviceId: "device",
+        issuedAt: Date(timeIntervalSince1970: 10),
+        expiresAt: Date(timeIntervalSince1970: 20),
+        clientTokenExpiresAt: Date(timeIntervalSince1970: 30),
+        isActive: true,
+        canContinueOffline: true
+    )
+
     let stored = GFNTokenStore.load(forIdentity: identity)
     #expect(stored?.accessToken == "access-value")
     #expect(stored?.refreshToken == "refresh-value")
     #expect(stored?.idToken == "id-value")
     #expect(stored?.clientToken == "client-value")
-    #expect(session.accessToken == "access-value")
 
     // Signing out must leave nothing replayable behind — the refresh token above outlives the
     // access token by far, so clearing only the active flag would not be a sign-out at all.
@@ -90,4 +111,19 @@ import Testing
     #expect(GFNTokenStore.load(forIdentity: identity) == nil)
     #expect(session.accessToken.isEmpty)
     #expect(session.refreshToken.isEmpty)
+}
+
+/// `deleteAll` purges a signed-out account's tokens. A service-only delete left items behind, so
+/// it must remove every account in the service, not just one. Uses a private service so it cannot
+/// race the other keychain tests, which Swift Testing runs in parallel.
+@Test func deleteAllRemovesEveryAccountInTheService() {
+    let serviceName = "OpenNOW.GFN.tests.delete-all.\(UUID().uuidString)"
+    let tokens = GFNTokenStore.Tokens(accessToken: "a", idToken: "i", refreshToken: "r", clientToken: "c")
+    GFNTokenStore.save(tokens, forIdentity: "session.one", service: serviceName)
+    GFNTokenStore.save(tokens, forIdentity: "profile-two", service: serviceName)
+
+    GFNTokenStore.deleteAll(service: serviceName)
+
+    #expect(GFNTokenStore.load(forIdentity: "session.one", service: serviceName) == nil)
+    #expect(GFNTokenStore.load(forIdentity: "profile-two", service: serviceName) == nil)
 }

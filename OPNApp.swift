@@ -46,33 +46,58 @@ struct OPNApp: App {
         // CloudKit is explicitly off. The app carries an iCloud entitlement for its backup container,
         // and SwiftData reads any iCloud entitlement as an invitation to attach CloudKit to this store,
         // which then rejects the model's non-optional attributes and unique constraints.
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, cloudKitDatabase: .none)
+        let modelConfiguration = Self.authStoreConfiguration(schema: schema)
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
             OPNLog.info(.app, "SwiftData model container created")
+            AuthDiagnosticLog.shared.record("store.open outcome=created url=\(modelConfiguration.url.lastPathComponent)")
             return container
         } catch {
             OPNLog.error(.app, "Could not open the SwiftData store: \(error.localizedDescription)")
+            AuthDiagnosticLog.shared.record("store.open outcome=failed error=\(error.localizedDescription)")
             quarantineStoreIfUnreadable(at: modelConfiguration.url, errorDescription: error.localizedDescription)
         }
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
             OPNLog.warning(.app, "SwiftData model container opened after quarantining an unreadable store")
+            AuthDiagnosticLog.shared.record("store.open outcome=quarantined url=\(modelConfiguration.url.lastPathComponent)")
             return container
         } catch {
             OPNLog.error(.app, "SwiftData store still unreadable after quarantine: \(error.localizedDescription)")
+            AuthDiagnosticLog.shared.record("store.open outcome=still-unreadable error=\(error.localizedDescription)")
         }
 
         do {
             let container = try ModelContainer(for: schema, configurations: [ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)])
             OPNLog.warning(.app, "SwiftData running with an in-memory store; sessions will not persist across launches")
+            AuthDiagnosticLog.shared.record("store.open outcome=in-memory")
             return container
         } catch {
             OPNLog.fatal(.app, "Could not create an in-memory SwiftData model container: \(error.localizedDescription)")
+            AuthDiagnosticLog.shared.record("store.open outcome=in-memory-failed error=\(error.localizedDescription)")
             preconditionFailure("SwiftData model container could not be created in any configuration: \(error)")
         }
+    }
+
+    /// The release build keeps the shared default store so existing installs keep their sessions;
+    /// every other identity gets its own so two running copies cannot clobber each other's rows.
+    private static func authStoreURL(bundleIdentifier: String = Bundle.main.bundleIdentifier ?? "") -> URL? {
+        guard !bundleIdentifier.isEmpty,
+              bundleIdentifier != OPNProductIdentity.releaseBundleIdentifier else { return nil }
+        let directory = URL.applicationSupportDirectory
+            .appending(path: "OpenNOW", directoryHint: .isDirectory)
+            .appending(path: bundleIdentifier, directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appending(path: "auth.store", directoryHint: .notDirectory)
+    }
+
+    private static func authStoreConfiguration(schema: Schema) -> ModelConfiguration {
+        if let url = authStoreURL() {
+            return ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        }
+        return ModelConfiguration(schema: schema, isStoredInMemoryOnly: false, cloudKitDatabase: .none)
     }
 
     /// Moves unreadable store files aside so a fresh store can open. The files are archived, never

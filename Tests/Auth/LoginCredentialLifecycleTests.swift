@@ -168,3 +168,39 @@ private func makeAccount(email: String, userId: String, isActive: Bool) -> Login
     #expect(authService.endedSessions.map { $0.userId } == ["user-forgotten"])
     #expect(viewModel.accounts.isEmpty)
 }
+
+/// A lost SwiftData row must not force a password while the credential still exists. The auth
+/// service's keychain copy, under the profile identity, is enough to rebuild a usable session.
+@MainActor
+@Test func restoreRebuildsSessionFromKeychainWhenNoRowExists() throws {
+    let container = try ModelContainer(
+        for: LoginAccount.self, LoginSession.self, LoginDeviceRegistration.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+    )
+    let authService = RecordingLoginAuthService()
+    let viewModel = LoginViewModel(authService: authService)
+    viewModel.modelContext = container.mainContext
+
+    let account = makeAccount(email: "restore@example.com", userId: "restore-user", isActive: true)
+    container.mainContext.insert(account)
+    viewModel.accounts = [account]
+    viewModel.sessions = []
+
+    let identity = "restore-user"
+    GFNTokenStore.delete(forIdentity: identity)
+    defer { GFNTokenStore.delete(forIdentity: identity) }
+    GFNTokenStore.save(
+        GFNTokenStore.Tokens(accessToken: "access", idToken: "id", refreshToken: "refresh", clientToken: "client"),
+        forIdentity: identity
+    )
+
+    viewModel.restoreSavedSessionFromKeychain()
+
+    let restored = viewModel.sessions.first { $0.accountEmail == "restore@example.com" }
+    #expect(restored != nil)
+    #expect(restored?.accessToken == "access")
+    #expect(restored?.refreshToken == "refresh")
+    #expect(viewModel.activeSession?.accountEmail == "restore@example.com")
+
+    restored?.purgeTokens()
+}

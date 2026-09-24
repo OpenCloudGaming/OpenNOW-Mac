@@ -19,7 +19,9 @@ extension LoginViewModel {
         let displayName = Self.displayName(session: session, userInfo: userInfo, email: normalizedEmail)
         let providerIdpId = session.idpId.isEmpty ? selectedProvider.idpId : session.idpId
         let resolvedProvider = providerOption(idpId: providerIdpId, fallbackName: selectedProvider.title)
-        let existingSession = sessions.first { $0.accountEmail == normalizedEmail && $0.isActive } ?? sessions.first { $0.accountEmail == normalizedEmail }
+        let existingSession = sessions.first { $0.accountEmail == normalizedEmail && $0.isActive }
+            ?? sessions.first { $0.accountEmail == normalizedEmail }
+            ?? fetchStoredSession(accountEmail: normalizedEmail)
 
         for account in accounts { account.isActive = false }
         for storedSession in sessions { storedSession.isActive = false }
@@ -94,44 +96,81 @@ extension LoginViewModel {
                               expiry: Date,
                               clientExpiry: Date) {
         guard let modelContext else { return }
-        let storedSession = existingSession ?? LoginSession(
-            accountEmail: normalizedEmail,
-            authMethod: authMethod,
-            accessToken: session.accessToken,
-            clientToken: session.clientToken,
-            idToken: session.idToken,
-            refreshToken: session.refreshToken,
-            userId: session.userId,
-            idpId: providerIdpId,
-            deviceId: primaryDevice.deviceId,
-            issuedAt: now,
-            expiresAt: expiry,
-            clientTokenExpiresAt: clientExpiry,
-            isActive: true,
-            canContinueOffline: rememberSession
-        )
-        storedSession.updateAuthentication(
-            accountEmail: normalizedEmail,
-            authMethod: authMethod,
-            accessToken: session.accessToken,
-            clientToken: session.clientToken,
-            idToken: session.idToken,
-            refreshToken: session.refreshToken,
-            userId: session.userId,
-            idpId: providerIdpId,
-            deviceId: primaryDevice.deviceId,
-            issuedAt: now,
-            expiresAt: expiry,
-            clientTokenExpiresAt: clientExpiry,
-            isActive: true,
-            canContinueOffline: rememberSession
-        )
-        if existingSession == nil {
-            modelContext.insert(storedSession)
-            sessions.insert(storedSession, at: 0)
-        } else if let index = sessions.firstIndex(where: { $0.id == storedSession.id }), index > 0 {
-            sessions.remove(at: index)
-            sessions.insert(storedSession, at: 0)
+        if let existingSession {
+            applyAuthentication(session, to: existingSession, accountEmail: normalizedEmail, authMethod: authMethod, providerIdpId: providerIdpId, now: now, expiry: expiry, clientExpiry: clientExpiry)
+            promote(existingSession)
+            return
         }
+        let storedSession = makeStoredSession(session, accountEmail: normalizedEmail, authMethod: authMethod, providerIdpId: providerIdpId, now: now, expiry: expiry, clientExpiry: clientExpiry)
+        modelContext.insert(storedSession)
+        applyAuthentication(session, to: storedSession, accountEmail: normalizedEmail, authMethod: authMethod, providerIdpId: providerIdpId, now: now, expiry: expiry, clientExpiry: clientExpiry)
+        sessions.insert(storedSession, at: 0)
+    }
+
+    private func makeStoredSession(_ session: JarvisSession,
+                                   accountEmail: String,
+                                   authMethod: String,
+                                   providerIdpId: String,
+                                   now: Date,
+                                   expiry: Date,
+                                   clientExpiry: Date) -> LoginSession {
+        LoginSession(
+            accountEmail: accountEmail,
+            authMethod: authMethod,
+            accessToken: session.accessToken,
+            clientToken: session.clientToken,
+            idToken: session.idToken,
+            refreshToken: session.refreshToken,
+            userId: session.userId,
+            idpId: providerIdpId,
+            deviceId: primaryDevice.deviceId,
+            issuedAt: now,
+            expiresAt: expiry,
+            clientTokenExpiresAt: clientExpiry,
+            isActive: true,
+            canContinueOffline: rememberSession
+        )
+    }
+
+    private func applyAuthentication(_ session: JarvisSession,
+                                     to storedSession: LoginSession,
+                                     accountEmail: String,
+                                     authMethod: String,
+                                     providerIdpId: String,
+                                     now: Date,
+                                     expiry: Date,
+                                     clientExpiry: Date) {
+        storedSession.updateAuthentication(
+            accountEmail: accountEmail,
+            authMethod: authMethod,
+            accessToken: session.accessToken,
+            clientToken: session.clientToken,
+            idToken: session.idToken,
+            refreshToken: session.refreshToken,
+            userId: session.userId,
+            idpId: providerIdpId,
+            deviceId: primaryDevice.deviceId,
+            issuedAt: now,
+            expiresAt: expiry,
+            clientTokenExpiresAt: clientExpiry,
+            isActive: true,
+            canContinueOffline: rememberSession
+        )
+    }
+
+    private func promote(_ storedSession: LoginSession) {
+        guard let index = sessions.firstIndex(where: { $0.id == storedSession.id }), index > 0 else { return }
+        sessions.remove(at: index)
+        sessions.insert(storedSession, at: 0)
+    }
+
+    /// A stale `@Query` array would make a persist treat an existing account as new and mint a
+    /// second keychain identity; the store is the authority.
+    func fetchStoredSession(accountEmail: String) -> LoginSession? {
+        guard let modelContext else { return nil }
+        let descriptor = FetchDescriptor<LoginSession>(
+            predicate: #Predicate { $0.accountEmail == accountEmail }
+        )
+        return try? modelContext.fetch(descriptor).first
     }
 }
