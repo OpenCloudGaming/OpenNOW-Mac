@@ -4,8 +4,8 @@ import Network
 /// The session guest's media connection: connect to the host's UDP media port, announce the token with
 /// a `hello`, render and play what arrives, and send controller input back on the same socket.
 ///
-/// It is the outbound twin of the listening receiver and shares the media engine, so the media path is
-/// identical whether the guest connected by itself (the CLI spike) or through an invite.
+/// It is the outbound counterpart of the host's broadcaster and shares the media engine with nothing
+/// else, so the media path is the same however the guest was invited.
 final class RemoteCoOpNativeGuestConnection: @unchecked Sendable {
     typealias Stats = RemoteCoOpNativeGuestMediaEngine.Stats
 

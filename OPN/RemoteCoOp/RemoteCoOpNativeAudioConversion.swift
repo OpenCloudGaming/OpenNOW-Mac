@@ -20,8 +20,8 @@ struct RemoteCoOpNativeAudioFrame: Sendable {
 }
 
 /// The host's CoreAudio game-audio callback turned into interleaved 48 kHz stereo Int16, with no
-/// WebRTC involved. It was lifted out of the deleted WebRTC audio relay; the native broadcaster and
-/// the spike forwarder both feed from the same tap, so both use this.
+/// WebRTC involved. It was lifted out of the deleted WebRTC audio relay; the native broadcaster feeds
+/// from that same tap, so it uses this.
 enum RemoteCoOpNativeAudioConversion {
     /// One buffer's worth of source samples, flattened, with each source buffer's length kept.
     ///

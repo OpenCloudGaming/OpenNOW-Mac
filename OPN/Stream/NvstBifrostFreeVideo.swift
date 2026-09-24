@@ -72,10 +72,6 @@ extension NvstBifrostFreeTransport {
             }
         }
         mediaFrameContinuation = mediaContinuation
-        remoteCoOpSpikeForwarder = OPNRemoteCoOpSpikeForwarder.configured(logger: logger)
-        if let spikeForwarder = remoteCoOpSpikeForwarder {
-            logger?("NVST Co-Op spike forwarding source video to \(spikeForwarder.destination)")
-        }
         remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in
             Task { await self?.requestKeyframeOverControlChannel() }
         }
@@ -134,7 +130,6 @@ extension NvstBifrostFreeTransport {
         // this used to go out as a hardcoded 16000 us (~62.5 Hz) regardless of the real display.
         let displayRefreshRate = OPNStreamPreferences.loadDeviceCapabilities().maxDisplayRefreshRate
         let displayVsyncMicroseconds = displayRefreshRate > 0 ? UInt32(1_000_000 / displayRefreshRate) : 16000
-        let spikeForwarder = remoteCoOpSpikeForwarder
         let nativeBroadcaster = remoteCoOpNativeBroadcaster
         return NvstVideoPipeline(
             decoder: decoder,
@@ -158,9 +153,8 @@ extension NvstBifrostFreeTransport {
                     payload: unit.bytes
                 )
                 mediaContinuation.yield(frame)
-                // M0 spike: the same source access unit the decoder gets, forwarded unmodified so a
-                // guest decodes what the seat encoded. No-op unless the spike is enabled.
-                spikeForwarder?.forward(frame)
+                // The seat's source access unit, forwarded unmodified so a guest decodes what the seat
+                // encoded rather than a re-encode of the decoded picture. No-op with no bound guest.
                 nativeBroadcaster.forward(video: frame)
             },
             onKeyframeNeeded: { [weak self, weak receiver] in

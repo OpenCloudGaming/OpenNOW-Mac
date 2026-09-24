@@ -11,8 +11,7 @@ struct OpenNOWBenchmarksRunner {
     static func main() {
         let commands: [(name: String, summary: String, run: () throws -> Bool)] = [
             ("catalog", "catalog decode/encode and view-model derivations at 96-3000 games", runCatalogPerformanceAudit),
-            ("stream-preferences", "stream preference loading and effective-profile resolution", runStreamPreferencesPerformanceAudit),
-            ("coop-spike-guest", "M0 spike: receive forwarded source video on UDP, decode it, and report (--port N)", runRemoteCoOpSpikeGuest)
+            ("stream-preferences", "stream preference loading and effective-profile resolution", runStreamPreferencesPerformanceAudit)
         ]
 
         let arguments = CommandLine.arguments

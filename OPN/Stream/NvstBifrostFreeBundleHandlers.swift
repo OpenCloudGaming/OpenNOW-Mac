@@ -20,12 +20,10 @@ extension NvstBifrostFreeTransport {
         // waiting on anything is a priority inversion. The recorder copies and returns.
         let recorder = self.recorder
         let replayBuffer = self.replayBuffer
-        let spikeAudioForwarder = self.remoteCoOpSpikeForwarder
         let nativeBroadcaster = self.remoteCoOpNativeBroadcaster
         bundle.onGameAudioFrame = { audioBufferList, frameCount, sampleRate, channels in
             recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             replayBuffer.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
-            spikeAudioForwarder?.forwardAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             nativeBroadcaster.forwardAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         bundle.onPartiallyReliableControlOpen = { [weak self] in

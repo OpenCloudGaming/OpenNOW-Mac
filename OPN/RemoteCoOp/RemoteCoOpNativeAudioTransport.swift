@@ -151,8 +151,7 @@ final class RemoteCoOpNativeAudioPlayoutBuffer: @unchecked Sendable {    private
     }
 }
 
-/// Splits one game-audio callback into ready-to-send audio datagrams, so the spike forwarder and the
-/// session broadcaster frame audio identically.
+/// Splits one game-audio callback into ready-to-send audio datagrams.
 enum RemoteCoOpNativeAudioChunker {
     struct Result {
         var datagrams: [Data]

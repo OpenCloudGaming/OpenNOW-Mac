@@ -3,9 +3,8 @@ import CoreVideo
 import Foundation
 
 /// The guest's media engine: reassemble the host's forwarded access units, decode them with the
-/// stream's own codec, play the forwarded PCM, and report. It is the part the listener (the CLI and
-/// the in-app spike window) and the session connection both drive, so decoding cannot drift between
-/// the two ways a guest can receive.
+/// stream's own codec, play the forwarded PCM, and report. The session connection drives it, so the
+/// media path is the same however the guest was invited.
 final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
     struct Stats: Equatable, Sendable {
         var datagrams: UInt64 = 0
