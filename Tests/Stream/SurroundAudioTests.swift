@@ -76,63 +76,6 @@ import Testing
         #expect(manager.requestedAudioChannelCount(["audioChannelCount": 7]) == 6)
     }
 
-    @Test func theAnswerIsMungedToMultiopusLikeTheOfficialClient() {
-        let answer = [
-            "v=0",
-            "m=audio 9 UDP/TLS/RTP/SAVPF 111 63",
-            "a=rtpmap:111 opus/48000/2",
-            "a=fmtp:111 minptime=10;useinbandfec=1",
-            "a=rtpmap:63 red/48000/2",
-            "a=fmtp:63 111/111",
-            "m=video 9 UDP/TLS/RTP/SAVPF 96",
-            "a=rtpmap:96 H264/90000",
-            "a=fmtp:96 packetization-mode=1",
-            "",
-        ].joined(separator: "\r\n")
-        let surround = NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 6).components(separatedBy: "\r\n")
-        #expect(surround.contains("a=rtpmap:111 multiopus/48000/6"))
-        #expect(surround.contains("a=fmtp:111 minptime=10;useinbandfec=1;channel_mapping=0,4,1,2,3,5;num_streams=4;coupled_streams=2"))
-        #expect(surround.contains("a=rtpmap:63 red/48000/2"))
-        #expect(surround.contains("a=fmtp:63 111/111"))
-        #expect(surround.contains("a=fmtp:96 packetization-mode=1"))
-        let sevenOne = NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 8).components(separatedBy: "\r\n")
-        #expect(sevenOne.contains("a=rtpmap:111 multiopus/48000/8"))
-        #expect(sevenOne.contains("a=fmtp:111 minptime=10;useinbandfec=1;channel_mapping=0,6,1,2,3,4,5,7;num_streams=5;coupled_streams=3"))
-        #expect(NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 2) == answer)
-        #expect(NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 4) == answer)
-    }
-
-    @Test func theSynthesizedBundleOfferStaysStereoAndTheAnswerCarriesSurround() {
-        // libwebrtc rejects a remote offer naming multiopus (never advertised locally), which took
-        // the SCTP section down with it live; the offer stays stereo and the answer is munged.
-        let offer = NvstWebRtcBundle.synthesizedRemoteOffer(
-            remoteUsernameFragment: "u", remotePassword: "p", remoteFingerprint: "AA:BB",
-            peerIP: "10.0.0.1", peerPort: 5004
-        )
-        let offerLines = offer.components(separatedBy: "\r\n")
-        #expect(offerLines.contains("a=rtpmap:111 opus/48000/2"))
-        #expect(!offer.contains("multiopus"))
-        let answer = [
-            "v=0",
-            "a=group:BUNDLE 0 1",
-            "m=audio 9 UDP/TLS/RTP/SAVPF 63 111",
-            "a=mid:0",
-            "a=recvonly",
-            "a=rtpmap:63 red/48000/2",
-            "a=fmtp:63 111/111",
-            "a=rtpmap:111 opus/48000/2",
-            "a=fmtp:111 minptime=5;stereo=1;sprop-stereo=1;useinbandfec=1",
-            "m=application 9 UDP/DTLS/SCTP webrtc-datachannel",
-            "a=mid:1",
-            "",
-        ].joined(separator: "\r\n")
-        let munged = NvstBundleAudioSDP.applyingSurroundAudio(answer, channels: 6).components(separatedBy: "\r\n")
-        #expect(munged.contains("a=rtpmap:111 multiopus/48000/6"))
-        #expect(munged.contains("a=fmtp:111 minptime=10;useinbandfec=1;channel_mapping=0,4,1,2,3,5;num_streams=4;coupled_streams=2"))
-        #expect(munged.contains("a=rtpmap:63 red/48000/2"))
-        #expect(munged.contains("m=application 9 UDP/DTLS/SCTP webrtc-datachannel"))
-    }
-
     @Test func theAnnounceCarriesTheSurroundBlockOnlyAboveStereo() {
         let stereo = NvstRtspSdp.buildAnnounceSdp(NvstRtspSdp.AnnounceOptions())
         #expect(!stereo.contains("x-nv-audio.surround.enable"))
@@ -161,25 +104,6 @@ import Testing
         #expect(info?.channelMapping == [0, 4, 1, 2, 3, 5])
         #expect(NvstAudioSurroundInfo.parse(NvstControlCommand(code: .remoteInput, payload: writer.data)) == nil)
         #expect(NvstAudioSurroundInfo.parse(NvstControlCommand(code: .audioSurroundInfo, payload: Data([1, 2]))) == nil)
-    }
-
-    @Test func theStereoTeeFoldsEveryChannelWithoutBlowingUp() {
-        for channels in [6, 8] {
-            let weights = OPNCoreAudioRTCDevice.stereoDownmixWeights(channels: channels)
-            #expect(weights.count == channels)
-            // Front left and right stay on their own side; LFE (index 3) is dropped.
-            #expect(weights[0].left > 0 && weights[0].right == 0)
-            #expect(weights[1].right > 0 && weights[1].left == 0)
-            #expect(weights[3].left == 0 && weights[3].right == 0)
-            let left = weights.reduce(Float(0)) { $0 + $1.left }
-            let right = weights.reduce(Float(0)) { $0 + $1.right }
-            #expect(left <= 1.25 && right <= 1.25)
-            #expect(abs(left - right) < 0.0001)
-        }
-        #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(6) == 6)
-        #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(8) == 8)
-        #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(4) == 2)
-        #expect(OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(0) == 2)
     }
 
     /// The HUD is the only place a listener can confirm what the seat actually sent, so it has to

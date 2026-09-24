@@ -103,15 +103,20 @@ import Testing
             try await Task.sleep(nanoseconds: 5_000_000)
         }
 
-        try await waitUntil(timeout: 5) { !seatAudio.packets.isEmpty }
-        let packet = try #require(seatAudio.packets.first, "the bundle sent no microphone packet")
+        try await waitUntil(timeout: 5) { seatAudio.packets.count >= 2 }
+        let packets = seatAudio.packets
+        #expect(packets.count >= 2, "the bundle sent \(packets.count) microphone packet(s)")
         let (keys, profile) = try bundleSeat.transport.exportedKeys()
         // The bundle is the DTLS client, so the seat reads its microphone with the client write keys.
         let reader = try NvstAudioSrtp(masterKey: keys.clientMasterKey, masterSalt: keys.clientMasterSalt, profile: profile)
-        let (rtp, payload) = try reader.unprotect(packet)
-        #expect(rtp.ssrc == NvstAudioSendPipeline.microphoneSSRC)
-        #expect(rtp.payloadType == NvstAudioSendPipeline.opusPayloadType)
-        #expect(!payload.isEmpty)
+        let (first, firstPayload) = try reader.unprotect(packets[0])
+        let (second, _) = try reader.unprotect(packets[1])
+        #expect(first.ssrc == NvstAudioSendPipeline.microphoneSSRC)
+        #expect(first.payloadType == NvstAudioSendPipeline.opusPayloadType)
+        #expect(!firstPayload.isEmpty)
+        // The seat's microphone contract is `x-nv-mic.frameSize:10`: ten milliseconds, or 480 samples
+        // at 48 kHz, per packet. A 5 ms clock here is the regression that left the seat's mic meter dead.
+        #expect(second.timestamp &- first.timestamp == 480, "the microphone clock advanced \((second.timestamp &- first.timestamp)) samples, not a 10 ms frame")
     }
 
     @Test func theSeatInputProtocolAnnouncementUnlocksInputWhileCommandsReachTheSeat() async throws {

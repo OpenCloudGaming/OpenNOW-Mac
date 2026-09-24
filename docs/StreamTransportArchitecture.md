@@ -59,6 +59,18 @@ or microphone capture/transmission.
   (`SETUP` + UDP RTP sink) remains unrecovered; a seat that does not offer bundle mic reports
   that when the mic is enabled.
 
+**Native bundle microphone send** (`NvstNativeBundle`) reproduces what that libwebrtc path sent,
+because the seat's DESCRIBE is the contract: plain Opus on **pt 111** with the vendor's
+deterministic **SSRC 1**, stereo (`opus/48000/2`), **10 ms** per packet. `x-nv-mic.frameSize:10`
+and the synthesized section's `a=ptime:10` both name the 10 ms grid; `x-nv-aqos.packetDuration:5`
+is the *downlink* audio grid, not the mic's. Sending 5 ms mic frames leaves the seat's virtual mic
+meter dead while `tx` still climbs — the counter proves transmission, not reception. The mic
+attributes the seat asked for (`enableRedundancyForMic`, `bitrate`, `numChannels`) do not need to be
+honoured packet-for-packet: plain pt-111 Opus carried speech to the seat's meter in the verified run.
+The diagnostics line now reports `mic=on(ssrc=…,tx=…,pkts=…,frames=…,level=…)`, so a silent capture
+(`frames`/`level` flat while speaking) is distinguishable from a seat that never decodes the stream
+(`frames`/`level` advancing while the meter stays dead).
+
 Microphone diagnostics in the per-session NVST log separate CoreAudio capture from the RTC
 sender: `captureMeter` uses the Settings meter's 6× RMS scale, `captureReadings` and
 `captureAgeMs` establish callback activity, and `sourceLevel`/`sourceEnergy`/`sourceSeconds`
@@ -625,38 +637,39 @@ The corrections above are now in the tree and independently checked:
 - **PLAY default.** The negotiator sent PLAY only when `general.disablePlay` was literally `0`, so a
   seat that omitted the attribute would get no PLAY and stream nothing. The official client sends
   PLAY unless the seat disables it, so only a literal `1` now suppresses it; absence means send.
-- **Verification.** Xcode suite: **2,277 passed, 4 skipped, 0 failed**. Strict lint: zero violations
-  across 884 files. The rebuilt usrsctp static archive is committed with its SHA-256 and a
-  reproduction script (`scripts/build-usrsctp.sh`).
+- **Verification.** Xcode suite: **2,260 passed, 4 skipped, 0 failed** after the 4e deletion. Strict
+  lint: zero violations across 875 files. The rebuilt usrsctp static archive is committed with its
+  SHA-256 and a reproduction script (`scripts/build-usrsctp.sh`).
 
-**Outstanding, and only establishable live:** seat-answered control command, working mouse/keyboard
-input, audible game audio through the native device, and the cloud Steam microphone test. The old
-`NvstWebRtcBundle` and its exclusive `OPNCoreAudioRTCDevice` stay in the tree until those gates pass.
+**All four gates are now proven live (2026-09-24):**
 
-The next live run answers each gate from the diagnostic log, without guesswork:
+- **Channels.** `sctp=established(in=4554 opens=8 resets=0 appData=4554)` — SCTP up, eight channels
+  open, no stream resets.
+- **Control + input.** `control=true feedback=true input=true`, `reportsSent` and `inputOut` growing.
+- **Game audio.** `keying=DTLS-SRTP profile=AEAD_AES_256_GCM tagBytes=16`, device
+  `playout=true capture=true outRate=48000`, `receive[datagrams=13260 authenticated=13246
+  decoded=13243 lost=0 tagFail=14 decodeFail=0 redFail=0]` (the 14 tagFails are 0.1% stragglers).
+- **Microphone.** `ANNOUNCE a=x-nv-general.rtcMicOnNativeBundle:1` and `mic=on(ssrc=1,tx=…)` with
+  `tx` climbing past 1 MB.
 
-- **Channels.** `NVST native bundle SCTP established; sent 8 channel OPENs` followed by eight
-  `NVST native bundle channel open: <label>` lines, and `sctp=established(… opens=8 resets=0 …)`.
-  `resets=` non-zero means the seat refused the profile; `cookie-wait`/`connecting` means the
-  association never came up.
-- **Control.** `control=true` and the periodic `0x313` totals growing; the seat is answering the
-  keepalive by construction (`onControlChannelOpen` starts it).
-- **Input.** `input=true` once the seat announces its remote-input version, with `inputOut=`/`padOut=`
-  growing as the mouse and keys are used.
-- **Game audio.** `NVST native audio keying=DTLS-SRTP profile=… tagBytes=…`, then
-  `receive[datagrams=… authenticated=… decoded>0 … tagFail=… decodeFail=… redFail=…]`. A non-zero
-  `tagFail` with `authenticated=0` means the audio key/profile is still wrong; `decoded=0` with
-  `authenticated>0` means the RED/Opus path, not the crypto.
-- **Microphone.** `NVST native audio device playout=true capture=true …` and `mic=on(ssrc=1,tx=…)`
-  with `tx` growing while the mic is enabled.
+The runbook that produced those readings, kept for the next regression:
 
-When they do, the deletion is a closed set, because production no longer references any of it
-(only comments do): `OPN/Stream/NvstWebRtcBundle.swift`, `NvstWebRtcBundleDelegates.swift`,
+- **Channels.** `sctp=established(… opens=8 resets=0 …)`; `resets=` non-zero means the seat refused
+  the profile, and `cookie-wait`/`connecting` means the association never came up.
+- **Control.** `control=true` and the periodic `0x313` totals growing.
+- **Input.** `input=true` with `inputOut=`/`padOut=` growing as the mouse and keys are used.
+- **Game audio.** `keying=… tagBytes=…`, then `decoded>0` with `tagFail=0`; `authenticated>0` with
+  `decoded=0` isolates the RED/Opus path from the crypto.
+- **Microphone.** `mic=on(ssrc=1,tx=…)` with `tx` growing while the mic is enabled.
+
+**The superseded implementation is deleted.** Production referenced none of it, so the removal was a
+closed set: `OPN/Stream/NvstWebRtcBundle.swift`, `NvstWebRtcBundleDelegates.swift`,
 `NvstWebRtcBundleSDP.swift`, `NvstWebRtcBundleSetup.swift`, `WebRTCNativeAudioCoreDevice.swift`,
-`WebRTCNativeAudioCoreDevice+Surround.swift`, `WebRTCNativeAudioDeviceMonitor.swift`, and their tests
-`Tests/Stream/NvstWebRtcBundleTests.swift` and `Tests/Stream/SurroundAudioTests.swift`.
-`NvstBifrostFreeTransport`'s surround clamp already reads `NvstCoreAudioFormat` rather than the old
-device's static, so nothing in production blocks the removal.
+`WebRTCNativeAudioCoreDevice+Surround.swift`, `WebRTCNativeAudioDeviceMonitor.swift`,
+`NvstBundleAudioSDP.swift` (the multiopus SDP munging, exclusive to the old WebRTC SDP path), and
+`Tests/Stream/NvstWebRtcBundleTests.swift`. The two tests in `SurroundAudioTests` that exercised the
+old synthesized offer, the old device's downmix, and that munging were removed with them; the
+resolver, HUD, announce and surround-info tests in that file stay.
 
 **The `WebRTC` dependency stays.** Remote Co-Op still builds its guest and host peers on
 `RTCPeerConnection`, and `WebRTCI420BGRAConverter` is the Co-Op guest renderer's converter; the

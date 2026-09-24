@@ -218,7 +218,7 @@ struct NvstRemoteInputTests {
     }
 
     @Test func theBundleKeepsInputChannelsAheadOfCursorAndFeedback() {
-        let labels = NvstWebRtcBundle.officialChannels.map(\.label)
+        let labels = NvstSctpChannelProfile.official.map(\.label)
         #expect(labels == ["control_channel_reliable",
                            "custom_message_on_sctp_private_reliable",
                            "custom_message_on_sctp_private_partially_reliable",

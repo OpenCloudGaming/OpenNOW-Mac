@@ -89,7 +89,13 @@ public final class NvstNativeBundle: @unchecked Sendable {
     private static let partiallyReliableControlStream: UInt16 = 6
     private static let inputStream: UInt16 = 10
     private static let feedbackStream: UInt16 = 14
-    private static let framesPerPacket = 240
+    /// The seat's game audio arrives 5 ms per packet (`x-nv-aqos.packetDuration:5`), which is the
+    /// grid the Opus decoder and jitter buffer pull on.
+    private static let decodedAudioFramesPerPacket = 240
+    /// The seat's microphone contract asks for 10 ms frames (`x-nv-mic.frameSize:10`), the same
+    /// `a=ptime:10` the verified working mic section carried. Sending 5 ms Opus here leaves the
+    /// seat's virtual mic meter dead even though packets leave the host.
+    private static let microphoneFramesPerPacket = 480
     private static let microphoneChannels = 2
     /// The native audio decode is stereo regardless of the surround preference; see `startAudioDevice`.
     private static let decodedAudioChannels = 2
@@ -109,6 +115,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
 
     /// Mic chat bytes uploaded, as the `0x208` report wants them.
     public var microphoneSentBytes: UInt64 { sendPipeline?.snapshot.bytesSent ?? 0 }
+
     public var audioOutputLatencySeconds: Double? { audioDevice?.outputPathLatencySeconds }
     /// The seat's audio is a single stereo-or-surround stream, so the count is what the HUD reports
     /// as the track count on this transport.
@@ -120,17 +127,6 @@ public final class NvstNativeBundle: @unchecked Sendable {
     /// Input is accepted once the control channel — where the seat expects remote input — is open and
     /// the seat has announced its protocol version.
     public var isInputReady: Bool { isControlChannelOpen && inputProtocolVersion != nil }
-
-    public var diagnosticSummary: String {
-        let sctp = association == nil
-            ? "down"
-            : "\(association?.diagnosticState ?? "closed")(in=\(association?.inboundPackets ?? 0) opens=\(association?.requestedChannelCount ?? 0) resets=\(association?.streamResetsSeen ?? 0) appData=\(transport?.applicationDatagrams ?? 0))"
-        let mic = microphoneSenderSsrc == nil ? "off" : "on(ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),tx=\(microphoneSentBytes))"
-        let audio = receivePipeline.map {
-            "receive[datagrams=\($0.snapshot.datagrams) authenticated=\($0.snapshot.authenticated) decoded=\($0.snapshot.packetsDecoded) lost=\($0.snapshot.packetsLost) recovered=\($0.snapshot.recoveredPackets) tagFail=\($0.snapshot.authenticationFailures) decodeFail=\($0.snapshot.decodeFailures) redFail=\($0.snapshot.malformedRedPackets)]"
-        } ?? "receive[down]"
-        return "sctp=\(sctp) control=\(isControlChannelOpen) feedback=\(isFeedbackChannelOpen) input=\(isInputReady) mic=\(mic) \(audio)"
-    }
 
     private let handoff: NVSTVideoHandoff
     private let identity: NvstDtlsIdentity
@@ -148,6 +144,11 @@ public final class NvstNativeBundle: @unchecked Sendable {
     private struct ControlStat { var sent: UInt32 = 0; var failed: UInt32 = 0; var bytes: UInt64 = 0 }
     private let controlStatsLock = NSLock()
     private var controlStats: [UInt16: ControlStat] = [:]
+    /// Microphone capture evidence, written from the CoreAudio render thread and read by the
+    /// diagnostics line. `tx` alone cannot tell a silent capture from a seat that never decodes it.
+    private let microphoneStatsLock = NSLock()
+    private var microphoneCapturedFrames: UInt64 = 0
+    private var microphoneCaptureLevel: Double = 0
 
     public init(handoff: NVSTVideoHandoff,
                 identity: NvstDtlsIdentity,
@@ -361,14 +362,14 @@ public final class NvstNativeBundle: @unchecked Sendable {
             let directions = NvstAudioSrtpDirection.directions(from: keys)
             receivePipeline = try NvstAudioReceivePipeline(
                 srtp: try NvstAudioSrtp(masterKey: directions.inbound.key, masterSalt: directions.inbound.salt, profile: profile),
-                framesPerPacket: Self.framesPerPacket,
+                framesPerPacket: Self.decodedAudioFramesPerPacket,
                 channels: Self.microphoneChannels
             )
             sendPipeline = nil
             if let microphone {
                 let send = try NvstAudioSendPipeline(
                     srtp: try NvstAudioSrtp(masterKey: directions.outbound.key, masterSalt: directions.outbound.salt, profile: profile),
-                    framesPerPacket: Self.framesPerPacket,
+                    framesPerPacket: Self.microphoneFramesPerPacket,
                     channels: Self.microphoneChannels,
                     initialSequenceNumber: UInt16.random(in: 0...UInt16.max),
                     initialTimestamp: UInt32.random(in: 0...UInt32.max)
@@ -413,7 +414,13 @@ public final class NvstNativeBundle: @unchecked Sendable {
             onMicrophoneAudioFrame?(pointer, frames, rate, channels)
             sendCapturedMicrophone(pointer: pointer, frames: frames)
         }
-        device.onMicrophoneLevel = { [weak self] level in self?.onMicrophoneLevel?(level) }
+        device.onMicrophoneLevel = { [weak self] level in
+            guard let self else { return }
+            microphoneStatsLock.lock()
+            microphoneCaptureLevel = level
+            microphoneStatsLock.unlock()
+            onMicrophoneLevel?(level)
+        }
         device.isMicrophoneCaptureEnabled = { [weak self] in self?.sendPipeline?.isMuted == false }
         device.start()
         audioDevice = device
@@ -427,6 +434,9 @@ public final class NvstNativeBundle: @unchecked Sendable {
         guard let pointer, let sendPipeline else { return }
         let list = pointer.assumingMemoryBound(to: AudioBufferList.self)
         guard let samples = NvstCoreAudioFormat.stereoCaptureSamples(bufferList: list, frames: frames) else { return }
+        microphoneStatsLock.lock()
+        microphoneCapturedFrames &+= UInt64(frames)
+        microphoneStatsLock.unlock()
         for datagram in sendPipeline.push(capturedPCM: samples) {
             try? transport?.sendRaw(datagram)
         }
@@ -512,5 +522,27 @@ public final class NvstNativeBundle: @unchecked Sendable {
         case Self.feedbackStream: onFeedbackChannelOpen?()
         default: break
         }
+    }
+}
+
+extension NvstNativeBundle {
+    /// Capture evidence for the diagnostics line: frames pulled from the device and the last meter
+    /// reading, so a silent capture is visible rather than inferred from an advancing byte count.
+    private var microphoneStatistics: (capturedFrames: UInt64, captureLevel: Double) {
+        microphoneStatsLock.lock()
+        defer { microphoneStatsLock.unlock() }
+        return (microphoneCapturedFrames, microphoneCaptureLevel)
+    }
+
+    public var diagnosticSummary: String {
+        let sctp = association == nil
+            ? "down"
+            : "\(association?.diagnosticState ?? "closed")(in=\(association?.inboundPackets ?? 0) opens=\(association?.requestedChannelCount ?? 0) resets=\(association?.streamResetsSeen ?? 0) appData=\(transport?.applicationDatagrams ?? 0))"
+        let micStats = microphoneStatistics
+        let mic = microphoneSenderSsrc == nil ? "off" : "on(ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),tx=\(microphoneSentBytes),pkts=\(sendPipeline?.snapshot.packetsSent ?? 0),frames=\(micStats.capturedFrames),level=\(String(format: "%.3f", micStats.captureLevel)))"
+        let audio = receivePipeline.map {
+            "receive[datagrams=\($0.snapshot.datagrams) authenticated=\($0.snapshot.authenticated) decoded=\($0.snapshot.packetsDecoded) lost=\($0.snapshot.packetsLost) recovered=\($0.snapshot.recoveredPackets) tagFail=\($0.snapshot.authenticationFailures) decodeFail=\($0.snapshot.decodeFailures) redFail=\($0.snapshot.malformedRedPackets)]"
+        } ?? "receive[down]"
+        return "sctp=\(sctp) control=\(isControlChannelOpen) feedback=\(isFeedbackChannelOpen) input=\(isInputReady) mic=\(mic) \(audio)"
     }
 }
