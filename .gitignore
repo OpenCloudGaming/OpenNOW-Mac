@@ -1,4 +1,13 @@
+# Vendored prebuilt dependencies are build inputs and are checked in deliberately, so each ships
+# framework is re-included explicitly below. Everything else under Vendor/ stays out of the index.
+# An ignored binary that is never added breaks every other checkout, and `git status` hides it.
 vendor/*
+!Vendor/OpenSSL.xcframework
+!Vendor/OpenSSL.xcframework/**
+!Vendor/usrsctp.xcframework
+!Vendor/usrsctp.xcframework/**
+!Vendor/WebRTC.xcframework
+!Vendor/WebRTC.xcframework/**
 third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/

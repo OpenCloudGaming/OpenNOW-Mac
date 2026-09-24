@@ -155,14 +155,14 @@ extension NvstBifrostFreeTransport {
     /// configuration before `start`, so it is already stored by this point. Four gates stand in
     /// front of the section: capture requested and the seat's DESCRIBE offer. A suppressed shape
     /// logs why.
-    private func resolvedMicrophoneSetup(microphoneOfferedOnBundle: Bool) -> NvstWebRtcBundle.MicrophoneSetup? {
+    private func resolvedMicrophoneSetup(microphoneOfferedOnBundle: Bool) -> NvstNativeBundle.MicrophoneSetup? {
         let logger = self.logger
         guard let configuration = microphoneConfiguration, configuration.captureRequested else { return nil }
         if !microphoneOfferedOnBundle {
             logger?("NVST seat did not offer bundle microphone carriage; the mic stays on its (not yet recovered) legacy transport")
             return nil
         }
-        return NvstWebRtcBundle.MicrophoneSetup(volume: configuration.volume,
+        return NvstNativeBundle.MicrophoneSetup(volume: configuration.volume,
                                                 initiallyEnabled: configuration.initiallyEnabled)
     }
 
@@ -176,7 +176,16 @@ extension NvstBifrostFreeTransport {
             return nil
         }
         let microphoneSetup = resolvedMicrophoneSetup(microphoneOfferedOnBundle: microphoneOfferedOnBundle)
-        let bundle = NvstWebRtcBundle(handoff: handoff, logger: logger)
+        guard let identitySeed = try? NvstDtlsIdentity() else {
+            logger?("NVST native bundle could not generate a DTLS identity; falling back to the STUN-only probe")
+            startBundleProbe(handoff: handoff)
+            scheduleVideoHolePunch()
+            return nil
+        }
+        let bundle = NvstNativeBundle(handoff: handoff,
+                                      identity: identitySeed,
+                                      audioChannelCount: configuredAudioChannelCount,
+                                      logger: logger)
         let sender = NvstFeedbackSender()
         do {
             let identity = try await bundle.prepare(microphone: microphoneSetup, audioChannelCount: configuredAudioChannelCount)
@@ -203,9 +212,8 @@ extension NvstBifrostFreeTransport {
             // so frame acks can go out.
             videoPipeline?.attach(bundle: bundle)
             self.feedbackSender = sender
-            if !identity.usesOfficialIceCredentials {
-                logger?("NVST bundle is announcing libwebrtc's own ICE credentials; Bifrost length checks may reject them")
-            }
+            // The native bundle sets no ICE credentials of its own — that length-check interplay was
+            // between libwebrtc's SDP and Bifrost, and there is no SDP here.
             return NvstBundleReservation(
                 bundlePort: identity.bundlePort,
                 mjolnirPort: handoff.mjolnirUDPPort ?? handoff.clientUDPPort,

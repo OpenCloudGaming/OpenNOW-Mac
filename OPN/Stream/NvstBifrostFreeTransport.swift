@@ -16,7 +16,7 @@ import Foundation
 ///    decoded `CVPixelBuffer`s.
 ///
 /// Input, audio and the RTCP feedback plane ride the ICE/DTLS bundle's SCTP data channels, which
-/// this transport brings up through `NvstWebRtcBundle` when the seat negotiates the official
+/// this transport brings up through `NvstNativeBundle` when the seat negotiates the official
 /// cloud path; the bare Mjolnir socket keeps carrying video and its own SRTCP reports on the
 /// legacy shape. Microphone carriage is server-driven: when the seat offers
 /// `general.rtcMicOnNativeBundle:1` in DESCRIBE, the bundle gains a sendonly `m=audio` mic
@@ -73,7 +73,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     var session: NvstRtspSession?
     var receiver: NvstMjolnirReceiver?
     var bundleProbe: NvstBundleIceProbe?
-    var bundle: NvstWebRtcBundle?
+    var bundle: NvstNativeBundle?
     var feedbackSender: NvstFeedbackSender?
     var decoder: NvstVideoToolboxDecoder?
     /// Decode + frame acknowledgement, deliberately off this actor. See `NvstVideoPipeline`.
@@ -185,8 +185,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The bundle is never prepared — it only exists so enable/disable reach the
     /// `microphoneNegotiated` gate instead of the earlier `notRunning` one.
     func seedMicrophoneBundleForTesting(negotiated: Bool) {
-        if bundle == nil {
-            bundle = NvstWebRtcBundle(
+        if bundle == nil, let identity = try? NvstDtlsIdentity() {
+            bundle = NvstNativeBundle(
                 handoff: NVSTVideoHandoff(
                     clientUDPPort: 0, videoPeerIP: "10.20.30.40", videoPeerPort: 5004,
                     srtpProfile: .aeadAes256Gcm8,
@@ -195,7 +195,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                     reorderWindowPackets: 32, maxAccessUnitBytes: 1024, timeoutMilliseconds: 5000,
                     pingVersion: 6, pingPayload: "PING", mjolnirUDPPort: 0,
                     iceCredentials: nil),
-                preferredLocalAddress: nil)
+                identity: identity)
         }
         microphoneNegotiated = negotiated
     }
@@ -292,7 +292,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterModel = configuredPrefilterModel
         self.configuredColorQuality = configuredColorQuality
         self.configuredVsyncMode = configuredVsyncMode
-        self.configuredAudioChannelCount = OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(configuredAudioChannelCount)
+        self.configuredAudioChannelCount = NvstCoreAudioFormat.supportedPlayoutChannelCount(configuredAudioChannelCount)
         self.preferredAudioChannelCount = preferredAudioChannelCount > 0 ? preferredAudioChannelCount : self.configuredAudioChannelCount
         self.logger = logger
         self.controlTimeout = controlTimeout
@@ -477,10 +477,12 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     func logHudCounters(receiver: NvstMjolnirReceiver, stats: NvstReceiverStats) async {
         // The HUD's own numbers, so a headless run can verify them without the overlay: RTT comes
         // from the bundle's ICE candidate pair and the resolution from the decoded surface.
-        bundle?.refreshTransportStatistics()
         let keepAlive = await session?.controlKeepAliveSummary() ?? ""
         logger?(String(format: "NVST hud rtt=%.1fms mjolnirRtt=%.1fms ctrl[%@] jitter=%.1fms decodedRes=%@ negotiatedRes=%@ gameFps=%.1f audioJb=%.1fms",
-                       bundle?.roundTripMilliseconds ?? -1,
+                       // The native bundle has no ICE candidate pair to time; the HUD's latency
+                       // comes from the Mjolnir socket's STUN round trip and then the control
+                       // connection's ping/pong.
+                       -1.0,
                        receiver.roundTripMilliseconds,
                        keepAlive,
                        Double(stats.lastJitter) * 1000 / Double(NvstVideoToolboxDecoder.clockRate),

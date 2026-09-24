@@ -34,8 +34,44 @@ public enum NvstRtspSdp {
 
     // MARK: - DESCRIBE parsing
 
+    /// The three documents a DESCRIBE 200 body joins end to end, as the official client reads them.
+    ///
+    /// `main ;; features || offer`: the main SDP holds the bulk of the client configuration, a small
+    /// features SDP **overrides** it, and the upstream media offer follows. The live DESCRIBE carries
+    /// `runtime.micSrtp` and `audio.enableDynamicAudioConfig` once in each of main and features with
+    /// different values, so a parser that takes the first match anywhere reads the stale one.
+    public struct DescribeSections: Equatable, Sendable {
+        public let main: String
+        public let features: String
+        public let offer: String
+
+        /// Main then features, in the order their values must overwrite. The media offer is not
+        /// configuration and is excluded.
+        public var configuration: String {
+            features.isEmpty ? main : main + "\n" + features
+        }
+    }
+
+    public static func describeSections(_ sdp: String) -> DescribeSections {
+        let mainParts = sdp.components(separatedBy: ";;")
+        let main = mainParts.first ?? ""
+        let afterMain = mainParts.dropFirst().joined(separator: ";;")
+        let offerParts = afterMain.components(separatedBy: "||")
+        let features = offerParts.first ?? ""
+        let offer = offerParts.dropFirst().joined(separator: "||")
+        return DescribeSections(main: main, features: features, offer: offer)
+    }
+
     /// Reads `a=x-nv-<name>:<value>` (also accepting the unprefixed `a=<name>:<value>` form).
+    ///
+    /// Features win over main, which is what the official client does; taking the first match
+    /// anywhere in the body would return main's superseded value.
     public static func attribute(_ sdp: String, _ name: String) -> String? {
+        let sections = describeSections(sdp)
+        return attribute(in: sections.features, name) ?? attribute(in: sections.main, name)
+    }
+
+    private static func attribute(in sdp: String, _ name: String) -> String? {
         let escaped = NSRegularExpression.escapedPattern(for: name)
         let value = NvstRtspMessage.firstCapture(in: sdp, pattern: "(?m)^a=(?:x-nv-)?\(escaped):([^\\r\\n]*)$")
         let trimmed = value?.trimmingCharacters(in: .whitespaces)
@@ -50,7 +86,9 @@ public enum NvstRtspSdp {
     /// answer has to agree with the offer on everything only the seat knows.
     public static func offeredAttributes(_ sdp: String) -> [(String, String)] {
         var result: [(String, String)] = []
-        for rawLine in sdp.components(separatedBy: .newlines) {
+        // Configuration only: the media offer is not the seat's config, and echoing it back is how
+        // the seat came to drop DTLS on an oversized ANNOUNCE.
+        for rawLine in describeSections(sdp).configuration.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             guard line.hasPrefix("a=x-nv-") else { continue }
             let body = line.dropFirst("a=".count)

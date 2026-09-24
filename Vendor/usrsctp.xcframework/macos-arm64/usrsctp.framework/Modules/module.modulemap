@@ -1,0 +1,6 @@
+framework module usrsctp [system] {
+  umbrella header "usrsctp.h"
+
+  export *
+  module * { export * }
+}

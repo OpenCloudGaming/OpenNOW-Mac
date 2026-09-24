@@ -585,7 +585,10 @@ extension NvstRtspNegotiator {
                       described: DescribedSession,
                       common: [(String, String)],
                       steps: inout [String]) async {
-        guard described.disablePlay == "0" else {
+        // The official client sends PLAY unless the seat explicitly disables it, so an absent
+        // attribute means "not disabled" rather than "disabled". Only a literal 1 suppresses it;
+        // treating absence as a skip would leave a seat that omits the attribute with no PLAY.
+        guard described.disablePlay != "1" else {
             steps.append("play-skipped")
             return
         }

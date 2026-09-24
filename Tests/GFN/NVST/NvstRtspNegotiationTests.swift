@@ -219,6 +219,47 @@ import Testing
         #expect(NvstRtspSdp.attribute(body, "general.missingAttribute") == nil)
     }
 
+    /// The live DESCRIBE (2026-09-24) carries these names once in each of main and features, with
+    /// different values, and the official client uses the features one. A first-match parser reads
+    /// the superseded main value.
+    @Test func theFeaturesDocumentOverridesTheMainDocument() {
+        let body = [
+            "a=x-nv-runtime.micSrtp:1",
+            "a=x-nv-audio.enableDynamicAudioConfig:0",
+            ";;",
+            "a=x-nv-runtime.micSrtp:0",
+            "a=x-nv-audio.enableDynamicAudioConfig:1",
+            "||",
+            "m=video 5004",
+            "a=x-nv-runtime.micSrtp:1",
+        ].joined(separator: "\r\n")
+        let sections = NvstRtspSdp.describeSections(body)
+        #expect(sections.main.contains("runtime.micSrtp:1"))
+        #expect(sections.features.contains("runtime.micSrtp:0"))
+        #expect(sections.offer.contains("m=video"))
+        #expect(NvstRtspSdp.attribute(body, "runtime.micSrtp") == "0")
+        #expect(NvstRtspSdp.attribute(body, "audio.enableDynamicAudioConfig") == "1")
+    }
+
+    @Test func aBodyWithoutSectionsStillResolvesItsAttributes() {
+        #expect(NvstRtspSdp.describeSections(Self.describeBody).features.isEmpty)
+        #expect(NvstRtspSdp.attribute(Self.describeBody, "general.pingVersion") == "6")
+        #expect(NvstRtspSdp.attribute("a=general.disablePlay:0", "general.disablePlay") == "0")
+    }
+
+    @Test func offeredAttributesExcludeTheMediaOffer() {
+        let body = [
+            "a=x-nv-video[0].maxFPS:60",
+            ";;",
+            "a=x-nv-video[0].maxFPS:120",
+            "||",
+            "a=x-nv-video[0].maxFPS:240",
+        ].joined(separator: "\r\n")
+        let offered = NvstRtspSdp.offeredAttributes(body)
+        #expect(offered.contains { $0.0 == "x-nv-video[0].maxFPS" && $0.1 == "120" })
+        #expect(!offered.contains { $0.1 == "240" })
+    }
+
     @Test func mediaControlsAreScopedToTheirMediaSection() {
         let body = Self.describeBody
         #expect(NvstRtspSdp.mediaControl(body, mediaType: "video") == "streamid=video/0")

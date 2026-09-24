@@ -17,6 +17,8 @@ own source is licensed separately under the MIT License (`LICENSE` in the source
 | --- | --- | --- | --- |
 | Hanken Grotesk | 3.013, static instances | SIL OFL 1.1 | `Resources/Fonts/*.woff2`, bundled |
 | WebRTC | see *WebRTC build provenance* | BSD 3-Clause | `Vendor/WebRTC.xcframework`, committed |
+| OpenSSL | 3.5.8 | Apache-2.0 | `Vendor/OpenSSL.xcframework`, committed (static) |
+| usrsctp | 0.9.5.0 | BSD 3-Clause | `Vendor/usrsctp.xcframework`, committed (static) |
 | ably-js | 2.28.0 | Apache-2.0 | `Resources/RemoteCoOp/browser/vendor/ably.min.js`, bundled |
 | ably-cocoa | 1.3.0 | Apache-2.0 | statically linked |
 | SocketRocket | vendored inside ably-cocoa | BSD (Facebook) | statically linked via Ably |
@@ -108,6 +110,68 @@ overlay if the upstream packaging still omits `RTCAudioDevice.h`, ad-hoc sign th
 the new source stamp and SHA-256 in this section, and update the comments in `Package.swift` so
 attribution stays reproducible. The authoritative notices for the `third_party` components above
 are those in the upstream WebRTC tree at the release's source revision.
+
+## OpenSSL and usrsctp
+
+The native NVST bundle (milestone 4) terminates DTLS/SRTP and SCTP itself instead of relying on
+libwebrtc's peer connection. Both libraries ship as **static** frameworks, so they are linked into
+the app binary: nothing is embedded at runtime and nothing outside the main binary needs signing.
+
+- OpenSSL 3.5.8 — Apache License 2.0 (appendix below). Provides the DTLS 1.2 client and the SRTP
+  keying material export.
+- usrsctp 0.9.5.0 — BSD 3-Clause (same terms as the WebRTC appendix entry). Provides the SCTP
+  data channels that carry NVST control and input.
+
+Neither ships a `NOTICE` file; OpenSSL's `LICENSE.txt` is the Apache-2.0 text reproduced in the
+appendix, and usrsctp's `COPYING` is the BSD 3-Clause text reproduced there.
+
+### OpenSSL and usrsctp build provenance
+
+Both are prebuilt binaries committed to this repository; building OpenNOW does not rebuild them.
+Derivation:
+
+- OpenSSL: release tarball `openssl-3.5.8.tar.gz` from tag `openssl-3.5.8`
+  (<https://github.com/openssl/openssl/releases/tag/openssl-3.5.8>), SHA-256
+  `a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2`. Configured and built for
+  macOS arm64 only:
+
+  ```
+  ./Configure darwin64-arm64-cc no-shared no-tests no-apps no-module no-engine \
+      --prefix=<staging> -mmacosx-version-min=15.0 -isysroot <macOS SDK>
+  ```
+
+  `libssl.a` and `libcrypto.a` are combined into the single framework binary so one `LibraryPath`
+  covers both; `libssl.a` alone would leave `libcrypto` symbols undefined.
+- usrsctp: tag `0.9.5.0`, commit `07f871bda23943c43c9e74cc54f25130459de830`
+  (<https://github.com/sctplab/usrsctp>). Built with its canonical CMake configuration (3.31.6),
+  the Xcode generator and Xcode 27, for macOS 15+ arm64. Reproduce from a clean pinned checkout:
+
+  ```
+  CMAKE=/path/to/cmake bash scripts/build-usrsctp.sh /path/to/usrsctp
+  ```
+
+  The configuration detects `HAVE_SA_LEN`, `HAVE_SIN_LEN`, `HAVE_SIN6_LEN` and `HAVE_SCONN_LEN`.
+  These must not be omitted: the initial hand-compiled archive lacked them and its internal
+  `sockaddr_conn` layout disagreed with the public macOS header, breaking `AF_CONN` bind/input.
+  IPv4/IPv6 remain enabled; examples, shared libraries and debug logging are disabled. The pinned
+  upstream release needs narrow Xcode 27 warning exclusions for unused-but-set locals, old C
+  prototypes and 64-to-32 conversions; other warnings remain errors. It uses its bundled SHA-1
+  implementation and does not add an mbedTLS dependency.
+- Both are arm64-only, matching the committed WebRTC slice. Adding x86_64 later means rebuilding
+  both for that architecture and extending the xcframework slices.
+
+Shipped framework binaries, SHA-256 (for swap detection):
+
+- `Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/OpenSSL` (static archive, 9.8 MB):
+  `fe4c44108bebc87fd25bd90b7482c9fa07b0397d6d792d63101bc70e2eeac5b9`
+- `Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/usrsctp` (static archive, 600,464 bytes):
+  `f6b79358866b2bbbc9e77a46a6ba0fdf6bd361fe07d8e69636d2d1506bb375e0`
+
+Any future update must pick a tagged release, rebuild the same way, and record the new pins and
+SHA-256 values here. Consumers: the SwiftPM `OpenNOW` and test targets declare both as binary
+targets; the Xcode app and test targets link them. OpenSSL's own headers `#include <openssl/...>`
+as a subdirectory, so the directory *containing* `openssl/` is on the header search path in both
+build systems — a framework search path alone is not enough.
 
 ## Ably
 

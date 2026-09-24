@@ -205,7 +205,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     let lock = NSLock()
     /// The video receiver is armed at SETUP, before the ICE/DTLS bundle exists — the bundle needs
     /// SETUP's own ping payload — so the ack channel arrives later than this object does.
-    var bundle: NvstWebRtcBundle?
+    var bundle: NvstNativeBundle?
     private var counters = Counters()
     private var loggedSlowFrames = 0
     private var frameAckNumber: UInt32 = 0
@@ -280,7 +280,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
     }
 
     /// Hands over the channel the frame acks go out on, once the bundle is up.
-    public func attach(bundle: NvstWebRtcBundle?) {
+    public func attach(bundle: NvstNativeBundle?) {
         lock.lock()
         self.bundle = bundle
         lock.unlock()
@@ -573,7 +573,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
                                        hopMilliseconds: Double,
                                        decodeMilliseconds: Double,
                                        claimedVsyncMicroseconds: UInt32,
-                                       bundle: NvstWebRtcBundle) -> (sent: Int, failed: Int) {
+                                       bundle: NvstNativeBundle) -> (sent: Int, failed: Int) {
         framesSincePacingReport += 1
         guard frameAckNumber % NvstFramePacingReport.framesPerReport == 1 else { return (0, 0) }
         let clientMicroseconds = Int((hopMilliseconds + decodeMilliseconds) * 1000)

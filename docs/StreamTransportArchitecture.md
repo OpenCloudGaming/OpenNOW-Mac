@@ -158,6 +158,511 @@ is available on the official path and is absent from ours.
 The first transport milestone is a live authenticated bundle carrying a control command and
 decryptable game audio. Successful STUN alone does not establish a replacement transport.
 
+### Native bundle progress, 2026-09-23
+
+Deliverable 1's foundation is implemented and verified in-process and over real sockets:
+
+- `NvstDtlsIdentity` — a fresh P-256 key and self-signed certificate per session, DER export, and
+  the SHA-256 fingerprint in the colon-hex form `general.dtlsFingerprint` expects.
+- `NvstDtlsHandshake` — one DTLS 1.2 endpoint, driven by datagrams over memory BIOs so the state
+  machine is deterministic and testable without a network. Authenticates the peer by certificate
+  digest, and exports keying material under `EXTRACTOR-dtls_srtp`.
+- `NvstDtlsTransport` — the same state machine over a real UDP socket taken from the reservation
+  that punched the NAT mapping, with the DTLS retransmission clock driven from `SSL_ctrl`
+  (`DTLSv1_get_timeout` / `DTLSv1_handle_timeout` are macros).
+- `NvstBundleSrtpKeys` — the RFC 5764 §4.2 split of the export into the four SRTP master values,
+  keyed off the negotiated profile (88 bytes for `AEAD_AES_256_GCM_8`).
+
+Verified by 17 tests across four suites: handshake convergence, both ends deriving identical
+non-zero keying material, rejection of a peer whose certificate does not match the announced
+fingerprint, refusal to export before completion, the same handshake over real loopback sockets,
+application datagrams round-tripping both ways over the association, and a timeout when the peer
+never answers. The live-seat handshake remains outstanding: unit and loopback evidence cannot
+establish interoperability with a real seat.
+
+Interop facts established the hard way, all of which cost a compile or a test cycle:
+`EVP_PKEY_Q_keygen` is variadic and unusable from Swift; `MBSTRING_ASC` is an arithmetic macro;
+`X509_get_notBefore` is a macro where `X509_getm_notBefore` is a function;
+`SSL_CTX_set_read_ahead` and `BIO_set_mem_eof_return` are macros over the ctrl interfaces;
+`DTLSv1_get_timeout` and `DTLSv1_handle_timeout` are macros over `SSL_ctrl`; a memory BIO must
+report "no data yet" rather than EOF; and `SSL_VERIFY_NONE` prevents a server from ever receiving a
+peer certificate, so `SSL_VERIFY_PEER` with an accept-any callback is required and the fingerprint
+comparison is the actual authentication.
+
+OpenSSL's own headers `#include <openssl/...>` as a subdirectory, so the directory containing
+`openssl/` must be on the header search path in both build systems — and it is relative to each
+target's own directory, which differs between the root target and the `Tests`/`Benchmarks` targets.
+
+### Native SCTP progress, 2026-09-24
+
+The channel layer and the association exist under `GFN/NVST/Native/`:
+
+- `NvstDataChannel` — the eight channels pinned to their labels and even stream ids `0…14` with
+  their reliability (300 ms timed, zero-retransmit, reliable), and RFC 8832 DCEP OPEN/ACK framing.
+- `NvstSctpAssociation` — the association over `AF_CONN`, usrsctp's in-process address family.
+- `NvstOpusEncoder` — the microphone's Opus, and `NvstAudioRtp` the RTP packetisation and SRTP
+  direction split that carry it.
+
+The initial tests covered the channel table and an Opus round trip. Their DCEP expectations were
+incorrect and did not prove RFC interoperability; see the wire-level corrections below.
+
+Findings that each cost a cycle, and which a future change must not undo:
+
+- `AF_CONN` carries SCTP over the application's DTLS transport. Its opaque address must be
+  registered, used for both bind/connect, and passed directly to `usrsctp_conninput`.
+- SCTP ports are present on the wire even though `AF_CONN` does not use OS network sockets.
+  Both endpoints use port 5000; omitting bind gives the client an unintended ephemeral SCTP port.
+- The initial archive produced `EADDRNOTAVAIL` because its private `sockaddr_conn` layout was built
+  without `HAVE_SCONN_LEN`, while the macOS public header included that field. This was a build
+  configuration defect, not an inherent limitation on in-process accepting peers.
+- `usrsctp_connect` emits the first flight from inside the call, so the outbound hook must be
+  installed in the initializer. Installed afterwards, the first INIT was silently dropped.
+- `conn_output`'s address argument is the `sconn_addr` value itself, not a pointer to a
+  `sockaddr_conn`; dereferencing it traps.
+- That callback runs on usrsctp's own thread, so `usrsctp_conninput` must never be called from
+  inside it: inbound DTLS application records are fed by the transport's receive path, on its own
+  queue, one framed SCTP packet at a time.
+- The encoder rejects a compression magic cookie with `'!siz'` even though the decoder requires the
+  equivalent decompression cookie.
+
+### Native audio progress, 2026-09-24
+
+The receive and send primitives exist under `GFN/NVST/Native/`:
+
+- `NvstAudioSrtp` — the RTP/SRTP split (header, ciphertext, tag) with the authentication covering any
+  CSRC list and header extension; AES-GCM and AES-CM/HMAC-SHA1 use `SrtpKeyDerivation` and the
+  RFC 5764 direction split from DTLS-exported master values.
+- `NvstAudioJitterBuffer` — reorders by extended sequence number, holds a fixed packet depth,
+  reports each missing sequence number exactly once for concealment, and bounds its own depth.
+- `NvstOpusEncoder` — the microphone's Opus, verified by encoding PCM and decoding it back to the
+  same tone with the existing decoder.
+- `NvstAudioRtp` — microphone RTP framing (SSRC 1, pt 111, 5 ms timestamp advance, marker on the
+  first packet only) and the outbound/inbound key pairing.
+
+Offsets and orderings are asserted by value rather than by shape, because these are the parts that
+fail silently: a wrong key direction decrypts to noise, a wrong sequence extension flushes the
+buffer, and a header extension mistaken for payload fails every tag.
+
+**RED depacketisation is implemented** (`NvstRedAudio`), and it is the receive path's loss recovery:
+each redundant block is preceded by a four-octet header carrying its payload type, how far back its
+timestamp is, and its length, so a repeat of a frame that was lost can be slotted back at the
+sequence it belongs to before the jitter buffer decides it is missing. The primary block has a
+one-octet header and takes the remainder.
+
+An earlier note here claimed RFC 2198 does not encode block lengths and that RED therefore could not
+be implemented without a capture. That was **wrong**: the header carries a ten-bit length, and the
+browser's own splitter reads it. The layout was confirmed against RFC 2198 and WebRTC's
+`RedPayloadSplitter` before writing it, and the tests pin the header fields by hand-computed bytes.
+
+Two ordering facts each cost a cycle: every header precedes every payload (the browser's splitter
+advances by the header length alone, never skipping a payload), and a RED packet's repeats are older
+frames, so the one immediately behind the primary is the one that covers a loss.
+
+One production bug surfaced only by the integration test: `SrtpGcm8`'s decrypted payload is a **slice
+of CryptoKit's sealed box**, so its `startIndex` is not zero, and slicing it with zero-based indices
+traps. `NvstRedAudio.split` and `NvstAudioRtpPacket.parse` now build their pieces from a normalised
+byte array rather than calling `subdata(in:)` on a caller's `Data`. Unit fixtures built by
+concatenation are always zero-based, which is exactly why they missed it.
+
+### Native CoreAudio device, 2026-09-24
+
+`NvstCoreAudioDevice` replaces the libwebrtc `RTCAudioDevice` the bundle borrowed, and with it the
+last RTC type in the audio path. It is CoreAudio only: a HAL output unit whose render callback fills
+16-bit interleaved PCM from a closure, and an input unit whose callback hands captured PCM to
+another. Neither direction knows about Opus or SRTP — the pipelines do — so the device is format
+conversion, timing and the two taps.
+
+The tap ordering is deliberate and is the same lesson the device it replaces records: playout is
+teed to the recorder and the Co-Op relay *before* the local mute is applied, so silencing this Mac's
+speakers cannot silence a guest or a recording. The microphone gate is applied after the level
+report, so the meter keeps working while muted.
+
+Its format arithmetic lives in `NvstCoreAudioFormat` so it can be checked without a sound device:
+the surround clamp, the stereo fallback for a device that cannot carry six or eight channels, the
+5 ms IO buffer with the device's own range applied, the 16-bit interleaved stream format, and the
+microphone level curve the Settings meter shares. Those are covered by tests; the I/O itself is
+verified only by a live session, like every other device path.
+
+Two format decisions exist because the native path owns Opus directly where libwebrtc did not:
+
+- **The callbacks always exchange 48 kHz**, the rate Opus, the RTP clock and the jitter buffer
+  assume. The old device reported the hardware's rate and let libwebrtc resample; a native device
+  that did that would hand 44.1 kHz samples to a 48 kHz encoder. The HAL unit is therefore
+  configured with a 48 kHz client format and resamples to and from the hardware itself. The
+  hardware's own rate is kept only for the IO-buffer and latency arithmetic, which are in device
+  frames.
+- **The decode is stereo, and the device is asked for stereo.** The seat negotiates
+  `opus/48000/2`, and the decoder, jitter buffer and receive pipeline are all two-channel. Asking
+  the hardware for the configured surround count would interleave a stereo decode into a six- or
+  eight-channel buffer. A fill helper maps the stereo decode onto the channel count the device
+  actually settled on — mono averages the pair, stereo keeps it, a wider layout fills the front pair
+  and leaves the rest silent. Native surround decode remains unimplemented and is recorded as such.
+
+Full Xcode suite at this point: **2,231 passed, 4 skipped, 0 failed** across 2,235 tests, including
+the 61 added by this milestone's native components. An earlier SwiftPM-only run reported failures in
+`StreamRecordingTests` and `StreamReplayBufferTests`; those pass under the Xcode command, which sets
+`TEST_RUNNER_CFFIXED_USER_HOME`, so they were environmental (AVAssetWriter needs a writable home)
+rather than regressions.
+
+### Bundle socket demultiplexing, 2026-09-24
+
+`NvstBundleDatagramDemux` separates the two things that share the bundle port. The seat muxes game
+audio onto the same UDP socket as the DTLS association, exactly as a browser does: SRTP is not
+carried *inside* DTLS, it runs alongside it. A DTLS record's first byte is its content type (20…63);
+an RTP or RTCP first byte has the version field set to 2, which makes it 128…191. Anything else is
+neither and is counted rather than fed to either layer.
+
+This is a correctness hazard rather than tidiness: handing an audio packet to the DTLS record layer
+stalls the handshake or tears the association down, and the failure looks like a network fault
+rather than a demultiplexing one.
+
+### Native component inventory, 2026-09-24
+
+The following milestone-4 components exist under `GFN/NVST/Native/`. Component tests alone do not
+establish correct assembly, live interoperability, or completion of 4c/4d:
+
+| Component | Covers |
+|---|---|
+| `NvstDtlsIdentity`, `NvstDtlsHandshake`, `NvstDtlsTransport` | the DTLS connection and its keying export |
+| `NvstBundleSrtpKeys` | the RFC 5764 split of that export |
+| `NvstDataChannel`, `NvstSctpAssociation` | the eight channels, their DCEP framing, and SCTP itself |
+| `NvstAudioSrtp` | protect/unprotect, with the header extension authenticated whole |
+| `NvstRedAudio` | RFC 2198 blocks, including the repeats that recover a loss |
+| `NvstAudioJitterBuffer` | reordering, depth bounding, and loss reporting |
+| `NvstAudioReceivePipeline`, `NvstAudioSendPipeline` | the two audio paths end to end |
+| `NvstOpusEncoder` | the microphone's codec |
+| `NvstCoreAudioFormat`, `NvstCoreAudioDevice` | device formats, and the CoreAudio I/O itself |
+| `NvstBundleDatagramDemux` | DTLS versus SRTP on one port |
+
+Full Xcode suite at this point: **2,243 passed, 4 skipped, 0 failed** across 2,247 tests.
+
+**What is not done, and what it needs.** No assembly of these components into a bundle type that
+implements `NvstBundleReserving`, no rewiring of `NvstBifrostFreeTransport`, and no deletion of
+`NvstWebRtcBundle` — those are milestone 4e, which the plan gates on 4c and 4d passing against a live
+seat. The gates are the outstanding work, and each needs an authenticated GeForce NOW session that
+only a person at the keyboard can start:
+
+- 4c: the DTLS handshake completes, SCTP carries a control command, and the seat answers. An
+  accepting local peer can verify the SCTP/DCEP exchange once the native library is built correctly;
+  it cannot establish that the vendor accepts OpenNOW's complete channel and control profile.
+- 4d: audible game audio, and the cloud Steam voice test hearing the microphone.
+
+### What 4e needs, after attempting it, 2026-09-24
+
+Writing the assembly first, then deleting it, established something worth recording: 4e is not
+wiring. `NvstBifrostFreeTransport` consumes two measurements that only libwebrtc was supplying, and
+the bundle must provide them or the HUD loses them. Both are now resolved:
+
+- **Audio jitter dwell.** The HUD computes its A/V jitter reading from `jitterBufferDelaySeconds`
+  over `jitterBufferEmittedCount`. `NvstAudioJitterBuffer` now measures exactly that — each packet's
+  arrival time to its emission — with the clock injected so the measurement is asserted rather than
+  waited for. The counter names match libwebrtc's, so the HUD's arithmetic is unchanged. Dwell
+  reflects buffering, so the first packet in a burst reads longest, which is the point of the metric.
+- **Bundle round trip.** No native ICE RTT exists, and none is needed: `NvstBifrostFreeInput`
+  already falls back to the Mjolnir socket's own STUN round trip and then to the control
+  connection's WebSocket ping/pong, which the seat answers mandatorily.
+- **Control-channel totals.** `NvstNativeBundle.controlChannelStats` counts sends and failures for
+  the commands written through its `sendControl`/`sendPartiallyReliableControl` paths only — stream 0
+  and the partially-reliable stream 6. Input and feedback call the association's `send` directly and
+  are not counted, because their own paths already report and counting them would inflate `0x313`.
+
+The remaining 4e work is the assembly itself: a bundle owning DTLS, SCTP and audio that mirrors the
+~35 members the transport calls, plus rewiring and then deleting `NvstWebRtcBundle`. That deletion
+still waits on 4c and 4d passing against a live seat.
+
+### 4e assembly, 2026-09-24
+
+`NvstNativeBundle` composes the components into the bundle the transport runs on: DTLS, SCTP and
+audio, with no peer-library types. It owns the socket, completes the handshake in `prepare`, derives
+the two audio directions from the exported keys, starts the association and opens the eight channels,
+and classifies every inbound datagram before any layer sees it — DTLS to the association, SRTP to the
+audio pipeline.
+
+It deliberately does **not** carry three members of the bundle it replaces, because they existed only
+to expose libwebrtc's own statistics and would be no-ops:
+
+- `roundTripMilliseconds` and `refreshTransportStatistics`: there is no ICE candidate pair to time.
+  Latency keeps a real source because `NvstBifrostFreeInput` already falls back to the Mjolnir
+  socket's STUN round trip and then the control connection's ping/pong.
+- `controlChannelStats` is **kept**, not dropped: the `0x313` records live in
+  `NvstNativeBundle.controlStats`, keyed by command code, because only the caller that sends a
+  command knows its code. The association cannot supply them.
+
+Its dwell counters reach the HUD through `NvstAudioReceivePipeline.jitterBufferDwellSeconds` over
+`jitterBufferEmittedCount`, named as libwebrtc's were so the A/V arithmetic is unchanged.
+
+**Proven and not proven.** The assembly compiles, lints and is wired into
+`NvstBifrostFreeTransport`; `NvstWebRtcBundle` is now unreferenced by production code. What no test
+here can reach is the assembly against a real seat: it needs a socket, a seat and audio hardware, so
+its live behavior is gated, not proven, and is recorded as such below.
+
+Full Xcode suite with it in the tree: **2,248 passed, 4 skipped, 0 failed** across 2,252 tests.
+
+### 4e rewiring, 2026-09-24
+
+`NvstBifrostFreeTransport` now brings the bundle up through `NvstNativeBundle`. The call sites that
+existed only to read libwebrtc's statistics are gone:
+
+- the two `refreshTransportStatistics` calls, and both `bundle.roundTripMilliseconds` reads. The HUD
+  and the log now take latency from the fallbacks that were already there — the Mjolnir socket's own
+  STUN round trip, then the control connection's ping/pong.
+- the `usesOfficialIceCredentials` warning: that length-check interplay was between libwebrtc's SDP
+  and Bifrost, and the native bundle has no SDP to mangle.
+- `seedMicrophoneBundleForTesting` and the bundle-typed parameters in the video pipeline, input and
+  handler files were retyped to the native bundle.
+
+The `0x313` per-command counters moved into the bundle, which is the only place that knows a
+command's code; the association cannot key them. `AudioReception` gained the three fields the
+transport's audio log already printed — `samples`, `concealed`, `discarded` — backed by real
+measurements added to the pipeline (decoded samples, wire bytes in, and discards split from
+concealment) rather than by placeholders.
+
+**The old bundle is now unreferenced by production code.** `NvstWebRtcBundle` and its three
+companion files, and the libwebrtc audio device that only it constructed, appear only in comments
+and in their own tests. Deleting them is therefore a single step — and it is the step the objective
+gates on 4c and 4d passing against a live seat.
+
+Full Xcode suite with the rewiring in place: **2,247 passed, 4 skipped, 0 failed** across 2,251 tests.
+
+### First live run, 2026-09-24: DTLS never completed
+
+An authenticated Ultimate session on macOS 27 reached the bundle and failed:
+
+```
+NVST bundle bring-up failed: The NVST bundle's DTLS handshake failed:
+  The DTLS handshake did not complete before its deadline.; falling back to the STUN-only probe
+```
+
+The timeline named the cause: `SETUP ok` at 00:35:55, failure at 00:36:05 — exactly the ten-second
+deadline. Three defects in the native path, all found from that one log:
+
+1. **The handshake was inside `prepare`, before ANNOUNCE.** The seat cannot answer DTLS until
+   ANNOUNCE has told it our bundle port and fingerprint; the old libwebrtc bundle's own comment said
+   ICE "cannot succeed until ANNOUNCE lands, so this waits only for local gathering." Mine blocked on
+   a reply the seat had no reason to send yet. `prepare` now binds and returns the identity, and the
+   handshake is driven afterwards by `onHandshakeComplete`.
+2. **Nothing read the socket.** The old transport had a `receive()` no one called, so even a
+   correctly-timed handshake had no inbound path. `NvstDtlsTransport.start()` now runs a receive loop.
+3. **One record per call stalled the handshake.** A DTLS datagram carries a whole flight and
+   OpenSSL's memory BIO processes one record per `SSL_do_handshake`, so a driver that calls in once
+   per datagram stops one record short of finishing — with no error in the logs. Traced on loopback:
+   the client's second flight arrived and the server produced nothing, and the client retransmitted.
+   `NvstDtlsHandshake.hasPendingInbound` plus a re-driving loop fixes it.
+
+### The bundle NATT punch, 2026-09-24
+
+The seat's front end demultiplexes its two client flows **only by the STUN username**: both sockets
+talk to one public seat port, and `<srvUfrag><internalPort>:<localUfrag>` selects the video service
+or the bundle service. The native path sent a bare ClientHello with no punch, so it had no route and
+nothing answered.
+
+`NvstBundleNattPunch` builds the authenticated Binding Request with the DESCRIBE remote ufrag — which
+already ends in the seat's internal bundle port (the live DESCRIBE returned `e503c1fe47999`, i.e.
+`e503c1fe` + `47999`) — plus the shared local ufrag, keyed by the remote ICE password.
+`NvstDtlsTransport` sends the burst before the ClientHello (the official client's ~37 ms gap), keeps
+it on the ICE cadence until the handshake completes and the slower keepalive after, and classifies
+STUN distinctly so it is never fed to the record layer. `NvstBundleDatagramDemux` gained the `.stun`
+case, matched on the magic cookie rather than the first byte alone.
+
+Covered by tests: the username, that the request is a Binding Request carrying its transaction, that
+the integrity is keyed by the remote password, and — over loopback sockets — that the **first
+datagram the transport emits is the STUN punch, not the ClientHello**.
+
+Native suite after these changes: **459 tests in 68 suites**, strict lint clean on 159 files.
+
+### Input regression: the SCTP payload protocol ids, 2026-09-24
+
+Input and feedback ride the bundle's SCTP data channels; audio is SRTP alongside DTLS, and video rides the separate Mjolnir
+socket. So a bundle that fails — or whose data channels the seat rejects — shows up exactly as
+"video works, input does not".
+
+The native association tagged every control, input and feedback message with **PPID 51** and every
+DCEP establishment message with **PPID 56**. Both are wrong by the WebRTC spec the seat follows
+(RFC 8831 / `draft-ietf-rtcweb-data-protocol`):
+
+- **51 is UTF-8 String; binary is 53.**
+- **50 is DCEP; 56 is "binary, empty".**
+
+The libwebrtc bundle this replaces sent `RTCDataBuffer(data:isBinary: true)` — PPID 53 for payloads
+and 50 for DCEP — which is why input worked before the rewiring. With DCEP on 56 the seat never
+acknowledges the channels, and with payloads on 51 it reads them as text, so `isInputReady` never
+becomes true. `NvstSctpAssociation.PPID.binary` is now 53 and `NvstDataChannelProtocol.ppid` is 50.
+
+### DESCRIBE features override main, 2026-09-24
+
+The DESCRIBE 200 body is three documents joined end to end — `main ;; features || offer` — and the
+official client lets the small **features** document override main. `NvstRtspSdp.attribute` was a
+first-match regex over the whole body, so it read main's superseded value.
+
+The live capture proves it: `runtime.micSrtp` appears as `1` in main and `0` in features, and
+`audio.enableDynamicAudioConfig` as `0`/`1`. The captured official ANNOUNCE carries the features
+values (`micSrtp 0`, `enableDynamicAudioConfig 1`), confirming which document wins.
+
+`NvstRtspSdp.describeSections` now splits the body and `attribute` consults features before main;
+`offeredAttributes` merges main then features and excludes the media offer. A body without the
+separators behaves exactly as before.
+
+### Second live run, 2026-09-24: handshake works, channels and audio did not
+
+With the punch and async fixes in the running build, the handshake completed —
+`NVST native bundle DTLS established on port 51892 profile=AEAD_AES_256_GCM_8` — and `sctp=up`.
+Two further faults were still visible in the live counters:
+
+```
+NVST bundle sctp=up control=false feedback=false input=false mic=off
+           receive[datagrams=3288 decoded=0 lost=0 recovered=0 tagFail=3288] reportsSent=0
+```
+
+Two attempted fixes followed: retrying channel OPENs after inbound SCTP, and switching audio from
+DTLS-exported keys to the video runtime key. A rebuilt live run still had closed channels and 100%
+audio authentication failures. Neither attempt established a fix. The earlier assertion here that
+the runtime key was proven to protect bundle audio was incorrect.
+
+Native suite: **462 tests in 68 suites**, strict lint clean on 168 files.
+
+### Wire-level audit after the failed live retries, 2026-09-24
+
+The instrumented run delivered 12 decrypted DTLS application records while no channel OPENs
+completed. The first audio packet had a readable RTP header (PT 63, sequence 0, timestamp 0, SSRC 1).
+Readable RTP headers are also expected for encrypted SRTP and do not establish plaintext media.
+The runtime-key probe did not test the DTLS-exported keys; its AES-CM attempt incorrectly used GCM.
+
+Corrections are based on [usrsctp's accepting-peer example](https://github.com/sctplab/usrsctp/blob/0.9.5.0/programs/ekr_loop.c),
+[RFC 8832](https://www.rfc-editor.org/rfc/rfc8832), and the negotiated DTLS-SRTP profiles:
+
+- Rebuild the pinned usrsctp archive through its CMake configuration and Xcode. The macOS address
+  layout macros must agree with the shipped header. `scripts/build-usrsctp.sh` reproduces this build.
+- Register one transport token, bind/connect port 5000 with it, pass that token directly to
+  `usrsctp_conninput`, return zero from successful output callbacks, and deregister on close.
+- Set `SCTP_SEND_SNDINFO_VALID`/`SCTP_SEND_PRINFO_VALID` rather than using `SCTP_SENDV_SPA` as
+  validity flags. PPIDs cross the C API in network byte order. Apply each stream's actual PR policy.
+- DCEP OPEN is `0x03`, ACK is `0x02`, ordered retransmit-limited is `0x01`, and ordered timed is
+  `0x02`. Preserve all eight labels, stream IDs and configured reliability limits. DCEP itself is reliable.
+- DTLS GCM profiles use 16-byte authentication tags. NVIDIA's 8-byte video profile does not change
+  that negotiation. Game audio reads the server write keys; microphone audio uses client write keys.
+- Implement the advertised AES-CM/HMAC-SHA1 fallback with its own counter IV and HMAC, and serialize
+  access to the OpenSSL session across socket, input and usrsctp timer threads.
+- Estimate receive rollover before authenticating, update replay state only after authentication,
+  and retain decoded PCM that does not fit in the current CoreAudio render callback.
+
+Independent crypto fixtures: AES-128-CM and AES-128-GCM packets from libsrtp v2.7.0
+[`test/srtp_driver.c`](https://github.com/cisco/libsrtp/blob/v2.7.0/test/srtp_driver.c), and an
+AES-256-GCM packet generated with Python cryptography using RFC 3711 key derivation and RFC 7714
+nonce/AAD construction. The local SCTP fixture uses a raw usrsctp listener and literal DCEP ACK
+bytes, rather than routing a second copy of OpenNOW's DCEP encoder/decoder back to itself.
+
+### Known divergences from the official client, 2026-09-24
+
+An interoperability analysis of the official PC client (`streamsdk-client`, P4 38712457) confirms the
+NATT punch model above and records three places where OpenNOW's SCTP channel table differs. The
+objective is to *preserve* the existing eight channels and their reliability, so these are recorded
+rather than changed:
+
+- the official client opens **six** channels (SIDs 0, 2, 4, 6, 8, 10); OpenNOW adds cursor SID 12 and
+  RTCP SID 14;
+- official SIDs 4 and 6 are **maxRetransmits 2**; OpenNOW uses the 300 ms timed form for both;
+- official SIDs 8 and 10 are **unordered**; the channel definition has no ordering field, so every
+  message is ordered today. Ordering blocks head-of-line only; it does not break the association.
+- the analysis also confirms the control-message framing already implemented here: `[u16 code][u16
+  len][payload]` packed into SCTP messages of at most 1,071 bytes.
+
+The analysis is the strongest available substitute for an official-client capture, and it independently
+agrees with the old bundle's own 2026-08-23 note that the seat "gates media on this handshake".
+
+### Wire-level corrections, verified, 2026-09-24
+
+The corrections above are now in the tree and independently checked:
+
+- **DCEP values against the RFC.** RFC 8832 §5.1/§5.2/§8.2.1 were read directly: OPEN `0x03`,
+  ACK `0x02`, `RELIABLE 0x00`, `PARTIAL_RELIABLE_REXMIT 0x01`, `PARTIAL_RELIABLE_TIMED 0x02`. The
+  encoder/decoder and their tests use those bytes.
+- **A real SCTP peer exchange, both bare and carried inside DTLS.**
+  `NvstSctpAssociationTests` stands up a second, raw usrsctp endpoint as an accepting listener over
+  `AF_CONN`, exchanges INIT/INIT-ACK/COOKIE, and has it acknowledge all eight channel OPENs with a
+  literal `0x02` ACK. The client then opens all eight channels, sends a binary message the peer
+  receives with PPID 53 on the right stream, and receives an 80 KB reply that reassembles in order.
+  `NvstBundleStackTests` then drives the same arrangement through two real DTLS record layers: the
+  association's packets are encrypted by one `NvstDtlsHandshake` and decrypted by the other, so all
+  eight channels and both payload directions cross the DTLS/SCTP boundary the live failure lived in.
+  Together they prove the association, the DCEP handshake, the record-layer wiring and both payload
+  directions against peers that are not OpenNOW's own encoder/decoder. They cannot prove the vendor
+  accepts the full profile — that is the live gate.
+- **The production assembly, over loopback.**
+  `NvstBundleStackTests.theBundleOpensChannelsAndDecodesSeatAudioOverLoopback` drives a real
+  `NvstNativeBundle` against a local seat endpoint: the bundle binds its own socket, completes DTLS,
+  derives its two audio directions from the export, carries SCTP inside the record layer, opens the
+  eight channels, and authenticates and decodes Opus protected with the server write keys. This is
+  the first test of the assembled type rather than its parts. Its companions,
+  `theBundleSendsCapturedMicrophoneAudioEncryptedWithItsClientKeys` and
+  `theBundleUnlocksInputAndSendsControlOverTheAssembledChannels`, drive the microphone boundary
+  (the seat authenticates the resulting SRTP with the client write keys, so the up-path is covered
+  without hardware) and the control/input plane (the seat's input-protocol announcement unlocks
+  `isInputReady`, and a control command and an input event reach the seat on streams 0 and 10).
+  None can prove the vendor accepts the profile, but every wiring fault from the socket to decoded
+  PCM, the encrypted microphone, or an input event fails locally now.
+- **Audio direction is single-sourced.** `NvstNativeBundle` derives its two pipelines from
+  `NvstAudioSrtpDirection.directions(from:)` instead of restating RFC 5764's ordering, so the
+  existing direction test covers the bundle's mapping as well as the pipelines'.
+- **Microphone carriage is advertised only when requested.** The bundle builds its send pipeline
+  only when a microphone setup was supplied, and `microphoneNegotiation.negotiated` follows the
+  microphone SSRC rather than the pipeline's mere existence. A session that did not request the
+  microphone therefore advertises `rtcMicOnNativeBundle:0` instead of claiming mic carriage with no
+  SSRC, and `onRemoteAudio` — previously declared but never called — fires once when audio is armed.
+- **A refused channel is observable.** `NvstSctpAssociation` counts SCTP notifications and stream
+  resets, and the bundle's summary prints `resets=`. A seat that refuses a channel resets its stream
+  rather than answering the OPEN, so this distinguishes "no OPEN was sent" from "the seat refused
+  it". The counter reads whatever arrives and changes no socket option, so it cannot affect an
+  association.
+- **SRTP reference packets.** Three vectors that OpenNOW did not generate: libsrtp v2.7.0's
+  AES-128-CM/HMAC-SHA1-80 and AES-128-GCM `srtp_validate` packets, and an AES-256-GCM packet built
+  with Python `cryptography` using RFC 3711 key derivation and RFC 7714 nonce/AAD. `protect` must
+  reproduce each byte-for-byte and `unprotect` must return the plaintext; a tampered header, payload,
+  or rollover counter must fail authentication.
+- **DTLS-SRTP key direction.** `NvstDtlsHandshakeTests` negotiates both advertised profiles
+  (`SRTP_AEAD_AES_256_GCM`, `SRTP_AES128_CM_SHA1_80`) end to end and confirms the exported client and
+  server halves are distinct, that a server-key sender is readable by a client-key receiver, and that
+  the wrong direction fails its tag.
+- **PLAY default.** The negotiator sent PLAY only when `general.disablePlay` was literally `0`, so a
+  seat that omitted the attribute would get no PLAY and stream nothing. The official client sends
+  PLAY unless the seat disables it, so only a literal `1` now suppresses it; absence means send.
+- **Verification.** Xcode suite: **2,277 passed, 4 skipped, 0 failed**. Strict lint: zero violations
+  across 884 files. The rebuilt usrsctp static archive is committed with its SHA-256 and a
+  reproduction script (`scripts/build-usrsctp.sh`).
+
+**Outstanding, and only establishable live:** seat-answered control command, working mouse/keyboard
+input, audible game audio through the native device, and the cloud Steam microphone test. The old
+`NvstWebRtcBundle` and its exclusive `OPNCoreAudioRTCDevice` stay in the tree until those gates pass.
+
+The next live run answers each gate from the diagnostic log, without guesswork:
+
+- **Channels.** `NVST native bundle SCTP established; sent 8 channel OPENs` followed by eight
+  `NVST native bundle channel open: <label>` lines, and `sctp=established(… opens=8 resets=0 …)`.
+  `resets=` non-zero means the seat refused the profile; `cookie-wait`/`connecting` means the
+  association never came up.
+- **Control.** `control=true` and the periodic `0x313` totals growing; the seat is answering the
+  keepalive by construction (`onControlChannelOpen` starts it).
+- **Input.** `input=true` once the seat announces its remote-input version, with `inputOut=`/`padOut=`
+  growing as the mouse and keys are used.
+- **Game audio.** `NVST native audio keying=DTLS-SRTP profile=… tagBytes=…`, then
+  `receive[datagrams=… authenticated=… decoded>0 … tagFail=… decodeFail=… redFail=…]`. A non-zero
+  `tagFail` with `authenticated=0` means the audio key/profile is still wrong; `decoded=0` with
+  `authenticated>0` means the RED/Opus path, not the crypto.
+- **Microphone.** `NVST native audio device playout=true capture=true …` and `mic=on(ssrc=1,tx=…)`
+  with `tx` growing while the mic is enabled.
+
+When they do, the deletion is a closed set, because production no longer references any of it
+(only comments do): `OPN/Stream/NvstWebRtcBundle.swift`, `NvstWebRtcBundleDelegates.swift`,
+`NvstWebRtcBundleSDP.swift`, `NvstWebRtcBundleSetup.swift`, `WebRTCNativeAudioCoreDevice.swift`,
+`WebRTCNativeAudioCoreDevice+Surround.swift`, `WebRTCNativeAudioDeviceMonitor.swift`, and their tests
+`Tests/Stream/NvstWebRtcBundleTests.swift` and `Tests/Stream/SurroundAudioTests.swift`.
+`NvstBifrostFreeTransport`'s surround clamp already reads `NvstCoreAudioFormat` rather than the old
+device's static, so nothing in production blocks the removal.
+
+**The `WebRTC` dependency stays.** Remote Co-Op still builds its guest and host peers on
+`RTCPeerConnection`, and `WebRTCI420BGRAConverter` is the Co-Op guest renderer's converter; the
+`WebRTC` package/project dependency and `Vendor/WebRTC.xcframework` are therefore *not* part of this
+deletion. Only the stream-side bundle and its exclusive audio device go.
+
 ### Verification gates
 
 - Xcode build/tests establish that the single host path compiles and the native lifecycle,

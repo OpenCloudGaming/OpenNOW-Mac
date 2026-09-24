@@ -15,6 +15,10 @@
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
 		A00000000000000000000404 /* Ably in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000406 /* Ably */; };
 		C00000000000000000000001 /* Vendor/WebRTC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */; };
+		D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
+		D00000000000000000000003 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
+		D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000004 /* Vendor/usrsctp.xcframework */; };
+		D00000000000000000000006 /* Vendor/usrsctp.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000004 /* Vendor/usrsctp.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +52,8 @@
 		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		A00000000000000000000004 /* OPNApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPNApp.swift; sourceTree = "<group>"; };
 		C00000000000000000000002 /* OpenNOWTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenNOWTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D00000000000000000000001 /* Vendor/OpenSSL.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/OpenSSL.xcframework; sourceTree = "<group>"; };
+		D00000000000000000000004 /* Vendor/usrsctp.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/usrsctp.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -95,6 +101,8 @@
 			files = (
 				7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */,
 				7729CE862FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Frameworks */,
+				D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */,
+				D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */,
 				A00000000000000000000401 /* Sentry in Frameworks */,
 				A00000000000000000000404 /* Ably in Frameworks */,
 			);
@@ -105,6 +113,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				C00000000000000000000001 /* Vendor/WebRTC.xcframework in Frameworks */,
+				D00000000000000000000003 /* Vendor/OpenSSL.xcframework in Frameworks */,
+				D00000000000000000000006 /* Vendor/usrsctp.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -125,6 +135,8 @@
 				A00000000000000000000004 /* OPNApp.swift */,
 				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
 				7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */,
+				D00000000000000000000001 /* Vendor/OpenSSL.xcframework */,
+				D00000000000000000000004 /* Vendor/usrsctp.xcframework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -434,6 +446,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenNOW Dev";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
@@ -479,6 +496,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
@@ -514,6 +536,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -541,6 +568,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

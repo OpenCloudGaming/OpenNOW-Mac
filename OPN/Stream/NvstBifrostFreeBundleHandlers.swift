@@ -2,7 +2,7 @@ import Foundation
 
 extension NvstBifrostFreeTransport {
     /// Wires the bundle's channel callbacks back into the transport actor.
-    func installBundleHandlers(_ bundle: NvstWebRtcBundle,
+    func installBundleHandlers(_ bundle: NvstNativeBundle,
                                sender: NvstFeedbackSender,
                                logger: (@Sendable (String) -> Void)?) {
         bundleGeneration &+= 1
@@ -60,7 +60,7 @@ extension NvstBifrostFreeTransport {
         }
     }
 
-    private func installBundleNotificationHandlers(_ bundle: NvstWebRtcBundle, generation: UInt64) {
+    private func installBundleNotificationHandlers(_ bundle: NvstNativeBundle, generation: UInt64) {
         bundle.onInputProtocolNegotiated = { [weak self] version in
             Task {
                 await self?.withCurrentBundleGeneration(generation) { transport in

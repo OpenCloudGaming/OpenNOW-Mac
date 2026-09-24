@@ -31,12 +31,19 @@ let package = Package(
         // WebRTC 152.0.0 macOS arm64 slice plus the upstream RTCAudioDevice.h header overlay —
         // derivation recorded in Resources/Licenses/THIRD_PARTY_NOTICES.md.
         .binaryTarget(name: "WebRTC", path: "Vendor/WebRTC.xcframework"),
+        // The native NVST bundle's protocol libraries (milestone 4), built as *static* frameworks
+        // so nothing has to be embedded or re-signed at runtime — unlike WebRTC above, which is
+        // dynamic. Derivation and pins in Resources/Licenses/THIRD_PARTY_NOTICES.md.
+        .binaryTarget(name: "OpenSSL", path: "Vendor/OpenSSL.xcframework"),
+        .binaryTarget(name: "usrsctp", path: "Vendor/usrsctp.xcframework"),
         .target(
             name: "OpenNOW",
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa"),
                 .product(name: "Ably", package: "ably-cocoa"),
-                "WebRTC"
+                "WebRTC",
+                "OpenSSL",
+                "usrsctp"
             ],
             path: ".",
             exclude: [
@@ -72,14 +79,25 @@ let package = Package(
             resources: [
                 .process("View/Assets.xcassets")
             ],
+            cSettings: [
+                // OpenSSL's own headers include each other as `<openssl/...>`, so the directory
+                // that *contains* `openssl/` has to be on the include path — a binary target only
+                // contributes its framework search path, which is not enough.
+                .headerSearchPath("Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),
+                .headerSearchPath("Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers"),
+            ],
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"])
             ]
         ),
         .testTarget(
             name: "OpenNOWTests",
-            dependencies: ["OpenNOW", "WebRTC"],
+            dependencies: ["OpenNOW", "WebRTC", "OpenSSL", "usrsctp"],
             path: "Tests",
+            cSettings: [
+                .headerSearchPath("../Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),
+                .headerSearchPath("../Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers"),
+            ],
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"])
             ]
@@ -91,8 +109,12 @@ let package = Package(
         // did from the test target.
         .executableTarget(
             name: "OpenNOWBenchmarks",
-            dependencies: ["OpenNOW", "WebRTC"],
+            dependencies: ["OpenNOW", "WebRTC", "OpenSSL", "usrsctp"],
             path: "Benchmarks",
+            cSettings: [
+                .headerSearchPath("../Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),
+                .headerSearchPath("../Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers"),
+            ],
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"]),
                 .unsafeFlags(["-enable-testing"])
