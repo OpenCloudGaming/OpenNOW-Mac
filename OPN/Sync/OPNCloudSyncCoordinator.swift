@@ -251,6 +251,8 @@ public final class OPNCloudSyncCoordinator {
     private var isSyncing = false
     private var isResyncRequested = false
     private var isStarted = false
+    /// True while the engine writes synced data back, so its own writes never re-trigger it.
+    private var isSuppressingLocalChangeObservation = false
 
     private init() {
         let isEnabled = OPNCloudSyncPreferences.isEnabled
@@ -388,7 +390,9 @@ public final class OPNCloudSyncCoordinator {
         }
         isSyncing = true
         status = .syncing
+        isSuppressingLocalChangeObservation = true
         defer {
+            isSuppressingLocalChangeObservation = false
             isSyncing = false
             if isResyncRequested {
                 isResyncRequested = false
@@ -413,16 +417,19 @@ public final class OPNCloudSyncCoordinator {
         }
     }
 
-    /// Every preference write reaches `UserDefaults`, so watching its change notification is what
-    /// keeps a settings edit from waiting for the next launch to travel.
+    /// Watching the standard domain keeps a settings edit from waiting for a launch to travel. The
+    /// synced suite and the sync's own applies are excluded, so only the reader's edits trigger it.
     private func observeLocalChanges() {
         guard defaultsObserver == nil else { return }
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
-            object: nil,
+            object: UserDefaults.standard,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.scheduleSync() }
+            MainActor.assumeIsolated {
+                guard let self, !self.isSuppressingLocalChangeObservation else { return }
+                self.scheduleSync()
+            }
         }
     }
 
@@ -454,6 +461,7 @@ public final class OPNCloudSyncCoordinator {
     }
 
     @objc private func handleMetadataUpdate() {
+        guard !isSuppressingLocalChangeObservation else { return }
         scheduleSync()
     }
 

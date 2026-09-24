@@ -120,9 +120,10 @@ enum OPNCloudSyncCatalogCodec {
         }
         file.collectionsByAccount = merged.filter { !$0.value.isEmpty }
 
-        // Converge this Mac's storage with the merged result before it is written back, so the two
-        // sides agree and the signature baseline recorded afterwards stays stable.
-        apply(file)
+        // Converge local storage with the merged result only when it differs, so a settled pass writes.
+        if !isContentEqual(file, local) {
+            apply(file)
+        }
 
         let isLocalFileChanged = remote.map { !isContentEqual(file, $0) || $0.schemaVersion != file.schemaVersion } ?? true
         file.generatedAt = now
@@ -217,13 +218,15 @@ enum OPNCloudSyncCatalogCodec {
     }
 
     static func loadSignatureBaseline() -> SignatureBaseline? {
-        guard let data = OPNAppPreferenceStorage.standard.data(forKey: signatureBaselineKey) else { return nil }
+        guard let data = OPNAppPreferenceStorage.syncStore.data(forKey: signatureBaselineKey) else { return nil }
         return try? OPNCloudSyncJSON.decoder.decode(SignatureBaseline.self, from: data)
     }
 
     static func saveSignatureBaseline(_ baseline: SignatureBaseline) {
         guard let data = try? OPNCloudSyncJSON.encoder.encode(baseline) else { return }
-        OPNAppPreferenceStorage.standard.set(data, forKey: signatureBaselineKey)
+        let storage = OPNAppPreferenceStorage.syncStore
+        guard storage.data(forKey: signatureBaselineKey) != data else { return }
+        storage.set(data, forKey: signatureBaselineKey)
     }
 
     private struct SignatureContent: Encodable {

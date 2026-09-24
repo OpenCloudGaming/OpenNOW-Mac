@@ -66,27 +66,27 @@ struct CatalogCollectionsStoreTests {
             .save(accountIdentifier: owner)
 
         // Nothing live and the only tombstone aged out, so the account stores nothing at all.
-        #expect(OPNAppPreferenceStorage.standard.object(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: owner)) == nil)
+        #expect(OPNAppPreferenceStorage.syncStore.object(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: owner)) == nil)
     }
 
     @Test func aKeyWrittenInAnotherCaseIsFoundAndReused() {
         let identifier = "collections-case-\(UUID().uuidString)"
         let differentlyCased = identifier.uppercased()
         defer {
-            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: identifier))
-            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased))
+            OPNAppPreferenceStorage.syncStore.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: identifier))
+            OPNAppPreferenceStorage.syncStore.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased))
         }
         let stored = [OPNUserCollection(id: "c", name: "C")]
         if let data = try? JSONEncoder().encode(stored) {
-            OPNAppPreferenceStorage.standard.set(data, forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased))
+            OPNAppPreferenceStorage.syncStore.set(data, forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased))
         }
 
         #expect(CatalogCollectionsStore.load(accountIdentifier: identifier).collections == stored)
 
         // Saving through the canonical spelling reuses the existing key rather than creating a second.
         CatalogCollectionsStore(collections: [OPNUserCollection(id: "d", name: "D")]).save(accountIdentifier: identifier)
-        #expect(OPNAppPreferenceStorage.standard.data(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased)) != nil)
-        #expect(OPNAppPreferenceStorage.standard.data(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: identifier)) == nil)
+        #expect(OPNAppPreferenceStorage.syncStore.data(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: differentlyCased)) != nil)
+        #expect(OPNAppPreferenceStorage.syncStore.data(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: identifier)) == nil)
     }
 
     @Test func namesAreTrimmedWhileBlankNamesAreDropped() {
@@ -108,7 +108,7 @@ struct CatalogCollectionsStoreTests {
           {"id": "also-good", "name": "Also Good", "gameIds": ["g3", "g3"]}
         ]
         """
-        OPNAppPreferenceStorage.standard.set(Data(json.utf8), forKey: CatalogCollectionsStore.storageKey(accountIdentifier: owner))
+        OPNAppPreferenceStorage.syncStore.set(Data(json.utf8), forKey: CatalogCollectionsStore.storageKey(accountIdentifier: owner))
 
         let loaded = CatalogCollectionsStore.load(accountIdentifier: owner).collections
         #expect(loaded.map(\.id) == ["good", "also-good"])
@@ -118,7 +118,7 @@ struct CatalogCollectionsStoreTests {
     @Test func aNonArrayPayloadLoadsAsEmpty() {
         let owner = account("corrupt")
         defer { clear(owner) }
-        OPNAppPreferenceStorage.standard.set(Data("{\"not\":\"a list\"}".utf8), forKey: CatalogCollectionsStore.storageKey(accountIdentifier: owner))
+        OPNAppPreferenceStorage.syncStore.set(Data("{\"not\":\"a list\"}".utf8), forKey: CatalogCollectionsStore.storageKey(accountIdentifier: owner))
 
         #expect(CatalogCollectionsStore.load(accountIdentifier: owner).collections.isEmpty)
     }
@@ -187,6 +187,29 @@ struct CatalogCollectionsStoreTests {
         // Clearing the list is a change too: deleting the last collection must reach a live reader.
         CatalogCollectionsStore(collections: []).save(accountIdentifier: owner)
         #expect(recorder.accounts == [owner, owner])
+    }
+
+    @Test func savingIdenticalCollectionsTwiceAnnouncesOnce() {
+        let owner = account("idempotent")
+        defer { clear(owner) }
+
+        let recorder = CollectionChangeRecorder()
+        let observer = NotificationCenter.default.addObserver(
+            forName: CatalogCollectionsStore.didChangeNotification,
+            object: nil,
+            queue: nil
+        ) { notification in
+            guard let identifier = notification.userInfo?[CatalogCollectionsStore.accountIdentifierKey] as? String,
+                  identifier == owner else { return }
+            recorder.accounts.append(identifier)
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let store = CatalogCollectionsStore(collections: [OPNUserCollection(id: "c", name: "C")])
+        store.save(accountIdentifier: owner)
+        store.save(accountIdentifier: owner)
+
+        #expect(recorder.accounts == [owner])
     }
 }
 

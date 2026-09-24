@@ -174,8 +174,8 @@ import Testing
         let priorArrangement = OPNHomeCustomization.arrangement
         CatalogCollectionsStore(collections: [OPNUserCollection(id: "local", name: "Local")]).save(accountIdentifier: raw)
         defer {
-            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: raw))
-            OPNAppPreferenceStorage.standard.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: normalized))
+            OPNAppPreferenceStorage.syncStore.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: raw))
+            OPNAppPreferenceStorage.syncStore.removeObject(forKey: CatalogCollectionsStore.storageKey(accountIdentifier: normalized))
             OPNHomeCustomization.arrangement = priorArrangement
         }
 
@@ -385,7 +385,7 @@ import Testing
 
 /// Removes the alias/current-account entries a test registered, leaving any another test wrote.
 private func removeRegisteredAccounts(canonical: String, alias: String) {
-    let storage = OPNAppPreferenceStorage.standard
+    let storage = OPNAppPreferenceStorage.syncStore
     var current = storage.array(forKey: OPNCloudSyncAccountNamespace.currentAccountsKey) as? [String] ?? []
     current.removeAll { $0 == OPNCloudSyncAccountNamespace.normalized(canonical) }
     storage.set(current, forKey: OPNCloudSyncAccountNamespace.currentAccountsKey)

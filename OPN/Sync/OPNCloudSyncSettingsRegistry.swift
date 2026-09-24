@@ -61,7 +61,7 @@ enum OPNCloudSyncSettingsRegistry {
     static let baselineKey = "OpenNOW.CloudSync.SettingsBaseline"
 
     static func loadBaseline() -> [String: OPNCloudSyncSettingsEntry] {
-        guard let data = OPNAppPreferenceStorage.standard.data(forKey: baselineKey),
+        guard let data = OPNAppPreferenceStorage.syncStore.data(forKey: baselineKey),
               let file = try? OPNCloudSyncJSON.decoder.decode(OPNCloudSyncSettingsFile.self, from: data) else {
             return [:]
         }
@@ -70,14 +70,17 @@ enum OPNCloudSyncSettingsRegistry {
 
     static func saveBaseline(_ entries: [String: OPNCloudSyncSettingsEntry]) {
         guard let data = try? OPNCloudSyncJSON.encoder.encode(OPNCloudSyncSettingsFile(entries: entries)) else { return }
-        OPNAppPreferenceStorage.standard.set(data, forKey: baselineKey)
+        let storage = OPNAppPreferenceStorage.syncStore
+        guard storage.data(forKey: baselineKey) != data else { return }
+        storage.set(data, forKey: baselineKey)
     }
 
-    /// Writes reconciled values back into local storage. Property lists carry exactly the types
-    /// `UserDefaults` stores, so a remote value cannot arrive as an unexpected type.
+    /// Writes reconciled values back into local storage, skipping any already present so a pass that
+    /// imported nothing writes nothing.
     static func apply(_ values: [String: Any]) {
         let storage = OPNAppPreferenceStorage.standard
         for (key, value) in values where isSyncable(key) {
+            if let existing = storage.object(forKey: key), OPNCloudSyncPlist.equal(existing, value) { continue }
             storage.set(value, forKey: key)
         }
     }
@@ -120,13 +123,15 @@ enum OPNCloudSyncSettingsRegistry {
     static let signatureBaselineKey = "OpenNOW.CloudSync.SettingsSignatureBaseline"
 
     static func loadSignatureBaseline() -> SignatureBaseline? {
-        guard let data = OPNAppPreferenceStorage.standard.data(forKey: signatureBaselineKey) else { return nil }
+        guard let data = OPNAppPreferenceStorage.syncStore.data(forKey: signatureBaselineKey) else { return nil }
         return try? OPNCloudSyncJSON.decoder.decode(SignatureBaseline.self, from: data)
     }
 
     static func saveSignatureBaseline(_ baseline: SignatureBaseline) {
         guard let data = try? OPNCloudSyncJSON.encoder.encode(baseline) else { return }
-        OPNAppPreferenceStorage.standard.set(data, forKey: signatureBaselineKey)
+        let storage = OPNAppPreferenceStorage.syncStore
+        guard storage.data(forKey: signatureBaselineKey) != data else { return }
+        storage.set(data, forKey: signatureBaselineKey)
     }
 
     /// A deterministic digest of a whole setting set, keyed and encoded so two Macs holding the same
