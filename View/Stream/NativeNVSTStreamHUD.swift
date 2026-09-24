@@ -16,7 +16,11 @@ extension NativeNVSTMediaStreamSurface {
                 nativeHUDNetworkPanel
                 nativeHUDStatsPanel
                 if model.sidebarCapabilities.visibleFeatures.contains(.remoteCoOp), model.remoteCoOpPreferences.isEnabled {
+                    // Lifted above the panels that follow it: the quality dropdown's own panel is an
+                    // overlay that extends past this section, and without this it paints underneath
+                    // the video panel and reads as a translucent, garbled menu.
                     nativeHUDRemoteCoOpPanel
+                        .zIndex(1)
                 }
                 nativeHUDVideoPanel
             }
