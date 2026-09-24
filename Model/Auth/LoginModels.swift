@@ -106,12 +106,12 @@ final class LoginSession {
         self.clientTokenExpiresAt = clientTokenExpiresAt
         self.isActive = isActive
         self.canContinueOffline = canContinueOffline
-        storeTokens(GFNTokenStore.Tokens(
+        cachedTokens = GFNTokenStore.Tokens(
             accessToken: accessToken,
             idToken: idToken,
             refreshToken: refreshToken,
             clientToken: clientToken
-        ))
+        )
     }
 
     var isExpired: Bool {

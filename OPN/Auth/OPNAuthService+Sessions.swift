@@ -141,7 +141,7 @@ extension OPNAuthService {
         }
         let removedIdentities: [String] = existing.filter(belongsToAccount).compactMap { sessionIdentity(from: $0) }
         guard !removedIdentities.isEmpty else { return false }
-        removedIdentities.forEach(GFNTokenStore.delete(forIdentity:))
+        removedIdentities.forEach { GFNTokenStore.delete(forIdentity: $0) }
         let accounts = existing.filter { !belongsToAccount($0) }
         let identities: [String] = accounts.compactMap { sessionIdentity(from: $0) }
         let newActive: String? = if let activeUserId, identities.contains(activeUserId) {
