@@ -354,7 +354,7 @@ struct CatalogView: View {
                         // Both menus stay mounted and animate themselves in and out. Wrapping them
                         // in an `if` here removed them before their exit transition could run, and
                         // gave the scrim and the panel one shared transition instead of two.
-                        CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, topInset: measuredCatalogTopInset, onSignOut: onSignOut)
+                        CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, topInset: measuredCatalogTopInset)
                             .zIndex(12)
 
                         CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)

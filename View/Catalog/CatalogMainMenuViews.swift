@@ -9,7 +9,6 @@ struct CatalogMainMenuOverlay: View {
     let viewModel: CatalogViewModel
     @Binding var isPresented: Bool
     let topInset: CGFloat
-    let onSignOut: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
@@ -27,7 +26,7 @@ struct CatalogMainMenuOverlay: View {
                     // The transition is attached before the padding on purpose. `.move` travels by
                     // the frame of the view it is attached to, so outside the padding the panel
                     // would start a full window width away instead of just off its own edge.
-                    CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, onSignOut: onSignOut, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight(scale: uiScale) - topInset))
+                    CatalogMainMenuPanel(viewModel: viewModel, isPresented: $isPresented, availableHeight: max(360, proxy.size.height - CatalogVendorLayout.appBarHeight(scale: uiScale) - topInset))
                         .opnTransition(.move(edge: .leading).combined(with: .opacity))
                         .padding(.top, CatalogVendorLayout.appBarHeight(scale: uiScale) + topInset)
                 }
@@ -47,29 +46,11 @@ struct CatalogMainMenuOverlay: View {
 struct CatalogMainMenuPanel: View {
     let viewModel: CatalogViewModel
     @Binding var isPresented: Bool
-    let onSignOut: (LoginAccount) -> Void
     let availableHeight: CGFloat
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("GEFORCE NOW")
-                    .catalogFont(size: 11, weight: .bold)
-                    .tracking(1.4)
-                    .foregroundStyle(OPNDesign.accentInk)
-                Text("OpenNOW Menu")
-                    .catalogFont(size: 20, weight: .bold)
-                    .foregroundStyle(OPNDesign.Text.primary)
-            }
-            .padding(.horizontal, 22 * uiScale)
-            .padding(.top, OPNDesign.Spacing.large(scale: uiScale))
-            .padding(.bottom, OPNDesign.Spacing.card(scale: uiScale))
-
-            Rectangle()
-                .fill(OPNDesign.Stroke.subtle)
-                .frame(height: 1)
-
             CatalogMainMenuPlaytimeCard(status: viewModel.subscriptionStatus, membershipTier: viewModel.displayMembershipTier, activeStreamProgress: viewModel.activeStreamProgress)
                 .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                 .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
@@ -128,17 +109,6 @@ struct CatalogMainMenuPanel: View {
                     .padding(.bottom, OPNDesign.Spacing.card(scale: uiScale))
                 }
             }
-
-            Rectangle()
-                .fill(OPNDesign.Stroke.subtle)
-                .frame(height: 1)
-
-            CatalogMainMenuRow(title: "Sign Out", subtitle: viewModel.account.displayName, systemImage: "rectangle.portrait.and.arrow.right", isActive: false) {
-                isPresented = false
-                onSignOut(viewModel.account)
-            }
-            .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
-            .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
         .background(OPNDesign.Surface.overlay.opacity(0.985))
