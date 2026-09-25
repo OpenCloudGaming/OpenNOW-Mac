@@ -13,6 +13,7 @@ struct CatalogShowAllGridView: NSViewRepresentable {
     let onPlay: (OPNCatalogGameObject) -> Void
     let onMarkOwned: (OPNCatalogGameObject) -> Void
     let onQueueForPatching: (OPNCatalogGameObject) -> Void
+    @Environment(\.opnUIScale) private var uiScale
     @AppStorage(OPNHomeLayout.modeKey) private var homeLayoutRawValue = OPNHomeLayout.Mode.classic.rawValue
     @AppStorage(OPNThemePreferences.tileTitleVisibilityKey) private var tileTitleVisibilityRawValue = OPNThemePreferences.TileTitleVisibility.onHover.rawValue
 
@@ -54,254 +55,21 @@ struct CatalogShowAllGridView: NSViewRepresentable {
         // Show All), so track the clip view's frame changes and re-lay out when the width settles or
         // the window is resized. Without this the grid can get stuck at its initial narrow width.
         context.coordinator.frameObserver = AppKitViewFrameObserver(view: scrollView.contentView) { [weak coordinator = context.coordinator] in
-            coordinator?.handleWidthChange()
+            coordinator?.scheduleLayoutUpdate()
         }
         return scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        guard let collectionView = nsView.documentView as? NSCollectionView,
-              let layout = collectionView.collectionViewLayout as? CatalogShowAllGridLayout else { return }
-        context.coordinator.parent = self
-
-        let width = nsView.contentView.bounds.width
-        let widthChanged = context.coordinator.lastWidth != width
-        context.coordinator.lastWidth = width
-        collectionView.frame.size.width = width
-
-        let sizing = applySizing(to: layout, coordinator: context.coordinator, context: context, width: width, viewportHeight: nsView.contentView.bounds.height)
-        let layoutChanged = sizing.isLayoutChanged
-        let tileTitleVisibilityChanged = sizing.isTileTitleVisibilityChanged
-
-        let selectedIdentity = selectedGame?.catalogIdentity
-        let selectedIndex = games.firstIndex { $0.catalogIdentity == selectedIdentity }
-        let selectedIndexChanged = layout.selectedItemIndex != selectedIndex
-        layout.selectedItemIndex = selectedIndex
-
-        let needsFullReload = layoutChanged || tileTitleVisibilityChanged || context.coordinator.needsIdentityUpdate(for: games)
-        if needsFullReload {
-            let renderStart = CFAbsoluteTimeGetCurrent()
-            context.coordinator.updateGameIdentities(from: games)
-            collectionView.reloadData()
-            if widthChanged || layoutChanged {
-                layout.invalidateLayout()
-            }
-            collectionView.layoutSubtreeIfNeeded()
-            let elapsedMs = Int((CFAbsoluteTimeGetCurrent() - renderStart) * 1000)
-            OPNLog.info(.catalog, "Show All grid reloaded items=\(games.count) elapsed=\(elapsedMs)ms")
-        } else if selectedIndexChanged || widthChanged {
-            // Home animates the detail panel in and out; this grid is an NSCollectionView, whose
-            // layout invalidation is instant unless it happens inside an animation group. Without
-            // it the row and every tile below it jumped, which is the same panel behaving two
-            // different ways depending on which page you opened it from.
-            if selectedIndexChanged {
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.24
-                    context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                    context.allowsImplicitAnimation = true
-                    layout.invalidateLayout()
-                    collectionView.layoutSubtreeIfNeeded()
-                }
-            } else {
-                layout.invalidateLayout()
-                collectionView.layoutSubtreeIfNeeded()
-            }
-            // The layout knows where the detail row goes; the *items* still hold the selection
-            // they were built with. Without this the tile the row belongs to kept its closed
-            // chevron and lighter title while its panel was open, because this branch runs
-            // whenever the selected index changes and the reload branch below never got a turn.
-            reloadSelectionAffectedItems(collectionView: collectionView, coordinator: context.coordinator, selectedIdentity: selectedIdentity)
-            if selectedIndexChanged, let detailRowFrame = layout.detailRowFrame {
-                collectionView.animator().scrollToVisible(detailRowFrame)
-            }
-        } else if context.coordinator.selectedIdentity != selectedIdentity {
-            reloadSelectionAffectedItems(collectionView: collectionView, coordinator: context.coordinator, selectedIdentity: selectedIdentity)
-        }
-
-        let contentSize = layout.collectionViewContentSize
-        collectionView.frame.size.height = contentSize.height
+        context.coordinator.update(self, scale: uiScale, density: context.environment.opnTileDensity)
     }
 
-    /// Pushes the sizing the theme asks for onto the layout, and reports what changed: geometry has
-    /// to be re-laid out, while a title-visibility change only has to rebuild the cells.
-    private func applySizing(
-        to layout: CatalogShowAllGridLayout,
-        coordinator: CatalogShowAllGridCoordinator,
-        context: Context,
-        width: CGFloat,
-        viewportHeight: CGFloat
-    ) -> (isLayoutChanged: Bool, isTileTitleVisibilityChanged: Bool) {
-        let scale = context.environment.opnUIScale
-        let density = context.environment.opnTileDensity
-        let isLayoutChanged = coordinator.scale != scale
-            || coordinator.density != density
-            || coordinator.isPosterLayout != isPosterLayout
-        let isTileTitleVisibilityChanged = coordinator.tileTitleVisibility != tileTitleVisibility
-        coordinator.scale = scale
-        coordinator.density = density
-        coordinator.isPosterLayout = isPosterLayout
-        coordinator.tileTitleVisibility = tileTitleVisibility
-        coordinator.lastViewportHeight = viewportHeight
-
-        layout.minTileWidth = isPosterLayout
-            ? CatalogPosterLayout.posterTileWidth(scale: scale, density: density)
-            : CatalogVendorLayout.wideTileWidth(scale: scale, density: density)
-        layout.tileHeightRatio = isPosterLayout ? 1 / CatalogPosterLayout.aspectRatio : 9.0 / 16.0
-        layout.spacing = CatalogVendorLayout.tileHorizontalMargin(scale: scale) * 2
-        layout.detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: viewportHeight, scale: scale)
-        return (isLayoutChanged, isTileTitleVisibilityChanged)
-    }
-
-    /// Rebuilds the tiles whose selected state changed, so the chevron, the title weight and the
-    /// accent underline follow the panel. Shared by both update paths.
-    private func reloadSelectionAffectedItems(collectionView: NSCollectionView, coordinator: Coordinator, selectedIdentity: String?) {
-        guard coordinator.selectedIdentity != selectedIdentity else { return }
-        let oldIdentity = coordinator.selectedIdentity
-        coordinator.selectedIdentity = selectedIdentity
-        var indexPathsToReload = Set<IndexPath>()
-        for identity in [oldIdentity, selectedIdentity].compactMap({ $0 }) {
-            if let index = coordinator.gameIdentities.firstIndex(of: identity) {
-                indexPathsToReload.insert(IndexPath(item: index, section: 0))
-            }
-        }
-        guard !indexPathsToReload.isEmpty else { return }
-        collectionView.reloadItems(at: indexPathsToReload)
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: CatalogShowAllGridCoordinator) {
+        coordinator.detach()
     }
 
     func makeCoordinator() -> CatalogShowAllGridCoordinator {
         CatalogShowAllGridCoordinator(self)
-    }
-}
-
-@MainActor
-final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource, NSCollectionViewDelegate {
-    var parent: CatalogShowAllGridView
-    weak var collectionView: NSCollectionView?
-    var gameIdentities: [String] = []
-    var selectedIdentity: String?
-    var lastWidth: CGFloat = 0
-    var lastViewportHeight: CGFloat = 0
-    var scale: CGFloat = 1.0
-    var density: CGFloat = 1.0
-    var isPosterLayout = false
-    var tileTitleVisibility: OPNThemePreferences.TileTitleVisibility = .onHover
-    nonisolated(unsafe) var frameObserver: AppKitViewFrameObserver?
-    private var gameCount = 0
-    private var firstIdentity: String = ""
-    private var lastIdentity: String = ""
-
-    init(_ parent: CatalogShowAllGridView) {
-        self.parent = parent
-    }
-
-
-    /// Re-lays out the grid when the enclosing scroll view's width changes so the column count and
-    /// document width always match the available space.
-    func handleWidthChange() {
-        guard let collectionView,
-              let scrollView = collectionView.enclosingScrollView,
-              let layout = collectionView.collectionViewLayout as? CatalogShowAllGridLayout else { return }
-        let width = scrollView.contentView.bounds.width
-        let viewportHeight = scrollView.contentView.bounds.height
-        let detailRowHeight = CatalogVendorLayout.detailPanelHeight(for: width, viewportHeight: viewportHeight, scale: scale)
-        guard width > 0, width != lastWidth || detailRowHeight != layout.detailRowHeight else { return }
-        lastWidth = width
-        lastViewportHeight = viewportHeight
-        layout.detailRowHeight = detailRowHeight
-        collectionView.frame.size.width = width
-        layout.invalidateLayout()
-        collectionView.layoutSubtreeIfNeeded()
-        collectionView.frame.size.height = layout.collectionViewContentSize.height
-        refreshDetailRows()
-    }
-
-    /// Re-hosts the detail panel so it picks up the new width/height after a resize.
-    private func refreshDetailRows() {
-        guard let collectionView else { return }
-        for case let row as CatalogShowAllGridDetailRow in collectionView.visibleSupplementaryViews(ofKind: CatalogShowAllGridLayout.detailRowKind) {
-            configure(detailRow: row)
-        }
-    }
-
-    func configure(detailRow: CatalogShowAllGridDetailRow) {
-        detailRow.configure(
-            detailPanel: GameDetailPanel(
-                viewModel: parent.viewModel,
-                availableWidth: lastWidth,
-                viewportHeight: lastViewportHeight
-            )
-            .environment(\.opnUIScale, scale)
-        )
-    }
-
-    func needsIdentityUpdate(for games: [OPNCatalogGameObject]) -> Bool {
-        let count = games.count
-        if count != gameCount { return true }
-        if count == 0 { return false }
-        let first = games[0].catalogIdentity
-        let last = games[count - 1].catalogIdentity
-        return first != firstIdentity || last != lastIdentity
-    }
-
-    func updateGameIdentities(from games: [OPNCatalogGameObject]) {
-        gameIdentities = games.map(\.catalogIdentity)
-        gameCount = gameIdentities.count
-        firstIdentity = gameIdentities.first ?? ""
-        lastIdentity = gameIdentities.last ?? ""
-    }
-
-    func numberOfSections(in collectionView: NSCollectionView) -> Int { 1 }
-
-    func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
-        parent.games.count
-    }
-
-    func collectionView(_ collectionView: NSCollectionView, itemForRepresentedObjectAt indexPath: IndexPath) -> NSCollectionViewItem {
-        let item = collectionView.makeItem(
-            withIdentifier: NSUserInterfaceItemIdentifier(CatalogShowAllGridItem.reuseIdentifier),
-            for: indexPath
-        )
-        guard let gridItem = item as? CatalogShowAllGridItem else { return item }
-        let game = parent.games[indexPath.item]
-        configure(item: gridItem, game: game)
-        return gridItem
-    }
-
-    private func configure(item: CatalogShowAllGridItem, game: OPNCatalogGameObject) {
-        let selectedIdentity = parent.selectedGame?.catalogIdentity
-        item.configure(
-            game: game,
-            imageURL: parent.imageURL(game),
-            isSelected: selectedIdentity == game.catalogIdentity,
-            isQueuedForPatching: parent.isQueuedForPatching(game),
-            scale: scale,
-            tileTitleVisibility: tileTitleVisibility,
-            onSelect: { [weak self] in self?.parent.onSelect(game) },
-            onPlay: { [weak self] in self?.parent.onPlay(game) },
-            onMarkOwned: { [weak self] in self?.parent.onMarkOwned(game) },
-            onQueueForPatching: { [weak self] in self?.parent.onQueueForPatching(game) }
-        )
-    }
-
-    func collectionView(_ collectionView: NSCollectionView, viewForSupplementaryElementOfKind kind: String, at indexPath: IndexPath) -> NSView {
-        guard kind == CatalogShowAllGridLayout.detailRowKind else { return NSView() }
-        let view = collectionView.makeSupplementaryView(
-            ofKind: kind,
-            withIdentifier: NSUserInterfaceItemIdentifier("CatalogShowAllGridDetailRow"),
-            for: indexPath
-        )
-        if let detailRow = view as? CatalogShowAllGridDetailRow {
-            configure(detailRow: detailRow)
-        }
-        return view
-    }
-
-    func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
-    }
-
-    func collectionView(_ collectionView: NSCollectionView, willDisplay item: NSCollectionViewItem, forRepresentedObjectAt indexPath: IndexPath) {
-        guard indexPath.item >= parent.games.count - 12 else { return }
-        parent.viewModel.loadNextCatalogPage()
     }
 }
 

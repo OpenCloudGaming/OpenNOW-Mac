@@ -114,7 +114,7 @@ final class CatalogLaunchPrefetch {
             if let stored = panels[kind], !stored.isEmpty { onEvent(.panels(kind, stored)) }
         }
         for kind in GameListKind.allCases {
-            if let stored = gameLists[kind], !stored.isEmpty { onEvent(.games(kind, stored)) }
+            if let stored = gameLists[kind] { onEvent(.games(kind, stored)) }
         }
         return attachment
     }
