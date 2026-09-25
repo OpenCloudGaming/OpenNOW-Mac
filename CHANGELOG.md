@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.12.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.11.0...v0.12.0) (2026-09-25)
+
+
+### Features
+
+* remove webrtc ([#43](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/43)) ([b8aa6ba](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b8aa6ba48c85d6c852b7e46ca3bfe80355a5797f))
+
+
+### Bug Fixes
+
+* home catalog fetch ([762ddbb](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/762ddbb4b934f470e73195c77c0e1b58c17060ad))
+* icloud catalog performance ([5bc3c30](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5bc3c3070eb0db34d38905af3530c28674ad8c47))
+* stop auth keychain token leak and restore saved sessions ([e593aa5](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e593aa5ba686d512e7baed27af0a6cbe4aa85bf0))
+
 ## [0.11.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.10.0...v0.11.0) (2026-09-23)
 
 
