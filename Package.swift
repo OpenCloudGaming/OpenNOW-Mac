@@ -21,22 +21,30 @@ let package = Package(
         //   swift package plugin --allow-writing-to-package-directory swiftlint lint \
         //     --strict App GFN Model OPN View ViewModel Tests
         .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.65.1"),
+        // Vendored, patched Quiver (QUIC + HTTP/3 + WebTransport) for the browser Co-Op egress.
+        // See Vendor/Quiver/VENDORING.md.
+        .package(path: "Vendor/Quiver"),
         // Hosted signaling (see RemoteCoOp/hosted-signaling-plan.md). Pinned exactly, like Sentry:
         // this carries the signaling for a live session, and an unattended minor bump is not
         // something to discover mid-stream.
         .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.4.0")
     ],
     targets: [
-        // Prebuilt WebRTC engine (streaming + Remote Co-Op). Committed artifact: the stasel
-        // WebRTC 152.0.0 macOS arm64 slice plus the upstream RTCAudioDevice.h header overlay —
-        // derivation recorded in Resources/Licenses/THIRD_PARTY_NOTICES.md.
-        .binaryTarget(name: "WebRTC", path: "Vendor/WebRTC.xcframework"),
+        // The native NVST bundle's protocol libraries (milestone 4), built as *static* frameworks
+        // so nothing has to be embedded or re-signed at runtime. Derivation and pins in
+        // Resources/Licenses/THIRD_PARTY_NOTICES.md.
+        .binaryTarget(name: "OpenSSL", path: "Vendor/OpenSSL.xcframework"),
+        .binaryTarget(name: "usrsctp", path: "Vendor/usrsctp.xcframework"),
         .target(
             name: "OpenNOW",
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa"),
                 .product(name: "Ably", package: "ably-cocoa"),
-                "WebRTC"
+                .product(name: "HTTP3", package: "Quiver"),
+                .product(name: "QUIC", package: "Quiver"),
+                .product(name: "QUICCrypto", package: "Quiver"),
+                "OpenSSL",
+                "usrsctp"
             ],
             path: ".",
             exclude: [
@@ -72,14 +80,25 @@ let package = Package(
             resources: [
                 .process("View/Assets.xcassets")
             ],
+            cSettings: [
+                // OpenSSL's own headers include each other as `<openssl/...>`, so the directory
+                // that *contains* `openssl/` has to be on the include path — a binary target only
+                // contributes its framework search path, which is not enough.
+                .headerSearchPath("Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),
+                .headerSearchPath("Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers"),
+            ],
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"])
             ]
         ),
         .testTarget(
             name: "OpenNOWTests",
-            dependencies: ["OpenNOW", "WebRTC"],
+            dependencies: ["OpenNOW", "OpenSSL", "usrsctp"],
             path: "Tests",
+            cSettings: [
+                .headerSearchPath("../Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),
+                .headerSearchPath("../Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers"),
+            ],
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"])
             ]
@@ -91,8 +110,12 @@ let package = Package(
         // did from the test target.
         .executableTarget(
             name: "OpenNOWBenchmarks",
-            dependencies: ["OpenNOW", "WebRTC"],
+            dependencies: ["OpenNOW", "OpenSSL", "usrsctp"],
             path: "Benchmarks",
+            cSettings: [
+                .headerSearchPath("../Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers"),
+                .headerSearchPath("../Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers"),
+            ],
             swiftSettings: [
                 .unsafeFlags(["-Xcc", "-Wno-incomplete-umbrella"]),
                 .unsafeFlags(["-enable-testing"])

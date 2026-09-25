@@ -7,7 +7,6 @@ import CoreMedia
 import CoreVideo
 import Foundation
 import QuartzCore
-@preconcurrency import WebRTC
 
 /// What the replay ring is asked to keep: the encoder settings it shares with a manual recording,
 /// how much of the past it retains, and how much of that one save writes.
@@ -60,7 +59,7 @@ public struct StreamReplayBufferConfiguration: Equatable, Sendable {
     /// Bytes per second the encoder is expected to produce, using the same automatic-bitrate rule
     /// the writer applies and the same ceiling the quality tier puts on it.
     public static func estimatedBytesPerSecond(recording: StreamRecordingConfiguration, width: Int, height: Int, bitrateCeilingMbps: Int = 0) -> Double {
-        let videoBitsPerSecond = WebRTCStreamRecorder.videoBitrate(configuration: recording, width: max(1, width), height: max(1, height))
+        let videoBitsPerSecond = StreamRecorder.videoBitrate(configuration: recording, width: max(1, width), height: max(1, height))
         let cappedVideoBitsPerSecond = bitrateCeilingMbps > 0 ? min(videoBitsPerSecond, bitrateCeilingMbps * 1_000_000) : videoBitsPerSecond
         let audioBitsPerSecond = Double(recording.audioBitrateKbps * 1_000)
         return (Double(cappedVideoBitsPerSecond) + audioBitsPerSecond) / 8
@@ -132,17 +131,12 @@ public final class StreamReplayBuffer: @unchecked Sendable {
     static let firstFrameTimeout: DispatchTimeInterval = .seconds(15)
 
     let queue = DispatchQueue(label: "io.opencg.opennow.replay.buffer")
-    let conversionQueue = DispatchQueue(label: "io.opencg.opennow.replay.conversion", qos: .userInitiated)
 
     let ingressLock = NSLock()
     var ingressGeneration: UInt64?
     var queuedFrameCount = 0
 
     let pixelTransfer = OPNPixelBufferTransfer()
-    let i420BGRAConverter = WebRTCI420BGRAConverter()
-    var bgraPool: CVPixelBufferPool?
-    var bgraPoolWidth = 0
-    var bgraPoolHeight = 0
 
     var configuration: StreamReplayBufferConfiguration?
     var stagingDirectory: URL?

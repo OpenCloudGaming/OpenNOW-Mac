@@ -75,10 +75,10 @@ import Testing
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Resources/RemoteCoOp/browser")
 
-    /// The vendored Ably SDK is a real file the server has to be able to serve, not a copy that only
+    /// The player module is a real file the server has to be able to serve, not a copy that only
     /// exists in this test's fixture - a guest page that references a script the server cannot find
     /// fails silently in the browser console, which nothing else here would catch.
-    @Test func servesTheVendoredAblySDK() async throws {
+    @Test func servesThePlayerModule() async throws {
         let root = Self.realBrowserDocumentRoot
         guard FileManager.default.fileExists(atPath: root.appendingPathComponent("index.html").path) else {
             Issue.record("Resources/RemoteCoOp/browser did not resolve to \(root.path) - the #filePath layout assumption is wrong")
@@ -87,24 +87,81 @@ import Testing
         let (server, endpoint, session) = try await makeServer(root: root)
         defer { Task { await server.stop() } }
 
-        let url = try #require(URL(string: endpoint.guestJoinBaseURL + "vendor/ably.min.js"))
-        let (data, response) = try await session.data(from: url)
-        #expect((response as? HTTPURLResponse)?.statusCode == 200)
-        #expect((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.contains("javascript") == true)
-
-        let onDisk = try Data(contentsOf: root.appendingPathComponent("vendor/ably.min.js"))
-        #expect(data == onDisk)
-        #expect(!data.isEmpty)
+        for script in ["app.js", "wire.mjs", "media-audio-worklet.js"] {
+            let url = try #require(URL(string: endpoint.guestJoinBaseURL + script))
+            let (data, response) = try await session.data(from: url)
+            #expect((response as? HTTPURLResponse)?.statusCode == 200, "\(script) was not served")
+            #expect((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")?.contains("javascript") == true)
+            let onDisk = try Data(contentsOf: root.appendingPathComponent(script))
+            #expect(data == onDisk)
+            #expect(!data.isEmpty)
+        }
     }
 
-    /// `index.html` must actually reference the vendored script by the path the server serves it at,
-    /// or the two drift silently: the file could exist and never be loaded.
-    @Test func indexPageReferencesTheVendoredSDKAtItsRealPath() throws {
+    /// `index.html` must reference the player module and the audio worklet by the paths the server
+    /// serves them at, or the two drift silently: a file could exist and never be loaded. It must also
+    /// carry no WebRTC-era signaling library, which the WebTransport page does not use.
+    @Test func indexPageLoadsThePlayerModuleAndWorklet() throws {
         let html = try String(contentsOf: Self.realBrowserDocumentRoot.appendingPathComponent("index.html"), encoding: .utf8)
-        #expect(html.contains(#"src="./vendor/ably.min.js""#))
-        // Loaded as a plain script rather than a module, so it attaches `Ably` to `window` for
-        // app.js's module scope to read - a module-scoped script would not be visible to it.
-        #expect(!html.contains(#"type="module" src="./vendor/ably.min.js""#))
+        #expect(html.contains(#"src="./app.js?v=webtransport-webcodecs-20260924""#))
+        #expect(html.contains(#"id="video-canvas""#))
+        #expect(!html.contains("ably"))
+    }
+
+    /// The page finds the WebTransport endpoint from the host's own origin, so a guest that joined by
+    /// addressing the host directly - with no invite link to carry an endpoint - can still reach media.
+    /// A host with no browser egress reports unavailable rather than a dead port.
+    @Test func reportsWebTransportAvailability() async throws {
+        let root = try makeDocumentRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let withoutInfo = OPNRemoteCoOpEmbeddedServer(
+            documentRoot: root,
+            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly, latencyMode: .lowLatency),
+            participantOwnership: OPNRemoteCoOpParticipantOwnership()
+        )
+        let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-tls-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let p12 = try OPNRemoteCoOpTLSIdentity.generateP12(host: "127.0.0.1", passphrase: "pass", directory: scratch)
+        let identity = try OPNRemoteCoOpTLSIdentity.importIdentity(p12: p12, passphrase: "pass")
+        let endpoint = try await withoutInfo.start(port: 0, advertisedHost: "127.0.0.1", identity: identity)
+        defer { Task { await withoutInfo.stop() } }
+        let session = URLSession(configuration: .ephemeral, delegate: TrustingDelegate(), delegateQueue: nil)
+
+        let infoURL = try #require(URL(string: endpoint.guestJoinBaseURL + "remote-coop/webtransport"))
+        let (_, unavailable) = try await session.data(from: infoURL)
+        #expect((unavailable as? HTTPURLResponse)?.statusCode == 503)
+    }
+
+    /// With a browser egress running, the same path hands the page the endpoint it must dial.
+    @Test func servesWebTransportInfoWhenAvailable() async throws {
+        let root = try makeDocumentRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let expected = OPNRemoteCoOpBrowserWebTransportInfo(host: "127.0.0.1", port: 32190,
+                                                            path: RemoteCoOpBrowserProtocol.mediaPath,
+                                                            certificateHash: "aGFzaA==")
+        let server = OPNRemoteCoOpEmbeddedServer(
+            documentRoot: root,
+            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly, latencyMode: .lowLatency),
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
+            webTransportInfo: { expected }
+        )
+        let scratch = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("coop-tls-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let p12 = try OPNRemoteCoOpTLSIdentity.generateP12(host: "127.0.0.1", passphrase: "pass", directory: scratch)
+        let identity = try OPNRemoteCoOpTLSIdentity.importIdentity(p12: p12, passphrase: "pass")
+        let endpoint = try await server.start(port: 0, advertisedHost: "127.0.0.1", identity: identity)
+        defer { Task { await server.stop() } }
+        let session = URLSession(configuration: .ephemeral, delegate: TrustingDelegate(), delegateQueue: nil)
+
+        let infoURL = try #require(URL(string: endpoint.guestJoinBaseURL + "remote-coop/webtransport"))
+        let (data, response) = try await session.data(from: infoURL)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        let decoded = try JSONDecoder().decode(OPNRemoteCoOpBrowserWebTransportInfo.self, from: data)
+        #expect(decoded == expected)
     }
 
     @Test func refusesPathsOutsideTheGuestPage() async throws {

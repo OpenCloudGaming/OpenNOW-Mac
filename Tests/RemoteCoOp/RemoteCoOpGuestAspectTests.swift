@@ -13,7 +13,7 @@ import Testing
 
 @Suite struct RemoteCoOpGuestAspectTests {
     private func fitted(_ width: Int, _ height: Int, into preset: OPNRemoteCoOpQualityPreset) -> (width: Int, height: Int) {
-        OPNRemoteCoOpHostVideoRelay.adaptedSize(
+        RemoteCoOpNativeVideoGeometry.adaptedSize(
             sourceWidth: width,
             sourceHeight: height,
             maximumWidth: preset.width,

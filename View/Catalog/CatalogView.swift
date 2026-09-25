@@ -294,7 +294,7 @@ struct CatalogView: View {
                         topInset: streamWindowTopInset,
                         aspectRatio: CGFloat(viewModel.streamProfile.aspectRatio)
                     ) { _ in
-                        WebRTCMediaStreamView(
+                        StreamHostView(
                             configuration: streamConfiguration,
                             onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
                             onRequiredSessionAd: { ad in

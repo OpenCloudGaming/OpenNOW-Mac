@@ -5,7 +5,6 @@ import Foundation
 import Metal
 import MetalKit
 import QuartzCore
-import WebRTC
 #if canImport(MetalFX)
 import MetalFX
 #endif
@@ -149,6 +148,9 @@ final class OPNVideoEnhancementRenderer: NSObject {
     /// clicks with. Written by the encode, read from wherever an input event arrives.
     nonisolated let pillarboxFillCommit = OPNCommittedPillarboxFillBox()
     var lastLoggedFillMode: OPNPillarboxFillMode?
+    /// One line per session when a selected fill mode displaces the upscaler, so the trade is
+    /// visible in the log rather than reading as "MetalFX silently did nothing".
+    var hasLoggedFillUpscalerSkip = false
     var lastLoggedContentRect: OPNPillarboxContentRect?
     var fillHistoryRGBPipeline: (any MTLRenderPipelineState)?
     var fillHistoryNV12Pipeline: (any MTLRenderPipelineState)?
@@ -176,10 +178,6 @@ final class OPNVideoEnhancementRenderer: NSObject {
     var enhancedPixelBufferPool: CVPixelBufferPool?
     var enhancedPixelBufferPoolWidth = 0
     var enhancedPixelBufferPoolHeight = 0
-    let i420BGRAConverter = WebRTCI420BGRAConverter()
-    var i420PixelBufferPool: CVPixelBufferPool?
-    var i420PixelBufferPoolWidth = 0
-    var i420PixelBufferPoolHeight = 0
 
     @objc init(device: (any MTLDevice)?, commandQueue: (any MTLCommandQueue)?) {
         self.device = device
@@ -216,9 +214,9 @@ final class OPNVideoEnhancementRenderer: NSObject {
             && outputPipeline("opn_video_present_rgb", format: Self.renderTargetPixelFormat) != nil
     }
 
-    @objc(renderFrame:toView:settings:result:)
+    /// Not `@objc`: the frame is a native value type, so this entry point is Swift-only.
     func renderFrame(
-        _ frame: RTCVideoFrame?,
+        _ frame: OPNVideoFrame?,
         to view: MTKView?,
         settings: OPNVideoEnhancementSettings?,
         result: OPNVideoEnhancementResult?
@@ -227,7 +225,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
         populateResult(result, settings: settings)
         // Only the spatial encode below draws the fill, and it republishes what it committed on
         // its way out. Every other path here — the Core Image branch, its MetalFX variant, and
-        // each early bail into WebRTC's own renderer — puts the picture on screen untransformed,
+        // each early bail into the plain spatial pass — puts the picture on screen untransformed,
         // so the pointer must not inherit geometry from a frame that took a different one.
         pillarboxFillCommit.clear()
         guard let frame, let view, let settings, let result, settings.configuredTier != .off else {
@@ -290,7 +288,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
 
     /// The Metal texture path, which every tier prefers when the caller does not also need the
     /// enhanced frame back as a pixel buffer. False means fall through to the Core Image path.
-    func renderThroughTexturePath(_ frame: RTCVideoFrame,
+    func renderThroughTexturePath(_ frame: OPNVideoFrame,
                                           drawable: any CAMetalDrawable,
                                           commandQueue: any MTLCommandQueue,
                                           settings: OPNVideoEnhancementSettings,
@@ -301,22 +299,38 @@ final class OPNVideoEnhancementRenderer: NSObject {
         var pixelFormat: NSString?
         var frameSource: NSString?
         var textureFallback: NSString?
-        let textureFrame = textureSource.newTextureFrame(for: frame, pixelFormat: &pixelFormat, frameSource: &frameSource, fallback: &textureFallback) as? OPNVideoTextureFrame
+        let textureFrame = textureSource.newTextureFrame(for: frame.pixelBuffer, pixelFormat: &pixelFormat, frameSource: &frameSource, fallback: &textureFallback) as? OPNVideoTextureFrame
         result.pixelFormat = (pixelFormat as String?) ?? result.pixelFormat
         result.frameSource = (frameSource as String?) ?? result.frameSource
         if let textureFrame, let commandBuffer = commandQueue.makeCommandBuffer() {
-            if tier == .temporal, renderTemporalTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
-                return true
+            let fillMode = OPNPillarboxFillMode.from(settings.pillarboxFillMode)
+            if !Self.fillTakesSpatialPass(fillMode: fillMode) {
+                if tier == .temporal, renderTemporalTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+                    return true
+                }
+                if tier == .metalFX, renderMetalFXTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+                    return true
+                }
+            } else if tier != .spatial, !hasLoggedFillUpscalerSkip {
+                hasLoggedFillUpscalerSkip = true
+                OPNLog.info(.stream, "Pillarbox fill \(fillMode.label) takes the spatial pass; \(tierName(for: tier)) is skipped while a fill is selected")
             }
-            if tier == .metalFX, renderMetalFXTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
-                return true
-            }
-            if tier == .spatial, renderSpatialTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
+            if renderSpatialTextureFrame(textureFrame, drawable: drawable, commandBuffer: commandBuffer, settings: settings, result: result, start: start) {
                 return true
             }
         }
         if let textureFallback, result.fallbackReason.isEmpty { result.fallbackReason = textureFallback as String }
         return false
+    }
+
+    /// Whether a selected fill mode displaces the upscaler in favour of the spatial pass.
+    ///
+    /// Every mode but black: a fill is reprojected against the texture the shader writes into, and
+    /// the upscaler's staging renders into an intermediate sized to the source instead of the
+    /// drawable, so its fill geometry would be computed against the wrong aspect. See
+    /// `renderThroughTexturePath`.
+    static func fillTakesSpatialPass(fillMode: OPNPillarboxFillMode) -> Bool {
+        fillMode.needsCustomRenderPath
     }
 
     private func renderMetalFXFrame(

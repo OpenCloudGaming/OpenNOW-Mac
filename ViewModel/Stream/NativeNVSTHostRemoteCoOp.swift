@@ -93,8 +93,7 @@ extension NativeNVSTHostViewModel {
         remoteCoOpPreferences = preferences
         remoteCoOpNetworkConfiguration = OPNRemoteCoOpNetworkConfiguration(transportMode: preferences.transportMode, latencyMode: preferences.latencyMode, sessionQualityPreset: preferences.qualityPreset)
         remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: preferences, invite: remoteCoOpSnapshot.invite, participants: remoteCoOpSnapshot.participants)
-        applyRemoteCoOpVideoScale(preferences: preferences)
-        Task { @MainActor in
+                Task { @MainActor in
             await remoteCoOpHostSession.updatePreferences(preferences)
             await remoteCoOpEmbeddedServer?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
             remoteCoOpNativeServer?.updateNetworkConfiguration(remoteCoOpNetworkConfiguration)
@@ -105,19 +104,9 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    /// Tells the relay how far down to scale before handing frames to libwebrtc. The native session
-    /// decodes at full resolution - 5120x2160 on a 5K profile - and the guest preset tops out at
-    /// 1080p, so without this every frame would be converted to I420 at source size and then thrown
-    /// away by the encoder's own adaptation.
-    func applyRemoteCoOpVideoScale(preferences: OPNRemoteCoOpPreferences) {
-        // The largest live guest, not the session default: one buffer feeds every encoder, so a smaller
-        // pre-scale would cap the most demanding guest with no way to recover.
-        let preset = remoteCoOpSnapshot.participants
-            .filter { $0.connectionState == .connected && $0.inputEnabled }
-            .map { $0.effectiveQualityPreset(sessionDefault: preferences.qualityPreset) }
-            .max { ($0.width * $0.height) < ($1.width * $1.height) } ?? preferences.qualityPreset
-        remoteCoOpVideoRelay.setPreferredOutputSize(width: preset.width, height: preset.height)
-    }
+    /// The native session forwards the source stream unmodified; per-guest scaling is a later
+    /// milestone, so there is no relay pre-scale to apply.
+    func applyRemoteCoOpVideoScale(preferences _: OPNRemoteCoOpPreferences) {}
 
     /// Retargets one guest's stream, or clears them back to the session default with nil.
     func setRemoteCoOpParticipantQualityPreset(_ preset: OPNRemoteCoOpQualityPreset?, for participantID: UUID) {
@@ -157,8 +146,7 @@ extension NativeNVSTHostViewModel {
         // published *its* invite and copied *its* link, while the only live channel belonged to the
         // second. Every guest opening the copied link was dropped.
         isStartingRemoteCoOpInvite = true
-        applyRemoteCoOpVideoScale(preferences: preferences)
-        Task { @MainActor in
+                Task { @MainActor in
             defer { isStartingRemoteCoOpInvite = false }
             let neutralEvents = await stopRemoteCoOpSession()
             await sendRemoteCoOpNeutralInput(neutralEvents)
@@ -248,6 +236,7 @@ extension NativeNVSTHostViewModel {
                     participant = try await remoteCoOpHostSession.approveParticipant(participantID)
                 }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+                publishRemoteCoOpBrowserParticipants()
                 // The seat must know the pad exists before the guest's first state packet, or it
                 // discards input for an unregistered device.
                 await syncRemoteCoOpGamepadTopology()
@@ -274,7 +263,9 @@ extension NativeNVSTHostViewModel {
                 // holding pressed in the game forever.
                 await sendRemoteCoOpNeutralInput(neutralEvents)
                 await remoteCoOpPeerController?.removePeer(participantID: participantID)
+                remoteCoOpBrowserEgress.remove(participantID: participantID)
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+                publishRemoteCoOpBrowserParticipants()
                 await syncRemoteCoOpGamepadTopology()
                 remoteCoOpMessage = "Remote Co-Op guest removed."
                 showNativeTransientStreamMessage("Remote Co-Op guest removed")
@@ -551,11 +542,21 @@ extension NativeNVSTHostViewModel {
             credentials: OPNRemoteCoOpTURNKeyStore.load(),
             logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.relay", level: .info, message: message) }
         )
+        // The browser egress is started before the embedded server, so the page's endpoint query is
+        // answered from the first request rather than racing the listener. A failure here leaves the
+        // native and WebSocket guests working and the page reporting that browser media is unavailable.
+        do {
+            try await remoteCoOpBrowserEgress.start(host: OPNRemoteCoOpLocalAddress.advertisedHost())
+        } catch {
+            OPNStreamTelemetry.capture("nvst.remote_coop.browser_egress.failed", level: .warning,
+                                       message: "Browser Co-Op egress failed to start: \(error.localizedDescription)")
+        }
         let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
             preferences: preferences,
             networkConfiguration: remoteCoOpNetworkConfiguration,
             participantOwnership: remoteCoOpHostSession.participantOwnership,
-            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
+            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) },
+            webTransportInfo: { [weak egress = remoteCoOpBrowserEgress] in egress?.webTransportInfo }
         )
         // Generated here rather than inside `startInvite`, because the hosted channel is named
         // after it and the host must be subscribed before the invite naming it is handed out.
@@ -597,6 +598,29 @@ extension NativeNVSTHostViewModel {
             hostedSignaling: { _, _ in hostedSignaling }
         )
         return (hosting, invite)
+    }
+
+    /// Refreshes everything that follows the participant list when a browser guest joins or leaves.
+    ///
+    /// The browser path has no signaling session, so nothing else would publish the snapshot or widen
+    /// the announced pad topology: a browser guest waiting for approval would never surface in the HUD.
+    func remoteCoOpParticipantsDidChange() async {
+        let previousSlots = remoteCoOpConnectedGuestSlots
+        let previouslyWaiting = remoteCoOpWaitingParticipantIDs
+        remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+        announceRemoteCoOpArrivals(previouslyWaiting: previouslyWaiting)
+        if previousSlots != remoteCoOpConnectedGuestSlots {
+            await syncRemoteCoOpGamepadTopology()
+        }
+        try? await syncRemoteCoOpPeers()
+    }
+
+    /// Pushes every participant's current state to the browser egress, so a guest learns it has been
+    /// approved, benched, or removed. A no-op for guests that are not connected over WebTransport.
+    func publishRemoteCoOpBrowserParticipants() {
+        for participant in remoteCoOpSnapshot.participants {
+            remoteCoOpBrowserEgress.update(participant)
+        }
     }
 
     var remoteCoOpWaitingParticipantIDs: Set<UUID> {
@@ -652,9 +676,8 @@ extension NativeNVSTHostViewModel {
             networkConfiguration: remoteCoOpNetworkConfiguration,
             qualityPreset: preferences.qualityPreset,
             latencyMode: preferences.latencyMode,
-            videoRelay: remoteCoOpVideoRelay,
-            audioRelay: remoteCoOpAudioRelay,
-            // Off the main actor: guest packets arrive on libwebrtc's network thread, and hopping to a
+            peerFactory: OPNRemoteCoOpNativeHostPeerFactory(broadcaster: remoteCoOpNativeBroadcaster),
+            // Off the main actor: guest packets arrive on the native socket's queue, and hopping to a
             // main actor that is also driving the Metal surface cost frames. The holder returns nil
             // after teardown, matching what the `isEnding`/`didEnd` guard did.
             forwardInput: { [holder = inputDispatcherHolder] event in
@@ -700,8 +723,8 @@ extension NativeNVSTHostViewModel {
         remoteCoOpListenTask?.cancel()
         remoteCoOpListenTask = nil
         await remoteCoOpPeerController?.removeAll()
-        remoteCoOpVideoRelay.removeAll()
-        remoteCoOpAudioRelay.removeAll()
+        remoteCoOpNativeBroadcaster.removeAll()
+        await remoteCoOpBrowserEgress.stop()
         remoteCoOpPeerController = nil
         await remoteCoOpSignalingSession?.close()
         remoteCoOpSignalingSession = nil

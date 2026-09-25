@@ -25,6 +25,16 @@ public struct OPNRemoteCoOpNativeDiscoveredHost: Identifiable, Equatable, @unche
         }
     }
 
+    /// A host resolved from Bonjour to a concrete address, keeping the service's friendly name.
+    ///
+    /// The identity is the service name, not the address, so a host that changes IP keeps a stable key
+    /// for the pinned certificate and reconnect token.
+    public init(endpoint: NWEndpoint, serviceName: String) {
+        self.endpoint = endpoint
+        self.name = serviceName
+        self.id = "bonjour-\(serviceName)"
+    }
+
     /// A host typed in by hand rather than discovered.
     ///
     /// Bonjour is how hosts are found on a LAN, and it is the only way that needs no configuration -
@@ -76,35 +86,98 @@ public struct OPNRemoteCoOpNativeDiscoveredHost: Identifiable, Equatable, @unche
     }
 }
 
-public final class OPNRemoteCoOpNativeHostBrowser: @unchecked Sendable {
+public final class OPNRemoteCoOpNativeHostBrowser: NSObject, NetServiceBrowserDelegate, NetServiceDelegate, @unchecked Sendable {
     private let lock = NSLock()
-    private let queue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.native-browser")
-    private var browser: NWBrowser?
+    private var serviceBrowser: NetServiceBrowser?
+    private var resolving: [String: NetService] = [:]
+    private var hosts: [String: OPNRemoteCoOpNativeDiscoveredHost] = [:]
     public var onUpdate: (@Sendable ([OPNRemoteCoOpNativeDiscoveredHost]) -> Void)?
 
-    public init() {}
+    public override init() { super.init() }
 
     public func start() {
         stop()
-        let parameters = NWParameters()
-        parameters.includePeerToPeer = true
-        let browser = NWBrowser(for: .bonjour(type: OPNRemoteCoOpNativeGuestServer.serviceType, domain: nil), using: parameters)
-        browser.browseResultsChangedHandler = { [weak self] results, _ in
-            let hosts = results.map { OPNRemoteCoOpNativeDiscoveredHost(endpoint: $0.endpoint) }.sorted { $0.name < $1.name }
-            self?.onUpdate?(hosts)
-        }
-        lock.withLock { self.browser = browser }
-        browser.start(queue: queue)
+        let browser = NetServiceBrowser()
+        browser.delegate = self
+        lock.withLock { serviceBrowser = browser }
+        browser.schedule(in: .main, forMode: .common)
+        browser.searchForServices(ofType: OPNRemoteCoOpNativeGuestServer.serviceType + ".", inDomain: "local.")
     }
 
     public func stop() {
-        let browser = lock.withLock { () -> NWBrowser? in
-            let browser = self.browser
-            self.browser = nil
+        let browser = lock.withLock { () -> NetServiceBrowser? in
+            let browser = serviceBrowser
+            serviceBrowser = nil
             return browser
         }
-        browser?.browseResultsChangedHandler = nil
-        browser?.cancel()
+        browser?.delegate = nil
+        browser?.stop()
+        lock.withLock {
+            for service in resolving.values {
+                service.delegate = nil
+                service.stop()
+            }
+            resolving.removeAll()
+            hosts.removeAll()
+        }
+    }
+
+    // MARK: - NetServiceBrowserDelegate
+
+    public func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
+        service.delegate = self
+        service.schedule(in: .main, forMode: .common)
+        lock.withLock { resolving[service.name] = service }
+        service.resolve(withTimeout: 5)
+    }
+
+    public func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
+        lock.withLock {
+            resolving[service.name]?.delegate = nil
+            resolving[service.name] = nil
+            hosts[service.name] = nil
+        }
+        publish()
+    }
+
+    // MARK: - NetServiceDelegate
+
+    /// Resolving returns the host's addresses and port directly, which is what lets a guest on the
+    /// host's own Mac connect: the `.local` name never has to be resolved by the connecting socket.
+    public func netServiceDidResolveAddress(_ sender: NetService) {
+        guard let address = Self.ipv4Address(of: sender),
+              let port = NWEndpoint.Port(rawValue: UInt16(truncatingIfNeeded: sender.port)) else { return }
+        let host = OPNRemoteCoOpNativeDiscoveredHost(endpoint: .hostPort(host: NWEndpoint.Host(address), port: port),
+                                                     serviceName: sender.name)
+        lock.withLock { hosts[sender.name] = host }
+        publish()
+    }
+
+    public func netService(_ sender: NetService, didNotResolve errorDict: [String: NSNumber]) {
+        lock.withLock { resolving[sender.name] = nil }
+    }
+
+    private func publish() {
+        let current = lock.withLock { Array(hosts.values) }.sorted { $0.name < $1.name }
+        onUpdate?(current)
+    }
+
+    /// The first IPv4 address the service resolved to, as a dotted string.
+    static func ipv4Address(of service: NetService) -> String? {
+        guard let addresses = service.addresses else { return nil }
+        for data in addresses {
+            let family = data.withUnsafeBytes { $0.load(as: sockaddr.self).sa_family }
+            guard family == sa_family_t(AF_INET) else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            let result = data.withUnsafeBytes { raw -> Int32 in
+                guard let base = raw.bindMemory(to: sockaddr.self).baseAddress else { return -1 }
+                return getnameinfo(base, socklen_t(data.count), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST)
+            }
+            guard result == 0 else { continue }
+            let bytes = host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+            return String(decoding: bytes, as: UTF8.self)
+        }
+        return nil
     }
 }
 

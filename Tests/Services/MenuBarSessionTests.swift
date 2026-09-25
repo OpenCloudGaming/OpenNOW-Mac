@@ -10,44 +10,8 @@ import Testing
 /// One serialized suite: every test here reads or writes the same preference key, and Swift Testing
 /// does not serialize two suites against each other.
 @MainActor @Suite(.serialized, .streamLifecycleExclusive) struct MenuBarSessionTests {
-    private let preferencesKey = OPNWindowClosePreferences.behaviorKey
-
-    private func preserveCloseBehavior() -> Any? {
-        UserDefaults.standard.object(forKey: preferencesKey)
-    }
-
-    private func restoreCloseBehavior(_ existing: Any?) {
-        if let existing {
-            UserDefaults.standard.set(existing, forKey: preferencesKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: preferencesKey)
-        }
-    }
-
-    /// A stored behavior every test can start from without depending on the order it ran in.
-    private func storeCloseBehavior(_ behavior: OPNWindowCloseBehavior) {
-        UserDefaults.standard.set(behavior.rawValue, forKey: preferencesKey)
-    }
-
-    private let menuBarItemKey = OPNMenuBarPreferences.showsStatusItemKey
-
-    private func preserveMenuBarItem() -> Any? {
-        UserDefaults.standard.object(forKey: menuBarItemKey)
-    }
-
-    private func restoreMenuBarItem(_ existing: Any?) {
-        if let existing {
-            UserDefaults.standard.set(existing, forKey: menuBarItemKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: menuBarItemKey)
-        }
-    }
-
-    /// The model observes `NotificationCenter.default` so the tests exercise the real posting path;
-    /// a main-queue delivery needs the run loop to turn.
-    private func waitForQueuedDelivery() async throws {
-        try await Task.sleep(for: .milliseconds(50))
-    }
+    let preferencesKey = OPNWindowClosePreferences.behaviorKey
+    let menuBarItemKey = OPNMenuBarPreferences.showsStatusItemKey
 
     @Test func unsetCloseBehaviorClosesTheWindowAndKeepsRunning() {
         let existing = preserveCloseBehavior()
@@ -270,8 +234,11 @@ import Testing
     @Test func statusItemExistsOnlyForAKeepRunningChoiceOrASession() async throws {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
+        let existingItem = preserveMenuBarItem()
+        defer { restoreMenuBarItem(existingItem) }
 
         storeCloseBehavior(.quitApplication)
+        OPNMenuBarPreferences.showsStatusItem = true
         let model = OPNMenuBarSessionModel()
         #expect(!model.isStatusItemInserted)
 
@@ -388,8 +355,12 @@ import Testing
     @Test func observedLaunchStateMovesThePhase() async throws {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
+        let existingItem = preserveMenuBarItem()
+        defer { restoreMenuBarItem(existingItem) }
 
         storeCloseBehavior(.quitApplication)
+        // Independent of whatever the ambient preference holds, so test order cannot change the result.
+        OPNMenuBarPreferences.showsStatusItem = true
         let model = OPNMenuBarSessionModel()
         let source = StubMenuBarSource()
         model.attach(source: source)
@@ -417,8 +388,11 @@ import Testing
     @Test func lifecycleNotificationOwnsTheStreamingPhase() async throws {
         let existing = preserveCloseBehavior()
         defer { restoreCloseBehavior(existing) }
+        let existingItem = preserveMenuBarItem()
+        defer { restoreMenuBarItem(existingItem) }
 
         storeCloseBehavior(.quitApplication)
+        OPNMenuBarPreferences.showsStatusItem = true
         let model = OPNMenuBarSessionModel()
         let id = UUID()
         StreamSessionLifecycle.activate(id, quitRequestHandler: { _ in true })

@@ -40,17 +40,15 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let effectiveSettings = settingsByApplyingCloudVariables(settings, capabilities: capabilities)
         logInGameSettingsPersistenceRequest(effectiveSettings)
         let hdrEnabled = bool(effectiveSettings["enableHdr"]) && capabilities.hdrDisplaySupported
-        let transportMode = streamTransportMode(effectiveSettings)
         let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
 
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) transport=\(transportMode) resolution=\(string(effectiveSettings["resolution"])) fps=\(int(effectiveSettings["fps"], fallback: 60)) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") profile=\(int(effectiveSettings["streamingQualityProfile"])) networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
+        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) transport=nvst resolution=\(string(effectiveSettings["resolution"])) fps=\(int(effectiveSettings["fps"], fallback: 60)) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") profile=\(int(effectiveSettings["streamingQualityProfile"])) networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
 
         let body: [String: Any] = [
             "sessionRequestData": sessionRequestData(launchAppId: launchAppId,
                                                      internalTitle: internalTitle,
                                                      settings: effectiveSettings,
                                                      capabilities: capabilities,
-                                                     transportMode: transportMode,
                                                      hdrEnabled: hdrEnabled,
                                                      deviceId: deviceId,
                                                      selectedStore: selectedStore)
@@ -64,7 +62,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         } catch {
             return (false, [:], "Failed to encode session create request")
         }
-        let headers = CloudMatchClientHeaders.streamSession(transportMode: transportMode)
+        let headers = CloudMatchClientHeaders.streamSession()
         guard var request = CloudMatchRequestFactory.createSessionRequest(baseURLString: baseUrl, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData, headers: headers) else {
             return (false, [:], "Invalid session create URL")
         }
@@ -108,12 +106,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                                     internalTitle: Any,
                                     settings effectiveSettings: [String: Any],
                                     capabilities: OPNStreamDeviceCapabilities,
-                                    transportMode: String,
                                     hdrEnabled: Bool,
                                     deviceId: String,
                                     selectedStore: String) -> [String: Any] {
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
-        var metadata = [
+        let metadata = [
             ["key": "SubSessionId", "value": UUID().uuidString.lowercased()],
             ["key": "wssignaling", "value": "1"],
             ["key": "networkType", "value": networkTypeValue(effectiveSettings)],
@@ -123,10 +120,6 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             ["key": "surroundAudioInfo", "value": String(requestedAudioChannelCount(effectiveSettings))],
             ["key": "store", "value": selectedStore],
         ]
-        if transportMode == "webrtc" {
-            metadata.append(["key": "GSStreamerType", "value": "WebRTC"])
-        }
-
         var sessionRequestData: [String: Any] = [
             "appId": launchAppId.intValue,
             "internalTitle": internalTitle,
@@ -138,7 +131,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "clientVersion": GFNClientMetadata.webRTCClientVersion,
             "sdkVersion": "1.0",
             "streamerVersion": 1,
-            "clientPlatformName": sessionClientPlatformName(transportMode),
+            "clientPlatformName": "windows",
             "clientRequestMonitorSettings": [monitorSettings(effectiveSettings, capabilities: capabilities, hdrEnabled: hdrEnabled)],
             "useOps": bool(effectiveSettings["useOps"], fallback: true),
             "audioMode": int(effectiveSettings["audioMode"], fallback: 2),
@@ -151,7 +144,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             "clientTimezoneOffset": timezoneOffset,
             "enhancedStreamMode": int(effectiveSettings["enhancedStreamMode"], fallback: 1),
             "appLaunchMode": int(effectiveSettings["appLaunchMode"], fallback: 1),
-            "secureRTSPSupported": transportMode == "nvst",
+            "secureRTSPSupported": true,
             "partnerCustomData": string(effectiveSettings["partnerCustomData"]),
             "accountLinked": bool(effectiveSettings["accountLinked"], fallback: true),
             "enablePersistingInGameSettings": bool(effectiveSettings["enablePersistingInGameSettings"]),

@@ -6,24 +6,6 @@ public protocol StreamInsightsReporting: Sendable {
     func streamInsightsMetadata() async -> [String: String]
 }
 
-extension NativeWebRTCTransport: StreamInsightsReporting {
-    public func streamInsightsMetadata() async -> [String: String] {
-        let stats = latestStatsSnapshot()
-        guard stats.available else { return [:] }
-        var metadata: [String: String] = [:]
-        metadata[StreamInsightsKey.transport] = "webrtc"
-        if stats.latencyMs > 0 { metadata[StreamInsightsKey.latencyMs] = String(Int(stats.latencyMs.rounded())) }
-        if stats.inboundBitrateMbps > 0 { metadata[StreamInsightsKey.bitrateMbps] = String(format: "%.1f", stats.inboundBitrateMbps) }
-        if stats.packetLossPercent > 0 { metadata[StreamInsightsKey.packetLossPercent] = String(format: "%.2f", stats.packetLossPercent) }
-        if stats.decodeTimeMs > 0 { metadata[StreamInsightsKey.decodeMs] = String(format: "%.1f", stats.decodeTimeMs) }
-        if stats.framesDropped > 0 { metadata[StreamInsightsKey.droppedFrames] = String(stats.framesDropped) }
-        if !stats.resolution.isEmpty { metadata[StreamInsightsKey.resolution] = stats.resolution }
-        if !stats.codec.isEmpty { metadata[StreamInsightsKey.codec] = stats.codec }
-        if stats.fps > 0 { metadata[StreamInsightsKey.frameRate] = String(stats.fps) }
-        return metadata
-    }
-}
-
 extension NvstBifrostFreeTransport: StreamInsightsReporting {
     public func streamInsightsMetadata() async -> [String: String] {
         guard let snapshot = await performanceSnapshot() else { return [:] }

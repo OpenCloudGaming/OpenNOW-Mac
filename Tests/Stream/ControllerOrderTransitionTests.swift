@@ -44,7 +44,7 @@ import Testing
         var profile = store.createProfile(named: "Steam keyboard")
         profile.bindings[.faceA] = .keyboardKey(keyCode: 49, modifiers: [])
         store.updateProfile(profile)
-        let monitor = NativeWebRTCGamepadMonitor(mappingProvider: store)
+        let monitor = NativeGamepadMonitor(mappingProvider: store)
         monitor.pollingAllowed = true
         monitor.mappingsEnabled = true
         monitor.pollState.steamControllerSlots = ["steam": 0, "suspended-steam": 1]

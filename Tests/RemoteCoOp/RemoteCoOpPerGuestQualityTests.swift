@@ -282,49 +282,7 @@ struct RemoteCoOpPerGuestQualityTests {
 
     // MARK: - Relay ceiling
 
-    @Test("the relay pre-scale follows the most demanding guest, not the least")
-    func relayCeilingIsTheLargestActiveGuest() async throws {
-        let (_, signaling, coordinator) = makeSession()
-        let controller = OPNRemoteCoOpHostPeerController(
-            signaling: signaling,
-            coordinator: coordinator,
-            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly),
-            qualityPreset: .p720f60,
-            peerFactory: RecordingRemoteCoOpHostPeerFactory(),
-            forwardInput: { _ in }
-        )
-        var small = OPNRemoteCoOpParticipant(displayName: "Sam", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
-        small.qualityPreset = .p720f30
-        var large = OPNRemoteCoOpParticipant(displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 2)
-        large.qualityPreset = .p1440f60
-
-        // One decoded buffer serves every guest's encoder. Pre-scaling to the smallest would cap the
-        // largest with no way to recover; the largest costs the smallest nothing, because their own
-        // encoder downscales again anyway.
-        let ceiling = await controller.largestActiveQualityPreset(participants: [small, large])
-        #expect(ceiling == .p1440f60)
-    }
-
-    @Test("guests who are not streaming do not raise the relay ceiling")
-    func relayCeilingIgnoresInactiveGuests() async throws {
-        let (_, signaling, coordinator) = makeSession()
-        let controller = OPNRemoteCoOpHostPeerController(
-            signaling: signaling,
-            coordinator: coordinator,
-            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly),
-            qualityPreset: .p720f60,
-            peerFactory: RecordingRemoteCoOpHostPeerFactory(),
-            forwardInput: { _ in }
-        )
-        var waiting = OPNRemoteCoOpParticipant(displayName: "Sam", role: .guest, connectionState: .waitingForApproval, inputEnabled: false)
-        waiting.qualityPreset = .p2160f60
-        var connected = OPNRemoteCoOpParticipant(displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
-        connected.qualityPreset = .p1080f60
-
-        // A guest still waiting for approval has no encoder, so scaling every frame up for them would
-        // be paid on every frame for nobody.
-        #expect(await controller.largestActiveQualityPreset(participants: [waiting, connected]) == .p1080f60)
-        // With nobody streaming at all it falls back to the session default rather than to nothing.
-        #expect(await controller.largestActiveQualityPreset(participants: [waiting]) == .p720f60)
-    }
+    // The relay pre-scale tests lived here. The native transport forwards the source stream
+    // unmodified, so there is no per-session pre-scale to choose; per-guest adaptation is a later
+    // milestone and will bring its own tests.
 }

@@ -112,6 +112,10 @@ struct OPNDropdownMenu<Label: View>: View {
     let items: [OPNDropdownItem]
     var isDisabled = false
     var visibleItemCount: Int?
+    /// Opens leftward by default, for a menu whose trigger sits at the right edge of a narrow column
+    /// (the HUD sidebar) where opening right would cover the video. An edge check still wins if there
+    /// is not enough room to the left.
+    var opensLeftByDefault = false
     @ViewBuilder let label: () -> Label
 
     @Environment(\.opnUIScale) private var uiScale
@@ -143,7 +147,7 @@ struct OPNDropdownMenu<Label: View>: View {
                     .onTapGesture { isPresented = false }
             }
         }
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: panelAlignment) {
             if isPresented {
                 panel
             }
@@ -163,19 +167,51 @@ struct OPNDropdownMenu<Label: View>: View {
         max(OPNDropdownPanel.minimumWidth(scale: uiScale), triggerSize.width)
     }
 
+    /// Opens away from the window edge the panel would otherwise run past.
+    ///
+    /// A menu near the right of a narrow sidebar used to open rightward, off the sidebar and over the
+    /// video, where it read as a translucent, garbled list. The same applies vertically.
+    private var opensLeft: Bool {
+        guard spaceProbe.isConstrained else { return opensLeftByDefault }
+        if opensLeftByDefault {
+            // Stay inside the narrow column, but never off the window's left edge.
+            return spaceProbe.spaceLeft >= panelWidth || spaceProbe.spaceLeft > spaceProbe.spaceRight
+        }
+        return spaceProbe.spaceRight < panelWidth && spaceProbe.spaceLeft > spaceProbe.spaceRight
+    }
+
+    private var opensUp: Bool {
+        guard spaceProbe.isConstrained, panelHeight > 0 else { return false }
+        return spaceProbe.spaceBelow < panelHeight && spaceProbe.spaceAbove > spaceProbe.spaceBelow
+    }
+
+    private var panelAlignment: Alignment {
+        switch (opensLeft, opensUp) {
+        case (false, false): return .topLeading
+        case (true, false): return .topTrailing
+        case (false, true): return .bottomLeading
+        case (true, true): return .bottomTrailing
+        }
+    }
+
+    private var panelVerticalOffset: CGFloat {
+        let magnitude = triggerSize.height + anchorSpacing
+        return opensUp ? -magnitude : magnitude
+    }
+
     @ViewBuilder
     private var panel: some View {
-        let maximumHeight = spaceProbe.spaceBelow - anchorSpacing
+        let available = (opensUp ? spaceProbe.spaceAbove : spaceProbe.spaceBelow) - anchorSpacing
 
-        if spaceProbe.isConstrained, maximumHeight > 0, panelHeight > maximumHeight {
+        if spaceProbe.isConstrained, available > 0, panelHeight > available {
             ScrollView(.vertical) {
                 measuredPanel
             }
-            .frame(width: panelWidth, height: maximumHeight)
-            .offset(y: triggerSize.height + anchorSpacing)
+            .frame(width: panelWidth, height: available)
+            .offset(y: panelVerticalOffset)
         } else {
             measuredPanel
-                .offset(y: triggerSize.height + anchorSpacing)
+                .offset(y: panelVerticalOffset)
         }
     }
 
@@ -208,15 +244,25 @@ struct OPNDropdownMenu<Label: View>: View {
 private final class DropdownSpaceProbe {
     weak var probeView: NSView?
     private(set) var spaceBelow: CGFloat = 0
+    private(set) var spaceAbove: CGFloat = 0
+    private(set) var spaceLeft: CGFloat = 0
+    private(set) var spaceRight: CGFloat = 0
     private(set) var isConstrained = false
 
     func refresh() {
-        guard let probeView, probeView.window != nil else {
+        guard let probeView, let content = probeView.window?.contentView else {
             isConstrained = false
             return
         }
+        // AppKit window coordinates are bottom-left origin, so `minY` is the room below the trigger and
+        // `maxY` the room above it. All four are needed: the panel is opened away from whichever edge
+        // it would otherwise run off.
         let frameInWindow = probeView.convert(probeView.bounds, to: nil)
-        spaceBelow = max(frameInWindow.minY, 0)
+        let bounds = content.bounds
+        spaceBelow = max(frameInWindow.minY - bounds.minY, 0)
+        spaceAbove = max(bounds.maxY - frameInWindow.maxY, 0)
+        spaceLeft = max(frameInWindow.minX - bounds.minX, 0)
+        spaceRight = max(bounds.maxX - frameInWindow.maxX, 0)
         isConstrained = true
     }
 }

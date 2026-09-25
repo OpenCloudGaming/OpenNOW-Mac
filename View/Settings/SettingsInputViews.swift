@@ -216,7 +216,7 @@ extension InputSettingsPage {
 
     /// What the preference actually governs: whether a click on the video may take the pointer, and
     /// whether an absolute cursor is held inside the window. Following the seat into mouselook is
-    /// deliberately not gated on it (`NativeWebRTCStreamView.allowsRelativeCapture`), and the
+    /// deliberately not gated on it (`NativeStreamView.allowsRelativeCapture`), and the
     /// release shortcut is Command-P (`StreamCommand.togglePointerCapture`, keyCode 35).
     nonisolated static var directMouseInputSubtitle: String {
         "Let a click on the video take the pointer for relative aiming, and keep an absolute game cursor inside the stream window. \(OPNKeybindings.standard.combo(for: .togglePointerCapture).spokenLabel) gives the pointer back. Games that hide their own cursor still switch to relative aiming with this off."

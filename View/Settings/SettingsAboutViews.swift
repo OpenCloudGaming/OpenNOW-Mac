@@ -37,7 +37,7 @@ struct ProductSettingsPage: View {
                         .foregroundStyle(OPNDesign.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8 * uiScale) {
-                        AboutStatusPill(title: "Stream", value: viewModel.streamProfile.transportMode.label, uiScale: uiScale)
+                        AboutStatusPill(title: "Stream", value: "NVST", uiScale: uiScale)
                         AboutStatusPill(title: "Route", value: route.summary, uiScale: uiScale)
                         AboutStatusPill(title: "Telemetry", value: telemetryDisabled ? "Off" : "On", uiScale: uiScale)
                     }

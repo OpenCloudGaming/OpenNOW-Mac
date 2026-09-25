@@ -50,20 +50,17 @@ struct RemoteCoOpNativeGuestTests {
     @Test("guest join request over the loopback socket becomes a signaling event")
     func loopbackJoinRequest() async throws {
         let invite = OPNRemoteCoOpInvite(code: "ABC123", expiresAt: Date().addingTimeInterval(600), token: "signed-token")
-        let server = OPNRemoteCoOpNativeGuestServer(
-            inviteProvider: { invite },
-            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
-            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
-        )
+        let server = try makeServer(invite: invite)
+        defer { Task { await server.close() } }
         server.start()
         let port = try await waitForPort(on: server)
-        defer { Task { await server.close() } }
 
         // Subscribed before the guest connects so the event cannot beat the subscription.
         let events = server.events()
         let connection = OPNRemoteCoOpNativeGuestConnection(endpoint: .hostPort(host: "127.0.0.1", port: try #require(NWEndpoint.Port(rawValue: port))))
-        _ = try await connection.connect()
         defer { connection.close() }
+        let fingerprint = try #require(server.fingerprint)
+        _ = try await connection.connect(expectedFingerprint: fingerprint)
 
         let participantID = UUID()
         try await connection.send(OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: participantID, inviteToken: invite.token, displayName: "Mia"))
@@ -84,21 +81,18 @@ struct RemoteCoOpNativeGuestTests {
     @Test("guest receives the invite on connect, but not the relay credentials")
     func guestReceivesGreeting() async throws {
         let invite = OPNRemoteCoOpInvite(code: "XYZ789", expiresAt: Date().addingTimeInterval(600), token: "signed-token")
-        let server = OPNRemoteCoOpNativeGuestServer(
-            inviteProvider: { invite },
-            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
-            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
-        )
+        let server = try makeServer(invite: invite)
+        defer { Task { await server.close() } }
         server.start()
         let port = try await waitForPort(on: server)
-        defer { Task { await server.close() } }
 
         let connection = OPNRemoteCoOpNativeGuestConnection(endpoint: .hostPort(host: "127.0.0.1", port: try #require(NWEndpoint.Port(rawValue: port))))
+        defer { connection.close() }
         // Subscribed before connect: the greeting is the first thing the server sends, and a
         // stream created afterwards can miss it.
         let messages = connection.messages()
-        _ = try await connection.connect()
-        defer { connection.close() }
+        let fingerprint = try #require(server.fingerprint)
+        _ = try await connection.connect(expectedFingerprint: fingerprint)
 
         // Drained for a window rather than counted.
         //
@@ -117,22 +111,19 @@ struct RemoteCoOpNativeGuestTests {
     @Test("targeted commands reach only the addressed guest's connection, broadcasts reach everyone")
     func targetedAndBroadcastRouting() async throws {
         let invite = OPNRemoteCoOpInvite(code: "DEF456", expiresAt: Date().addingTimeInterval(600), token: "signed-token")
-        let server = OPNRemoteCoOpNativeGuestServer(
-            inviteProvider: { invite },
-            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
-            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly)
-        )
+        let server = try makeServer(invite: invite)
+        defer { Task { await server.close() } }
         server.start()
         let port = try await waitForPort(on: server)
-        defer { Task { await server.close() } }
 
         let guestA = OPNRemoteCoOpNativeGuestConnection(endpoint: .hostPort(host: "127.0.0.1", port: try #require(NWEndpoint.Port(rawValue: port))))
         let guestB = OPNRemoteCoOpNativeGuestConnection(endpoint: .hostPort(host: "127.0.0.1", port: try #require(NWEndpoint.Port(rawValue: port))))
+        defer { guestA.close(); guestB.close() }
         let streamA = guestA.messages()
         let streamB = guestB.messages()
-        _ = try await guestA.connect()
-        _ = try await guestB.connect()
-        defer { guestA.close(); guestB.close() }
+        let fingerprint = try #require(server.fingerprint)
+        _ = try await guestA.connect(expectedFingerprint: fingerprint)
+        _ = try await guestB.connect(expectedFingerprint: fingerprint)
 
         // Each connection's greeting is `hostHello` alone; the network configuration is withheld
         // until the guest's invite verifies.
@@ -194,6 +185,19 @@ struct RemoteCoOpNativeGuestTests {
     }
 
     // MARK: - Helpers
+
+    private func makeServer(invite: OPNRemoteCoOpInvite) throws -> OPNRemoteCoOpNativeGuestServer {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("coop-native-tls-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let identity = try OPNRemoteCoOpTLSIdentity.identity(for: "127.0.0.1", directory: directory, passphrase: "test-passphrase")
+        return OPNRemoteCoOpNativeGuestServer(
+            inviteProvider: { invite },
+            participantOwnership: OPNRemoteCoOpParticipantOwnership(),
+            networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .directOnly),
+            identity: identity
+        )
+    }
 
     private func waitForPort(on server: OPNRemoteCoOpNativeGuestServer) async throws -> UInt16 {
         for _ in 0..<100 {

@@ -48,22 +48,22 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
 }
 
 @Test func cloudMatchBuildsSessionRequests() throws {
-    let create = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://test.cloudmatchbeta.nvidiagrid.net/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8)))
+    let create = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://test.cloudmatchbeta.nvidiagrid.net/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8), headers: .streamSession()))
     #expect(create.url?.absoluteString == "https://test.cloudmatchbeta.nvidiagrid.net/v2/session?keyboardLayout=us&languageCode=en_US")
     #expect(create.httpMethod == "POST")
     #expect(create.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(create.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
     #expect(create.httpBody == Data("{}".utf8))
 
-    // WebRTC sessions must identify as the native GFN-PC client — a BROWSER identity makes GeForce
-    // NOW cap the server desktop at the web-client resolution (~2560), downscaling 5K requests.
-    let webRTCCreate = try #require(CloudMatchRequestFactory.createSessionRequest(baseURLString: "https://test.cloudmatchbeta.nvidiagrid.net/", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8), headers: .streamSession(transportMode: "webrtc")))
-    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
-    #expect(webRTCCreate.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+    #expect(create.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(create.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+    #expect(create.value(forHTTPHeaderField: "User-Agent") == GFNClientMetadata.nativeWindowsUserAgent)
 
     let poll = try #require(CloudMatchRequestFactory.pollSessionRequest(baseURLString: "test.cloudmatchbeta.nvidiagrid.net", sessionId: "session/with slash", accessToken: "access", deviceId: "device"))
     #expect(poll.url?.absoluteString == "https://test.cloudmatchbeta.nvidiagrid.net/v2/session/session%2Fwith%20slash")
     #expect(poll.httpMethod == "GET")
+    #expect(poll.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(poll.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
 
     let stop = try #require(CloudMatchRequestFactory.stopSessionRequest(baseURLString: "https://test.cloudmatchbeta.nvidiagrid.net", sessionId: "session", accessToken: "access", deviceId: "device"))
     #expect(stop.httpMethod == "DELETE")
@@ -76,10 +76,13 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
 }
 
 @Test func cloudMatchBuildsClaimAndAdUpdateRequests() throws {
-    let claim = try #require(CloudMatchRequestFactory.claimSessionRequest(baseURLString: "https://test.cloudmatchbeta.nvidiagrid.net", sessionId: "session", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8)))
+    let claim = try #require(CloudMatchRequestFactory.claimSessionRequest(baseURLString: "https://test.cloudmatchbeta.nvidiagrid.net", sessionId: "session", accessToken: "access", deviceId: "device", keyboardLayout: "us", languageCode: "en_US", body: Data("{}".utf8), headers: .streamSession()))
     #expect(claim.url?.absoluteString == "https://test.cloudmatchbeta.nvidiagrid.net/v2/session/session?keyboardLayout=us&languageCode=en_US")
     #expect(claim.httpMethod == "PUT")
     #expect(claim.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
+    #expect(claim.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(claim.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+    #expect(claim.value(forHTTPHeaderField: "User-Agent") == GFNClientMetadata.nativeWindowsUserAgent)
 
     let adUpdate = try #require(CloudMatchRequestFactory.adUpdateRequest(baseURLString: "https://test.cloudmatchbeta.nvidiagrid.net", sessionId: "session", accessToken: "access", deviceId: "device", body: Data("{}".utf8)))
     #expect(adUpdate.url?.absoluteString == "https://test.cloudmatchbeta.nvidiagrid.net/v2/session/session")

@@ -38,10 +38,6 @@ public enum OPNStreamPreferences {
         OPNStreamColorQualityOption(label: "10-bit 4:2:0", value: "10bit_420"),
         OPNStreamColorQualityOption(label: "10-bit 4:4:4", value: "10bit_444")
     ]
-    public static let transportModeOptions = [
-        OPNStreamTransportModeOption(label: "WebRTC", value: "webrtc"),
-        OPNStreamTransportModeOption(label: "Native/NVST", value: "nvst")
-    ]
     public static let streamingQualityProfileOptions = [
         OPNStreamQualityProfileOption(label: "Custom", value: 0),
         OPNStreamQualityProfileOption(label: "Balanced", value: 1),

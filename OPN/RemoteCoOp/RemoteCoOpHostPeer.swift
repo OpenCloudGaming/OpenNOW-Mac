@@ -168,8 +168,6 @@ public actor OPNRemoteCoOpHostPeerController {
     private let coordinator: OPNRemoteCoOpHostCoordinator
     private let peerFactory: any OPNRemoteCoOpHostPeerFactory
     private let inputScheduler: OPNRemoteCoOpHostInputScheduler
-    private let videoRelay: OPNRemoteCoOpHostVideoRelay?
-    private let audioRelay: OPNRemoteCoOpHostAudioRelay?
     private var networkConfiguration: OPNRemoteCoOpNetworkConfiguration
     private var qualityPreset: OPNRemoteCoOpQualityPreset
     private var latencyMode: OPNRemoteCoOpLatencyMode
@@ -184,17 +182,13 @@ public actor OPNRemoteCoOpHostPeerController {
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
                 qualityPreset: OPNRemoteCoOpQualityPreset = .p720f60,
                 latencyMode: OPNRemoteCoOpLatencyMode = .quality,
-                videoRelay: OPNRemoteCoOpHostVideoRelay? = nil,
-                audioRelay: OPNRemoteCoOpHostAudioRelay? = nil,
-                peerFactory: any OPNRemoteCoOpHostPeerFactory = OPNRemoteCoOpWebRTCHostPeerFactory(),
+                peerFactory: any OPNRemoteCoOpHostPeerFactory,
                 forwardInput: @escaping @Sendable (UserInputEvent) async -> Void) {
         self.signaling = signaling
         self.coordinator = coordinator
         self.networkConfiguration = networkConfiguration
         self.qualityPreset = qualityPreset
         self.latencyMode = latencyMode
-        self.videoRelay = videoRelay
-        self.audioRelay = audioRelay
         self.peerFactory = peerFactory
         self.inputScheduler = OPNRemoteCoOpHostInputScheduler(coordinator: coordinator, latencyMode: latencyMode, forwardInput: forwardInput)
     }
@@ -232,8 +226,6 @@ public actor OPNRemoteCoOpHostPeerController {
             // `startPeer` and upserts the new sinks - which this loop, resuming afterwards, then
             // removed by participant ID. The new peer stayed in `peers`, so nothing ever rebuilt
             // it: a negotiated guest receiving no video and no audio for the rest of the session.
-            videoRelay?.remove(participantID: participantID)
-            audioRelay?.remove(participantID: participantID)
             await inputScheduler.remove(participantID: participantID)
             await peer.close()
         }
@@ -261,25 +253,7 @@ public actor OPNRemoteCoOpHostPeerController {
                 appliedQualityPresets[participant.id] = preset
             }
         }
-        // The relay's pre-scale belongs here, not at each call site. `sync` is the one function every
-        // path that changes a participant already funnels through, and the hand-written copies missed
-        // both the guest's own quality request and the approval that seats them - so a peer was
-        // retargeted to a larger preset while the relay kept feeding it frames scaled for the old
-        // ceiling, capping that guest with no way to recover.
-        let ceiling = largestActiveQualityPreset(participants: participants)
-        videoRelay?.setPreferredOutputSize(width: ceiling.width, height: ceiling.height)
         if let firstFailure { throw firstFailure }
-    }
-
-    /// One buffer feeds every guest's encoder, so the pre-scale must satisfy the most demanding guest.
-    /// Anyone below it downscales again in their own encoder for free; scaling to the smallest would
-    /// cap everyone at the worst connection in the room.
-    public func largestActiveQualityPreset(participants: [OPNRemoteCoOpParticipant]) -> OPNRemoteCoOpQualityPreset {
-        let active = participants
-            .filter { $0.connectionState == .connected }
-            .map { $0.effectiveQualityPreset(sessionDefault: qualityPreset) }
-        guard !active.isEmpty else { return qualityPreset }
-        return active.max { ($0.width * $0.height) < ($1.width * $1.height) } ?? qualityPreset
     }
 
     public func startPeer(for participant: OPNRemoteCoOpParticipant) async throws {
@@ -306,14 +280,10 @@ public actor OPNRemoteCoOpHostPeerController {
         do {
             try await peer.start()
             OPNStreamTelemetry.capture("webrtc.remote_coop.peer.started", level: .info, message: "Remote Co-Op host peer started.", attributes: ["participantID": participantID.uuidString])
-            if let sink = peer as? any OPNRemoteCoOpHostVideoSink { videoRelay?.upsert(sink) }
-            if let sink = peer as? any OPNRemoteCoOpHostAudioSink { audioRelay?.upsert(sink) }
         } catch {
             OPNStreamTelemetry.capture("webrtc.remote_coop.peer.start.failed", level: .warning, message: error.localizedDescription, attributes: ["participantID": participantID.uuidString])
             peers[participantID] = nil
             appliedQualityPresets[participantID] = nil
-            videoRelay?.remove(participantID: participantID)
-            audioRelay?.remove(participantID: participantID)
             await peer.close()
             throw error
         }
@@ -337,8 +307,6 @@ public actor OPNRemoteCoOpHostPeerController {
         appliedQualityPresets[participantID] = nil
         deliveryStatsByParticipant[participantID] = nil
         guard let peer = peers.removeValue(forKey: participantID) else { return }
-        videoRelay?.remove(participantID: participantID)
-        audioRelay?.remove(participantID: participantID)
         await inputScheduler.remove(participantID: participantID)
         await peer.close()
     }
@@ -349,8 +317,6 @@ public actor OPNRemoteCoOpHostPeerController {
         appliedQualityPresets.removeAll()
         deliveryStatsByParticipant.removeAll()
         await inputScheduler.removeAll()
-        videoRelay?.removeAll()
-        audioRelay?.removeAll()
         for peer in currentPeers { await peer.close() }
     }
 }

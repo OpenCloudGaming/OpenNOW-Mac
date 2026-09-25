@@ -13,6 +13,12 @@ struct NativeNVSTDecodeHistoryTests {
     }
 
     @Test func decodeAdviceComesFromTheRecordAndSkipsShortSessions() {
+        preferenceDomainTestLock.lock()
+        let previousMeasurements = UserDefaults.standard.object(forKey: OPNStreamPreferences.Keys.decodeMeasurements)
+        defer {
+            UserDefaults.standard.set(previousMeasurements, forKey: OPNStreamPreferences.Keys.decodeMeasurements)
+            preferenceDomainTestLock.unlock()
+        }
         let colour = "10bit_444-test-\(UUID().uuidString)"
         let key = OPNStreamPreferences.streamShapeKey(codec: "H265", resolution: "5120x2160", colorQuality: colour)
         // Too short: the start-up burst would dominate the mean.
@@ -54,6 +60,12 @@ struct NativeNVSTDecodeHistoryTests {
     }
 
     @Test func storedMeasurementsIgnoreTiersThisBuildDoesNotOffer() {
+        preferenceDomainTestLock.lock()
+        let previousMeasurements = UserDefaults.standard.object(forKey: OPNStreamPreferences.Keys.decodeMeasurements)
+        defer {
+            UserDefaults.standard.set(previousMeasurements, forKey: OPNStreamPreferences.Keys.decodeMeasurements)
+            preferenceDomainTestLock.unlock()
+        }
         let seeded = "10bit_444-test-\(UUID().uuidString)"
         let seededKey = OPNStreamPreferences.streamShapeKey(codec: "H264", resolution: "9000x9000", colorQuality: seeded)
         OPNStreamPreferences.recordDecodeMeasurement(key: seededKey, decodeMilliseconds: 4.2, negotiatedFps: 120, sessionSeconds: 200)

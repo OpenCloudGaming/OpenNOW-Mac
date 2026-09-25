@@ -7,9 +7,8 @@ import CoreMedia
 import CoreVideo
 import Foundation
 import QuartzCore
-@preconcurrency import WebRTC
 
-extension WebRTCStreamRecorder {
+extension StreamRecorder {
     func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer, recordingId: UUID, source: VideoFrameSource, captureHostTime: CFTimeInterval) {
         let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
         queue.async {
@@ -80,14 +79,14 @@ extension WebRTCStreamRecorder {
         emit(.finishing)
         guard let writer else {
             reset()
-            emit(.failed(Self.message(for: WebRTCStreamRecorderError.noFramesCaptured)))
+            emit(.failed(Self.message(for: StreamRecorderError.noFramesCaptured)))
             return
         }
         switch writer.status {
         case .unknown:
             writer.cancelWriting()
             reset()
-            emit(.failed(Self.message(for: WebRTCStreamRecorderError.noFramesCaptured)))
+            emit(.failed(Self.message(for: StreamRecorderError.noFramesCaptured)))
         case .writing:
             videoInput?.markAsFinished()
             audioInput?.markAsFinished()
@@ -248,11 +247,8 @@ extension WebRTCStreamRecorder {
         width > 4096 || height > 2304 ? .hevc : .h264
     }
 
-    /// Ceiling for the automatic bitrate. The `width * height * fps / 8` heuristic was written for
-    /// WebRTC resolutions; at native NVST's 5120x2160@120 it asks for ~166 Mbps, which is what
-    /// every user who never touched the setting would get, encoded in real time next to a 5K
-    /// decode. 60 Mbps is past visually lossless for HEVC at that size. An explicit setting is
-    /// still honoured as-is — this only bounds the guess.
+    /// Bounds automatic bitrate at 60 Mbps so 5K120 capture stays within a practical encode budget.
+    /// Explicit bitrate settings remain uncapped.
     static let automaticVideoBitrateCeiling = 60_000_000
 
     /// The video bitrate the writer would use, so the replay buffer's disk estimate and the
@@ -302,7 +298,7 @@ extension WebRTCStreamRecorder {
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:],
             ]
             let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: attributes)
-            guard writer.canAdd(videoInput) else { throw WebRTCStreamRecorderError.unableToAddVideoInput }
+            guard writer.canAdd(videoInput) else { throw StreamRecorderError.unableToAddVideoInput }
             writer.add(videoInput)
 
             let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: Self.audioSettings(configuration: configuration))
@@ -330,18 +326,6 @@ extension WebRTCStreamRecorder {
         ]
     }
 
-    func newBGRAFramebuffer(from i420: RTCI420Buffer) -> CVPixelBuffer? {
-        let width = Int(i420.width)
-        let height = Int(i420.height)
-        guard width > 0, height > 0 else { return nil }
-        let pool = i420BGRAFramebufferPool(width: width, height: height)
-        var pixelBuffer: CVPixelBuffer?
-        guard let pool,
-              CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &pixelBuffer) == kCVReturnSuccess,
-              let pixelBuffer else { return nil }
-        return i420BGRAConverter.copy(i420, toBGRAOutput: pixelBuffer) ? pixelBuffer : nil
-    }
-
     func scheduleFirstFrameTimeout(recordingId: UUID) {
         queue.asyncAfter(deadline: .now() + firstFrameTimeout) {
             guard self.configuration != nil,
@@ -359,7 +343,7 @@ extension WebRTCStreamRecorder {
                 self.scheduleFirstFrameTimeout(recordingId: recordingId)
                 return
             }
-            self.fail(WebRTCStreamRecorderError.videoFramesUnavailable)
+            self.fail(StreamRecorderError.videoFramesUnavailable)
         }
     }
 
@@ -379,13 +363,7 @@ extension WebRTCStreamRecorder {
             || format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
     }
 
-    static func isWritableBGRA(_ pixelBuffer: CVPixelBuffer) -> Bool {
-        CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA
-    }
-
-    /// The pixel format to declare on the writer's adaptor, taken from the first frame so no
-    /// conversion is inserted. Formats the encoder cannot take directly still go in as BGRA, which
-    /// is what every frame arriving through `appendVideoFrame` has already been converted to.
+    /// The encoder-compatible format declared by the writer's first frame.
     static func adaptorPixelFormat(for pixelBuffer: CVPixelBuffer) -> OSType {
         let format = CVPixelBufferGetPixelFormatType(pixelBuffer)
         switch format {
@@ -398,29 +376,6 @@ extension WebRTCStreamRecorder {
         default:
             return kCVPixelFormatType_32BGRA
         }
-    }
-
-    func i420BGRAFramebufferPool(width: Int, height: Int) -> CVPixelBufferPool? {
-        if i420PixelBufferPool != nil, i420PixelBufferPoolWidth == width, i420PixelBufferPoolHeight == height {
-            return i420PixelBufferPool
-        }
-        let attributes: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-            kCVPixelBufferCGImageCompatibilityKey as String: true,
-            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
-        ]
-        let poolAttributes: [String: Any] = [
-            kCVPixelBufferPoolMinimumBufferCountKey as String: 3,
-        ]
-        var pool: CVPixelBufferPool?
-        guard CVPixelBufferPoolCreate(kCFAllocatorDefault, poolAttributes as CFDictionary, attributes as CFDictionary, &pool) == kCVReturnSuccess else { return nil }
-        i420PixelBufferPool = pool
-        i420PixelBufferPoolWidth = width
-        i420PixelBufferPoolHeight = height
-        return pool
     }
 
     static func audioData(from audioBufferList: UnsafePointer<AudioBufferList>, channels: Int) -> Data {

@@ -29,9 +29,7 @@ func parsePhysicalResolutionMetadata(_ metadata: [[String: String]]) -> [String:
     return object
 }
 
-func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test", advertisesNvstControlEndpoint: Bool = false, extraSession: [String: Any] = [:]) -> [String: Any] {
-    // The default is a seat provisioned for a WebRTC client: one `/nvst/` endpoint on 443 and no
-    // RTSPS control port. A seat that has accepted an NVST hand-over publishes `:322` as well.
+func sessionResponse(statusCode: Int, sessionStatus: Int, controlHost: String = "control.example.test", advertisesNvstControlEndpoint: Bool = true, extraSession: [String: Any] = [:]) -> [String: Any] {
     var connectionInfo: [[String: Any]] = [[
         "usage": 14,
         "ip": "signaling.example.test",

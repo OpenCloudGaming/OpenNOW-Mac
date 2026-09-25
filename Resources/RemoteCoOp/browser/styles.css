@@ -349,6 +349,15 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   text-align: center;
 }
 
+.video-canvas {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  background: #000;
+}
+
 .video-placeholder span {
   display: block;
   color: rgba(245, 247, 239, 0.88);
@@ -389,7 +398,9 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
 .diagnostics-toggle,
 .disconnect-button {
   position: absolute;
-  z-index: 5;
+  /* Above the session overlays (z-index 6): the diagnostics and Leave controls must stay reachable
+     even while the controller gate or a connection notice is shown. */
+  z-index: 7;
   background: rgba(8, 11, 8, 0.72);
   border: 1px solid rgba(245, 247, 239, 0.16);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.34);
@@ -472,7 +483,7 @@ input::placeholder { color: rgba(245, 247, 239, 0.28); }
   position: absolute;
   right: 16px;
   bottom: 68px;
-  z-index: 5;
+  z-index: 7;
   width: min(620px, calc(100% - 32px));
   max-height: min(56svh, 430px);
   min-width: 0;

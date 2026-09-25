@@ -95,7 +95,6 @@ enum SettingsSearchIndex {
 
     private static let networkEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Cloudmatch Region", .network, "server-location", keywords: ["server", "location", "latency", "ping", "zone", "country"]),
-        SettingsSearchEntry("Native/NVST Transport", .network, "transport", keywords: ["nvst", "webrtc", "protocol", "rtsp"]),
         SettingsSearchEntry("L4S", .network, "transport", keywords: ["latency", "congestion", "ecn", "low latency"]),
         SettingsSearchEntry("Prevent Display Sleep", .network, "transport", keywords: ["screensaver", "idle", "awake"]),
         // The proxy's own fields appear only once it is switched on, so the toggle carries their

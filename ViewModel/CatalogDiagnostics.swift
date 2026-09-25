@@ -63,7 +63,7 @@ extension CatalogViewModel {
             "Account: \(account.displayName)",
             "Membership: \(account.membershipTier)",
             "User ID: \(SettingsFormat.maskedIdentifier(account.userId))",
-            "Streaming: WebRTC",
+            "Streaming: NVST",
             "Cloudmatch: \(route.summary)",
             "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
         ]

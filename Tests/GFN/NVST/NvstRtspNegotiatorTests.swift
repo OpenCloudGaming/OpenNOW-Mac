@@ -501,6 +501,17 @@ private struct StubReserver: NvstBundleReserving {
         #expect(await !seat.sent.map(\.method).contains("PLAY"))
     }
 
+    @Test func playIsSentWhenDescribeOmitsDisablePlay() async throws {
+        // The official client sends PLAY unless the seat explicitly disables it, so an absent
+        // attribute means "not disabled" rather than "disabled". Only a literal 1 suppresses it.
+        let body = NvstRtspSdpTests.describeBody.replacingOccurrences(of: "a=x-nv-general.disablePlay:0", with: "")
+        #expect(!body.contains("disablePlay"))
+        let seat = Self.seat(describeBody: body)
+        let session = try await Self.negotiator(seat).negotiate(Self.input)
+        #expect(session.steps.contains("play"))
+        #expect(await seat.sent.map(\.method).contains("PLAY"))
+    }
+
     @Test func announceOnlySeatsAnsweringFourFiveFiveStillYieldASession() async throws {
         let seat = RecordedSeat(responses: [
             "OPTIONS": NvstRtspResponse(statusCode: 200, statusText: "OK", headers: [:], body: ""),

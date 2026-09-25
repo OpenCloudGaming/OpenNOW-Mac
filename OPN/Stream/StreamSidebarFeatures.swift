@@ -15,7 +15,6 @@ enum StreamSidebarFeature: String, CaseIterable, Hashable, Sendable {
 struct StreamSidebarCapabilities: Equatable, Sendable {
     let availableFeatures: Set<StreamSidebarFeature>
 
-    static let webRTC = StreamSidebarCapabilities(availableFeatures: Set(StreamSidebarFeature.allCases))
     static let nativeNVST = StreamSidebarCapabilities(availableFeatures: [
         .microphone,
         .recording,

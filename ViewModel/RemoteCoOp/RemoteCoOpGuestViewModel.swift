@@ -4,7 +4,6 @@
 
 import Combine
 import Foundation
-@preconcurrency import WebRTC
 
 @MainActor
 final class RemoteCoOpGuestViewModel: ObservableObject {
@@ -33,9 +32,11 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     @Published private(set) var phase: Phase = .browsing
     @Published private(set) var statusText = "Looking for hosts on this network…"
     @Published private(set) var invite: OPNRemoteCoOpInvite?
-    @Published private(set) var videoTrack: RTCVideoTrack?
+    /// The decoded frames the guest window renders. Set from the view's surface and fed off the media
+    /// queue, so it is a locked box rather than published state.
+    let nativeFrameSink = RemoteCoOpNativeFrameSink()
     /// Live receive measurements, refreshed once a second while connected.
-    @Published private(set) var stats: OPNRemoteCoOpGuestStats?
+    @Published private(set) var stats: RemoteCoOpNativeGuestMediaEngine.Stats?
     /// Whether the overlay is shown. Off by default - it is a diagnostic, not decoration.
     @Published var statsVisible = false
     /// This guest's own participant record, as the host last described it. The source of truth for
@@ -67,14 +68,10 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
 
     private let browser = OPNRemoteCoOpNativeHostBrowser()
     private var connection: (any OPNRemoteCoOpNativeGuestTransport)?
-    private var peer: OPNRemoteCoOpNativeGuestPeer?
+    private var nativeConnection: RemoteCoOpNativeGuestConnection?
     private var inputSender: OPNRemoteCoOpNativeGuestInputSender?
     private var messageTask: Task<Void, Never>?
-    /// Serializes `peerSignal` application so an ICE candidate cannot overtake the offer it belongs
-    /// to. Cancelled with the session; see the comment at the `.peerSignal` case.
-    private var peerSignalChain: Task<Void, Never>?
     private var connectionAttempt = 0
-    private var peerStarted = false
     /// Reconnect token issued by the host after a successful join. Required to reclaim this guest's
     /// participant identity across a reconnect or a move to another transport.
     private var reconnectToken: String?
@@ -179,6 +176,13 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
 
     /// Joins through the embedded server's WebSocket, which is the transport a tunnel forwards.
     func join(_ link: OPNRemoteCoOpGuestInviteLink) {
+        // A directly reachable host's embedded server presents a self-signed certificate, which the
+        // WebSocket transport rejects because it validates TLS normally. The pinned native listener is
+        // the path that works on a LAN; only a tunnel domain stays on the WebSocket.
+        if let address = link.nativeAddress, let host = OPNRemoteCoOpNativeDiscoveredHost(address: address) {
+            join(host)
+            return
+        }
         connect(
             transport: OPNRemoteCoOpNativeGuestWebSocketConnection(signalingURL: link.signalingURL),
             name: link.signalingURL.host ?? "the host",
@@ -249,16 +253,12 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     func leave() {
         messageTask?.cancel()
         messageTask = nil
-        peerSignalChain?.cancel()
-        peerSignalChain = nil
         inputSender?.stop()
         inputSender = nil
-        peer?.close()
-        peer = nil
-        peerStarted = false
+        nativeConnection?.close()
+        nativeConnection = nil
         connection?.close()
         connection = nil
-        videoTrack = nil
         stats = nil
         participant = nil
         sessionQualityPreset = nil
@@ -293,8 +293,9 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
                 statusText = "The host has no active invite yet."
             }
         case .networkConfiguration:
-            guard let configuration = message.networkConfiguration else { return }
-            startPeerIfNeeded(networkConfiguration: configuration)
+            // WebRTC-only: the native transport sends its connection offer as a `.nativeHost` peer
+            // signal instead, so there is nothing to do with a network configuration.
+            break
         case .participantUpdated:
             applyParticipantUpdate(message)
         case .guestRejected:
@@ -346,15 +347,10 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
     /// peer-controller actor.
     private func applyPeerSignal(_ message: OPNRemoteCoOpWireMessage) {
         guard message.participantID == participantID, let signal = message.peerSignal else { return }
-        guard let peer else { return }
-        let previous = peerSignalChain
-        peerSignalChain = Task { [weak self] in
-            _ = await previous?.result
-            do {
-                try await peer.handle(signal)
-            } catch {
-                self?.handleConnectionFailure(error)
-            }
+        // The native transport's only peer signal is the connection offer. It arrives after approval,
+        // and establishing the media flow is all that is left to do.
+        if signal.kind == .nativeHost, let offer = signal.nativeConnection {
+            startNativeConnection(offer)
         }
     }
 
@@ -430,54 +426,43 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         }
     }
 
-    private func startPeerIfNeeded(networkConfiguration: OPNRemoteCoOpNetworkConfiguration) {
-        guard !peerStarted, peer == nil else { return }
-        let peer = OPNRemoteCoOpNativeGuestPeer(participantID: participantID)
-        do {
-            try peer.start(networkConfiguration: networkConfiguration)
-        } catch {
-            phase = .failed(error.localizedDescription)
+    /// The host's native peer sends its media port and token as a `.nativeHost` signal; the guest
+    /// connects to it, announces the token, and renders what arrives.
+    private func startNativeConnection(_ offer: OPNRemoteCoOpNativeConnection) {
+        guard nativeConnection == nil else { return }
+        let host = offer.hostAddress?.nilIfEmpty ?? currentHostIdentifier ?? ""
+        guard !host.isEmpty else {
+            handleConnectionFailure(RemoteCoOpNativeGuestError.invalidConnection)
             return
         }
-        peerStarted = true
-        peer.onVideoTrack = { [weak self] track in
-            Task { @MainActor in
-                self?.videoTrack = track
-            }
+        let media = RemoteCoOpNativeGuestConnection(host: host, port: offer.mediaPort, token: offer.token)
+        media.onStats = { [weak self] stats in
+            Task { @MainActor in self?.stats = stats }
         }
-        peer.onStats = { [weak self] stats in
-            Task { @MainActor in
-                self?.stats = stats
-            }
+        media.onState = { [weak self] text in
+            Task { @MainActor in self?.statusText = text }
         }
-        peer.onConnectionFailed = { [weak self] reason in
+        media.onFailed = { [weak self] reason in
             Task { @MainActor in
                 self?.handleConnectionFailure(OPNRemoteCoOpNativeConnectionError.peerConnectionLost(reason))
             }
         }
-        peer.onSignal = { [weak self] signal in
-            guard let self else { return }
-            let message = OPNRemoteCoOpWireMessage(kind: .peerSignal, participantID: self.participantID, peerSignal: signal)
-            do {
-                try await self.sendSignaling(message)
-            } catch {
-                await self.handleConnectionFailure(error)
-            }
-        }
-        self.peer = peer
+        media.onFrame = { [sink = nativeFrameSink] frame in sink.send(frame) }
+        nativeConnection = media
+        media.start()
     }
 
     private func sendSignaling(_ message: OPNRemoteCoOpWireMessage) async throws {
         try await connection?.send(message)
     }
 
-    /// Approval is what makes the host open the input channel, so forwarding starts here rather
-    /// than at join. Idempotent: reconnects and duplicate participant updates re-enter.
+    /// Approval is what makes the host open the input path, so forwarding starts here rather than at
+    /// join. Idempotent: reconnects and duplicate participant updates re-enter.
     private func startInputForwarding() {
-        guard inputSender == nil, let peer else { return }
+        guard inputSender == nil, let media = nativeConnection else { return }
         let sender = OPNRemoteCoOpNativeGuestInputSender(
             participantID: participantID,
-            send: { [weak peer] packet in peer?.sendInput(packet) },
+            send: { [weak media] packet in media?.sendInput(packet) },
             onControllerAvailability: { [weak self] available in
                 Task { @MainActor in self?.hasController = available }
             }
@@ -495,16 +480,12 @@ final class RemoteCoOpGuestViewModel: ObservableObject {
         // Same class of bug the connect path's comment records as fixed.
         messageTask?.cancel()
         messageTask = nil
-        peerSignalChain?.cancel()
-        peerSignalChain = nil
         inputSender?.stop()
         inputSender = nil
-        peer?.close()
-        peer = nil
-        peerStarted = false
+        nativeConnection?.close()
+        nativeConnection = nil
         connection?.close()
         connection = nil
-        videoTrack = nil
         stats = nil
         participant = nil
         sessionQualityPreset = nil

@@ -72,7 +72,7 @@ public enum StreamOSKLayout {
         return rows[row][column]
     }
 
-    /// macOS virtual keycodes, matching what `NativeWebRTCStreamView` forwards for
+    /// macOS virtual keycodes, matching what `NativeStreamView` forwards for
     /// physical keyboard events.
     public static let backspaceKeyCode: UInt16 = 51
     public static let enterKeyCode: UInt16 = 36

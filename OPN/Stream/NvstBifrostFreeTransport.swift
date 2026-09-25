@@ -16,7 +16,7 @@ import Foundation
 ///    decoded `CVPixelBuffer`s.
 ///
 /// Input, audio and the RTCP feedback plane ride the ICE/DTLS bundle's SCTP data channels, which
-/// this transport brings up through `NvstWebRtcBundle` when the seat negotiates the official
+/// this transport brings up through `NvstNativeBundle` when the seat negotiates the official
 /// cloud path; the bare Mjolnir socket keeps carrying video and its own SRTCP reports on the
 /// legacy shape. Microphone carriage is server-driven: when the seat offers
 /// `general.rtcMicOnNativeBundle:1` in DESCRIBE, the bundle gains a sendonly `m=audio` mic
@@ -55,25 +55,31 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The stream recorder, deliberately off this actor. Both feeds reach it from a realtime
     /// thread — the VideoToolbox decode callback and the CoreAudio playout callback — and neither
     /// may `await`; the recorder does its own locking and queueing.
-    nonisolated let recorder = WebRTCStreamRecorder()
+    nonisolated let recorder = StreamRecorder()
     /// The rolling instant-replay buffer, off the actor for the same reason as the recorder: both
     /// realtime callbacks feed it, and neither may `await`.
     nonisolated let replayBuffer = StreamReplayBuffer()
     /// The screenshot tap, off the actor for the same reason as the recorder: every decoded frame
     /// reaches it from the VideoToolbox callback, and a capture is rendered there.
     nonisolated let screenshotCapture = StreamScreenshotCapture()
-    /// Remote Co-Op's outbound feeds, off the actor for the same reason as the recorder: both are
-    /// written from the VideoToolbox decode callback and the audio thread. Both relays are always
-    /// allocated and cost one uncontended lock per frame while no guest is connected.
-    nonisolated let remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay
-    nonisolated let remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay
+    /// Native Co-Op's media fanout, off the actor for the same reason as the recorder: it is written
+    /// from the VideoToolbox decode callback and the audio thread. It is a no-op until the host
+    /// session starts it and a guest binds, so a solo session pays one uncontended lock per frame.
+    nonisolated let remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster
+    /// Browser Co-Op's media egress, off the actor for the same reason: it is written from the decode
+    /// and audio threads. It transcodes only while a browser guest is connected, so a native-only
+    /// session pays nothing but a nil check per frame.
+    nonisolated let remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress?
+    /// While a native guest is bound, the host asks the seat for a keyframe periodically: a guest that
+    /// joins mid-stream sees only delta frames otherwise, and the seat sends no periodic IDR of its own.
+    var coOpKeyframeTask: Task<Void, Never>?
     let logger: (@Sendable (String) -> Void)?
     private let controlTimeout: Duration
     var reserver: NvstLocalBundleReserver?
     var session: NvstRtspSession?
     var receiver: NvstMjolnirReceiver?
     var bundleProbe: NvstBundleIceProbe?
-    var bundle: NvstWebRtcBundle?
+    var bundle: NvstNativeBundle?
     var feedbackSender: NvstFeedbackSender?
     var decoder: NvstVideoToolboxDecoder?
     /// Decode + frame acknowledgement, deliberately off this actor. See `NvstVideoPipeline`.
@@ -185,8 +191,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The bundle is never prepared — it only exists so enable/disable reach the
     /// `microphoneNegotiated` gate instead of the earlier `notRunning` one.
     func seedMicrophoneBundleForTesting(negotiated: Bool) {
-        if bundle == nil {
-            bundle = NvstWebRtcBundle(
+        if bundle == nil, let identity = try? NvstDtlsIdentity() {
+            bundle = NvstNativeBundle(
                 handoff: NVSTVideoHandoff(
                     clientUDPPort: 0, videoPeerIP: "10.20.30.40", videoPeerPort: 5004,
                     srtpProfile: .aeadAes256Gcm8,
@@ -195,7 +201,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                     reorderWindowPackets: 32, maxAccessUnitBytes: 1024, timeoutMilliseconds: 5000,
                     pingVersion: 6, pingPayload: "PING", mjolnirUDPPort: 0,
                     iceCredentials: nil),
-                preferredLocalAddress: nil)
+                identity: identity)
         }
         microphoneNegotiated = negotiated
     }
@@ -279,10 +285,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 preferredAudioChannelCount: Int = 0,
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20),
-                remoteCoOpVideoRelay: OPNRemoteCoOpHostVideoRelay = OPNRemoteCoOpHostVideoRelay(),
-                remoteCoOpAudioRelay: OPNRemoteCoOpHostAudioRelay = OPNRemoteCoOpHostAudioRelay()) {
-        self.remoteCoOpVideoRelay = remoteCoOpVideoRelay
-        self.remoteCoOpAudioRelay = remoteCoOpAudioRelay
+                remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster = RemoteCoOpNativeMediaBroadcaster(),
+                remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress? = nil) {
+        self.remoteCoOpNativeBroadcaster = remoteCoOpNativeBroadcaster
+        self.remoteCoOpBrowserEgress = remoteCoOpBrowserEgress
         self.pixelBufferSink = pixelBufferSink
         self.configuredFps = configuredFps
         self.configuredMaxBitrateKbps = configuredMaxBitrateKbps
@@ -292,7 +298,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterModel = configuredPrefilterModel
         self.configuredColorQuality = configuredColorQuality
         self.configuredVsyncMode = configuredVsyncMode
-        self.configuredAudioChannelCount = OPNCoreAudioRTCDevice.supportedPlayoutChannelCount(configuredAudioChannelCount)
+        self.configuredAudioChannelCount = NvstCoreAudioFormat.supportedPlayoutChannelCount(configuredAudioChannelCount)
         self.preferredAudioChannelCount = preferredAudioChannelCount > 0 ? preferredAudioChannelCount : self.configuredAudioChannelCount
         self.logger = logger
         self.controlTimeout = controlTimeout
@@ -477,10 +483,12 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     func logHudCounters(receiver: NvstMjolnirReceiver, stats: NvstReceiverStats) async {
         // The HUD's own numbers, so a headless run can verify them without the overlay: RTT comes
         // from the bundle's ICE candidate pair and the resolution from the decoded surface.
-        bundle?.refreshTransportStatistics()
         let keepAlive = await session?.controlKeepAliveSummary() ?? ""
         logger?(String(format: "NVST hud rtt=%.1fms mjolnirRtt=%.1fms ctrl[%@] jitter=%.1fms decodedRes=%@ negotiatedRes=%@ gameFps=%.1f audioJb=%.1fms",
-                       bundle?.roundTripMilliseconds ?? -1,
+                       // The native bundle has no ICE candidate pair to time; the HUD's latency
+                       // comes from the Mjolnir socket's STUN round trip and then the control
+                       // connection's ping/pong.
+                       -1.0,
                        receiver.roundTripMilliseconds,
                        keepAlive,
                        Double(stats.lastJitter) * 1000 / Double(NvstVideoToolboxDecoder.clockRate),
@@ -535,10 +543,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         // can still be saved from the recordings screen.
         replayBuffer.retain()
         screenshotCapture.cancel()
-        // Guests outlive nothing: dropping the sinks here stops frames being encoded for peers
-        // whose connection is about to be torn down anyway.
-        remoteCoOpVideoRelay.removeAll()
-        remoteCoOpAudioRelay.removeAll()
         await teardown(reason: "disconnect")
     }
 
@@ -715,6 +719,8 @@ extension NvstBifrostFreeTransport {
 
     func teardown(reason: String) async {
         isTornDown = true
+        coOpKeyframeTask?.cancel()
+        coOpKeyframeTask = nil
         // Invalidates every callback the closing bundle installed, closing the window between the
         // teardown and the next install during which a stale callback could still fire.
         bundleGeneration &+= 1

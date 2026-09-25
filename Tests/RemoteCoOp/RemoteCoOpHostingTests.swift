@@ -6,7 +6,6 @@ import Testing
 import AudioUnit
 import Foundation
 import CoreVideo
-@preconcurrency import WebRTC
 @testable import OpenNOW
 
 @Suite("Remote Co-Op hosting", .serialized)
@@ -384,67 +383,6 @@ struct RemoteCoOpHostingTests {
         #expect(!signaling.commandHistory().contains(.inputRejected(participantID: participantID, result: .stalePacket)))
     }
 
-    @Test("host peer controller registers approved peers as media sinks")
-    func hostPeerControllerRegistersApprovedPeersAsMediaSinks() async throws {
-        let signaling = OPNInProcessRemoteCoOpSignalingSession()
-        let coordinator = OPNRemoteCoOpHostCoordinator(hostSession: OPNRemoteCoOpHostSession(preferences: OPNRemoteCoOpPreferences(isEnabled: true, reservedGuestSlots: 1)), signaling: signaling)
-        let factory = RecordingRemoteCoOpHostPeerFactory()
-        let videoRelay = OPNRemoteCoOpHostVideoRelay()
-        let audioRelay = OPNRemoteCoOpHostAudioRelay()
-        let participantID = UUID()
-        let participant = OPNRemoteCoOpParticipant(id: participantID, displayName: "Mia", role: .guest, connectionState: .connected, inputEnabled: true, playerIndex: 1)
-        let controller = OPNRemoteCoOpHostPeerController(signaling: signaling, coordinator: coordinator, networkConfiguration: OPNRemoteCoOpNetworkConfiguration(transportMode: .automatic), videoRelay: videoRelay, audioRelay: audioRelay, peerFactory: factory, forwardInput: { _ in })
-
-        try await controller.startPeer(for: participant)
-        let peer = try #require(factory.peer(for: participantID))
-        videoRelay.renderVideoFrame(try RemoteCoOpFixtures.makeVideoFrame())
-        audioRelay.renderAudioFrame(RemoteCoOpFixtures.makeAudioFrame())
-        await controller.removePeer(participantID: participantID)
-        videoRelay.renderVideoFrame(try RemoteCoOpFixtures.makeVideoFrame())
-        audioRelay.renderAudioFrame(RemoteCoOpFixtures.makeAudioFrame())
-
-        // Audio delivery is queued off the CoreAudio render thread, so the first frame arrives
-        // asynchronously. The second must never arrive: the sink was removed before it was rendered.
-        let deadline = Date().addingTimeInterval(2)
-        while peer.renderedAudioFrameCount() == 0, Date() < deadline { usleep(1_000) }
-
-        #expect(videoRelay.activeSinkCount() == 0)
-        #expect(audioRelay.activeSinkCount() == 0)
-        #expect(peer.renderedVideoFrameCount() == 1)
-        #expect(peer.renderedAudioFrameCount() == 1)
-    }
-
-    @Test("audio relay copies game audio frames before fanout")
-    func audioRelayCopiesGameAudioFramesBeforeFanout() throws {
-        let relay = OPNRemoteCoOpHostAudioRelay()
-        let sink = RecordingRemoteCoOpAudioSink(participantID: UUID())
-        var samples: [Int16] = [10, -10, 20, -20]
-        relay.upsert(sink)
-
-        samples.withUnsafeMutableBytes { sampleBytes in
-            var audioBufferList = AudioBufferList(
-                mNumberBuffers: 1,
-                mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(sampleBytes.count), mData: sampleBytes.baseAddress)
-            )
-            withUnsafePointer(to: &audioBufferList) { pointer in
-                relay.renderAudioFrame(audioBufferList: UnsafeRawPointer(pointer), frameCount: 2, sampleRate: 48_000, channels: 2)
-            }
-        }
-        samples = [0, 0, 0, 0]
-
-        // Fan-out is queued now, not inline: the relay must not run libwebrtc's encode on the
-        // CoreAudio render thread. The copy this test is about still happens synchronously; only the
-        // delivery is deferred.
-        let deadline = Date().addingTimeInterval(2)
-        while sink.renderedAudioFrames().isEmpty, Date() < deadline { usleep(1_000) }
-        let frames = sink.renderedAudioFrames()
-        #expect(frames.count == 1)
-        #expect(frames.first?.frameCount == 2)
-        #expect(frames.first?.sampleRate == 48_000)
-        #expect(frames.first?.channels == 2)
-        #expect(frames.first?.samples == RemoteCoOpFixtures.audioData([10, -10, 20, -20]))
-    }
-
     @Test("host peer input decoder rejects mismatched participants")
     func hostPeerInputDecoderRejectsMismatchedParticipants() throws {
         let expectedParticipantID = UUID()
@@ -459,7 +397,7 @@ struct RemoteCoOpHostingTests {
 
 /// Guest slots and local controller slots come from the same 4-pad space, and were assigned into it
 /// independently. One local pad on index 0 with a guest on 1 never collided; a *second* local
-/// controller also lands on 1 - the first free index `NativeWebRTCGamepadMonitor.update` hands out -
+/// controller also lands on 1 - the first free index `NativeGamepadMonitor.update` hands out -
 /// and approving a guest at that point silently doubled up a real player's controller and the
 /// guest's, on both the NVST and WebRTC input paths, which each key a pad purely by index.
 @Suite struct RemoteCoOpLocalControllerSlotTests {

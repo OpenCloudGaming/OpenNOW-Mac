@@ -1,5 +1,8 @@
 import Foundation
 
+public typealias StreamProgressHandler = @MainActor @Sendable (_ progress: StreamProgress) -> Void
+public typealias StreamCompletionHandler = @MainActor @Sendable (_ success: Bool, _ message: String, _ report: StreamReport?) -> Void
+
 public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let title: String
@@ -39,8 +42,8 @@ public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Senda
 public enum StreamLaunchStep: Int, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case checkNetworkRoute
     case allocateCloudSession
-    case receiveStreamOffer
-    case negotiateWebRTC
+    case prepareTransport
+    case connectTransport
     case connected
 
     public var title: String {
@@ -49,10 +52,10 @@ public enum StreamLaunchStep: Int, CaseIterable, Codable, Equatable, Hashable, S
             "Check network route"
         case .allocateCloudSession:
             "Allocate cloud session"
-        case .receiveStreamOffer:
-            "Receive stream offer"
-        case .negotiateWebRTC:
-            "Negotiate WebRTC"
+        case .prepareTransport:
+            "Prepare NVST transport"
+        case .connectTransport:
+            "Connect NVST transport"
         case .connected:
             "Connected"
         }
@@ -258,46 +261,6 @@ public struct StreamSessionConflict: Equatable, Sendable {
     }
 }
 
-public struct StreamOffer: Codable, Equatable, Sendable {
-    public let session: StreamSessionDescriptor
-    public let sdp: String
-    public let metadata: [String: String]
-
-    public init(session: StreamSessionDescriptor, sdp: String, metadata: [String: String] = [:]) {
-        self.session = session
-        self.sdp = sdp
-        self.metadata = metadata
-    }
-}
-
-public struct StreamAnswer: Codable, Equatable, Sendable {
-    public let sdp: String
-    public let metadata: [String: String]
-
-    public init(sdp: String, metadata: [String: String] = [:]) {
-        self.sdp = sdp
-        self.metadata = metadata
-    }
-}
-
-public struct StreamIceCandidate: Codable, Equatable, Hashable, Sendable {
-    public let sdp: String
-    public let sdpMid: String
-    public let sdpMLineIndex: Int
-    public let usernameFragment: String
-    public let isEndOfCandidates: Bool
-
-    public init(sdp: String, sdpMid: String, sdpMLineIndex: Int, usernameFragment: String = "", isEndOfCandidates: Bool = false) {
-        self.sdp = sdp
-        self.sdpMid = sdpMid
-        self.sdpMLineIndex = max(0, sdpMLineIndex)
-        self.usernameFragment = usernameFragment
-        self.isEndOfCandidates = isEndOfCandidates
-    }
-
-    public static let endOfCandidates = StreamIceCandidate(sdp: "", sdpMid: "", sdpMLineIndex: 0, isEndOfCandidates: true)
-}
-
 public enum StreamEndReason: String, Codable, Equatable, Hashable, Sendable {
     case completed
     case paused
@@ -334,10 +297,4 @@ public enum StreamingPathState: Equatable, Sendable {
     case starting(StreamProgress)
     case running(StreamSessionDescriptor)
     case ended(StreamReport)
-}
-
-public enum StreamingPathError: Error, Equatable, Sendable {
-    case alreadyRunning
-    case invalidOffer
-    case notRunning
 }

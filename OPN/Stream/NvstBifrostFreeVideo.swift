@@ -31,20 +31,22 @@ extension NvstBifrostFreeTransport {
         // The screenshot tap rides the same decoded-frame callback. It does nothing while no capture
         // is waiting, so a running session pays one uncontended lock per frame.
         let screenshotCapture = self.screenshotCapture
-        // Remote Co-Op guests are fed from the same tap and for the same reasons. The relay is a
-        // no-op until a guest is connected, so a solo session pays one uncontended lock per frame.
-        let coOpVideoRelay = self.remoteCoOpVideoRelay
         // Tried (2026-09-05): building the VideoToolbox session before the first keyframe from
         // parameter sets remembered from an earlier session of the same shape. Two prewarmed
         // sessions started no cleaner than a cold one (slow frames 74/67 vs 42, one latency resync
         // either way): the start-up burst is the first keyframe's own decode (50–76 ms) and the
         // seat's opening frame burst, not session creation. Removed; the explicit first-keyframe
         // gate it needed stays in the decoder.
+        let nativeBroadcaster = remoteCoOpNativeBroadcaster
+        let browserEgress = remoteCoOpBrowserEgress
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             screenshotCapture.deliver(pixelBuffer)
             recorder.appendNativePixelBuffer(pixelBuffer)
             replayBuffer.appendNativePixelBuffer(pixelBuffer)
-            coOpVideoRelay.renderPixelBuffer(pixelBuffer, presentationTime: presentationTime)
+            // The browser guest cannot decode the seat's HEVC, so it is sent a per-guest H.264
+            // re-encode of this decoded picture. No-op while no browser guest is connected. The
+            // keyframe flag rides along so the transcode emits an IDR the guest can start from.
+            browserEgress?.forward(video: pixelBuffer, presentationTime: presentationTime, isKeyframe: isKeyframe)
             sink?(pixelBuffer, presentationTime, isKeyframe)
         }
         self.decoder = decoder
@@ -76,6 +78,16 @@ extension NvstBifrostFreeTransport {
             }
         }
         mediaFrameContinuation = mediaContinuation
+        remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in
+            Task { await self?.requestKeyframeOverControlChannel() }
+        }
+        // A browser guest cannot be sent the seat's HEVC, so its own H.264 encode starts only when it
+        // connects; pulling a keyframe the moment its media starts is what gets it a picture without
+        // waiting for the periodic request.
+        remoteCoOpBrowserEgress?.onGuestJoined = { [weak self] in
+            Task { await self?.requestKeyframeOverControlChannel() }
+        }
+        startCoOpKeyframeRequests()
         let pipeline = makeVideoPipeline(handoff: handoff, decoder: decoder, receiver: receiver, mediaContinuation: mediaContinuation)
         videoPipeline = pipeline
         receiver.onAccessUnit = { [weak pipeline] unit in pipeline?.submit(unit) }
@@ -102,6 +114,22 @@ extension NvstBifrostFreeTransport {
     /// `receiver` is passed in rather than read off `self`: this runs before `self.receiver` is
     /// assigned, and a capture list evaluates eagerly, so capturing the property would bind a
     /// permanently nil weak reference and silence every keyframe request the pipeline makes.
+    /// Pulls an IDR from the seat every couple of seconds while a native guest is bound, so a guest
+    /// that joins mid-stream can start. The seat sends no periodic keyframe of its own. It runs for the
+    /// whole session but only asks while a guest is actually connected.
+    private func startCoOpKeyframeRequests() {
+        coOpKeyframeTask?.cancel()
+        coOpKeyframeTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { return }
+                guard let self else { return }
+                guard remoteCoOpNativeBroadcaster.hasBoundGuests || remoteCoOpBrowserEgress?.hasGuests == true else { continue }
+                await requestKeyframeOverControlChannel()
+            }
+        }
+    }
+
     private func makeVideoPipeline(handoff: NVSTVideoHandoff,
                                    decoder: NvstVideoToolboxDecoder,
                                    receiver: NvstMjolnirReceiver,
@@ -114,6 +142,7 @@ extension NvstBifrostFreeTransport {
         // this used to go out as a hardcoded 16000 us (~62.5 Hz) regardless of the real display.
         let displayRefreshRate = OPNStreamPreferences.loadDeviceCapabilities().maxDisplayRefreshRate
         let displayVsyncMicroseconds = displayRefreshRate > 0 ? UInt32(1_000_000 / displayRefreshRate) : 16000
+        let nativeBroadcaster = remoteCoOpNativeBroadcaster
         return NvstVideoPipeline(
             decoder: decoder,
             clock: clock,
@@ -124,7 +153,7 @@ extension NvstBifrostFreeTransport {
             // Nothing on this transport consumes `videoFrames()` — we own the decoder — but the
             // seam stays fed, off the frame's own critical path.
             mediaSink: { unit in
-                mediaContinuation.yield(NativeNVSTVideoFrame(
+                let frame = NativeNVSTVideoFrame(
                     streamID: handoff.rtpSSRC,
                     codec: Self.mediaCodec(handoff.codec),
                     // The 90 kHz RTP clock converted to the shared nanosecond media timestamp.
@@ -134,7 +163,11 @@ extension NvstBifrostFreeTransport {
                     height: 0,
                     isKeyFrame: unit.isKeyframe,
                     payload: unit.bytes
-                ))
+                )
+                mediaContinuation.yield(frame)
+                // The seat's source access unit, forwarded unmodified so a guest decodes what the seat
+                // encoded rather than a re-encode of the decoded picture. No-op with no bound guest.
+                nativeBroadcaster.forward(video: frame)
             },
             onKeyframeNeeded: { [weak self, weak receiver] in
                 receiver?.requestKeyframe()
@@ -155,14 +188,14 @@ extension NvstBifrostFreeTransport {
     /// configuration before `start`, so it is already stored by this point. Four gates stand in
     /// front of the section: capture requested and the seat's DESCRIBE offer. A suppressed shape
     /// logs why.
-    private func resolvedMicrophoneSetup(microphoneOfferedOnBundle: Bool) -> NvstWebRtcBundle.MicrophoneSetup? {
+    private func resolvedMicrophoneSetup(microphoneOfferedOnBundle: Bool) -> NvstNativeBundle.MicrophoneSetup? {
         let logger = self.logger
         guard let configuration = microphoneConfiguration, configuration.captureRequested else { return nil }
         if !microphoneOfferedOnBundle {
             logger?("NVST seat did not offer bundle microphone carriage; the mic stays on its (not yet recovered) legacy transport")
             return nil
         }
-        return NvstWebRtcBundle.MicrophoneSetup(volume: configuration.volume,
+        return NvstNativeBundle.MicrophoneSetup(volume: configuration.volume,
                                                 initiallyEnabled: configuration.initiallyEnabled)
     }
 
@@ -176,7 +209,16 @@ extension NvstBifrostFreeTransport {
             return nil
         }
         let microphoneSetup = resolvedMicrophoneSetup(microphoneOfferedOnBundle: microphoneOfferedOnBundle)
-        let bundle = NvstWebRtcBundle(handoff: handoff, logger: logger)
+        guard let identitySeed = try? NvstDtlsIdentity() else {
+            logger?("NVST native bundle could not generate a DTLS identity; falling back to the STUN-only probe")
+            startBundleProbe(handoff: handoff)
+            scheduleVideoHolePunch()
+            return nil
+        }
+        let bundle = NvstNativeBundle(handoff: handoff,
+                                      identity: identitySeed,
+                                      audioChannelCount: configuredAudioChannelCount,
+                                      logger: logger)
         let sender = NvstFeedbackSender()
         do {
             let identity = try await bundle.prepare(microphone: microphoneSetup, audioChannelCount: configuredAudioChannelCount)
@@ -203,9 +245,8 @@ extension NvstBifrostFreeTransport {
             // so frame acks can go out.
             videoPipeline?.attach(bundle: bundle)
             self.feedbackSender = sender
-            if !identity.usesOfficialIceCredentials {
-                logger?("NVST bundle is announcing libwebrtc's own ICE credentials; Bifrost length checks may reject them")
-            }
+            // The native bundle sets no ICE credentials of its own — that length-check interplay was
+            // between libwebrtc's SDP and Bifrost, and there is no SDP here.
             return NvstBundleReservation(
                 bundlePort: identity.bundlePort,
                 mjolnirPort: handoff.mjolnirUDPPort ?? handoff.clientUDPPort,

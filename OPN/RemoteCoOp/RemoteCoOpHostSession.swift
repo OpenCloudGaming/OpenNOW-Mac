@@ -60,7 +60,7 @@ public actor OPNRemoteCoOpHostSession {
     /// A guest's slot is assigned from the same 4-pad space the seat gives local controllers, and
     /// the two were assigned independently: a single local pad sits on index 0 and a guest took 1,
     /// which never collided, but a *second* local controller also lands on index 1 - the first
-    /// index `NativeWebRTCGamepadMonitor.update` hands out to a newly connected pad. Approving a
+    /// index `NativeGamepadMonitor.update` hands out to a newly connected pad. Approving a
     /// guest at that point silently doubled up the local player's controller and the guest's,
     /// because both `NvstGamepadPacket` and the WebRTC path's `controllerId` key on the index alone
     /// with no notion of "already spoken for by someone else."

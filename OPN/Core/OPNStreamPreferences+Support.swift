@@ -19,7 +19,6 @@ extension OPNStreamPreferences {
         Keys.codecIndex,
         Keys.bitrateIndex,
         Keys.colorQualityIndex,
-        Keys.transportModeIndex,
         Keys.streamingQualityProfileIndex,
         Keys.hudStreamingModeIndex,
         Keys.sdrColorSpaceIndex,
@@ -516,7 +515,6 @@ extension OPNStreamPreferences {
         static let codecIndex = "OpenNOW.Stream.CodecIndex"
         static let bitrateIndex = "OpenNOW.Stream.BitrateIndex"
         static let colorQualityIndex = "OpenNOW.Stream.ColorQualityIndex"
-        static let transportModeIndex = "OpenNOW.Stream.TransportModeIndex"
         static let streamingQualityProfileIndex = "OpenNOW.Stream.StreamingQualityProfileIndex"
         static let cloudGsyncEnabled = "OpenNOW.Stream.CloudGsyncEnabled"
         static let persistInGameSettings = "OpenNOW.Stream.PersistInGameSettings"
@@ -550,7 +548,6 @@ extension OPNStreamPreferences {
         static let reflexEnabled = "OpenNOW.Stream.ReflexEnabled"
         static let powerSaverEnabled = "OpenNOW.Stream.PowerSaverEnabled"
         static let steamBigPictureMode = "OpenNOW.Stream.SteamBigPictureMode"
-        static let legacyTransportNoticeDismissed = "OpenNOW.Stream.LegacyTransportNoticeDismissed"
         static let decodeMeasurements = "OpenNOW.Stream.DecodeMeasurements"
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
         static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"

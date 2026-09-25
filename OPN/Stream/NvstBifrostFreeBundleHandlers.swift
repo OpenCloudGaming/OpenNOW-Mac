@@ -2,7 +2,7 @@ import Foundation
 
 extension NvstBifrostFreeTransport {
     /// Wires the bundle's channel callbacks back into the transport actor.
-    func installBundleHandlers(_ bundle: NvstWebRtcBundle,
+    func installBundleHandlers(_ bundle: NvstNativeBundle,
                                sender: NvstFeedbackSender,
                                logger: (@Sendable (String) -> Void)?) {
         bundleGeneration &+= 1
@@ -20,11 +20,15 @@ extension NvstBifrostFreeTransport {
         // waiting on anything is a priority inversion. The recorder copies and returns.
         let recorder = self.recorder
         let replayBuffer = self.replayBuffer
-        let coOpAudioRelay = self.remoteCoOpAudioRelay
+        let nativeBroadcaster = self.remoteCoOpNativeBroadcaster
+        // The browser egress rides the same audio tap: it packetizes the same PCM the native guests
+        // get, so a browser guest hears the game without a second lossy encode.
+        let browserEgress = self.remoteCoOpBrowserEgress
         bundle.onGameAudioFrame = { audioBufferList, frameCount, sampleRate, channels in
             recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             replayBuffer.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
-            coOpAudioRelay.renderAudioFrame(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            nativeBroadcaster.forwardAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            browserEgress?.forwardAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         bundle.onPartiallyReliableControlOpen = { [weak self] in
             Task {
@@ -60,7 +64,7 @@ extension NvstBifrostFreeTransport {
         }
     }
 
-    private func installBundleNotificationHandlers(_ bundle: NvstWebRtcBundle, generation: UInt64) {
+    private func installBundleNotificationHandlers(_ bundle: NvstNativeBundle, generation: UInt64) {
         bundle.onInputProtocolNegotiated = { [weak self] version in
             Task {
                 await self?.withCurrentBundleGeneration(generation) { transport in

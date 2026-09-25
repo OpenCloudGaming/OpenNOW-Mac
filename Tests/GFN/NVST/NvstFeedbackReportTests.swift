@@ -321,19 +321,8 @@ struct NvstKeyboardAndGamepadTests {
         #expect(Array(up[40..<48]) == withUnsafeBytes(of: timestamp.littleEndian) { Array($0) })
     }
 
-    /// Byte-for-byte against `OPNInputProtocolEncoder`, the encoder the vendored path used — the one
-    /// build where the gamepad demonstrably reached games. Everything after the outer timestamp must
-    /// match; only bytes 1..9 differ, because that encoder stamps them from its own clock.
-    ///
-    /// This is the oracle that was missing while the wire format was debugged against a single idle
-    /// reference packet. That packet had been transcribed as a 43-byte body starting `26 00 00 00 22`,
-    /// which read the partially-reliable wrapper's sequence as part of a length and dropped the
-    /// `0x21` length-prefix tag plus its two length bytes entirely — so every state packet was 52
-    /// bytes where the wire wants 54.
-    @Test func gamepadPacketMatchesTheVendoredEncoderByteForByte() {
-        let vendored = OPNInputProtocolEncoder()
-        vendored.setProtocolVersion(3)   // the wrappers are no-ops at version <= 2
-        // The vendored encoder's per-pad counters start at 1, so ours must too for a byte match.
+    @Test("gamepad packets preserve the validated legacy wire payload")
+    func gamepadPacketPreservesValidatedPayload() {
         let ours = NvstGamepadPacket(
             sequence: 1,
             timestampMicroseconds: 0x1122_3344,
@@ -345,22 +334,15 @@ struct NvstKeyboardAndGamepadTests {
             rightStickX: NvstGamepadPacket.axis(0.25),
             rightStickY: NvstGamepadPacket.axis(-1)
         ).payload
-        let theirs = vendored.encodeGamepadState(
-            controllerId: 0,
-            buttons: NvstGamepadPacket.Button.a,
-            leftTrigger: 0x40,
-            rightTrigger: 0xff,
-            leftStickX: NvstGamepadPacket.axis(0.5),
-            leftStickY: NvstGamepadPacket.axis(-0.75),
-            rightStickX: NvstGamepadPacket.axis(0.25),
-            rightStickY: NvstGamepadPacket.axis(-1),
-            timestampUs: 0x1122_3344,
-            bitmap: NvstGamepadPacket.connectedBitmap,
-            partiallyReliable: true
-        )
+        let expectedPayload: [UInt8] = [
+            0x26, 0x00, 0x00, 0x01, 0x21, 0x00, 0x26, 0x0c, 0x00,
+            0x00, 0x00, 0x1a, 0x00, 0x00, 0x00, 0x01, 0x01, 0x14,
+            0x00, 0x00, 0x10, 0x40, 0xff, 0x00, 0x40, 0x00, 0xa0,
+            0x00, 0x20, 0x00, 0x80, 0x00, 0x00, 0x55, 0x00, 0x00,
+            0x00, 0x44, 0x33, 0x22, 0x11, 0x00, 0x00, 0x00, 0x00,
+        ]
         #expect(ours.count == NvstGamepadPacket.payloadLength)
-        #expect(ours.count == theirs.count)
-        #expect(Array(ours.dropFirst(9)) == Array(theirs.dropFirst(9)))
+        #expect(Array(ours.dropFirst(9)) == expectedPayload)
         #expect(ours.first == GeronimoInputEnvelope.headerByte)
     }
 
@@ -721,14 +703,14 @@ struct NvstModifierAndShortcutTests {
             (58, 0xa4), (61, 0xa5),   // left / right option (Alt)
         ]
         for (mac, vk) in expect {
-            #expect(NativeWebRTCTransport.keyboardCodes(forMacKeyCode: mac).keyCode == vk, "mac \(mac)")
+            #expect(NativeKeyboardMapping.keyboardCodes(forMacKeyCode: mac).keyCode == vk, "mac \(mac)")
         }
     }
 
     /// Command maps to Control so Cmd+C/V/A carry the copy/paste intent to a Windows host.
     @Test func commandMapsToControl() {
-        #expect(NativeWebRTCTransport.keyboardCodes(forMacKeyCode: 54).keyCode == 0xa2)
-        #expect(NativeWebRTCTransport.keyboardCodes(forMacKeyCode: 55).keyCode == 0xa2)
+        #expect(NativeKeyboardMapping.keyboardCodes(forMacKeyCode: 54).keyCode == 0xa2)
+        #expect(NativeKeyboardMapping.keyboardCodes(forMacKeyCode: 55).keyCode == 0xa2)
     }
 
     /// The keyboard packet carries the modifier field the seat capitalizes from. Held shift + 'A'
@@ -748,7 +730,7 @@ struct NvstModifierAndShortcutTests {
     /// Cmd+C forwards as a full Control chord — Control down, key down, key up, Control up — with
     /// nothing left held. `8` is mac key code for the letter 'c'.
     @Test func aPlainCommandShortcutWrapsInControl() {
-        let strokes = NativeWebRTCStreamView.commandShortcutStrokes(keyCode: 8, shift: false, option: false)
+        let strokes = NativeStreamView.commandShortcutStrokes(keyCode: 8, shift: false, option: false)
         #expect(strokes.map(\.keyCode) == [55, 8, 8, 55])
         #expect(strokes.map(\.isPressed) == [true, true, false, false])
     }
@@ -756,7 +738,7 @@ struct NvstModifierAndShortcutTests {
     /// Cmd+Shift+key nests the extra modifier strictly inside Control and releases it before
     /// Control, so no key is ever orphaned.
     @Test func aShiftedCommandShortcutNestsAndUnwindsCleanly() {
-        let strokes = NativeWebRTCStreamView.commandShortcutStrokes(keyCode: 0, shift: true, option: false)
+        let strokes = NativeStreamView.commandShortcutStrokes(keyCode: 0, shift: true, option: false)
         #expect(strokes.map(\.keyCode) == [55, 56, 0, 0, 56, 55])
         #expect(strokes.map(\.isPressed) == [true, true, true, false, false, false])
         // Every press has a matching release.

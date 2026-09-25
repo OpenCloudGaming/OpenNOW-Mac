@@ -201,11 +201,9 @@ extension NvstBifrostFreeTransport {
         let stats = receiver.stats
         let lossPercent = lossPercentSinceLastSnapshot(packetsNow: UInt64(stats.authenticatedPackets), lostNow: UInt64(stats.lastCumulativeLost))
 
-        // The seat's round trip, from libwebrtc's own ICE candidate pair — the same source the
-        // WebRTC transport's HUD reads. Requested here rather than on a timer of its own: the HUD
-        // polls this method about once a second, which is the rate the sample is wanted at.
-        bundle?.refreshTransportStatistics()
-        let roundTrip = bundle?.roundTripMilliseconds ?? -1
+        // The native bundle has no ICE candidate pair to time, so the latency the HUD shows comes
+        // from the fallbacks below: the Mjolnir socket's own STUN round trip, then the control
+        // connection's WebSocket ping/pong, which the seat answers mandatorily.
         let video = videoPipeline?.snapshot
         let decodeMilliseconds = (video?.framesHandled ?? 0) > 0
             ? (video?.total.decode ?? 0) / Double(video?.framesHandled ?? 1)
@@ -217,11 +215,6 @@ extension NvstBifrostFreeTransport {
         // latency at first and is NOT one: live calibration showed it drifting 98→393 ms while
         // the path sat at single-digit RTT. It stays in the calibration log only.)
         let seatStats = latestSeatStats
-        // ICE candidate-pair RTT stays the preferred latency source, but this seat never answers
-        // libwebrtc's connectivity checks, so it is normally -1 here. Fallbacks, most direct
-        // first: the Mjolnir socket's own STUN round trip on the media path (measured only if the
-        // seat answers, which it may not — it acts as a STUN client, not a server), then the
-        // control connection's WebSocket ping/pong, which the seat answers mandatorily.
         var mjolnirRoundTrip = receiver.roundTripMilliseconds
         if mjolnirRoundTrip < 0, let session {
             mjolnirRoundTrip = await session.controlRoundTripMilliseconds()
@@ -231,7 +224,7 @@ extension NvstBifrostFreeTransport {
             gameFramesPerSecond: seatStats?.gameFramesPerSecond ?? -1,
             streamFramesPerSecond: instantFps,
             // Network round trip, not client decode cost — the decode number has its own field.
-            latencyMilliseconds: roundTrip >= 0 ? roundTrip : mjolnirRoundTrip,
+            latencyMilliseconds: mjolnirRoundTrip,
             jitterMilliseconds: Double(stats.lastJitter) * 1000 / Double(NvstVideoToolboxDecoder.clockRate),
             frameLoss: stats.abandonedFrames,
             totalFrameLoss: stats.abandonedFrames + UInt64(video?.missingParameterSetFrames ?? 0),
@@ -325,7 +318,7 @@ extension NvstBifrostFreeTransport {
     /// Sends the `0x20d` device descriptor and records what the seat was told. Recorded even when
     /// the write fails, so a failed announce is visible in `padReg` rather than retried on every
     /// single state packet at 250 Hz.
-    func sendGamepadRegistration(bitmap: UInt16, bundle: NvstWebRtcBundle, reason: String) {
+    func sendGamepadRegistration(bitmap: UInt16, bundle: NvstNativeBundle, reason: String) {
         let registered = bundle.sendControl(NvstInputActivation.deviceDescriptor(
             timestampMicroseconds: sessionElapsedMicroseconds(),
             connectedBitmap: bitmap))
@@ -442,7 +435,7 @@ extension NvstBifrostFreeTransport {
             NvstRemoteInput.mouseButton(Self.wireButton(button), isPressed: isPressed)
         case .keyboard(let event):
             NvstRemoteInput.keyboard(
-                virtualKey: NativeWebRTCTransport.keyboardCodes(forMacKeyCode: event.keyCode).keyCode,
+                virtualKey: NativeKeyboardMapping.keyboardCodes(forMacKeyCode: event.keyCode).keyCode,
                 modifiers: event.modifiers.rawValue & 0x000f,
                 isPressed: event.isPressed
             )
@@ -482,7 +475,7 @@ extension NvstBifrostFreeTransport {
                 throw NativeNVSTError.transportFailed("The NVST bundle negotiated no microphone channel, so capture cannot start.")
             }
             throw NativeNVSTError.transportFailed(
-                "This seat streams the microphone over its legacy transport, which OpenNOW has not recovered yet. Voice chat needs the WebRTC transport for now.")
+                "This seat uses a legacy NVST microphone transport that OpenNOW does not support. Voice chat is unavailable for this session.")
         }
         bundle.setMicrophoneCaptureEnabled(enabled)
         logger?("NVST microphone \(enabled ? "enabled" : "disabled")")

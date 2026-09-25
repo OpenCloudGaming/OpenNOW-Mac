@@ -10,7 +10,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Platform: macOS 15.6+](https://img.shields.io/badge/macOS-15.6%2B-black)
-![Native SwiftUI](https://img.shields.io/badge/Built%20with-SwiftUI%20%2B%20WebRTC%20%2B%20NVST-orange)
+![Native SwiftUI](https://img.shields.io/badge/Built%20with-SwiftUI%20%2B%20NVST-orange)
 
 **Independent community project.** Not affiliated with, endorsed by, or sponsored by NVIDIA. NVIDIA and GeForce NOW are trademarks of NVIDIA Corporation; other product and storefront names are trademarks of their respective owners. Bundled components, their licenses, and trademark details are listed in the [Third-Party Notices](Resources/Licenses/THIRD_PARTY_NOTICES.md), which also ships inside the app bundle.
 
@@ -30,7 +30,7 @@
 
 ## Why OpenNOW
 
-OpenNOW is written in SwiftUI from the ground up and driven by the same WebRTC and NVST streaming protocols the official desktop app uses - not a web view in a wrapper. The pitch is simple: **treat a Mac like a Mac, and treat a controller like a controller.** Browse your library and launch in seconds, stream at up to 5K, record the runs you want to keep, and play with a Steam Controller 2026 without ever installing Steam.
+OpenNOW is written in SwiftUI from the ground up and streams GeForce NOW sessions over NVIDIA's native NVST protocol. The pitch is simple: **treat a Mac like a Mac, and treat a controller like a controller.** Browse your library and launch in seconds, stream at up to 5K, record the runs you want to keep, and play with a Steam Controller 2026 without ever installing Steam.
 
 GeForce NOW works on a Mac, but the official client leaves a lot on the table - a mouse-and-keyboard web view, pillarbox bars baked into every ultrawide stream, and no love for the controllers people actually game with. OpenNOW fills those gaps with a real Mac app, and then keeps going.
 
@@ -38,7 +38,7 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | --- | --- |
 | 🎮 **Steam Controller 2026 support** | Wired, Bluetooth LE, and both 2.4 GHz dongles. Full HID parsing, haptics, back grips, trackpads, custom mappings - no Steam required. |
 | 🖥️ **Built for ultrawide** | 21:9 up to 5120×2160 and 32:9 up to 5120×1440, HEVC and AV1, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
-| 🔼 **Upscaling, on both transports** | Off, Spatial, or MetalFX, targeting 2K/4K/5K, with live Clarity and Noise Reduction sliders - gamepad-navigable, same on WebRTC and native NVST. [More ↓](#upscaling) |
+| 🔼 **Upscaling** | Off, Spatial, or MetalFX, targeting 2K/4K/5K, with live Clarity and Noise Reduction sliders and gamepad navigation. [More ↓](#upscaling) |
 | ⚡ **Native NVST transport** | Stream over NVIDIA's NVST protocol on OpenNOW's own native stack - RTSPS control, raw-SRTP video, VideoToolbox decode - with no vendor runtime in the bundle. [More ↓](#native-nvst-transport) |
 | ⏺️ **Record your sessions** | One keystroke (⌘R) captures gameplay locally, with a browsable library and opt-in trim/crop/export editor. [More ↓](#record-your-runs) |
 | 📚 **Your whole catalog** | Hero rotation, game rails, search and filters, store ownership picker, persistent Library and Favorites - plus a live banner that drops you straight back into an active session. |
@@ -86,7 +86,7 @@ Blur modes take an adjustable dim. Everything but **Black** runs through the cus
 
 ## Upscaling
 
-Three tiers, three targets, and it's the same feature whether you're on WebRTC or native NVST - pick a resolution the game doesn't actually render at and let the client fill in the rest.
+Three tiers, three targets - pick a resolution the game doesn't actually render at and let the client fill in the rest.
 
 | Tier | What it does |
 | --- | --- |
@@ -98,17 +98,17 @@ Pick a target of **2K**, **4K**, or **5K** and the output caps there - never pas
 
 ## Native NVST Transport
 
-WebRTC is the default, but it isn't the only way in. OpenNOW also speaks NVST - NVIDIA's native streaming protocol - on its own native stack, reproducing the exact pipeline the official client establishes, with no NVIDIA libraries in the bundle.
+Every GeForce NOW launch and resume uses NVST - NVIDIA's native streaming protocol - on OpenNOW's own stack, with no NVIDIA libraries in the bundle. Existing global and per-game transport selections are ignored; all other profile settings are preserved.
 
 - **OpenNOW's own implementation, no vendor runtime** - an RTSPS-over-WSS control channel (OPTIONS → DESCRIBE → SETUP → ANNOUNCE → PLAY), a client-generated SRTP master key, and a video handoff derived from the seat's answers the same way the native client derives it.
-- **Native video and input** - Mjolnir video access units (H.264, HEVC, and AV1) decode through VideoToolbox, while keyboard, mouse, text, and gamepad input plus audio ride the SCTP data channels of the seat's ICE/DTLS bundle.
+- **Native video and input** - Mjolnir video access units (H.264, HEVC, and AV1) decode through VideoToolbox. Keyboard, mouse, text, gamepad input, and control messages use the seat's SCTP data channels; game audio and microphone use SRTP audio streams on the same ICE/DTLS bundle.
 - **Live native telemetry** - latency, jitter, bitrate, packet and frame loss in the in-stream stats HUD, plus a network governor that adapts bitrate to path conditions.
 - **Microphone on NVST** - when the seat offers bundle mic in DESCRIBE (every current seat does), the bundle carries a send-only Opus mic section exactly like the official client, driven by push-to-talk / voice-activity / mute / the volume slider. Verified live on 2026-09-03: game audio and voice chat together on a fresh session. Seats on NVST's legacy RTSP mic transport are not supported yet and report that when the mic is enabled. Settings → Audio has a local microphone test either way.
 - **Session recording** - ⌘R captures decode frames and game audio straight off the native pipeline.
 
-Enable it in **Settings → Network → Transport → Native/NVST Transport**. Off keeps the default WebRTC session path.
+The standalone WebRTC streaming backend has been removed. `WebRTC.framework` still supplies NVST's connection bundle, audio, and parts of rendering, as well as Remote Co-Op's browser and native guest connections.
 
-The two-transport architecture is documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md), and the provenance of the vendor-protocol code in [`docs/PROTOCOL_PROVENANCE.md`](docs/PROTOCOL_PROVENANCE.md).
+The current architecture and remaining dependency-removal milestones are documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md), and the provenance of the vendor-protocol code in [`docs/PROTOCOL_PROVENANCE.md`](docs/PROTOCOL_PROVENANCE.md).
 
 ## Steam Controller, Unlocked
 
@@ -129,7 +129,7 @@ OpenNOW talks to Valve's controllers directly over HID, so you get the pad in yo
 
 ![On-screen keyboard over a game - 10×4 QWERTY grid with split-half trackpad cursors, accent highlights, and a bottom bar with layer toggle, space, position flip, and dismiss](docs/screenshots/on-screen-keyboard.png)
 
-A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NOW title. The keyboard works on **both the WebRTC and native NVST streaming paths** and sends keys exactly the way a physical keyboard does - UTF-8 text for characters, macOS keycodes for Return/Backspace.
+A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NOW title. The keyboard sends keys through NVST exactly the way a physical keyboard does - UTF-8 text for characters, macOS keycodes for Return/Backspace.
 
 - **Dual trackpads** each own one half of the grid. Touch a pad to aim, click it (or pull L2/R2) to type the aimed key.
 - **No trackpads?** D-pad or left stick moves the grid cursor; A types, B is Backspace, X is Space, Y toggles Shift, Start presses Enter.
@@ -156,7 +156,7 @@ A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NO
 
 1. `OPN/Stream/SteamControllerHIDMonitor.swift` matches devices by vendor ID `0x28de` and the product IDs above, opens them via IOKit HID, disables lizard mode with periodic heartbeats, and streams raw input reports.
 2. `OPN/Stream/SteamControllerReport.swift` parses each report into a `ControllerInputSnapshot` (buttons, triggers, sticks, trackpads).
-3. Snapshots feed the in-app test screen and, during streaming, `NativeWebRTCGamepadMonitor`, which forwards a standard gamepad subset to the GeForce NOW session. Steam/QAM, back grips, and trackpads are parsed and bindable client-side but not forwarded as raw stream input.
+3. Snapshots feed the in-app test screen and, during streaming, `NativeGamepadMonitor`, which forwards a standard gamepad subset to the GeForce NOW session. Steam/QAM, back grips, and trackpads are parsed and bindable client-side but not forwarded as raw stream input.
 
 **Report layouts** - bit/byte mappings verified against Valve's contributions to SDL's HIDAPI drivers:
 
@@ -238,7 +238,7 @@ swift test --scratch-path .build/shared
 - `Resources` - bundled images, fonts, and store icon assets
 - `View` - SwiftUI/AppKit views, stream host views, design primitives, and asset catalogs
 - `ViewModel` - observable UI state for login, catalog, controller catalog, and recordings
-- `OPN` - authentication, catalog/session services, native WebRTC, telemetry, preferences, logging, and app infrastructure
+- `OPN` - authentication, catalog/session services, NVST streaming, Remote Co-Op, telemetry, preferences, logging, and app infrastructure
 - `GFN` - protocol-specific GeForce NOW clients and wire types (CloudMatch, GDN, Jarvis, LCARS, NesAuth, NetworkTest, NVST, Starfleet, UDS)
 - `RemoteCoOp` - Remote Co-Op operator notes; the guest page itself ships in `Resources/RemoteCoOp/browser`
 - `Tests` - root SwiftPM test target covering the package-exposed production logic

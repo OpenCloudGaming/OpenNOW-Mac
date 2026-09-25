@@ -11,7 +11,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     let metadataKeys = Set(metadata.compactMap { $0["key"] })
     #expect(requestData["appId"] as? Int == 123)
     #expect(requestData["internalTitle"] as? String == "Test Game")
-    #expect(requestData["clientPlatformName"] as? String == "browser")
+    #expect(requestData["clientPlatformName"] as? String == "windows")
     // HDR off (default) -> capabilities must be null to avoid GFN's HDR-pipeline downscale.
     #expect(requestData["clientDisplayHdrCapabilities"] is NSNull)
     #expect(requestData["networkTestSessionId"] as? String == "stale-session-id")
@@ -19,7 +19,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(requestData["enablePersistingInGameSettings"] as? Bool == true)
     #expect(requestData["partnerCustomData"] as? String == "partner-data")
     #expect(requestData["userAge"] as? Int == 21)
-    #expect(requestData["secureRTSPSupported"] as? Bool == false)
+    #expect(requestData["secureRTSPSupported"] as? Bool == true)
     #expect(requestData["appLaunchMode"] as? Int == 1)
     #expect(requestData["transport"] == nil)
     let monitorSettings = try #require(requestData["clientRequestMonitorSettings"] as? [[String: Any]])
@@ -46,7 +46,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(metadataKeys.contains("store") == true)
     #expect(metadataKeys.contains("networkLatencyMs") == true)
     #expect(metadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
-    #expect(metadata.contains { $0["key"] == "GSStreamerType" && $0["value"] == "WebRTC" })
+    #expect(!metadataKeys.contains("GSStreamerType"))
 }
 
 @Test func sessionManagerCreateUsesReleaseCloudMatchShape() async throws {
@@ -87,15 +87,12 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
     #expect(request.url?.query?.contains("keyboardLayout=us") == true)
-    // WebRTC sessions use browser identity; NVST native sessions identify as Windows GFN-PC client.
     #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
     #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
     #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
     #expect(request.value(forHTTPHeaderField: "Origin") == "https://play.geforcenow.com")
     #expect(request.value(forHTTPHeaderField: "Referer") == "https://play.geforcenow.com/")
-        // Fork sends the native GFN-PC identity (device make UNKNOWN) on both transports:
-        // a browser identity makes GeForce NOW cap the server desktop at web-client resolution.
-        #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
+    #expect(request.value(forHTTPHeaderField: "nv-device-make") == "UNKNOWN")
     try expectReleaseCloudMatchRequestBody(requestData, metadata: metadata)
     }
 }
@@ -158,7 +155,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     }
 }
 
-@Test func sessionManagerCreateUsesNVSTCloudMatchShape() async throws {
+@Test func sessionManagerCreateIgnoresLegacyWebRTCTransportSettings() async throws {
     try await networkTestIsolationLock.withLock {
     let host = "create-nvst-shape.example.test"
     SessionManagerURLProtocol.install(host: host) { request in
@@ -172,7 +169,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
-    settings["transportMode"] = "nvst"
+    settings["transportMode"] = "webrtc"
 
     let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
     let result = (createSucceeded, createError)
@@ -213,10 +210,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     let manager = OPNSessionManager()
     manager.setAccessToken("token")
     manager.setStreamingBaseUrl("https://\(host)")
-    var settings = minimalSettings()
-    settings["transportMode"] = "nvst"
-
-    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
     let result = (createSucceeded, createInfo["rawSessionJSON"] as? String, createError)
 
     let rawSessionJSON = try #require(result.1)

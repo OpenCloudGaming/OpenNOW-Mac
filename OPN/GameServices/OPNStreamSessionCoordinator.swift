@@ -68,17 +68,9 @@ public struct NativeNVSTSessionAllocation: Equatable, Sendable {
     }
 }
 
-public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSignalingChannel, StreamSessionStartCancellable, @unchecked Sendable {
-    static let maxBufferedIceCandidates = 120
-
+public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, StreamSessionStartCancellable, @unchecked Sendable {
     let lock = NSLock()
-    var signaling: NVSTWebSocketSignalingClient?
     private var activeSession: StreamSessionDescriptor?
-    var iceContinuation: AsyncStream<StreamIceCandidate>.Continuation?
-    var pendingIceCandidates: [StreamIceCandidate] = []
-    var remoteEndContinuation: AsyncStream<String>.Continuation?
-    var pendingRemoteEndMessage: String?
-    var offerContinuation: CheckedContinuation<StreamOffer, Error>?
     let sessionManager: any StreamSessionManaging
     let adPresenter: (any StreamSessionAdPresenter)?
     let progressHandler: (@Sendable (StreamProgress) -> Void)?
@@ -89,49 +81,12 @@ public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSig
         self.progressHandler = progressHandler
     }
 
-    public func startSession(configuration: StreamLaunchConfiguration) async throws -> StreamOffer {
-        guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
-            throw OPNStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
-        }
-        let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
-        let launch = await prepareLaunch(configuration: configuration)
-        try Task.checkCancellation()
-        let sessionInfo = try await allocateSession(configuration: configuration, launch: launch)
-        let descriptor = streamDescriptor(sessionInfo: sessionInfo, configuration: configuration)
-        if Task.isCancelled {
-            await releaseSession(descriptor, reason: .userRequested)
-            throw CancellationError()
-        }
-        activeSession = descriptor
-        do {
-            let offer = try await connectSignaling(sessionInfo: sessionInfo, settings: launch.settings, descriptor: descriptor)
-            if Task.isCancelled {
-                await releaseSession(descriptor, reason: .userRequested)
-                throw CancellationError()
-            }
-            return offer
-        } catch {
-            if error is CancellationError || Task.isCancelled {
-                await releaseSession(descriptor, reason: .userRequested)
-            }
-            throw error
-        }
-    }
-
     public func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
         guard let launchAppId = OPNLaunchAppId.resolve(configuration.applicationID) else {
             throw OPNStreamSessionError.sessionAllocationFailed("This game does not include a launchable GeForce NOW app id.")
         }
         let configuration = normalizedConfiguration(configuration, appId: launchAppId.stringValue)
-        let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
-        guard profile.transportMode.value.caseInsensitiveCompare("nvst") == .orderedSame else {
-            throw OPNStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
-        }
         let launch = await prepareLaunch(configuration: configuration)
-        guard string(launch.settings["transportMode"]).caseInsensitiveCompare("nvst") == .orderedSame else {
-            throw OPNStreamSessionError.sessionAllocationFailed("Native NVST session requested while WebRTC transport is selected.")
-        }
         let serverType: Int
         do {
             serverType = try await OPNStreamPreferences.fetchServerType(token: configuration.accessToken, streamingBaseUrl: launch.streamingBaseUrl) ?? 0
@@ -146,8 +101,7 @@ public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSig
             await releaseSession(descriptor, reason: .userRequested)
             throw CancellationError()
         }
-        activeSession = descriptor
-        startNativeSignalingSniffer(sessionInfo: sessionInfo, descriptor: descriptor)
+        lock.withLock { activeSession = descriptor }
         return NativeNVSTSessionAllocation(
             session: descriptor,
             isResume: configuration.resumesExistingSession || sessionInfo.isResume,
@@ -191,20 +145,9 @@ public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSig
     }
 
     public func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
-        let disconnected = lock.withLock { () -> NVSTWebSocketSignalingClient? in
-            let client = signaling
-            signaling = nil
-            iceContinuation?.finish()
-            iceContinuation = nil
-            remoteEndContinuation?.finish()
-            remoteEndContinuation = nil
-            pendingIceCandidates.removeAll()
-            pendingRemoteEndMessage = nil
-            offerContinuation = nil
+        lock.withLock {
             if activeSession?.id == session.id { activeSession = nil }
-            return client
         }
-        if let disconnected { await disconnected.disconnect() }
         guard shouldReportFinishedSession(reason) else { return }
         let stopError = await stopCloudMatchSession(session)
         if stopError == nil { StreamSessionLimitStartStore.clear(sessionId: session.id) }
@@ -235,114 +178,14 @@ public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSig
     }
 
     public func cancelSessionStart() async {
-        let cancelled = lock.withLock { () -> (CheckedContinuation<StreamOffer, Error>?, StreamSessionDescriptor?, NVSTWebSocketSignalingClient?) in
-            let client = signaling
-            signaling = nil
-            iceContinuation?.finish()
-            iceContinuation = nil
-            remoteEndContinuation?.finish()
-            remoteEndContinuation = nil
-            pendingIceCandidates.removeAll()
-            pendingRemoteEndMessage = nil
-            let continuation = offerContinuation
-            offerContinuation = nil
+        let cancelled = lock.withLock { () -> StreamSessionDescriptor? in
             let session = activeSession
             activeSession = nil
-            return (continuation, session, client)
+            return session
         }
-        cancelled.0?.resume(throwing: CancellationError())
-        if let client = cancelled.2 { await client.disconnect() }
-        if let session = cancelled.1 {
+        if let session = cancelled {
             await releaseSession(session, reason: .userRequested)
         }
-    }
-
-    public func sendAnswer(_ answer: StreamAnswer, for session: StreamSessionDescriptor) async throws {
-        guard let signaling = lock.withLock({ self.signaling }) else {
-            throw OPNStreamSessionError.signalingUnavailable
-        }
-        await signaling.sendAnswerSdp(answer.sdp, nvstSdp: answer.metadata["nvstSdp"] ?? "")
-    }
-
-    public func sendLocalIceCandidate(_ candidate: StreamIceCandidate, for session: StreamSessionDescriptor) async throws {
-        guard let signaling = lock.withLock({ self.signaling }) else {
-            throw OPNStreamSessionError.signalingUnavailable
-        }
-        await signaling.sendIceCandidate(NVSTIceCandidate(candidate: candidate.sdp, sdpMid: candidate.sdpMid, sdpMLineIndex: candidate.sdpMLineIndex, usernameFragment: candidate.usernameFragment, isEndOfCandidates: candidate.isEndOfCandidates))
-    }
-
-    public func remoteIceCandidates(for session: StreamSessionDescriptor) async throws -> AsyncStream<StreamIceCandidate> {
-        AsyncStream(bufferingPolicy: .bufferingNewest(120)) { continuation in
-            let buffered = lock.withLock { () -> [StreamIceCandidate] in
-                iceContinuation = continuation
-                let values = pendingIceCandidates
-                pendingIceCandidates.removeAll()
-                return values
-            }
-            for candidate in buffered {
-                continuation.yield(candidate)
-            }
-            continuation.onTermination = { [weak self] _ in
-                self?.lock.withLock { self?.iceContinuation = nil }
-            }
-        }
-    }
-
-    public func remoteEndEvents(for session: StreamSessionDescriptor) async throws -> AsyncStream<String> {
-        AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-            let buffered = lock.withLock { () -> String? in
-                remoteEndContinuation = continuation
-                let value = pendingRemoteEndMessage
-                pendingRemoteEndMessage = nil
-                return value
-            }
-            if let buffered {
-                continuation.yield(buffered)
-                continuation.finish()
-            }
-            continuation.onTermination = { [weak self] _ in
-                self?.lock.withLock { self?.remoteEndContinuation = nil }
-            }
-        }
-    }
-
-    /// Diagnostic only: connects the WebSocket signaling read-only on the native path to capture
-    /// the server's offer (which carries `nvstSdp`, the raw-SRTP video handoff), without answering
-    /// or disturbing the Bifrost/Geronimo client. Gated on OPNProtocolDebug logging.
-    private func startNativeSignalingSniffer(sessionInfo: AllocatedStreamSession, descriptor: StreamSessionDescriptor) {
-        guard OPNProtocolDebug.loggingEnabled() else { return }
-        Task { @MainActor in
-            let client = NVSTWebSocketSignalingClient(
-                signalingServer: sessionInfo.signalingServer,
-                sessionId: descriptor.id,
-                signalingUrl: sessionInfo.signalingUrl,
-                queryParameters: sessionInfo.signalingQueryParameters,
-                additionalSubprotocols: sessionInfo.signalingHeaders
-            )
-            client.onOffer = { offer in
-                if !offer.nvstSdp.isEmpty {
-                    let handoff = (try? JSONSerialization.jsonObject(with: Data(offer.nvstSdp.utf8))) ?? offer.nvstSdp
-                    OPNProtocolDebug.logJSONObject(label: "nvst-signaling-handoff", object: handoff)
-                } else {
-                    OPNProtocolDebug.logJSONObject(label: "nvst-signaling-offer-empty", object: ["sdpLength": offer.sdp.count])
-                }
-            }
-            client.onClosed = { _, _ in
-                OPNProtocolDebug.logJSONObject(label: "nvst-signaling-sniffer-closed", object: ["sessionId": descriptor.id])
-            }
-            client.connect { [weak client] _, _ in
-                // The sniffer holds no state; the client is retained for the offer's lifetime by
-                // the URLSession it owns; nothing further is required here.
-                _ = client
-            }
-        }
-    }
-
-    func offerMetadata(sessionInfo: AllocatedStreamSession, settingsJSON: String, descriptor: StreamSessionDescriptor) -> [String: String] {
-        var metadata = descriptor.metadata
-        metadata["sessionInfoJSON"] = sessionInfo.rawJSON
-        metadata["settings"] = settingsJSON
-        return metadata
     }
 
     func streamDescriptor(sessionInfo: AllocatedStreamSession, configuration: StreamLaunchConfiguration) -> StreamSessionDescriptor {
@@ -445,10 +288,10 @@ public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSig
     func makeSettings(configuration: StreamLaunchConfiguration) -> [String: Any] {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
-        let resolved = WebRTCMediaStreamSettingsResolver.resolve(
-            profile: webRTCMediaProfile(from: profile),
-            capabilities: webRTCMediaCapabilities(from: capabilities),
-            cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
+        let resolved = StreamSettingsResolver.resolve(
+            profile: streamProfile(from: profile),
+            capabilities: streamDeviceCapabilities(from: capabilities),
+            cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
         var settings = resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
         settings["enablePersistingInGameSettings"] = bool(settings["enablePersistingInGameSettings"]) && OPNStreamPreferences.loadEntitledInGameSettingsPersistence()
@@ -469,23 +312,6 @@ public final class OPNStreamSessionCoordinator: StreamSessionProvider, StreamSig
         )
     }
 
-    func resumeOffer(_ offer: StreamOffer) {
-        let continuation = lock.withLock { () -> CheckedContinuation<StreamOffer, Error>? in
-            let value = offerContinuation
-            offerContinuation = nil
-            return value
-        }
-        continuation?.resume(returning: offer)
-    }
-
-    func resumeOffer(error: Error) {
-        let continuation = lock.withLock { () -> CheckedContinuation<StreamOffer, Error>? in
-            let value = offerContinuation
-            offerContinuation = nil
-            return value
-        }
-        continuation?.resume(throwing: error)
-    }
 }
 
 /// Coercions for the loosely typed CloudMatch dictionaries the coordinator threads around.

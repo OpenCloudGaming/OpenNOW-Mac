@@ -122,6 +122,9 @@ public actor OPNRemoteCoOpEmbeddedServer {
     private let logger: (@Sendable (String) -> Void)?
     private let handshakeTimeout: Duration
     private let joinDeadline: TimeInterval
+    /// Supplies the browser egress endpoint to a page that asks for it. Nil when no browser egress is
+    /// running, in which case the page is told it is unavailable rather than handed a dead port.
+    private let webTransportInfo: (@Sendable () -> OPNRemoteCoOpBrowserWebTransportInfo?)?
     private var listener: NWListener?
     private var heartbeatTask: Task<Void, Never>?
     private var connections: [UUID: Connection] = [:]
@@ -168,10 +171,11 @@ public actor OPNRemoteCoOpEmbeddedServer {
     /// the data channel, so a guest whose machine sleeps or drops off Wi-Fi without a FIN leaves an
     /// `NWConnection` that never reports anything. Its slot, its announced pad and its share of
     /// `maximumConnections` were all held until the host tore the session down by hand.
-    static let heartbeatInterval: Duration = .seconds(15)
-    /// How long a socket may go without a byte from the peer. Several heartbeats wide, so a stalled
+    static let heartbeatInterval: Duration = .seconds(15)    /// How long a socket may go without a byte from the peer. Several heartbeats wide, so a stalled
     /// network is not mistaken for a departed guest.
     static let socketIdleTimeout: TimeInterval = 60
+    /// Where a page asks which WebTransport endpoint to use.
+    static let webTransportInfoPath = "/remote-coop/webtransport"
 
     public init(documentRoot: URL,
                 networkConfiguration: OPNRemoteCoOpNetworkConfiguration,
@@ -179,7 +183,8 @@ public actor OPNRemoteCoOpEmbeddedServer {
                 additionalAllowedOrigins: [String] = [],
                 logger: (@Sendable (String) -> Void)? = nil,
                 handshakeTimeout: Duration? = nil,
-                joinDeadline: TimeInterval? = nil) {
+                joinDeadline: TimeInterval? = nil,
+                webTransportInfo: (@Sendable () -> OPNRemoteCoOpBrowserWebTransportInfo?)? = nil) {
         self.documentRoot = documentRoot
         self.networkConfiguration = networkConfiguration
         self.participantOwnership = participantOwnership
@@ -187,6 +192,7 @@ public actor OPNRemoteCoOpEmbeddedServer {
         self.logger = logger
         self.handshakeTimeout = handshakeTimeout ?? OPNRemoteCoOpEmbeddedServer.defaultHandshakeTimeout
         self.joinDeadline = joinDeadline ?? OPNRemoteCoOpEmbeddedServer.defaultJoinDeadline
+        self.webTransportInfo = webTransportInfo
     }
 
     public func events() -> AsyncStream<OPNRemoteCoOpSignalingEvent> {
@@ -504,6 +510,9 @@ public actor OPNRemoteCoOpEmbeddedServer {
             guard request.method == "GET" else {
                 return respond(connection, OPNRemoteCoOpHTTPParser.response(status: 405, reason: "Method Not Allowed"), close: true)
             }
+            if request.normalizedPath == OPNRemoteCoOpEmbeddedServer.webTransportInfoPath {
+                return respondWebTransportInfo(connection)
+            }
             let store = OPNRemoteCoOpStaticFileStore(documentRoot: documentRoot)
             guard let file = store.file(for: request.normalizedPath) else {
                 return respond(connection, OPNRemoteCoOpHTTPParser.response(status: 404, reason: "Not Found"), close: true)
@@ -514,8 +523,22 @@ public actor OPNRemoteCoOpEmbeddedServer {
         }
     }
 
-    private func drainWebSocketFrames(_ connection: Connection) {
-        let frames: [OPNRemoteCoOpWebSocketFrame]
+    /// Hands a page the WebTransport endpoint it should connect to for browser media.
+    ///
+    /// Served from the same origin the guest has already accepted the certificate on, so a guest that
+    /// joined by scanning a Bonjour entry - with no invite link to carry the endpoint - can still find
+    /// it. A running browser egress is reported as 503 rather than a dead port.
+    private func respondWebTransportInfo(_ connection: Connection) {
+        guard let info = webTransportInfo?(), let body = try? JSONEncoder().encode(info) else {
+            logger?("Remote Co-Op browser client asked for the WebTransport endpoint, but none is running")
+            let body = Data(#"{"available":false}"#.utf8)
+            return respond(connection, OPNRemoteCoOpHTTPParser.response(status: 503, reason: "Service Unavailable", contentType: "application/json", body: body), close: true)
+        }
+        logger?("Remote Co-Op handed a browser client the WebTransport endpoint on port \(info.port)")
+        respond(connection, OPNRemoteCoOpHTTPParser.response(status: 200, reason: "OK", contentType: "application/json", body: body), close: true)
+    }
+
+    private func drainWebSocketFrames(_ connection: Connection) {        let frames: [OPNRemoteCoOpWebSocketFrame]
         do {
             frames = try OPNRemoteCoOpWebSocketCodec.decodeFrames(from: &connection.buffer)
         } catch {

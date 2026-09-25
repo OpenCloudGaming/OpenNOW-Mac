@@ -1,7 +1,7 @@
 //  The guest's gamepad, forwarded: sends state changes down the host-opened `remote-coop-input` data
 //  channel as the same packets the browser guest produces.
 //
-//  Field semantics mirror `NativeWebRTCGamepadMonitor` exactly, because the host's router maps packet
+//  Field semantics mirror `NativeGamepadMonitor` exactly, because the host's router maps packet
 //  fields straight onto `GamepadState` and any reinterpretation here would make a guest's pad behave
 //  differently from one plugged into the host.
 //
@@ -220,7 +220,7 @@ public final class OPNRemoteCoOpNativeGuestInputSender: @unchecked Sendable {
             return
         }
         emit(Snapshot(
-            buttons: NativeWebRTCGamepadMonitor.buttons(from: gamepad),
+            buttons: NativeGamepadMonitor.buttons(from: gamepad),
             leftTrigger: gamepad.leftTrigger.value,
             rightTrigger: gamepad.rightTrigger.value,
             leftStickX: gamepad.leftThumbstick.xAxis.value,

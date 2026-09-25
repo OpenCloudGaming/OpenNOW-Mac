@@ -18,7 +18,7 @@ import Foundation
 import GameController
 
 /// AppKit is imported deliberately, and is the one exception to the "view models do not import
-/// AppKit" rule. `NativeWebRTCStreamView` *is* the stream: it owns the Metal surface the decoder
+/// AppKit" rule. `NativeStreamView` *is* the stream: it owns the Metal surface the decoder
 /// draws into, the pointer-lock state and the input callbacks. Hiding it behind a protocol would
 /// mean a thirty-member pass-through with exactly one implementation - the wrapper layer AGENTS.md
 /// rules out - and would not make the session logic any more testable, because every one of those
@@ -28,16 +28,16 @@ final class NativeNVSTHostViewModel: ObservableObject {
     let configuration: StreamLaunchConfiguration
     let sessionProvider: any NativeNVSTSessionProvider
     let preventDisplaySleep: Bool
-    let onProgress: WebRTCMediaStreamProgressHandler?
-    let onEnd: WebRTCMediaStreamCompletion
+    let onProgress: StreamProgressHandler?
+    let onEnd: StreamCompletionHandler
     let sidebarCapabilities = StreamSidebarCapabilities.nativeNVST
 
     init(
         configuration: StreamLaunchConfiguration,
         sessionProvider: any NativeNVSTSessionProvider,
         preventDisplaySleep: Bool,
-        onProgress: WebRTCMediaStreamProgressHandler?,
-        onEnd: @escaping WebRTCMediaStreamCompletion
+        onProgress: StreamProgressHandler?,
+        onEnd: @escaping StreamCompletionHandler
     ) {
         self.configuration = configuration
         self.sessionProvider = sessionProvider
@@ -49,7 +49,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var path: NativeNVSTStreamingPath?
     var startTask: Task<Void, Never>?
     var endEventTask: Task<Void, Never>?
-    @Published var nativeView: NativeWebRTCStreamView?
+    @Published var nativeView: NativeStreamView?
     @Published var loadingStepIndex = -1
     @Published var isConnected = false
     @Published var isEnding = false
@@ -115,8 +115,30 @@ final class NativeNVSTHostViewModel: ObservableObject {
     // transport so they survive `makeTransport` and can be handed to the peer controller: they are
     // the seam between the NVST decode/audio threads and each guest's WebRTC peer.
     let remoteCoOpHostSession = OPNRemoteCoOpHostSession()
-    let remoteCoOpVideoRelay = OPNRemoteCoOpHostVideoRelay()
-    let remoteCoOpAudioRelay = OPNRemoteCoOpHostAudioRelay()
+    /// The native transport's per-session media fanout: the source video and PCM audio every native
+    /// guest receives. Fed off the same decode/audio taps the recorder and replay buffer are.
+    let remoteCoOpNativeBroadcaster = RemoteCoOpNativeMediaBroadcaster()
+    /// Browser Co-Op's egress: a WebTransport server that serves a WebCodecs guest, transcoding each
+    /// decoded frame to H.264 because the seat's HEVC is not decodable in a browser. Created with the
+    /// stream so the decode and audio taps can hold it, and only started while an invite is live.
+    lazy var remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress = {
+        let adapter = OPNRemoteCoOpBrowserHostAdapter(session: remoteCoOpHostSession) { [holder = inputDispatcherHolder] event in
+            // Off the main actor, exactly as the native peer controller forwards guest input: the seat
+            // no longer sees a MainActor hop per packet.
+            holder.enqueue(event)
+        }
+        let egress = RemoteCoOpBrowserEgress(host: adapter)
+        egress.onState = { message in
+            OPNStreamTelemetry.capture("nvst.remote_coop.browser_egress", level: .info, message: message)
+        }
+        egress.onParticipantsChanged = { [weak self] in
+            await self?.remoteCoOpParticipantsDidChange()
+        }
+        egress.onNeutralInput = { [weak self] events in
+            await self?.sendRemoteCoOpNeutralInput(events)
+        }
+        return egress
+    }()
     var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
     var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
     var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
@@ -195,7 +217,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var screenshotTask: Task<Void, Never>?
     /// The settings the session actually started with, kept because the recording configuration is
     /// built from them (bitrates, fps, resolution) long after `prepareLaunch` returns.
-    var resolvedStreamSettings: WebRTCMediaResolvedStreamSettings?
+    var resolvedStreamSettings: ResolvedStreamSettings?
     @Published var streamControlsFocusIndex = 0
     @Published var onScreenKeyboardVisible = false
     var restorePointerLockOnKeyboardHide = false
@@ -278,15 +300,15 @@ final class NativeNVSTHostViewModel: ObservableObject {
     }
 
     /// Applies the saved launch profile to this model and returns what starting the stream needs.
-    func prepareLaunch(nativeView: NativeWebRTCStreamView) -> (settings: WebRTCMediaResolvedStreamSettings, microphoneConfiguration: NativeNVSTMicrophoneConfiguration) {
+    func prepareLaunch(nativeView: NativeStreamView) -> (settings: ResolvedStreamSettings, microphoneConfiguration: NativeNVSTMicrophoneConfiguration) {
         nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
-        let resolvedStreamSettings = WebRTCMediaStreamSettingsResolver.resolve(
-            profile: webRTCMediaProfile(from: profile),
-            capabilities: webRTCMediaCapabilities(from: capabilities),
-            cloudVariables: webRTCMediaCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
+        let resolvedStreamSettings = StreamSettingsResolver.resolve(
+            profile: streamProfile(from: profile),
+            capabilities: streamDeviceCapabilities(from: capabilities),
+            cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
         microphoneMode = profile.microphoneMode.lowercased()
         let microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: profile.microphoneVolume, mode: microphoneMode)
@@ -309,7 +331,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     ///
     /// Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir receiver +
     /// VideoToolbox decode, drawn on the shared Metal surface.
-    func makeTransport(nativeView: NativeWebRTCStreamView, settings resolvedStreamSettings: WebRTCMediaResolvedStreamSettings) -> any NativeNVSTTransport {
+    func makeTransport(nativeView: NativeStreamView, settings resolvedStreamSettings: ResolvedStreamSettings) -> any NativeNVSTTransport {
         // Experimental: OpenNOW's own session core (Phase 2) replaces the Geronimo
         // transport when enabled. Geronimo/SDL2 are not loaded; video frames are counted but
         // not decoded until Phase 2C, so the surface stays blank while HUD and input work.
@@ -341,7 +363,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
             configuredAudioChannelCount: resolvedStreamSettings.audioChannelCount,
             // Auto resolves against the negotiated count, so it can never read as short-changed;
             // an explicit 5.1 or 7.1 ignores that argument and reports what was actually picked.
-            preferredAudioChannelCount: WebRTCMediaStreamSettingsResolver.preferredAudioChannelCount(
+            preferredAudioChannelCount: StreamSettingsResolver.preferredAudioChannelCount(
                 surroundMode: resolvedStreamSettings.surroundMode,
                 deviceOutputChannels: resolvedStreamSettings.audioChannelCount
             ),
@@ -354,8 +376,8 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
                 diagnosticLog.append(sanitized)
             },
-            remoteCoOpVideoRelay: remoteCoOpVideoRelay,
-            remoteCoOpAudioRelay: remoteCoOpAudioRelay
+            remoteCoOpNativeBroadcaster: remoteCoOpNativeBroadcaster,
+            remoteCoOpBrowserEgress: remoteCoOpBrowserEgress
         )
         if let bifrostFree = transport as? NvstBifrostFreeTransport {
             attachSeatNotificationHandlers(bifrostFree, nativeView: nativeView)
@@ -372,7 +394,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     }
 
     /// The seat's asynchronous notifications, routed to the surfaces that act on them.
-    func attachSeatNotificationHandlers(_ bifrostFree: NvstBifrostFreeTransport, nativeView: NativeWebRTCStreamView) {
+    func attachSeatNotificationHandlers(_ bifrostFree: NvstBifrostFreeTransport, nativeView: NativeStreamView) {
         Task { [weak self, weak nativeView] in
             // Match the local pointer to the game's: the seat stops compositing its own cursor as
             // soon as it starts publishing cursor state, so from then on the only pointer is ours
@@ -412,7 +434,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
 
     /// Drives the streaming path to a connected session, or reports why it did not get there.
     func runStartTask(path: NativeNVSTStreamingPath,
-                              nativeView: NativeWebRTCStreamView,
+                              nativeView: NativeStreamView,
                               microphoneConfiguration: NativeNVSTMicrophoneConfiguration,
                               initialMicrophoneEnabled: Bool) {
         startTask = Task {
@@ -448,7 +470,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
 
     /// Publishes an established session to the UI. False means the view went away while the stream
     /// was still coming up, and the caller stops the session instead.
-    func presentStream(session: StreamSessionDescriptor, path: NativeNVSTStreamingPath, nativeView: NativeWebRTCStreamView) -> Bool {
+    func presentStream(session: StreamSessionDescriptor, path: NativeNVSTStreamingPath, nativeView: NativeStreamView) -> Bool {
         guard !Task.isCancelled, !didEnd, !isEnding else { return false }
         isConnected = true
         sessionLimit = StreamSessionSidebarLimit(session: session)

@@ -7,14 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		7729CE862FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */; };
-		7729CE882FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
 		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
 		A00000000000000000000003 /* OPNApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* OPNApp.swift */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
 		A00000000000000000000404 /* Ably in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000406 /* Ably */; };
-		C00000000000000000000001 /* Vendor/WebRTC.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */; };
+		A00000000000000000000411 /* HTTP3 in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000412 /* HTTP3 */; };
+		A00000000000000000000413 /* QUIC in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000414 /* QUIC */; };
+		A00000000000000000000415 /* QUICCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000416 /* QUICCrypto */; };
+		D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
+		D00000000000000000000003 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
+		D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000004 /* Vendor/usrsctp.xcframework */; };
+		D00000000000000000000006 /* Vendor/usrsctp.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000004 /* Vendor/usrsctp.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -34,7 +38,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				7729CE882FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -43,11 +46,12 @@
 
 /* Begin PBXFileReference section */
 		7729CE762FDEDAB300D5C9D5 /* OpenNOW Dev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "OpenNOW Dev.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/WebRTC.xcframework; sourceTree = "<group>"; };
 		7729CE922FE1000000D5C9D5 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
 		A00000000000000000000002 /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Resources; sourceTree = "<group>"; };
 		A00000000000000000000004 /* OPNApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPNApp.swift; sourceTree = "<group>"; };
 		C00000000000000000000002 /* OpenNOWTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenNOWTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		D00000000000000000000001 /* Vendor/OpenSSL.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/OpenSSL.xcframework; sourceTree = "<group>"; };
+		D00000000000000000000004 /* Vendor/usrsctp.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Vendor/usrsctp.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -94,9 +98,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */,
-				7729CE862FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework in Frameworks */,
+				D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */,
+				D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */,
 				A00000000000000000000401 /* Sentry in Frameworks */,
 				A00000000000000000000404 /* Ably in Frameworks */,
+				A00000000000000000000411 /* HTTP3 in Frameworks */,
+				A00000000000000000000413 /* QUIC in Frameworks */,
+				A00000000000000000000415 /* QUICCrypto in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -104,7 +112,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C00000000000000000000001 /* Vendor/WebRTC.xcframework in Frameworks */,
+				D00000000000000000000003 /* Vendor/OpenSSL.xcframework in Frameworks */,
+				D00000000000000000000006 /* Vendor/usrsctp.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -124,7 +133,8 @@
 				A00000000000000000000002 /* Resources */,
 				A00000000000000000000004 /* OPNApp.swift */,
 				7729CE922FE1000000D5C9D5 /* AppIntents.framework */,
-				7729CE872FDEDAB500D5C9D5 /* Vendor/WebRTC.xcframework */,
+				D00000000000000000000001 /* Vendor/OpenSSL.xcframework */,
+				D00000000000000000000004 /* Vendor/usrsctp.xcframework */,
 				7729CE772FDEDAB300D5C9D5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -166,6 +176,9 @@
 			packageProductDependencies = (
 				A00000000000000000000403 /* Sentry */,
 				A00000000000000000000406 /* Ably */,
+				A00000000000000000000412 /* HTTP3 */,
+				A00000000000000000000414 /* QUIC */,
+				A00000000000000000000416 /* QUICCrypto */,
 			);
 			productName = OpenNOW;
 			productReference = 7729CE762FDEDAB300D5C9D5 /* OpenNOW Dev.app */;
@@ -230,6 +243,7 @@
 			packageReferences = (
 				A00000000000000000000402 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				A00000000000000000000405 /* XCRemoteSwiftPackageReference "ably-cocoa" */,
+				A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7729CE772FDEDAB300D5C9D5 /* Products */;
@@ -434,6 +448,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "OpenNOW Dev";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
@@ -479,6 +498,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				INFOPLIST_FILE = "OpenNOW-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = OpenNOW;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.games";
@@ -514,6 +538,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -541,6 +570,11 @@
 					"$(PROJECT_DIR)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Vendor/OpenSSL.xcframework/macos-arm64/OpenSSL.framework/Headers",
+					"$(SRCROOT)/Vendor/usrsctp.xcframework/macos-arm64/usrsctp.framework/Headers",
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -588,6 +622,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/Quiver;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A00000000000000000000402 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -617,6 +658,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000405 /* XCRemoteSwiftPackageReference "ably-cocoa" */;
 			productName = Ably;
+		};
+		A00000000000000000000412 /* HTTP3 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */;
+			productName = HTTP3;
+		};
+		A00000000000000000000414 /* QUIC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */;
+			productName = QUIC;
+		};
+		A00000000000000000000416 /* QUICCrypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */;
+			productName = QUICCrypto;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

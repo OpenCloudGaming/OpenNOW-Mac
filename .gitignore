@@ -1,4 +1,14 @@
+# Vendored prebuilt dependencies are build inputs and are checked in deliberately, so each ships
+# framework is re-included explicitly below. Everything else under Vendor/ stays out of the index.
+# An ignored binary that is never added breaks every other checkout, and `git status` hides it.
 vendor/*
+!Vendor/OpenSSL.xcframework
+!Vendor/OpenSSL.xcframework/**
+!Vendor/usrsctp.xcframework
+!Vendor/usrsctp.xcframework/**
+# Vendored source dependency (patched Quiver). Deliberately checked in; see Vendor/Quiver/VENDORING.md.
+!Vendor/Quiver
+!Vendor/Quiver/**
 third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/
@@ -120,3 +130,12 @@ docs/NVST/*
 
 # Local tooling state (Serena MCP code-navigation config)
 .serena/
+
+# Local dependency clones and throwaway spikes (never committed).
+.deps/
+spikes/
+
+# BEGIN oh-my-opencode-slim worktrees
+.slim/worktrees/
+.slim/worktrees.json
+# END oh-my-opencode-slim worktrees

@@ -7,17 +7,12 @@ another Mac.
 OpenNOW hosts everything itself. There is no server to deploy, no account to create, and no secret
 to share.
 
-## Requires the Native/NVST transport
+## Native stream hosting
 
-Remote Co-Op only hosts on **Settings > Streaming > Transport > Native/NVST**. On the WebRTC transport
-the stream decodes inside libwebrtc, which exposes no frame tap comparable to the native decoder's, so
-hosting there meant re-rendering the guest's picture — a second decode and encode per frame on the
-host, and a stream guests described as sluggish. The native path hands over the decoder's own
-`CVPixelBuffer`, which is what makes the relay cheap enough to be worth having.
-
-The Remote Co-Op settings tab says so when the WebRTC transport is selected, and the stream HUD's
-CO-OP panel says it there rather than hiding, so a host who configured everything and found no invite
-button knows it is the transport rather than a missing setting.
+Every GeForce NOW session uses NVST. Remote Co-Op relays the native decoder's `CVPixelBuffer`
+and decoded game audio to guests, so there is no stream-transport setting to enable first.
+Browser and native guest connections continue to use WebRTC. Co-Op's Automatic/Direct network
+setting controls guest connectivity independently of the GeForce NOW session.
 
 ## How it works
 

@@ -5,6 +5,14 @@ import Testing
 import Foundation
 @testable import OpenNOW
 
+private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
+    for request in requests {
+        #expect(request.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
+        #expect(request.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
+        #expect(request.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    }
+}
+
 @Test func sessionManagerPausedResumeSendsExplicitPutBeforePolling() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-success.example.test"
@@ -38,26 +46,23 @@ import Foundation
     }
 
     let requests = SessionManagerURLProtocol.recordedRequests(host: host)
-    let claimRequest = requests.first { $0.httpMethod == "PUT" }
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
     #expect(result.0 == true)
     #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET"])
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    expectNativeSessionHeaders(requests)
     #expect(claimPayload?["action"] as? Int == 2)
     #expect(claimPayload?["data"] as? String == "RESUME")
     #expect(claimRequestData?["appId"] as? Int == 123)
-    #expect(claimRequestData?["clientPlatformName"] as? String == "browser")
+    #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
     #expect(claimRequestData?["clientIdentification"] as? String == "GFN-PC")
     #expect(claimRequestData?["accountLinked"] as? Bool == true)
     #expect(claimRequestData?["clientDisplayHdrCapabilities"] is NSNull)
     #expect(claimRequestData?["enablePersistingInGameSettings"] as? Bool == false)
     #expect(claimRequestData?["partnerCustomData"] as? String == "")
     #expect(claimRequestData?["userAge"] as? Int == 0)
-    #expect(claimRequestData?["secureRTSPSupported"] as? Bool == false)
+    #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
     #expect(claimRequestData?["appLaunchMode"] as? Int == 2)
     #expect(claimRequestData?["transport"] == nil)
     let claimMonitorSettings = claimRequestData?["clientRequestMonitorSettings"] as? [[String: Any]] ?? []
@@ -67,11 +72,11 @@ import Foundation
     #expect(claimPhysicalResolution?["horizontalPixels"] as? Int == 7680)
     #expect(claimPhysicalResolution?["verticalPixels"] as? Int == 4320)
     #expect(claimMetadata.contains { $0["key"] == "wssignaling" && $0["value"] == "1" })
-    #expect(claimMetadata.contains { $0["key"] == "GSStreamerType" && $0["value"] == "WebRTC" })
+    #expect(!claimMetadata.contains { $0["key"] == "GSStreamerType" })
     }
 }
 
-@Test func sessionManagerNVSTPausedResumeSendsNVSTClaimShape() async {
+@Test func sessionManagerLegacyWebRTCResumeWaitsForNVSTControlEndpoint() async {
     await networkTestIsolationLock.withLock {
     let host = "resume-nvst-success.example.test"
     let lock = NSLock()
@@ -82,9 +87,7 @@ import Foundation
             getCount += 1
             let count = getCount
             lock.unlock()
-            // Post-hand-over the seat publishes its RTSPS control endpoint; the claim poll waits
-            // for that before reporting the session ready on NVST.
-            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host, advertisesNvstControlEndpoint: count > 1))
+            return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: count == 1 ? 5 : 2, controlHost: host, advertisesNvstControlEndpoint: count > 2))
         }
         return SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 6, controlHost: host))
     }
@@ -93,7 +96,7 @@ import Foundation
     OPNSessionManager.shared.setAccessToken("token")
     OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
-    settings["transportMode"] = "nvst"
+    settings["transportMode"] = "webrtc"
 
     let result = await withCheckedContinuation { continuation in
         OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false) { success, _, error in
@@ -102,13 +105,13 @@ import Foundation
     }
 
     let claimPayload = SessionManagerURLProtocol.recordedJSONBodies(host: host).first { $0["action"] != nil }
-    let claimRequest = SessionManagerURLProtocol.recordedRequests(host: host).first { $0.httpMethod == "PUT" }
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
     let claimRequestData = claimPayload?["sessionRequestData"] as? [String: Any]
     let claimMetadata = claimRequestData?["metaData"] as? [[String: String]] ?? []
     #expect(result.0 == true)
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-streamer") == "NVIDIA-CLASSIC")
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-version") == GFNClientMetadata.appVersion)
-    #expect(claimRequest?.value(forHTTPHeaderField: "nv-client-type") == "NATIVE")
+    #expect(result.1.isEmpty)
+    #expect(requests.map(\.httpMethod) == ["GET", "PUT", "GET", "GET"])
+    expectNativeSessionHeaders(requests)
     #expect(claimRequestData?["clientPlatformName"] as? String == "windows")
     #expect(claimRequestData?["secureRTSPSupported"] as? Bool == true)
     #expect(claimRequestData?["transport"] == nil)

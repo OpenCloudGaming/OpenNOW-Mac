@@ -270,7 +270,7 @@ private actor ControlledNativeInputRecorder {
 
 @Test @MainActor func focusLossNeutralizesEveryActiveDeviceBeforePointerUnlock() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
-    let view = NativeWebRTCStreamView(frame: window.contentView?.bounds ?? .zero)
+    let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.hidesCursorWhilePointerLocked = false
     window.contentView = view
     var sequence: [String] = []
@@ -302,7 +302,7 @@ private actor ControlledNativeInputRecorder {
 }
 
 @Test func gamepadSlotsRemainStableAndReuseOnlyVacatedPlayers() {
-    var slots = NativeWebRTCGamepadSlotMap<String>()
+    var slots = NativeGamepadSlotMap<String>()
 
     #expect(slots.update(identifiers: ["a", "b", "c"]).isEmpty)
     #expect(slots.slots == ["a": 0, "b": 1, "c": 2])
@@ -343,7 +343,7 @@ private actor ControlledNativeInputRecorder {
 }
 
 @Test @MainActor func nativeTextClientEmitsOnlyCommittedUnicode() {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
     var values: [String] = []
     view.onInputEvent = { event in
         if case .text(_, let value, _) = event { values.append(value) }
@@ -361,9 +361,9 @@ private actor ControlledNativeInputRecorder {
     let ascii = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "a", charactersIgnoringModifiers: "a", isARepeat: false, keyCode: 0))
     let deadKey = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.option], timestamp: 0, windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "e", isARepeat: false, keyCode: 14))
 
-    #expect(!NativeWebRTCStreamView.shouldInterpretAsText(ascii, hasMarkedText: false, inputSourceID: "com.apple.keylayout.US"))
-    #expect(NativeWebRTCStreamView.shouldInterpretAsText(ascii, hasMarkedText: false, inputSourceID: "com.apple.inputmethod.SCIM.ITABC"))
-    #expect(NativeWebRTCStreamView.shouldInterpretAsText(deadKey, hasMarkedText: false, inputSourceID: "com.apple.keylayout.US"))
+    #expect(!NativeStreamView.shouldInterpretAsText(ascii, hasMarkedText: false, inputSourceID: "com.apple.keylayout.US"))
+    #expect(NativeStreamView.shouldInterpretAsText(ascii, hasMarkedText: false, inputSourceID: "com.apple.inputmethod.SCIM.ITABC"))
+    #expect(NativeStreamView.shouldInterpretAsText(deadKey, hasMarkedText: false, inputSourceID: "com.apple.keylayout.US"))
 }
 
 @Test func nativePushToTalkIsEdgeTriggeredAndRequiresConfiguredModifiers() {
@@ -382,7 +382,7 @@ private actor ControlledNativeInputRecorder {
 }
 
 @Test @MainActor func nativePushToTalkReleasesOnFocusLoss() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
     var states: [Bool] = []
     view.configurePushToTalk(keyCode: 9) { states.append($0) }
     let press = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "v", charactersIgnoringModifiers: "v", isARepeat: false, keyCode: 9))
@@ -394,7 +394,7 @@ private actor ControlledNativeInputRecorder {
 }
 
 @Test @MainActor func nativePushToTalkKeepsPressedStateAcrossViewReconfiguration() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
     var initialStates: [Bool] = []
     var updatedStates: [Bool] = []
     view.configurePushToTalk(keyCode: 9) { initialStates.append($0) }
@@ -451,7 +451,7 @@ private func nativeVerticalWheelDeltas(_ events: [UserInputEvent]) -> [Int16] {
 /// carries a little sideways travel. Not one horizontal packet may leave — its wire meaning is an
 /// unverified reading of the type-10 body, and the momentum tail must not reopen the axis either.
 @Test @MainActor func nativeScrollVerticalGestureEmitsNoHorizontalWheel() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
     var events: [UserInputEvent] = []
     view.onInputEvent = { events.append($0) }
 
@@ -470,7 +470,7 @@ private func nativeVerticalWheelDeltas(_ events: [UserInputEvent]) -> [Int16] {
 /// The containment must not cost the gesture it is named after: sideways travel that dominates is
 /// sideways intent, and goes out on the first event of the swipe with nothing shaved off the front.
 @Test @MainActor func nativeScrollSidewaysGestureStillEmitsHorizontalWheel() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
     var events: [UserInputEvent] = []
     view.onInputEvent = { events.append($0) }
 
@@ -483,7 +483,7 @@ private func nativeVerticalWheelDeltas(_ events: [UserInputEvent]) -> [Int16] {
 /// A mouse wheel reports no phase at all, so there is no gesture to scope: a tilt (and shift-scroll,
 /// which arrives the same way) has to pass straight through.
 @Test @MainActor func nativeScrollTiltWheelWithoutPhaseEmitsHorizontalWheel() throws {
-    let view = NativeWebRTCStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
     var events: [UserInputEvent] = []
     view.onInputEvent = { events.append($0) }
 
@@ -497,7 +497,7 @@ private func nativeVerticalWheelDeltas(_ events: [UserInputEvent]) -> [Int16] {
 /// |dy| yet belongs to the momentum tail of a vertical flick, and the lock latched at the start of
 /// the gesture is what keeps it quiet. The following gesture starts the judgement over.
 @Test func nativeScrollAxisFilterLatchesPerGesture() {
-    var filter = NativeWebRTCScrollAxisFilter()
+    var filter = NativeScrollAxisFilter()
     let flick = filter.allowsHorizontal(phase: .began, deltaX: 0.4, deltaY: -6)
     let tail = filter.allowsHorizontal(phase: .momentum, deltaX: 4, deltaY: -0.2)
     let swipe = filter.allowsHorizontal(phase: .began, deltaX: 4, deltaY: -0.2)
@@ -512,7 +512,7 @@ private func nativeVerticalWheelDeltas(_ events: [UserInputEvent]) -> [Int16] {
 /// Jitter under a detent's worth of travel decides nothing, and nothing sideways is emitted while
 /// the gesture is still unreadable.
 @Test func nativeScrollAxisFilterWithholdsHorizontalUntilTheGestureIsReadable() {
-    var filter = NativeWebRTCScrollAxisFilter()
+    var filter = NativeScrollAxisFilter()
     let jitter = [filter.allowsHorizontal(phase: .began, deltaX: 0.3, deltaY: 0.2),
                   filter.allowsHorizontal(phase: .gesture, deltaX: 0.3, deltaY: 0.2)]
     let sideways = filter.allowsHorizontal(phase: .gesture, deltaX: 3, deltaY: 0.1)

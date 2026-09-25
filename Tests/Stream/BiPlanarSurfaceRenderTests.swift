@@ -2,13 +2,11 @@ import CoreVideo
 import Metal
 import Testing
 @testable import OpenNOW
-import WebRTC
 
 /// Renders solid-colour bi-planar surfaces through the same Metal pass the stream uses and reads
-/// the pixels back. Exists because an 8-bit 4:4:4 stream drew a flat green screen: the surface
-/// bypassed this path and landed in WebRTC's I420 renderer, which cannot convert it. Rendering the
-/// actual shader is the only check that proves colour survives; the library compiles at runtime,
-/// so a successful build says nothing.
+/// the pixels back. Exists because an 8-bit 4:4:4 stream drew a flat green screen when a surface
+/// bypassed this path. Rendering the actual shader is the only check that proves colour survives;
+/// the library compiles at runtime, so a successful build says nothing.
 @Suite struct BiPlanarSurfaceRenderTests {
     private static let width = 64
     private static let height = 32
@@ -50,7 +48,7 @@ import WebRTC
         settings.lowCostSpatial = true
         settings.sourceSize = CGSize(width: width, height: height)
         settings.drawableSize = settings.sourceSize
-        let frame = RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: surface), rotation: ._0, timeStampNs: 0)
+        let frame = OPNVideoFrame(pixelBuffer: surface)
         let texture = try #require(renderer.renderOffscreenSnapshot(frame, settings: settings, size: settings.sourceSize),
                                    "offscreen render failed for \(OPNVideoTextureSource.pixelFormatName(CVPixelBufferGetPixelFormatType(surface)))")
         var bgra = [UInt8](repeating: 0, count: 4)
