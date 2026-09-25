@@ -30,7 +30,7 @@ struct CatalogCollectionsStore: Equatable {
 
     static func load(accountIdentifier: String) -> CatalogCollectionsStore {
         guard !accountIdentifier.isEmpty,
-              let data = OPNAppPreferenceStorage.standard.data(forKey: resolveStorageKey(accountIdentifier: accountIdentifier)),
+              let data = OPNAppPreferenceStorage.syncStore.data(forKey: resolveStorageKey(accountIdentifier: accountIdentifier)),
               let decoded = try? JSONDecoder().decode([LossyCollection].self, from: data) else {
             return .empty
         }
@@ -39,25 +39,37 @@ struct CatalogCollectionsStore: Equatable {
 
     func save(accountIdentifier: String) {
         guard !accountIdentifier.isEmpty else { return }
+        let storage = OPNAppPreferenceStorage.syncStore
         let resolvedKey = Self.resolveStorageKey(accountIdentifier: accountIdentifier)
         let records = collections + tombstones
         guard !records.isEmpty else {
-            OPNAppPreferenceStorage.standard.removeObject(forKey: resolvedKey)
+            guard storage.object(forKey: resolvedKey) != nil else { return }
+            storage.removeObject(forKey: resolvedKey)
             announceChange(accountIdentifier: accountIdentifier)
             return
         }
         guard let data = try? JSONEncoder().encode(records) else { return }
-        OPNAppPreferenceStorage.standard.set(data, forKey: resolvedKey)
+        guard !Self.isStored(records, forKey: resolvedKey, in: storage) else { return }
+        storage.set(data, forKey: resolvedKey)
         announceChange(accountIdentifier: accountIdentifier)
+    }
+
+    /// Compares decoded records, not encoded bytes: `JSONEncoder` key order is not byte-stable, so
+    /// equal content can encode differently and would otherwise be rewritten on every pass.
+    private static func isStored(_ records: [OPNUserCollection], forKey key: String, in storage: OPNAppPreferenceStorage) -> Bool {
+        guard let existing = storage.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([OPNUserCollection].self, from: existing) else { return false }
+        return decoded == records
     }
 
     /// The key an account's collections live under, resolved case-insensitively so a key written
     /// before casing was normalized is reused rather than a second, empty key created beside it.
     static func resolveStorageKey(accountIdentifier: String) -> String {
+        let storage = OPNAppPreferenceStorage.syncStore
         let canonicalKey = storageKey(accountIdentifier: accountIdentifier)
-        guard OPNAppPreferenceStorage.standard.object(forKey: canonicalKey) == nil else { return canonicalKey }
+        guard storage.object(forKey: canonicalKey) == nil else { return canonicalKey }
         let keyPrefix = "\(storagePrefix)."
-        for key in OPNAppPreferenceStorage.standard.dictionaryRepresentation().keys where key.hasPrefix(keyPrefix) {
+        for key in storage.dictionaryRepresentation().keys where key.hasPrefix(keyPrefix) {
             let storedIdentifier = String(key.dropFirst(keyPrefix.count))
             guard storedIdentifier.caseInsensitiveCompare(accountIdentifier) == .orderedSame else { continue }
             return key
@@ -76,8 +88,8 @@ struct CatalogCollectionsStore: Equatable {
     /// Whether the one-time explainer has been shown. Feature-wide rather than per account: the
     /// fact it teaches does not change when the reader signs in as someone else.
     static var isLocalOnlyNoticeSeen: Bool {
-        get { OPNAppPreferenceStorage.standard.bool(forKey: localOnlyNoticeKey) }
-        set { OPNAppPreferenceStorage.standard.set(newValue, forKey: localOnlyNoticeKey) }
+        get { OPNAppPreferenceStorage.syncStore.bool(forKey: localOnlyNoticeKey) }
+        set { OPNAppPreferenceStorage.syncStore.set(newValue, forKey: localOnlyNoticeKey) }
     }
 
     /// Drops unusable records, keeps the newest write per id, expires aged-out tombstones, and caps

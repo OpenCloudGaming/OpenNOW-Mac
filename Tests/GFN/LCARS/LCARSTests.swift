@@ -50,6 +50,7 @@ private extension LCARSService {
 @Test func lcarsRequestTypesMatchVendorCacheRoutes() {
     #expect(LCARS.systemName == "LCARS")
     #expect(LCARS.productionGraphQLURLString == "https://games.geforce.com/graphql")
+    #expect(LCARS.productionAppsGraphQLURLString == "https://apps.gxn.nvidia.com/graphql")
     #expect(LCARSClientHeaders.lcars.clientId == "ec7e38d4-03af-4b58-b131-cfb0495903ab")
     #expect(LCARS.RequestType.panels.rawValue == "panels")
     #expect(LCARS.RequestType.staticAppData.rawValue == "staticAppData")

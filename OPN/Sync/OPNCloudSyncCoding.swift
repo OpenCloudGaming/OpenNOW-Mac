@@ -276,36 +276,39 @@ public enum OPNCloudSyncAccountNamespace {
         let canonical = normalized(accountIdentifier)
         guard !canonical.isEmpty else { return }
 
-        var current = Set(OPNAppPreferenceStorage.standard.array(forKey: currentAccountsKey) as? [String] ?? [])
+        let storage = OPNAppPreferenceStorage.syncStore
+        var current = Set(storage.array(forKey: currentAccountsKey) as? [String] ?? [])
         current.insert(canonical)
-        OPNAppPreferenceStorage.standard.set(Array(current).sorted(), forKey: currentAccountsKey)
+        storage.set(Array(current).sorted(), forKey: currentAccountsKey)
 
-        var aliases = OPNAppPreferenceStorage.standard.dictionary(forKey: aliasesKey) as? [String: String] ?? [:]
+        var aliases = storage.dictionary(forKey: aliasesKey) as? [String: String] ?? [:]
         for candidate in candidates {
             let alias = normalized(candidate)
             guard !alias.isEmpty, alias != canonical else { continue }
             aliases[alias] = canonical
         }
-        OPNAppPreferenceStorage.standard.set(aliases, forKey: aliasesKey)
+        storage.set(aliases, forKey: aliasesKey)
     }
 
-    /// The account identifiers stored on this Mac, keyed by their normalized namespace. A collections
-    /// key wins over a playtime or recently-played key for the same account.
+    /// The account identifiers this Mac knows, keyed by normalized namespace. Collections live in the
+    /// synced store; playtime and recently-played stay in the standard domain.
     static func localAccounts() -> [String: String] {
         var accounts: [String: String] = [:]
-        for identifier in OPNAppPreferenceStorage.standard.array(forKey: currentAccountsKey) as? [String] ?? [] {
+        let syncStore = OPNAppPreferenceStorage.syncStore
+        for identifier in syncStore.array(forKey: currentAccountsKey) as? [String] ?? [] {
             let canonical = normalized(identifier)
             guard !canonical.isEmpty else { continue }
             accounts[namespace(for: canonical)] = canonical
         }
-        let allKeys = OPNAppPreferenceStorage.standard.dictionaryRepresentation().keys
-        for key in allKeys where key.hasPrefix(collectionsKeyPrefix) {
+        let syncKeys = syncStore.dictionaryRepresentation().keys
+        for key in syncKeys where key.hasPrefix(collectionsKeyPrefix) {
             guard key != CatalogCollectionsStore.localOnlyNoticeKey else { continue }
             guard let identifier = accountIdentifier(inKey: key, prefix: collectionsKeyPrefix) else { continue }
             accounts[namespace(for: identifier)] = identifier
         }
+        let standardKeys = OPNAppPreferenceStorage.standard.dictionaryRepresentation().keys
         for prefix in accountKeyPrefixes where prefix != collectionsKeyPrefix {
-            for key in allKeys where key.hasPrefix(prefix) {
+            for key in standardKeys where key.hasPrefix(prefix) {
                 guard let identifier = accountIdentifier(inKey: key, prefix: prefix) else { continue }
                 let namespace = namespace(for: identifier)
                 if accounts[namespace] == nil { accounts[namespace] = identifier }
@@ -349,7 +352,7 @@ public enum OPNCloudSyncAccountNamespace {
 
     /// Every alias identifier mapped to the canonical spelling of the account it names.
     private static func identityAliases() -> [String: String] {
-        OPNAppPreferenceStorage.standard.dictionary(forKey: aliasesKey) as? [String: String] ?? [:]
+        OPNAppPreferenceStorage.syncStore.dictionary(forKey: aliasesKey) as? [String: String] ?? [:]
     }
 
     private static func accountIdentifier(inKey key: String, prefix: String) -> String? {
