@@ -10,10 +10,13 @@ import Foundation
 final class OPNRemoteCoOpBrowserHostAdapter: OPNRemoteCoOpBrowserEgressHost, @unchecked Sendable {
     private let session: OPNRemoteCoOpHostSession
     private let forwarder: OPNRemoteCoOpBrowserInputForwarder
+    /// Captured once from the host session; the table is a shared reference, not actor state.
+    let participantOwnership: OPNRemoteCoOpParticipantOwnership
 
     init(session: OPNRemoteCoOpHostSession,
          forwardInput: @escaping @Sendable (UserInputEvent) -> Void) {
         self.session = session
+        self.participantOwnership = session.participantOwnership
         self.forwarder = OPNRemoteCoOpBrowserInputForwarder(session: session, forwardInput: forwardInput)
     }
 

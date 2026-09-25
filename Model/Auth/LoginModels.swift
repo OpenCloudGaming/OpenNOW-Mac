@@ -184,6 +184,9 @@ final class LoginSession {
         if let cachedTokens { return cachedTokens }
         if let stored = GFNTokenStore.load(forIdentity: keychainIdentity) {
             cachedTokens = stored
+            // An interrupted migration can leave the legacy columns populated after the keychain
+            // write; clearing on every read makes the cleanup retryable.
+            if isLegacyTokenColumnPopulated { storeTokens(stored) }
             return stored
         }
         // Pre-keychain install: move the plaintext columns into the keychain, then blank them.
@@ -196,6 +199,11 @@ final class LoginSession {
         if !drained.isEmpty { storeTokens(drained) }
         cachedTokens = drained
         return drained
+    }
+
+    /// Whether any pre-keychain plaintext token column still holds a value.
+    private var isLegacyTokenColumnPopulated: Bool {
+        !legacyAccessToken.isEmpty || !legacyClientToken.isEmpty || !legacyIdToken.isEmpty || !legacyRefreshToken.isEmpty
     }
 
     private func updateTokens(_ mutate: (inout GFNTokenStore.Tokens) -> Void) {

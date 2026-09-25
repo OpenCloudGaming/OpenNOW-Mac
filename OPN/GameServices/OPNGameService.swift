@@ -147,6 +147,7 @@ final class OPNGameService: @unchecked Sendable {
         var requestWithTrace = request
         let networkStart = OPNNetworkLog.graphQLStart(&requestWithTrace, operationName: operationName, queryHash: queryHash, variables: variables)
         let tracedRequest = requestWithTrace
+        let variablesBox = variables.map(NSDictionaryBox.init)
         OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
             var payload: NSDictionary?
             var message = ""
@@ -168,7 +169,7 @@ final class OPNGameService: @unchecked Sendable {
             OPNNetworkLog.graphQLFinish(tracedRequest, operationName: operationName, queryHash: queryHash, startedAt: networkStart, data: data, response: response, error: error, responseMessage: message)
             if error == nil, retryAttempt == 0, queryHash != "inline", Self.isPersistedQueryNotFound(statusCode: statusCode, data: data) {
                 Self.workQueue.asyncAfter(deadline: .now() + Self.persistedQueryNotFoundRetryDelay) {
-                    self.issueGraphQLRequest(request, operationName: operationName, queryHash: queryHash, variables: variables, retryAttempt: 1, completion: completion)
+                    self.issueGraphQLRequest(request, operationName: operationName, queryHash: queryHash, variables: variablesBox?.value, retryAttempt: 1, completion: completion)
                 }
                 return
             }

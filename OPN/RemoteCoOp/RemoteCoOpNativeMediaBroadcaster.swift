@@ -28,6 +28,10 @@ public final class RemoteCoOpNativeMediaBroadcaster: @unchecked Sendable {
     private var participantByToken: [String: UUID] = [:]
     private var connectionByParticipant: [UUID: NWConnection] = [:]
     private var inputByParticipant: [UUID: @Sendable (OPNRemoteCoOpInputPacket) -> Void] = [:]
+    /// One cipher per registered guest, sealing media to it and opening its control datagrams. The
+    /// cleartext token never travels after registration.
+    private var cipherByParticipant: [UUID: OPNRemoteCoOpNativeCipher] = [:]
+    private var cipherByToken: [String: OPNRemoteCoOpNativeCipher] = [:]
     private var audioSequence: UInt64 = 0
 
     public init() {}
@@ -109,18 +113,26 @@ public final class RemoteCoOpNativeMediaBroadcaster: @unchecked Sendable {
         return port
     }
 
-    public func register(participantID: UUID, token: String, onInput: @escaping @Sendable (OPNRemoteCoOpInputPacket) -> Void) {        lock.lock()
+    public func register(participantID: UUID, token: String, onInput: @escaping @Sendable (OPNRemoteCoOpInputPacket) -> Void) {
+        let cipher = OPNRemoteCoOpNativeCipher(token: token, role: .host)
+        lock.lock()
         tokenByParticipant[participantID] = token
         participantByToken[token] = participantID
         inputByParticipant[participantID] = onInput
+        cipherByParticipant[participantID] = cipher
+        cipherByToken[token] = cipher
         lock.unlock()
     }
 
     public func unregister(participantID: UUID) {
         lock.lock()
-        if let token = tokenByParticipant.removeValue(forKey: participantID) { participantByToken[token] = nil }
+        if let token = tokenByParticipant.removeValue(forKey: participantID) {
+            participantByToken[token] = nil
+            cipherByToken[token] = nil
+        }
         let connection = connectionByParticipant.removeValue(forKey: participantID)
         inputByParticipant[participantID] = nil
+        cipherByParticipant[participantID] = nil
         lock.unlock()
         connection?.cancel()
     }
@@ -132,6 +144,8 @@ public final class RemoteCoOpNativeMediaBroadcaster: @unchecked Sendable {
         tokenByParticipant.removeAll()
         participantByToken.removeAll()
         inputByParticipant.removeAll()
+        cipherByParticipant.removeAll()
+        cipherByToken.removeAll()
         lock.unlock()
         for connection in connections { connection.cancel() }
     }
@@ -169,6 +183,8 @@ public final class RemoteCoOpNativeMediaBroadcaster: @unchecked Sendable {
         tokenByParticipant.removeAll()
         participantByToken.removeAll()
         inputByParticipant.removeAll()
+        cipherByParticipant.removeAll()
+        cipherByToken.removeAll()
         lock.unlock()
         listener?.cancel()
         for connection in connections { connection.cancel() }
@@ -177,15 +193,21 @@ public final class RemoteCoOpNativeMediaBroadcaster: @unchecked Sendable {
     private func sendToReady(_ datagrams: [Data]) {
         guard !datagrams.isEmpty else { return }
         lock.lock()
-        let connections = Array(connectionByParticipant.values)
+        let recipients: [(connection: NWConnection, cipher: OPNRemoteCoOpNativeCipher)] = connectionByParticipant.compactMap { participantID, connection in
+            guard let cipher = cipherByParticipant[participantID] else { return nil }
+            return (connection, cipher)
+        }
         lock.unlock()
-        guard !connections.isEmpty else { return }
+        guard !recipients.isEmpty else { return }
         let batch = datagrams
         queue.async { [weak self] in
-            for connection in connections {
+            guard let self else { return }
+            for recipient in recipients {
                 for datagram in batch {
-                    connection.send(content: datagram, contentContext: .defaultMessage, isComplete: true, completion: .contentProcessed { error in
-                        if error != nil { self?.drop(connection: connection) }
+                    // Sealed per guest, so one guest's key never decrypts another's media.
+                    guard let sealed = recipient.cipher.seal(datagram) else { continue }
+                    recipient.connection.send(content: sealed, contentContext: .defaultMessage, isComplete: true, completion: .contentProcessed { error in
+                        if error != nil { self.drop(connection: recipient.connection) }
                     })
                 }
             }
@@ -203,7 +225,13 @@ public final class RemoteCoOpNativeMediaBroadcaster: @unchecked Sendable {
     }
 
     private func handleControl(_ data: Data, from connection: NWConnection) {
-        guard let packet = OPNRemoteCoOpNativeControlPacket.decode(data) else { return }
+        // The datagram is sealed, so every registered key is tried; an unauthenticated datagram
+        // fails all of them before any state changes.
+        lock.lock()
+        let ciphers = Array(cipherByToken.values)
+        lock.unlock()
+        guard let plaintext = ciphers.lazy.compactMap({ $0.open(data) }).first,
+              let packet = OPNRemoteCoOpNativeControlPacket.decode(plaintext) else { return }
         switch packet.kind {
         case .hello:
             bind(token: packet.token, connection: connection)

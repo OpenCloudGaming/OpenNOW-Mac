@@ -317,6 +317,51 @@ private final class StubSignalingChannel: OPNRemoteCoOpSignalingChannel, @unchec
         #expect(recovered.iceServers.first?.credential == "turn-secret")
     }
 
+    /// The native peer signal carries the bearer token a `hello` must echo, so on the shared host
+    /// channel it must be sealed like the reconnect token and TURN credentials.
+    @Test func peerSignalSealsTheNativeBearerTokenWhenTheGuestSentAKey() async throws {
+        let (session, channel, _) = makeSession()
+        let guestPrivateKey = P256.KeyAgreement.PrivateKey()
+
+        _ = try await collect(session) {
+            try channel.deliverFromGuest(
+                OPNRemoteCoOpWireMessage(kind: .guestJoinRequested, participantID: self.participantID,
+                                         inviteToken: "token.signature", displayName: "Guest",
+                                         guestPublicKey: guestPrivateKey.publicKey.rawRepresentation.base64EncodedString()),
+                senderID: "sender-a"
+            )
+        }
+
+        let signal = OPNRemoteCoOpWirePeerSignal(kind: .nativeHost,
+                                                 nativeConnection: OPNRemoteCoOpNativeConnection(mediaPort: 9000, inputPort: 9001, token: "flow-bearer-token"))
+        await session.send(.peerSignal(participantID: participantID, signal: signal))
+
+        let published = try #require(channel.messages().last { $0.text.contains("peerSignal") })
+        #expect(!published.text.contains("flow-bearer-token"),
+                "the native flow token was still readable in the clear on the shared channel")
+        let message = try OPNRemoteCoOpWireCodec.decode(published.text)
+        #expect(message.peerSignal == nil)
+        let envelope = try #require(message.encryptedPeerSignal)
+        let recovered: OPNRemoteCoOpWirePeerSignal = try unseal(envelope, with: guestPrivateKey)
+        #expect(recovered.nativeConnection?.token == "flow-bearer-token")
+    }
+
+    /// A native peer signal to a guest with no key on file gets no plaintext copy at all: the token
+    /// is withheld rather than broadcast to every other invite holder reading the channel.
+    @Test func peerSignalWithholdsTheNativeTokenWithoutAGuestKey() async throws {
+        let (session, channel, _) = makeSession()
+        _ = try await collect(session) { try channel.deliverFromGuest(self.join(self.participantID), senderID: "sender-a") }
+
+        let signal = OPNRemoteCoOpWirePeerSignal(kind: .nativeHost,
+                                                 nativeConnection: OPNRemoteCoOpNativeConnection(mediaPort: 9000, inputPort: 9001, token: "plain-flow-token"))
+        await session.send(.peerSignal(participantID: participantID, signal: signal))
+
+        #expect(!channel.messages().contains { $0.text.contains("plain-flow-token") },
+                "the native flow token was published to a guest with no key on file")
+        #expect(!channel.messages().contains { $0.text.contains("peerSignal") },
+                "an unsealable peer signal was published instead of being withheld")
+    }
+
     /// A guest with no key on file - an older cached page, or an attacker deliberately omitting one -
     /// must get no reconnect token at all, never a plaintext one: this transport has no way to seal
     /// to it, and falling back to plaintext would broadcast the token to every other invite holder

@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 import Security
 
@@ -185,10 +186,18 @@ actor OPNGitHubUpdater {
 
         var request = URLRequest(url: downloadURL)
         logInfo("Downloading update archive version=\(release.version) asset=\(release.assetName) bytes=\(release.assetByteCount)")
+        let downloadLimit = OPNUpdateArchiveInspector.maximumArchiveByteCount
+        guard release.assetByteCount == 0 || release.assetByteCount <= downloadLimit else {
+            throw UpdateError.downloadFailed("The update archive is larger than the \(downloadLimit / (1024 * 1024)) MB download limit.")
+        }
         // The release metadata already carries the asset size, so the bar is determinate from the
         // first byte even before the response headers land.
         progress(OPNUpdateDownloadProgress(receivedBytes: 0, expectedBytes: release.assetByteCount))
-        let observer = DownloadProgressObserver(fallbackExpectedBytes: release.assetByteCount, handler: progress)
+        let observer = OPNUpdateDownloadProgressObserver(
+            fallbackExpectedBytes: release.assetByteCount,
+            maximumByteCount: downloadLimit,
+            handler: progress
+        )
         let networkStart = OPNNetworkLog.start(&request, operation: "updater.archiveDownload")
         let archiveURL: URL
         let response: URLResponse
@@ -197,38 +206,34 @@ actor OPNGitHubUpdater {
             OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: response, error: nil)
         } catch {
             OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: nil, error: error)
+            guard !observer.isByteLimitExceeded else {
+                throw UpdateError.downloadFailed("The update archive exceeded the \(downloadLimit / (1024 * 1024)) MB download limit.")
+            }
             throw error
         }
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             throw UpdateError.downloadFailed("GitHub did not return the update archive.")
         }
+        guard !observer.isByteLimitExceeded, let downloadedByteCount = OPNUpdateArchiveInspector.byteCount(at: archiveURL), downloadedByteCount <= downloadLimit else {
+            throw UpdateError.downloadFailed("The update archive exceeded the \(downloadLimit / (1024 * 1024)) MB download limit.")
+        }
 
         return try stageAndLaunchInstaller(downloadedArchiveURL: archiveURL, release: release, currentBundleURL: bundleURL)
-    }
-
-    /// Per-task delegate: `download(for:delegate:)` handles completion itself, but still forwards
-    /// byte-count callbacks, which is the only way to show progress without hand-rolling the write
-    /// loop over `URLSession.bytes`.
-    private final class DownloadProgressObserver: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
-        private let fallbackExpectedBytes: Int64
-        private let handler: @Sendable (OPNUpdateDownloadProgress) -> Void
-
-        init(fallbackExpectedBytes: Int64, handler: @escaping @Sendable (OPNUpdateDownloadProgress) -> Void) {
-            self.fallbackExpectedBytes = fallbackExpectedBytes
-            self.handler = handler
-        }
-
-        func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-            let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : fallbackExpectedBytes
-            handler(OPNUpdateDownloadProgress(receivedBytes: totalBytesWritten, expectedBytes: expected))
-        }
-
-        func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
     }
 
     private func stageAndLaunchInstaller(downloadedArchiveURL: URL, release: OPNGitHubRelease, currentBundleURL: URL) throws -> Bool {
         let fileManager = FileManager.default
         let stagingURL = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        do {
+            return try performStagedInstall(downloadedArchiveURL: downloadedArchiveURL, release: release, currentBundleURL: currentBundleURL, stagingURL: stagingURL)
+        } catch {
+            try? fileManager.removeItem(at: stagingURL)
+            throw error
+        }
+    }
+
+    private func performStagedInstall(downloadedArchiveURL: URL, release: OPNGitHubRelease, currentBundleURL: URL, stagingURL: URL) throws -> Bool {
+        let fileManager = FileManager.default
         let archiveCopyURL = stagingURL.appendingPathComponent(release.assetName, isDirectory: false)
         let extractURL = stagingURL.appendingPathComponent("extracted", isDirectory: true)
 
@@ -236,12 +241,13 @@ actor OPNGitHubUpdater {
         try fileManager.copyItem(at: downloadedArchiveURL, to: archiveCopyURL)
         logInfo("Staging update archive version=\(release.version) asset=\(release.assetName)")
 
-        let extractProcess = Process()
-        extractProcess.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        extractProcess.arguments = ["-x", "-k", archiveCopyURL.path, extractURL.path]
-        try extractProcess.run()
-        extractProcess.waitUntilExit()
-        guard extractProcess.terminationStatus == 0 else {
+        guard let layout = OPNUpdateArchiveInspector.layout(at: archiveCopyURL) else {
+            throw UpdateError.extractionFailed
+        }
+        if let violation = OPNUpdateArchiveInspector.violationDescription(for: layout) {
+            throw UpdateError.validationFailed(violation)
+        }
+        guard OPNUpdateArchiveInspector.extract(at: archiveCopyURL, into: extractURL) else {
             throw UpdateError.extractionFailed
         }
 
@@ -472,5 +478,139 @@ actor OPNGitHubUpdater {
 
     private func shellQuoted(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
+    }
+}
+
+/// Archive safety limits and the process helpers that enforce them. Kept at file scope so the
+/// updater actor body stays inside the project size budget.
+private enum OPNUpdateArchiveInspector {
+    /// A release archive is the signed .app plus little overhead; anything larger is rejected before
+    /// it reaches disk so a hostile asset cannot exhaust the volume.
+    static let maximumArchiveByteCount: Int64 = 512 * 1024 * 1024
+    /// A legitimate archive holds one bundle tree; these ceilings reject a zip bomb before `ditto`
+    /// expands it.
+    static let maximumArchiveEntryCount = 20_000
+    static let maximumExpandedByteCount: Int64 = 2 * 1024 * 1024 * 1024
+    /// A stalled `ditto` must not pin the installer forever.
+    static let extractionTimeout: TimeInterval = 120
+
+    static func byteCount(at url: URL) -> Int64? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path) else { return nil }
+        return (attributes[.size] as? NSNumber)?.int64Value
+    }
+
+    /// Reads the zip central directory without expanding it. `unzip -l` ends with an
+    /// `N bytes  M files` summary whose last three fields are expanded size, entry count, and unit.
+    static func layout(at archiveURL: URL) -> (entryCount: Int, expandedByteCount: Int64)? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = ["-l", archiveURL.path]
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        // Discarded rather than merged: unzip writes diagnostics to stderr, and those must not land in
+        // the listing buffer that is parsed below.
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        // Drain while the child runs: a real bundle's listing overflows the pipe buffer and reading
+        // after `waitUntilExit()` would deadlock. The read is capped to bound memory.
+        let handle = outputPipe.fileHandleForReading
+        let maximumListingBytes = 8 * 1024 * 1024
+        var outputData = Data()
+        while let chunk = try? handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+            outputData.append(chunk)
+            guard outputData.count <= maximumListingBytes else {
+                process.terminate()
+                process.waitUntilExit()
+                return nil
+            }
+        }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        guard let output = String(data: outputData, encoding: .utf8),
+              let summaryLine = output.split(whereSeparator: \.isNewline).last(where: { $0.hasSuffix(" files") || $0.hasSuffix(" file") }) else {
+            return nil
+        }
+        let fields = summaryLine.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        guard fields.count >= 3,
+              let expandedByteCount = Int64(fields[fields.count - 3]),
+              let entryCount = Int(fields[fields.count - 2]) else {
+            return nil
+        }
+        return (entryCount: entryCount, expandedByteCount: expandedByteCount)
+    }
+
+    static func violationDescription(for layout: (entryCount: Int, expandedByteCount: Int64)) -> String? {
+        if layout.entryCount > maximumArchiveEntryCount {
+            return "The update archive held \(layout.entryCount) entries, above the \(maximumArchiveEntryCount)-entry limit."
+        }
+        if layout.expandedByteCount > maximumExpandedByteCount {
+            return "The update archive expands to \(layout.expandedByteCount) bytes, above the \(maximumExpandedByteCount)-byte limit."
+        }
+        return nil
+    }
+
+    static func extract(at archiveURL: URL, into destinationURL: URL) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        process.arguments = ["-x", "-k", archiveURL.path, destinationURL.path]
+        let finished = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in finished.signal() }
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        if finished.wait(timeout: .now() + extractionTimeout) == .timedOut {
+            process.terminate()
+            return false
+        }
+        return process.terminationStatus == 0
+    }
+}
+
+/// Per-task delegate that forwards byte-count callbacks for the progress bar while enforcing the cap.
+private final class OPNUpdateDownloadProgressObserver: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let fallbackExpectedBytes: Int64
+    private let maximumByteCount: Int64
+    private let handler: @Sendable (OPNUpdateDownloadProgress) -> Void
+    private let limitState = NSLock()
+    private var isLimitExceeded = false
+
+    var isByteLimitExceeded: Bool {
+        limitState.lock()
+        defer { limitState.unlock() }
+        return isLimitExceeded
+    }
+
+    init(fallbackExpectedBytes: Int64, maximumByteCount: Int64, handler: @escaping @Sendable (OPNUpdateDownloadProgress) -> Void) {
+        self.fallbackExpectedBytes = fallbackExpectedBytes
+        self.maximumByteCount = maximumByteCount
+        self.handler = handler
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        if totalBytesExpectedToWrite > maximumByteCount {
+            markLimitExceeded(on: downloadTask)
+            return
+        }
+        if totalBytesWritten > maximumByteCount {
+            markLimitExceeded(on: downloadTask)
+            return
+        }
+        let expected = totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : fallbackExpectedBytes
+        handler(OPNUpdateDownloadProgress(receivedBytes: totalBytesWritten, expectedBytes: expected))
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
+
+    private func markLimitExceeded(on downloadTask: URLSessionDownloadTask) {
+        limitState.lock()
+        isLimitExceeded = true
+        limitState.unlock()
+        downloadTask.cancel()
     }
 }

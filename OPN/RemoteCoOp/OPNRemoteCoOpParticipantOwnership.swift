@@ -5,6 +5,9 @@ public enum OPNRemoteCoOpTransportKind: String, Codable, Equatable, Sendable {
     case embedded
     case native
     case hosted
+    /// The WebTransport media/control transport a browser guest rides. Distinct from `embedded` so a
+    /// handle on one never matches a handle on the other even if a connection identifier collided.
+    case browser
 }
 
 /// An opaque handle identifying a signaling connection across all three transports. The connection

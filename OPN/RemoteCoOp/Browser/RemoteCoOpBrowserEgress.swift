@@ -26,6 +26,9 @@ public protocol OPNRemoteCoOpBrowserEgressHost: Sendable {
     /// The guest's session ended. Returns the neutral input the host must deliver, exactly as the
     /// native and WebSocket guests get when their socket drops.
     func browserGuestDidDisconnect(participantID: UUID) async -> [UserInputEvent]
+    /// The shared ownership table every transport consults, so a browser guest cannot adopt a
+    /// participant another connection owns.
+    var participantOwnership: OPNRemoteCoOpParticipantOwnership { get }
 }
 
 /// Host side of the browser Remote Co-Op egress.
@@ -66,7 +69,9 @@ public final class RemoteCoOpBrowserEgress: @unchecked Sendable {
     private let lock = NSLock()
     private var server: WebTransportServer?
     private var sessionTask: Task<Void, Never>?
-    private var sessions: [UInt64: RemoteCoOpBrowserSession] = [:]
+    /// Keyed by a locally generated identifier: a WebTransport session ID is unique only per
+    /// connection, so two connections could otherwise displace each other's media fanout.
+    private var sessions: [UUID: RemoteCoOpBrowserSession] = [:]
     private var isRunning = false
 
     public private(set) var boundPort: UInt16 = 0
@@ -197,7 +202,9 @@ public final class RemoteCoOpBrowserEgress: @unchecked Sendable {
 
     private func accept(_ session: WebTransportSession) async {
         let sessionID = await session.sessionID
+        let identifier = UUID()
         let browserSession = RemoteCoOpBrowserSession(
+            identifier: identifier,
             sessionID: sessionID,
             transport: session,
             host: host,
@@ -205,15 +212,15 @@ public final class RemoteCoOpBrowserEgress: @unchecked Sendable {
             onParticipantsChanged: { [weak self] in await self?.onParticipantsChanged?() },
             onNeutralInput: { [weak self] events in await self?.onNeutralInput?(events) },
             onGuestJoined: { [weak self] in self?.onGuestJoined?() },
-            onClosed: { [weak self] id in self?.remove(sessionID: id) }
+            onClosed: { [weak self] identifier in self?.remove(identifier: identifier) }
         )
-        lock.withLock { sessions[sessionID] = browserSession }
+        lock.withLock { sessions[identifier] = browserSession }
         browserSession.start()
         onState?("A browser guest connected.")
     }
 
-    private func remove(sessionID: UInt64) {
-        lock.withLock { sessions[sessionID] = nil }
+    private func remove(identifier: UUID) {
+        lock.withLock { sessions[identifier] = nil }
         onState?("A browser guest disconnected.")
     }
 
@@ -227,6 +234,9 @@ public final class RemoteCoOpBrowserEgress: @unchecked Sendable {
 final class RemoteCoOpBrowserSession: @unchecked Sendable {
     private static let frameRate = 60
 
+    /// The egress's dictionary key. Locally generated so it cannot collide with another HTTP/3
+    /// connection's WebTransport session ID.
+    let identifier: UUID
     let sessionID: UInt64
 
     private let transport: WebTransportSession
@@ -235,7 +245,7 @@ final class RemoteCoOpBrowserSession: @unchecked Sendable {
     private let onParticipantsChanged: @Sendable () async -> Void
     private let onNeutralInput: @Sendable ([UserInputEvent]) async -> Void
     private let onGuestJoined: @Sendable () -> Void
-    private let onClosed: @Sendable (UInt64) -> Void
+    private let onClosed: @Sendable (UUID) -> Void
 
     private let lock = NSLock()
     private var participant: OPNRemoteCoOpParticipant?
@@ -269,14 +279,16 @@ final class RemoteCoOpBrowserSession: @unchecked Sendable {
 
     private static let mediaHeaderBytes = 14
 
-    init(sessionID: UInt64,
+    init(identifier: UUID,
+         sessionID: UInt64,
          transport: WebTransportSession,
          host: OPNRemoteCoOpBrowserEgressHost,
          log: @escaping @Sendable (String) -> Void,
          onParticipantsChanged: @escaping @Sendable () async -> Void,
          onNeutralInput: @escaping @Sendable ([UserInputEvent]) async -> Void,
          onGuestJoined: @escaping @Sendable () -> Void,
-         onClosed: @escaping @Sendable (UInt64) -> Void) {
+         onClosed: @escaping @Sendable (UUID) -> Void) {
+        self.identifier = identifier
         self.sessionID = sessionID
         self.transport = transport
         self.host = host
@@ -285,6 +297,12 @@ final class RemoteCoOpBrowserSession: @unchecked Sendable {
         self.onNeutralInput = onNeutralInput
         self.onGuestJoined = onGuestJoined
         self.onClosed = onClosed
+    }
+
+    /// This session's binding in the shared ownership table, the same handle shape every other
+    /// transport uses.
+    private var connectionHandle: OPNRemoteCoOpConnectionHandle {
+        OPNRemoteCoOpConnectionHandle(transport: .browser, connectionID: identifier.uuidString)
     }
 
     func start() {
@@ -332,7 +350,10 @@ final class RemoteCoOpBrowserSession: @unchecked Sendable {
             return (participant?.id, true)
         }
         guard didClose else { return }
-        onClosed(sessionID)
+        // Release the binding with the socket, exactly as the socket transports do, so the guest can
+        // reclaim its identity on reconnect and no stale claim blocks it.
+        host.participantOwnership.release(connectionHandle)
+        onClosed(identifier)
         guard let participantID else { return }
         Task { [host, onNeutralInput, onParticipantsChanged] in
             let neutral = await host.browserGuestDidDisconnect(participantID: participantID)
@@ -375,9 +396,15 @@ final class RemoteCoOpBrowserSession: @unchecked Sendable {
                 return
             }
             if data.isEmpty { return }
-            let messages = lock.withLock { () -> [RemoteCoOpBrowserControlMessage] in
+            let (messages, isOverflowing) = lock.withLock { () -> ([RemoteCoOpBrowserControlMessage], Bool) in
                 controlBuffer.append(data)
-                return RemoteCoOpBrowserControlCodec.decode(from: &controlBuffer)
+                let decoded = RemoteCoOpBrowserControlCodec.decode(from: &controlBuffer)
+                return (decoded, RemoteCoOpBrowserControlCodec.isHoldingOversizedUnterminatedMessage(in: controlBuffer))
+            }
+            guard !isOverflowing else {
+                log("control stream exceeded the message ceiling")
+                close()
+                return
             }
             for message in messages { await handle(message) }
         }
@@ -385,10 +412,33 @@ final class RemoteCoOpBrowserSession: @unchecked Sendable {
 
     private func handle(_ message: RemoteCoOpBrowserControlMessage) async {
         guard message.kind == .join, let token = message.token, !token.isEmpty else { return }
+        let handle = connectionHandle
+        // Same ownership gate the other transports use; the ID is resolved here so the claim precedes
+        // registration. The invite signature is still verified later, by `registerGuest`.
+        let resolvedID = message.participantID ?? UUID()
+        let join = OPNRemoteCoOpWireMessage(kind: .guestJoinRequested,
+                                            participantID: resolvedID,
+                                            inviteToken: token,
+                                            displayName: message.displayName ?? "Guest",
+                                            reconnectToken: message.reconnectToken)
+        switch OPNRemoteCoOpGuestMessageGate.decide(message: join,
+                                                    connection: handle,
+                                                    registry: host.participantOwnership) {
+        case .ignore:
+            return
+        case .dropConnection(let reason):
+            log("refused a browser join that \(reason)")
+            close()
+            return
+        case .claimThenDeliver(let participantID):
+            host.participantOwnership.claim(participantID: participantID, for: handle)
+        case .deliver:
+            break
+        }
         do {
             let participant = try await host.browserGuestDidRequestJoin(token: token,
                                                                         displayName: message.displayName ?? "Guest",
-                                                                        participantID: message.participantID,
+                                                                        participantID: resolvedID,
                                                                         reconnectToken: message.reconnectToken)
             let stream = lock.withLock { () -> WebTransportStream? in
                 self.participant = participant
@@ -403,6 +453,9 @@ final class RemoteCoOpBrowserSession: @unchecked Sendable {
             log("joined displayName=\(participant.displayName) state=\(participant.connectionState.rawValue) inputEnabled=\(participant.inputEnabled)")
             await onParticipantsChanged()
         } catch {
+            // The claim was made before registering; a failed registration must release it or a
+            // retry with the same identity would be refused as a second claim.
+            host.participantOwnership.release(handle)
             guard let stream = lock.withLock({ controlStream }) else { return }
             try? await stream.write(RemoteCoOpBrowserControlCodec.encode(.error(error.localizedDescription)))
         }

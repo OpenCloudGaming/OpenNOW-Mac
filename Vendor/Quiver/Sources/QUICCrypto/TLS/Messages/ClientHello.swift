@@ -114,6 +114,11 @@ public struct ClientHello: Sendable {
 
         // legacy_session_id
         let legacySessionID = try reader.readVector8()
+        // A network-supplied ClientHello is untrusted, and the initializer below traps on an
+        // oversized value. Reject it as a protocol error instead of reaching that trap.
+        guard legacySessionID.count <= TLSConstants.sessionIDMaxLength else {
+            throw TLSDecodeError.invalidFormat("Legacy session ID exceeds \(TLSConstants.sessionIDMaxLength) bytes")
+        }
 
         // cipher_suites
         let cipherSuiteData = try reader.readVector16()

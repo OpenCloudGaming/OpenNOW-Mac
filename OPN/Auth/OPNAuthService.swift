@@ -48,6 +48,10 @@ public final class OPNAuthService: @unchecked Sendable {
     let starfleetService: StarfleetService<StarfleetURLSessionTransport>
     let deviceFlowStarfleetService: StarfleetService<StarfleetURLSessionTransport>
     private let statusObservationTask: Task<Void, Never>
+    /// Bumped on cancel or sign-out. An in-flight request captures it and refuses to persist once it
+    /// no longer matches, so a late completion cannot resurrect the account.
+    private let authenticationGenerationLock = NSLock()
+    private var authenticationGeneration = 0
 
     private init() {
         let jarvisService = JarvisAuthService(
@@ -172,6 +176,7 @@ public final class OPNAuthService: @unchecked Sendable {
         let selectedProviderIdpId = providerIdpId.isEmpty ? Self.defaultIdpId : providerIdpId
         let deviceId = generateOPNDeviceId()
         let displayName = Host.current().localizedName ?? "OpenNOW Mac"
+        let generation = currentAuthenticationGeneration()
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -185,6 +190,11 @@ public final class OPNAuthService: @unchecked Sendable {
                     }
                 }
                 let session = Self.opnSession(from: try await self.deviceFlowStarfleetService.pollDeviceAuthorization(deviceCode: response.deviceCode, interval: challenge.interval, timeout: max(1, response.expiresAt.timeIntervalSinceNow)))
+                guard self.isCurrentAuthenticationGeneration(generation) else {
+                    _ = await self.jarvisAuthService.finishLogin(success: false)
+                    Task { @MainActor in completion(false, OPNAuthSession(), "Sign-in was cancelled.") }
+                    return
+                }
                 await self.jarvisAuthService.setSession(session)
                 self.saveSession(session)
                 _ = await self.jarvisAuthService.finishLogin(success: true)
@@ -204,11 +214,16 @@ public final class OPNAuthService: @unchecked Sendable {
             return
         }
 
+        let generation = currentAuthenticationGeneration()
         Task { [weak self] in
             guard let self else { return }
             await self.syncBackendSessions(session)
             do {
                 let refreshed = Self.opnSession(from: try await self.starfleetService.refreshSession(force: forceRefresh || !session.isIdTokenValid))
+                guard self.isCurrentAuthenticationGeneration(generation) else {
+                    Task { @MainActor in completion(false, OPNAuthSession(), "Sign-in was cancelled.") }
+                    return
+                }
                 await self.jarvisAuthService.setSession(refreshed)
                 self.saveSession(refreshed)
                 Task { @MainActor in completion(true, refreshed, "") }
@@ -315,6 +330,26 @@ public final class OPNAuthService: @unchecked Sendable {
         defaults.set(uuid, forKey: key)
         cachedUUID = uuid
         return uuid
+    }
+
+    /// Invalidates every authentication request already in flight, so one that completes after a
+    /// cancellation or sign-out is discarded instead of persisting credentials.
+    func invalidatePendingAuthentication() {
+        authenticationGenerationLock.lock()
+        authenticationGeneration += 1
+        authenticationGenerationLock.unlock()
+    }
+
+    /// Snapshots the current generation for a request about to start.
+    func currentAuthenticationGeneration() -> Int {
+        authenticationGenerationLock.lock()
+        defer { authenticationGenerationLock.unlock() }
+        return authenticationGeneration
+    }
+
+    /// Whether a request that captured `generation` is still the current one.
+    func isCurrentAuthenticationGeneration(_ generation: Int) -> Bool {
+        currentAuthenticationGeneration() == generation
     }
 
     func saveSession(_ session: OPNAuthSession) {

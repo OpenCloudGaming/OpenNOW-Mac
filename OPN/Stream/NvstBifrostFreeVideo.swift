@@ -37,7 +37,6 @@ extension NvstBifrostFreeTransport {
         // either way): the start-up burst is the first keyframe's own decode (50–76 ms) and the
         // seat's opening frame burst, not session creation. Removed; the explicit first-keyframe
         // gate it needed stays in the decoder.
-        let nativeBroadcaster = remoteCoOpNativeBroadcaster
         let browserEgress = remoteCoOpBrowserEgress
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             screenshotCapture.deliver(pixelBuffer)

@@ -174,6 +174,11 @@ public final class OPNRemoteCoOpCompressedVideoFragmenter: @unchecked Sendable {
 /// Guest side: reassembles datagrams into access units, in order, dropping anything a loss made
 /// unusable rather than waiting on it forever.
 public final class OPNRemoteCoOpCompressedVideoReassembler: @unchecked Sendable {
+    /// Receiver-side ceilings, so a peer cannot declare near-maximum fragments and retain gigabytes.
+    public static let maximumFragmentPayload = OPNRemoteCoOpCompressedVideoPacket.maximumFragmentPayload
+    public static let maximumFragmentsPerFrame = 16_384
+    public static let maximumFramePayloadBytes = 16 * 1024 * 1024
+
     public struct Counters: Equatable, Sendable {
         public var datagrams: UInt64 = 0
         public var rejected: UInt64 = 0
@@ -191,6 +196,9 @@ public final class OPNRemoteCoOpCompressedVideoReassembler: @unchecked Sendable 
         var isKeyFrame: Bool
         var fragmentCount: Int
         var received: [Int: Data]
+        /// Sum of the payloads held in `received`, kept incrementally so the aggregate byte ceiling
+        /// is enforced without re-summing the dictionary on every datagram.
+        var retainedBytes: Int
 
         init(header: OPNRemoteCoOpCompressedVideoPacket.Header) {
             sequence = header.frameSequence
@@ -201,6 +209,7 @@ public final class OPNRemoteCoOpCompressedVideoReassembler: @unchecked Sendable 
             isKeyFrame = header.isKeyFrame
             fragmentCount = Int(header.fragmentCount)
             received = [:]
+            retainedBytes = 0
         }
     }
 
@@ -233,7 +242,14 @@ public final class OPNRemoteCoOpCompressedVideoReassembler: @unchecked Sendable 
         if pending == nil { pending = Pending(header: header) }
         guard var current = pending else { return nil }
         // A repeat of a fragment already held adds nothing and must not double-count toward completion.
-        if current.received[fragmentIndex] == nil { current.received[fragmentIndex] = payload }
+        if current.received[fragmentIndex] == nil {
+            guard current.retainedBytes + payload.count <= Self.maximumFramePayloadBytes else {
+                counters.rejected += 1
+                return nil
+            }
+            current.received[fragmentIndex] = payload
+            current.retainedBytes += payload.count
+        }
         pending = current
 
         guard current.received.count == current.fragmentCount else { return nil }
@@ -255,7 +271,11 @@ public final class OPNRemoteCoOpCompressedVideoReassembler: @unchecked Sendable 
             latestSequence = nil
         }
         let fragmentCount = Int(decoded.header.fragmentCount)
-        guard fragmentCount > 0, Int(decoded.header.fragmentIndex) < fragmentCount, admitsSequence(decoded.header.frameSequence) else {
+        guard decoded.payload.count <= Self.maximumFragmentPayload,
+              fragmentCount > 0,
+              fragmentCount <= Self.maximumFragmentsPerFrame,
+              Int(decoded.header.fragmentIndex) < fragmentCount,
+              admitsSequence(decoded.header.frameSequence) else {
             counters.rejected += 1
             return nil
         }

@@ -29,6 +29,7 @@ final class RemoteCoOpNativeGuestConnection: @unchecked Sendable {
     private let host: String
     private let port: UInt16
     private let token: String
+    private let cipher: OPNRemoteCoOpNativeCipher
     private let lock = NSLock()
     private var connection: NWConnection?
     private var helloTask: Task<Void, Never>?
@@ -37,6 +38,7 @@ final class RemoteCoOpNativeGuestConnection: @unchecked Sendable {
         self.host = host
         self.port = port
         self.token = token
+        cipher = OPNRemoteCoOpNativeCipher(token: token, role: .guest)
         engine = RemoteCoOpNativeGuestMediaEngine(queue: queue)
     }
 
@@ -80,8 +82,7 @@ final class RemoteCoOpNativeGuestConnection: @unchecked Sendable {
         lock.lock()
         let connection = self.connection
         lock.unlock()
-        guard let connection else { return }
-        let datagram = OPNRemoteCoOpNativeControlPacket.input(token: token, payload: OPNRemoteCoOpInputBinaryCodec.encode(packet))
+        guard let connection, let datagram = cipher.seal(OPNRemoteCoOpNativeControlPacket.input(token: token, payload: OPNRemoteCoOpInputBinaryCodec.encode(packet))) else { return }
         connection.send(content: datagram, contentContext: .defaultMessage, isComplete: true, completion: .idempotent)
     }
 
@@ -100,14 +101,14 @@ final class RemoteCoOpNativeGuestConnection: @unchecked Sendable {
         lock.lock()
         let connection = self.connection
         lock.unlock()
-        guard let connection else { return }
-        connection.send(content: OPNRemoteCoOpNativeControlPacket.hello(token: token), contentContext: .defaultMessage, isComplete: true, completion: .idempotent)
+        guard let connection, let datagram = cipher.seal(OPNRemoteCoOpNativeControlPacket.hello(token: token)) else { return }
+        connection.send(content: datagram, contentContext: .defaultMessage, isComplete: true, completion: .idempotent)
     }
 
     private func receiveNext(on connection: NWConnection) {
         connection.receiveMessage { [weak self] data, _, _, error in
             guard let self else { return }
-            if let data, !data.isEmpty { engine.ingest(data) }
+            if let data, !data.isEmpty, let opened = cipher.open(data) { engine.ingest(opened) }
             if error == nil { receiveNext(on: connection) }
         }
     }

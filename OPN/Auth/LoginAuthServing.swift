@@ -7,6 +7,9 @@ protocol LoginAuthServing {
     /// twice — into SwiftData under the session id, and into the auth service under the profile
     /// identity — so ending it has to reach both, or a refresh token outlives the sign-out.
     func endSavedSession(userId: String, email: String)
+    /// Invalidates every authentication request already in flight, so a refresh or sign-in that
+    /// completes after a cancellation or sign-out cannot persist credentials the user discarded.
+    func invalidatePendingAuthentication()
 }
 
 extension OPNAuthService: LoginAuthServing {}

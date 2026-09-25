@@ -15,6 +15,10 @@ import QUICCore
 
 /// Loss detection for a single packet number space (RFC 9002)
 package final class LossDetector: Sendable {
+    /// Upper bound on the packet-count hint derived from an ACK frame's ranges. ACK ranges are
+    /// peer-supplied, so the derived count is clamped here and used only to size a reserve.
+    private static let maximumAckEstimate = 256
+
     private let state: Mutex<LossState>
 
     private struct LossState {
@@ -108,11 +112,17 @@ package final class LossDetector: Sendable {
         ackReceivedTime: ContinuousClock.Instant,
         rttEstimator: RTTEstimator
     ) -> LossDetectionResult {
-        // Estimate capacity based on ACK ranges to avoid reallocations
-        let estimatedAcked = min(
-            ackFrame.ackRanges.reduce(0) { $0 + Int($1.rangeLength) + 1 },
-            256
-        )
+        // Estimate capacity based on ACK ranges to avoid reallocations.
+        //
+        // The ACK ranges are attacker-controlled and may each carry a full 62-bit length, so a plain
+        // checked sum traps before the capacity cap can apply. Every addition is saturating and
+        // clamped to the cap, which also bounds the allocation this estimate feeds.
+        let estimatedAcked = ackFrame.ackRanges.reduce(0) { runningTotal, range -> Int in
+            let (rangeCount, countOverflow) = Int(clamping: range.rangeLength).addingReportingOverflow(1)
+            guard !countOverflow else { return Self.maximumAckEstimate }
+            let (sum, sumOverflow) = runningTotal.addingReportingOverflow(rangeCount)
+            return sumOverflow ? Self.maximumAckEstimate : min(sum, Self.maximumAckEstimate)
+        }
         var ackedPackets: [SentPacket] = []
         ackedPackets.reserveCapacity(estimatedAcked)
         var lostPackets: [SentPacket] = []

@@ -141,6 +141,14 @@ public final class OPNRemoteCoOpHostedSignalingSession: OPNRemoteCoOpSignalingSe
         if case .participantUpdated(let participant) = command {
             sealReconnectToken(on: &message, participantID: participant.id)
         }
+        if case .peerSignal(let participantID, let signal) = command, signal.isCarryingSecret {
+            // The channel is broadcast, so the native bearer token is sealed to its one guest or
+            // withheld rather than published in the clear.
+            guard let key = lock.withLock({ participantPublicKeys[participantID] }),
+                  let envelope = seal(signal, for: key) else { return }
+            message.peerSignal = nil
+            message.encryptedPeerSignal = envelope
+        }
         guard let text = try? OPNRemoteCoOpWireCodec.encode(message) else { return }
         channel.publish(name: OPNRemoteCoOpHostedSignalingName.host, text: text)
     }

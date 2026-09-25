@@ -15,10 +15,16 @@ extension OPNAuthService {
         providerIdpId: String,
         completion: @escaping OPNAuthCallback
     ) {
+        let generation = currentAuthenticationGeneration()
         Task { [weak self] in
             guard let self else { return }
             do {
                 let session = Self.opnSession(from: try await self.starfleetService.exchangeAuthorizationCode(authCode: authCode, redirectURI: redirectUri, codeVerifier: codeVerifier, providerIdpId: providerIdpId))
+                guard self.isCurrentAuthenticationGeneration(generation) else {
+                    _ = await self.jarvisAuthService.finishLogin(success: false)
+                    Task { @MainActor in completion(false, OPNAuthSession(), "Sign-in was cancelled.") }
+                    return
+                }
                 await self.jarvisAuthService.setSession(session)
                 self.saveSession(session)
                 _ = await self.jarvisAuthService.finishLogin(success: true)
@@ -125,6 +131,7 @@ extension OPNAuthService {
             defer { close(socketDescriptor) }
             var reuse = Int32(1)
             setsockopt(socketDescriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+            Self.suppressSIGPIPE(on: socketDescriptor)
             var address = sockaddr_in()
             address.sin_family = sa_family_t(AF_INET)
             address.sin_addr.s_addr = in_addr_t(INADDR_LOOPBACK).bigEndian
@@ -144,8 +151,14 @@ extension OPNAuthService {
                 guard Self.awaitConnection(socketDescriptor, timeout: min(deadline.timeIntervalSinceNow, 1)) else { continue }
                 let clientSocket = accept(socketDescriptor, nil, nil)
                 guard clientSocket >= 0 else { continue }
-                guard let request = Self.receiveRequest(clientSocket, timeout: receiveTimeout),
-                      let query = Self.callbackQuery(from: request),
+                Self.suppressSIGPIPE(on: clientSocket)
+                // A failed receive is dropped without a reply: writing to a reset socket raised
+                // SIGPIPE and terminated the app.
+                guard let request = Self.receiveRequest(clientSocket, timeout: receiveTimeout) else {
+                    close(clientSocket)
+                    continue
+                }
+                guard let query = Self.callbackQuery(from: request),
                       Self.isAuthorizationResponse(query, expectedState: expectedState) else {
                     Self.respond(clientSocket, status: "404 Not Found", body: "")
                     close(clientSocket)
@@ -199,6 +212,13 @@ extension OPNAuthService {
     private static func respond(_ clientSocket: Int32, status: String, body: String) {
         let response = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
         _ = response.withCString { send(clientSocket, $0, strlen($0), 0) }
+    }
+
+    /// Stops `send` to a reset socket from raising SIGPIPE, which terminates the whole process. The
+    /// callback listener accepts connections from any local process, so this is unauthenticated.
+    private static func suppressSIGPIPE(on socketDescriptor: Int32) {
+        var enabled = Int32(1)
+        setsockopt(socketDescriptor, SOL_SOCKET, SO_NOSIGPIPE, &enabled, socklen_t(MemoryLayout<Int32>.size))
     }
 
     func findAvailablePort() -> Int {

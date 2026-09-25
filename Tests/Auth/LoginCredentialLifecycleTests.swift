@@ -6,6 +6,11 @@ import Testing
 private final class RecordingLoginAuthService: LoginAuthServing, @unchecked Sendable {
     private(set) var endedSessions: [(userId: String, email: String)] = []
     private(set) var startedProviderIdpIds: [String] = []
+    private(set) var invalidationCount = 0
+
+    func invalidatePendingAuthentication() {
+        invalidationCount += 1
+    }
 
     func startOAuthLogin(providerIdpId: String, completion: @escaping OPNAuthCallback) {
         startedProviderIdpIds.append(providerIdpId)
@@ -203,4 +208,25 @@ private func makeAccount(email: String, userId: String, isActive: Bool) -> Login
     #expect(viewModel.activeSession?.accountEmail == "restore@example.com")
 
     restored?.purgeTokens()
+}
+
+/// A sign-out during an in-flight refresh must invalidate it at the service, or the late completion
+/// rewrites the credentials the user just discarded.
+@MainActor
+@Test func signingOutInvalidatesAnInFlightAuthentication() async throws {
+    let container = try ModelContainer(
+        for: LoginAccount.self, LoginSession.self, LoginDeviceRegistration.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+    )
+    let authService = RecordingLoginAuthService()
+    let viewModel = LoginViewModel(authService: authService)
+    viewModel.modelContext = container.mainContext
+
+    let active = makeAccount(email: "active@example.com", userId: "user-active", isActive: true)
+    container.mainContext.insert(active)
+    viewModel.accounts = [active]
+
+    await viewModel.signOutCurrentSession()
+
+    #expect(authService.invalidationCount >= 1)
 }

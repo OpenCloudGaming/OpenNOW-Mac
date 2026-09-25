@@ -171,6 +171,10 @@ final class LoginViewModel: ObservableObject {
     func cancelPendingLogin() {
         guard isLaunchingOAuth || isAuthenticating else { return }
         loginLaunchGeneration += 1
+        // Invalidate the in-flight request at its source too: the generation check in the completion
+        // runs after a request that may still persist credentials, so cancellation has to reach the
+        // service before that persistence.
+        authService.invalidatePendingAuthentication()
         isLaunchingOAuth = false
         isAuthenticating = false
         isRequestingDeviceCode = false

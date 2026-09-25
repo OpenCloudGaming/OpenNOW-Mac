@@ -180,6 +180,9 @@ extension LoginViewModel {
 
         isAuthenticating = true
         defer { isAuthenticating = false }
+        // Captured before the network round trips. A sign-out or cancellation during them advances
+        // this, and the restore then discards its result instead of reactivating the account.
+        let generation = loginLaunchGeneration
 
         var jarvisSession = JarvisSession(
             accessToken: storedSession.accessToken,
@@ -205,12 +208,17 @@ extension LoginViewModel {
             OPNLog.info(.auth, "Refreshing saved session account=\(account.email)")
             await jarvisAuthService.setSession(jarvisSession)
             let refreshed = try await jarvisAuthService.refreshSession(force: !jarvisSession.isIdTokenValid)
+            guard generation == loginLaunchGeneration else {
+                OPNLog.info(.auth, "Discarded a session refresh that completed after sign-out account=\(account.email)")
+                return false
+            }
             persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
             successMessage = "Session refreshed for \(account.displayName)."
             OPNLog.info(.auth, "Session refreshed account=\(account.email)")
             return true
         } catch {
             if storedSession.canContinueOffline && !storedSession.isExpired {
+                guard generation == loginLaunchGeneration else { return false }
                 markActive(accountEmail: account.email)
                 trySave()
                 refreshSignedOutAccounts()
@@ -227,6 +235,10 @@ extension LoginViewModel {
 
     func signOutAccount(_ account: LoginAccount) async {
         OPNLog.info(.auth, "Signing out account=\(account.email)")
+        // Invalidate anything already in flight before the purge below, so a refresh or restore that
+        // completes afterwards cannot recreate the account or write its tokens back.
+        loginLaunchGeneration += 1
+        authService.invalidatePendingAuthentication()
         let wasActive = account.isActive
         let userId = account.userId
         let email = account.email

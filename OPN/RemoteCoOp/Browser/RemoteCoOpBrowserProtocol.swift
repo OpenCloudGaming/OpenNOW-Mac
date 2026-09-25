@@ -106,6 +106,9 @@ struct RemoteCoOpBrowserControlMessage: Codable, Equatable, Sendable {
 
 /// Newline-delimited JSON framing for the control stream.
 enum RemoteCoOpBrowserControlCodec {
+    /// The largest single control line accepted, so an unterminated line cannot grow unbounded.
+    static let maximumMessageBytes = 64 * 1024
+
     static func encode(_ message: RemoteCoOpBrowserControlMessage) -> Data {
         var data = (try? JSONEncoder().encode(message)) ?? Data()
         data.append(0x0A)
@@ -113,15 +116,22 @@ enum RemoteCoOpBrowserControlCodec {
     }
 
     /// Decodes every complete line in `buffer`, leaving a partial trailing line in place for the next
-    /// read. A single read can deliver several messages or half of one.
+    /// read. A single read can deliver several messages or half of one. A line beyond
+    /// `maximumMessageBytes` is discarded rather than parsed.
     static func decode(from buffer: inout Data) -> [RemoteCoOpBrowserControlMessage] {
         var messages: [RemoteCoOpBrowserControlMessage] = []
         while let newline = buffer.firstIndex(of: 0x0A) {
             let line = buffer[buffer.startIndex..<newline]
             buffer.removeSubrange(buffer.startIndex...newline)
-            guard !line.isEmpty, let message = try? JSONDecoder().decode(RemoteCoOpBrowserControlMessage.self, from: Data(line)) else { continue }
+            guard !line.isEmpty, line.count <= maximumMessageBytes,
+                  let message = try? JSONDecoder().decode(RemoteCoOpBrowserControlMessage.self, from: Data(line)) else { continue }
             messages.append(message)
         }
         return messages
+    }
+
+    /// Whether `buffer` holds an unterminated line past the accepted ceiling.
+    static func isHoldingOversizedUnterminatedMessage(in buffer: Data) -> Bool {
+        buffer.firstIndex(of: 0x0A) == nil && buffer.count > maximumMessageBytes
     }
 }

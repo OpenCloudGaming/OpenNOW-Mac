@@ -91,6 +91,9 @@ public struct OPNRemoteCoOpWirePeerSignal: Codable, Equatable, Sendable {
         self.sdpMLineIndex = sdpMLineIndex
         self.nativeConnection = nativeConnection
     }
+
+    /// Whether the signal carries a credential that must not be broadcast in the clear.
+    public var isCarryingSecret: Bool { nativeConnection != nil }
 }
 
 /// A hosted-transport payload sealed to one guest's ECDH public key, so the shared broadcast
@@ -147,6 +150,8 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
     public var encryptedReconnectToken: OPNRemoteCoOpWireEncryptedEnvelope?
     /// Replaces `networkConfiguration` on the hosted transport once the guest's public key is known.
     public var encryptedNetworkConfiguration: OPNRemoteCoOpWireEncryptedEnvelope?
+    /// Replaces `peerSignal` on the hosted transport when the signal carries the native bearer token.
+    public var encryptedPeerSignal: OPNRemoteCoOpWireEncryptedEnvelope?
 
     public init(kind: OPNRemoteCoOpWireMessageKind,
                 roomID: UUID? = nil,
@@ -167,6 +172,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
                 guestPublicKey: String? = nil,
                 encryptedReconnectToken: OPNRemoteCoOpWireEncryptedEnvelope? = nil,
                 encryptedNetworkConfiguration: OPNRemoteCoOpWireEncryptedEnvelope? = nil,
+                encryptedPeerSignal: OPNRemoteCoOpWireEncryptedEnvelope? = nil,
                 sentAt: Date = Date()) {
         self.protocolVersion = 1
         self.kind = kind
@@ -188,6 +194,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         self.guestPublicKey = guestPublicKey
         self.encryptedReconnectToken = encryptedReconnectToken
         self.encryptedNetworkConfiguration = encryptedNetworkConfiguration
+        self.encryptedPeerSignal = encryptedPeerSignal
         self.sentAtEpochMilliseconds = Int64((sentAt.timeIntervalSince1970 * 1_000).rounded())
     }
 
@@ -213,6 +220,7 @@ public struct OPNRemoteCoOpWireMessage: Codable, Equatable, Sendable {
         guestPublicKey = try container.decodeIfPresent(String.self, forKey: .guestPublicKey)
         encryptedReconnectToken = try container.decodeIfPresent(OPNRemoteCoOpWireEncryptedEnvelope.self, forKey: .encryptedReconnectToken)
         encryptedNetworkConfiguration = try container.decodeIfPresent(OPNRemoteCoOpWireEncryptedEnvelope.self, forKey: .encryptedNetworkConfiguration)
+        encryptedPeerSignal = try container.decodeIfPresent(OPNRemoteCoOpWireEncryptedEnvelope.self, forKey: .encryptedPeerSignal)
         sentAtEpochMilliseconds = try container.decodeIfPresent(Int64.self, forKey: .sentAtEpochMilliseconds) ?? Int64((Date().timeIntervalSince1970 * 1_000).rounded())
     }
 
