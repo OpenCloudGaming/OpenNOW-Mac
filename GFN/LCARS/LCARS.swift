@@ -5,6 +5,7 @@ public enum LCARS: Sendable {
     public static let systemName = "LCARS"
     public static let graphQLPath = "/graphql"
     public static let productionGraphQLURLString = "https://games.geforce.com/graphql"
+    public static let productionAppsGraphQLURLString = "https://apps.gxn.nvidia.com/graphql"
 }
 
 public extension LCARS {

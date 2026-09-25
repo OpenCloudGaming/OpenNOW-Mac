@@ -92,6 +92,7 @@ final class OPNGameService: @unchecked Sendable {
     var vpcId = ""
     var userId = ""
     var graphqlURL = "https://games.geforce.com/graphql"
+    var persistedGraphqlURL = LCARS.productionAppsGraphQLURLString
     var streamingBaseUrl = ""
     var providerStreamingBaseUrl = OPNGameService.defaultStreamingBaseUrl
 
@@ -123,7 +124,7 @@ final class OPNGameService: @unchecked Sendable {
 
     func postGraphQL(operationName: String, queryHash: String, variables: NSDictionary?, authenticatedHuId: Bool = false, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
         let huIdUserId = authenticatedHuId ? userId : ""
-        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: LCARSConfiguration(baseURLString: graphqlURL), userId: huIdUserId) else {
+        guard let request = LCARSRequestFactory.persistedQueryRequest(operationName: operationName, queryHash: queryHash, variables: variables, accessToken: accessToken, configuration: LCARSConfiguration(baseURLString: persistedGraphqlURL), userId: huIdUserId) else {
             dispatchGraphQL(completion, nil, "Invalid URL")
             return
         }
@@ -139,19 +140,23 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     func runGraphQLRequest(_ request: URLRequest, operationName: String, queryHash: String, variables: NSDictionary?, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
+        issueGraphQLRequest(request, operationName: operationName, queryHash: queryHash, variables: variables, retryAttempt: 0, completion: completion)
+    }
+
+    private func issueGraphQLRequest(_ request: URLRequest, operationName: String, queryHash: String, variables: NSDictionary?, retryAttempt: Int, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
         var requestWithTrace = request
         let networkStart = OPNNetworkLog.graphQLStart(&requestWithTrace, operationName: operationName, queryHash: queryHash, variables: variables)
         let tracedRequest = requestWithTrace
         OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
             var payload: NSDictionary?
             var message = ""
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             if let error {
                 message = error.localizedDescription
             } else {
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? NSDictionary
                 if statusCode != 200 || json == nil {
-                    message = "GraphQL error (\(statusCode))"
+                    message = Self.graphQLFailureMessage(statusCode: statusCode, data: data)
                 } else if let errors = json?["errors"] as? [NSDictionary], !errors.isEmpty {
                     message = errors.first?["message"] as? String ?? "GraphQL error"
                 } else if let dataPayload = json?["data"] as? NSDictionary {
@@ -161,6 +166,12 @@ final class OPNGameService: @unchecked Sendable {
                 }
             }
             OPNNetworkLog.graphQLFinish(tracedRequest, operationName: operationName, queryHash: queryHash, startedAt: networkStart, data: data, response: response, error: error, responseMessage: message)
+            if error == nil, retryAttempt == 0, queryHash != "inline", Self.isPersistedQueryNotFound(statusCode: statusCode, data: data) {
+                Self.workQueue.asyncAfter(deadline: .now() + Self.persistedQueryNotFoundRetryDelay) {
+                    self.issueGraphQLRequest(request, operationName: operationName, queryHash: queryHash, variables: variables, retryAttempt: 1, completion: completion)
+                }
+                return
+            }
             self.dispatchGraphQL(completion, payload, message)
         }.resume()
     }
@@ -195,6 +206,32 @@ final class OPNGameService: @unchecked Sendable {
 
     static func isGraphQLNotFoundError(_ error: String) -> Bool {
         error.contains("(404)") || error.contains("HTTP 404")
+    }
+
+    static let persistedQueryNotFoundRetryDelay: TimeInterval = 0.25
+
+    static func isPersistedQueryNotFound(statusCode: Int, data: Data?) -> Bool {
+        statusCode == 400 && firstGraphQLErrorCode(data: data) == "PERSISTED_QUERY_NOT_FOUND"
+    }
+
+    static func firstGraphQLErrorCode(data: Data?) -> String? {
+        guard let data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let errors = json["errors"] as? [[String: Any]] else { return nil }
+        for error in errors {
+            if let code = (error["extensions"] as? [String: Any])?["code"] as? String { return code }
+        }
+        return nil
+    }
+
+    static func graphQLFailureMessage(statusCode: Int, data: Data?) -> String {
+        guard let data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let errors = json["errors"] as? [[String: Any]],
+              let detail = errors.first?["message"] as? String, !detail.isEmpty else {
+            return "GraphQL error (\(statusCode))"
+        }
+        return "GraphQL error (\(statusCode)): \(detail)"
     }
 
     func normalizeStreamingBaseUrl(_ url: String) -> String {
