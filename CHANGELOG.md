@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.12.0...v0.13.0) (2026-09-25)
+
+
+### Features
+
+* add customizable hud ([3d2b810](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3d2b810b18c9e2b3b2a295e969fb1d36210d88d9))
+
+
+### Bug Fixes
+
+* empty favorite infinite loading ([a9fb782](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a9fb782455e8e8a23e0da5b68c2599635b18fc33))
+* patch RemoteCoOp transport, QUIC/TLS bounds, auth, and updater hardening ([ff4fc44](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/ff4fc44c8f04956bbecaa9092088e6a9f7e86678))
+
 ## [0.12.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.11.0...v0.12.0) (2026-09-25)
 
 
