@@ -18,7 +18,6 @@ own source is licensed separately under the MIT License (`LICENSE` in the source
 | Hanken Grotesk | 3.013, static instances | SIL OFL 1.1 | `Resources/Fonts/*.woff2`, bundled |
 | OpenSSL | 3.5.8 | Apache-2.0 | `Vendor/OpenSSL.xcframework`, committed (static) |
 | usrsctp | 0.9.5.0 | BSD 3-Clause | `Vendor/usrsctp.xcframework`, committed (static) |
-| ably-js | 2.28.0 | Apache-2.0 | `Resources/RemoteCoOp/browser/vendor/ably.min.js`, bundled |
 | ably-cocoa | 1.3.0 | Apache-2.0 | statically linked |
 | SocketRocket | vendored inside ably-cocoa | BSD (Facebook) | statically linked via Ably |
 | delta-codec-cocoa | 1.3.5 | Apache-2.0 | statically linked via Ably |
@@ -26,10 +25,24 @@ own source is licensed separately under the MIT License (`LICENSE` in the source
 | cpp-btree | vendored inside delta-codec-cocoa | Apache-2.0 | statically linked via Ably |
 | msgpack-objective-C | 0.4.0 | Apache-2.0 | statically linked via Ably |
 | sentry-cocoa | 9.18.0 | MIT, plus bundled third-party | `Sentry.framework`, bundled |
+| Quiver | `d3b0cdc5`, vendored & patched | MIT | `Vendor/Quiver`, committed (source) |
 | SwiftLintPlugins | 0.65.1 | MIT | build-time command plugin only; never ships |
 
 None of these components distributes a `NOTICE` file, so there is no Apache-2.0 §4(d) attribution
 text to pass through.
+
+## Quiver
+
+- Upstream: <https://github.com/hironichu/quiver>
+- Pinned commit: `d3b0cdc56b57775adebd771558245913b4a7e728` (2026-02-11)
+- License: MIT (see the appendix below and `Vendor/Quiver/LICENSE`)
+- Vendored as a slimmed **source** copy at `Vendor/Quiver`, statically linked into the app.
+
+Quiver is a pure-Swift implementation of QUIC, HTTP/3 and **WebTransport**, used for the browser
+Remote Co-Op egress. It is vendored rather than depended on because upstream declares its TLS
+provider `package`-scoped and does not expose the `QUICCrypto` target as a product, so an external
+package cannot build a TLS server. Our local change exposes `QUICCrypto` and lifts that access to
+`public`; the diff is described in `Vendor/Quiver/VENDORING.md`.
 
 ## Fonts
 
@@ -109,15 +122,6 @@ as a subdirectory, so the directory *containing* `openssl/` is on the header sea
 build systems — a framework search path alone is not enough.
 
 ## Ably
-
-### Ably JavaScript SDK (vendored for Remote Co-Op)
-
-- Version 2.28.0 (`Resources/RemoteCoOp/browser/vendor/ably.min.js`)
-- License: Apache License 2.0 (<https://www.apache.org/licenses/LICENSE-2.0>)
-- The file carries its own `@license` header naming Ably Real-time Ltd and the Apache Licence v2.0,
-  and ships in the application bundle with `Resources/RemoteCoOp/browser/vendor/README.md`, which
-  records the version and SHA-256 of what was fetched.
-- Full license text: appendix below.
 
 ### ably-cocoa
 
@@ -413,6 +417,32 @@ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
 ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+~~~
+
+### MIT License — Quiver
+
+~~~
+MIT License
+
+Copyright (c) 2024 1amageek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ~~~
 
 ### MIT License — sentry-cocoa

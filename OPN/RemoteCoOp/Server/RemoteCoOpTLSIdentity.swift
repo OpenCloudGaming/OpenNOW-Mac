@@ -70,11 +70,20 @@ enum OPNRemoteCoOpTLSIdentity {
         return try importIdentity(p12: data, passphrase: passphrase)
     }
 
+    /// The `subjectAltName` entry for a host: an IP literal has to be a SAN of type IP, because
+    /// browsers ignore a DNS entry that holds an address.
+    static func subjectAltNameEntry(for host: String) -> String {
+        let isIPv4 = host.split(separator: ".").count == 4 && host.allSatisfy { $0.isNumber || $0 == "." }
+        return isIPv4 ? "IP.1 = \(host)" : "DNS.1 = \(host)"
+    }
+
     /// Discards the stored identity so the next start mints a new one. Guests must accept the new
     /// certificate again.
     static func reset() {
         guard let directory = try? storeDirectory() else { return }
-        for name in ["server-identity.p12", "server-identity.host"] {
+        for name in ["server-identity.p12", "server-identity.host",
+                     "webtransport-cert.pem", "webtransport-key.pem",
+                     "webtransport-cert.host", "webtransport-cert.created"] {
             try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
         }
         keychainDelete(account: passphraseAccount)
@@ -112,8 +121,7 @@ enum OPNRemoteCoOpTLSIdentity {
         let p12URL = scratch.appendingPathComponent("identity.p12")
 
         // An IP literal has to be a SAN of type IP; browsers ignore a DNS entry holding an address.
-        let isIPv4 = host.split(separator: ".").count == 4 && host.allSatisfy { $0.isNumber || $0 == "." }
-        let altName = isIPv4 ? "IP.1 = \(host)" : "DNS.1 = \(host)"
+        let altName = Self.subjectAltNameEntry(for: host)
         let config = """
         [req]
         default_bits = 2048
@@ -204,7 +212,7 @@ enum OPNRemoteCoOpTLSIdentity {
     }
 
     @discardableResult
-    private static func run(_ launchPath: String, _ arguments: [String], environment: [String: String] = [:]) throws -> String {
+    static func run(_ launchPath: String, _ arguments: [String], environment: [String: String] = [:]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: launchPath)
         process.arguments = arguments

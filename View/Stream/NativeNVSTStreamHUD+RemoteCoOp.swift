@@ -163,7 +163,7 @@ extension NativeNVSTMediaStreamSurface {
             items: [
                 OPNDropdownItem(
                     id: "session-default",
-                    title: "Session Default (\(model.remoteCoOpSnapshot.preferences.qualityPreset.label))",
+                    title: "Session Default",
                     isSelected: participant.qualityPreset == nil,
                     action: { model.setRemoteCoOpParticipantQualityPreset(nil, for: participant.id) }
                 )
@@ -174,7 +174,11 @@ extension NativeNVSTMediaStreamSurface {
                     isSelected: participant.qualityPreset == preset,
                     action: { model.setRemoteCoOpParticipantQualityPreset(preset, for: participant.id) }
                 )
-            }
+            },
+            // The sidebar's right edge is the video: open into the sidebar, not over the game. Capped
+            // so the full preset list scrolls instead of running the height of the HUD.
+            visibleItemCount: 6,
+            opensLeftByDefault: true
         ) {
             HStack(spacing: 4) {
                 Text(participant.qualityPreset?.label ?? "Auto")

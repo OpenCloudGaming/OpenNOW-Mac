@@ -6,8 +6,9 @@ vendor/*
 !Vendor/OpenSSL.xcframework/**
 !Vendor/usrsctp.xcframework
 !Vendor/usrsctp.xcframework/**
-!Vendor/WebRTC.xcframework
-!Vendor/WebRTC.xcframework/**
+# Vendored source dependency (patched Quiver). Deliberately checked in; see Vendor/Quiver/VENDORING.md.
+!Vendor/Quiver
+!Vendor/Quiver/**
 third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/
@@ -129,3 +130,12 @@ docs/NVST/*
 
 # Local tooling state (Serena MCP code-navigation config)
 .serena/
+
+# Local dependency clones and throwaway spikes (never committed).
+.deps/
+spikes/
+
+# BEGIN oh-my-opencode-slim worktrees
+.slim/worktrees/
+.slim/worktrees.json
+# END oh-my-opencode-slim worktrees

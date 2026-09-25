@@ -118,6 +118,27 @@ final class NativeNVSTHostViewModel: ObservableObject {
     /// The native transport's per-session media fanout: the source video and PCM audio every native
     /// guest receives. Fed off the same decode/audio taps the recorder and replay buffer are.
     let remoteCoOpNativeBroadcaster = RemoteCoOpNativeMediaBroadcaster()
+    /// Browser Co-Op's egress: a WebTransport server that serves a WebCodecs guest, transcoding each
+    /// decoded frame to H.264 because the seat's HEVC is not decodable in a browser. Created with the
+    /// stream so the decode and audio taps can hold it, and only started while an invite is live.
+    lazy var remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress = {
+        let adapter = OPNRemoteCoOpBrowserHostAdapter(session: remoteCoOpHostSession) { [holder = inputDispatcherHolder] event in
+            // Off the main actor, exactly as the native peer controller forwards guest input: the seat
+            // no longer sees a MainActor hop per packet.
+            holder.enqueue(event)
+        }
+        let egress = RemoteCoOpBrowserEgress(host: adapter)
+        egress.onState = { message in
+            OPNStreamTelemetry.capture("nvst.remote_coop.browser_egress", level: .info, message: message)
+        }
+        egress.onParticipantsChanged = { [weak self] in
+            await self?.remoteCoOpParticipantsDidChange()
+        }
+        egress.onNeutralInput = { [weak self] events in
+            await self?.sendRemoteCoOpNeutralInput(events)
+        }
+        return egress
+    }()
     var remoteCoOpHostCoordinator: OPNRemoteCoOpHostCoordinator?
     var remoteCoOpSignalingSession: (any OPNRemoteCoOpSignalingSession)?
     var remoteCoOpPeerController: OPNRemoteCoOpHostPeerController?
@@ -355,7 +376,8 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
                 diagnosticLog.append(sanitized)
             },
-            remoteCoOpNativeBroadcaster: remoteCoOpNativeBroadcaster
+            remoteCoOpNativeBroadcaster: remoteCoOpNativeBroadcaster,
+            remoteCoOpBrowserEgress: remoteCoOpBrowserEgress
         )
         if let bifrostFree = transport as? NvstBifrostFreeTransport {
             attachSeatNotificationHandlers(bifrostFree, nativeView: nativeView)

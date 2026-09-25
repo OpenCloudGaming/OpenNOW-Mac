@@ -236,6 +236,7 @@ extension NativeNVSTHostViewModel {
                     participant = try await remoteCoOpHostSession.approveParticipant(participantID)
                 }
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+                publishRemoteCoOpBrowserParticipants()
                 // The seat must know the pad exists before the guest's first state packet, or it
                 // discards input for an unregistered device.
                 await syncRemoteCoOpGamepadTopology()
@@ -262,7 +263,9 @@ extension NativeNVSTHostViewModel {
                 // holding pressed in the game forever.
                 await sendRemoteCoOpNeutralInput(neutralEvents)
                 await remoteCoOpPeerController?.removePeer(participantID: participantID)
+                remoteCoOpBrowserEgress.remove(participantID: participantID)
                 remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+                publishRemoteCoOpBrowserParticipants()
                 await syncRemoteCoOpGamepadTopology()
                 remoteCoOpMessage = "Remote Co-Op guest removed."
                 showNativeTransientStreamMessage("Remote Co-Op guest removed")
@@ -539,11 +542,21 @@ extension NativeNVSTHostViewModel {
             credentials: OPNRemoteCoOpTURNKeyStore.load(),
             logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.relay", level: .info, message: message) }
         )
+        // The browser egress is started before the embedded server, so the page's endpoint query is
+        // answered from the first request rather than racing the listener. A failure here leaves the
+        // native and WebSocket guests working and the page reporting that browser media is unavailable.
+        do {
+            try await remoteCoOpBrowserEgress.start(host: OPNRemoteCoOpLocalAddress.advertisedHost())
+        } catch {
+            OPNStreamTelemetry.capture("nvst.remote_coop.browser_egress.failed", level: .warning,
+                                       message: "Browser Co-Op egress failed to start: \(error.localizedDescription)")
+        }
         let hosting = try await OPNRemoteCoOpHostingEndpoint.make(
             preferences: preferences,
             networkConfiguration: remoteCoOpNetworkConfiguration,
             participantOwnership: remoteCoOpHostSession.participantOwnership,
-            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) }
+            logger: { message in OPNStreamTelemetry.capture("nvst.remote_coop.server", level: .info, message: message) },
+            webTransportInfo: { [weak egress = remoteCoOpBrowserEgress] in egress?.webTransportInfo }
         )
         // Generated here rather than inside `startInvite`, because the hosted channel is named
         // after it and the host must be subscribed before the invite naming it is handed out.
@@ -585,6 +598,29 @@ extension NativeNVSTHostViewModel {
             hostedSignaling: { _, _ in hostedSignaling }
         )
         return (hosting, invite)
+    }
+
+    /// Refreshes everything that follows the participant list when a browser guest joins or leaves.
+    ///
+    /// The browser path has no signaling session, so nothing else would publish the snapshot or widen
+    /// the announced pad topology: a browser guest waiting for approval would never surface in the HUD.
+    func remoteCoOpParticipantsDidChange() async {
+        let previousSlots = remoteCoOpConnectedGuestSlots
+        let previouslyWaiting = remoteCoOpWaitingParticipantIDs
+        remoteCoOpSnapshot = await remoteCoOpHostSession.snapshot()
+        announceRemoteCoOpArrivals(previouslyWaiting: previouslyWaiting)
+        if previousSlots != remoteCoOpConnectedGuestSlots {
+            await syncRemoteCoOpGamepadTopology()
+        }
+        try? await syncRemoteCoOpPeers()
+    }
+
+    /// Pushes every participant's current state to the browser egress, so a guest learns it has been
+    /// approved, benched, or removed. A no-op for guests that are not connected over WebTransport.
+    func publishRemoteCoOpBrowserParticipants() {
+        for participant in remoteCoOpSnapshot.participants {
+            remoteCoOpBrowserEgress.update(participant)
+        }
     }
 
     var remoteCoOpWaitingParticipantIDs: Set<UUID> {
@@ -688,6 +724,7 @@ extension NativeNVSTHostViewModel {
         remoteCoOpListenTask = nil
         await remoteCoOpPeerController?.removeAll()
         remoteCoOpNativeBroadcaster.removeAll()
+        await remoteCoOpBrowserEgress.stop()
         remoteCoOpPeerController = nil
         await remoteCoOpSignalingSession?.close()
         remoteCoOpSignalingSession = nil

@@ -66,6 +66,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// from the VideoToolbox decode callback and the audio thread. It is a no-op until the host
     /// session starts it and a guest binds, so a solo session pays one uncontended lock per frame.
     nonisolated let remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster
+    /// Browser Co-Op's media egress, off the actor for the same reason: it is written from the decode
+    /// and audio threads. It transcodes only while a browser guest is connected, so a native-only
+    /// session pays nothing but a nil check per frame.
+    nonisolated let remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress?
     /// While a native guest is bound, the host asks the seat for a keyframe periodically: a guest that
     /// joins mid-stream sees only delta frames otherwise, and the seat sends no periodic IDR of its own.
     var coOpKeyframeTask: Task<Void, Never>?
@@ -281,8 +285,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 preferredAudioChannelCount: Int = 0,
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20),
-                remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster = RemoteCoOpNativeMediaBroadcaster()) {
+                remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster = RemoteCoOpNativeMediaBroadcaster(),
+                remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress? = nil) {
         self.remoteCoOpNativeBroadcaster = remoteCoOpNativeBroadcaster
+        self.remoteCoOpBrowserEgress = remoteCoOpBrowserEgress
         self.pixelBufferSink = pixelBufferSink
         self.configuredFps = configuredFps
         self.configuredMaxBitrateKbps = configuredMaxBitrateKbps

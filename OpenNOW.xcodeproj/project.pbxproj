@@ -12,6 +12,9 @@
 		A00000000000000000000003 /* OPNApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* OPNApp.swift */; };
 		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
 		A00000000000000000000404 /* Ably in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000406 /* Ably */; };
+		A00000000000000000000411 /* HTTP3 in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000412 /* HTTP3 */; };
+		A00000000000000000000413 /* QUIC in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000414 /* QUIC */; };
+		A00000000000000000000415 /* QUICCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000416 /* QUICCrypto */; };
 		D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
 		D00000000000000000000003 /* Vendor/OpenSSL.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000001 /* Vendor/OpenSSL.xcframework */; };
 		D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D00000000000000000000004 /* Vendor/usrsctp.xcframework */; };
@@ -99,6 +102,9 @@
 				D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */,
 				A00000000000000000000401 /* Sentry in Frameworks */,
 				A00000000000000000000404 /* Ably in Frameworks */,
+				A00000000000000000000411 /* HTTP3 in Frameworks */,
+				A00000000000000000000413 /* QUIC in Frameworks */,
+				A00000000000000000000415 /* QUICCrypto in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -170,6 +176,9 @@
 			packageProductDependencies = (
 				A00000000000000000000403 /* Sentry */,
 				A00000000000000000000406 /* Ably */,
+				A00000000000000000000412 /* HTTP3 */,
+				A00000000000000000000414 /* QUIC */,
+				A00000000000000000000416 /* QUICCrypto */,
 			);
 			productName = OpenNOW;
 			productReference = 7729CE762FDEDAB300D5C9D5 /* OpenNOW Dev.app */;
@@ -234,6 +243,7 @@
 			packageReferences = (
 				A00000000000000000000402 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				A00000000000000000000405 /* XCRemoteSwiftPackageReference "ably-cocoa" */,
+				A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7729CE772FDEDAB300D5C9D5 /* Products */;
@@ -612,6 +622,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/Quiver;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A00000000000000000000402 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -641,6 +658,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000405 /* XCRemoteSwiftPackageReference "ably-cocoa" */;
 			productName = Ably;
+		};
+		A00000000000000000000412 /* HTTP3 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */;
+			productName = HTTP3;
+		};
+		A00000000000000000000414 /* QUIC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */;
+			productName = QUIC;
+		};
+		A00000000000000000000416 /* QUICCrypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */;
+			productName = QUICCrypto;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

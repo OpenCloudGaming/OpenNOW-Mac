@@ -21,6 +21,9 @@ let package = Package(
         //   swift package plugin --allow-writing-to-package-directory swiftlint lint \
         //     --strict App GFN Model OPN View ViewModel Tests
         .package(url: "https://github.com/SimplyDanny/SwiftLintPlugins", from: "0.65.1"),
+        // Vendored, patched Quiver (QUIC + HTTP/3 + WebTransport) for the browser Co-Op egress.
+        // See Vendor/Quiver/VENDORING.md.
+        .package(path: "Vendor/Quiver"),
         // Hosted signaling (see RemoteCoOp/hosted-signaling-plan.md). Pinned exactly, like Sentry:
         // this carries the signaling for a live session, and an unattended minor bump is not
         // something to discover mid-stream.
@@ -37,6 +40,9 @@ let package = Package(
             dependencies: [
                 .product(name: "Sentry", package: "sentry-cocoa"),
                 .product(name: "Ably", package: "ably-cocoa"),
+                .product(name: "HTTP3", package: "Quiver"),
+                .product(name: "QUIC", package: "Quiver"),
+                .product(name: "QUICCrypto", package: "Quiver"),
                 "OpenSSL",
                 "usrsctp"
             ],

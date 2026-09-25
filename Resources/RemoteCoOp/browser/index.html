@@ -60,6 +60,7 @@
 
       <section class="session-deck hidden" id="session-card" aria-label="Active Remote Co-Op session">
         <div class="video-frame">
+          <canvas id="video-canvas" class="video-canvas hidden"></canvas>
           <div class="video-placeholder">
             <span>Waiting</span>
             <p>Host</p>
@@ -111,10 +112,15 @@
         </div>
       </section>
     </main>
-    <!-- Vendored, not CDN-loaded: this page is served over a self-signed local certificate to a
-         guest who may be on a restrictive network - the same network a CDN fetch could be blocked
-         on. See ./vendor/README.md for the version and checksum. -->
-    <script src="./vendor/ably.min.js"></script>
-    <script type="module" src="./app.js?v=hosted-signaling-20260901"></script>
+    <!-- No signaling library: a browser guest connects straight to the host over WebTransport,
+         whose certificate the page pins from the host's own origin. -->
+    <script>
+      // A module that fails to load leaves the page looking dead with nothing in the UI. Surface it.
+      window.addEventListener("error", (event) => {
+        const status = document.querySelector("#join-status");
+        if (status) status.textContent = `Page script failed: ${event.message || "unknown error"}`;
+      });
+    </script>
+    <script type="module" src="./app.js?v=webtransport-webcodecs-20260924"></script>
   </body>
 </html>

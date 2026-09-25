@@ -21,10 +21,14 @@ extension NvstBifrostFreeTransport {
         let recorder = self.recorder
         let replayBuffer = self.replayBuffer
         let nativeBroadcaster = self.remoteCoOpNativeBroadcaster
+        // The browser egress rides the same audio tap: it packetizes the same PCM the native guests
+        // get, so a browser guest hears the game without a second lossy encode.
+        let browserEgress = self.remoteCoOpBrowserEgress
         bundle.onGameAudioFrame = { audioBufferList, frameCount, sampleRate, channels in
             recorder.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             replayBuffer.appendGameAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
             nativeBroadcaster.forwardAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
+            browserEgress?.forwardAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         bundle.onPartiallyReliableControlOpen = { [weak self] in
             Task {

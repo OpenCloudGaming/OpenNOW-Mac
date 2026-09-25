@@ -37,10 +37,16 @@ extension NvstBifrostFreeTransport {
         // either way): the start-up burst is the first keyframe's own decode (50–76 ms) and the
         // seat's opening frame burst, not session creation. Removed; the explicit first-keyframe
         // gate it needed stays in the decoder.
+        let nativeBroadcaster = remoteCoOpNativeBroadcaster
+        let browserEgress = remoteCoOpBrowserEgress
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             screenshotCapture.deliver(pixelBuffer)
             recorder.appendNativePixelBuffer(pixelBuffer)
             replayBuffer.appendNativePixelBuffer(pixelBuffer)
+            // The browser guest cannot decode the seat's HEVC, so it is sent a per-guest H.264
+            // re-encode of this decoded picture. No-op while no browser guest is connected. The
+            // keyframe flag rides along so the transcode emits an IDR the guest can start from.
+            browserEgress?.forward(video: pixelBuffer, presentationTime: presentationTime, isKeyframe: isKeyframe)
             sink?(pixelBuffer, presentationTime, isKeyframe)
         }
         self.decoder = decoder
@@ -73,6 +79,12 @@ extension NvstBifrostFreeTransport {
         }
         mediaFrameContinuation = mediaContinuation
         remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in
+            Task { await self?.requestKeyframeOverControlChannel() }
+        }
+        // A browser guest cannot be sent the seat's HEVC, so its own H.264 encode starts only when it
+        // connects; pulling a keyframe the moment its media starts is what gets it a picture without
+        // waiting for the periodic request.
+        remoteCoOpBrowserEgress?.onGuestJoined = { [weak self] in
             Task { await self?.requestKeyframeOverControlChannel() }
         }
         startCoOpKeyframeRequests()
@@ -112,7 +124,7 @@ extension NvstBifrostFreeTransport {
                 try? await Task.sleep(for: .seconds(2))
                 if Task.isCancelled { return }
                 guard let self else { return }
-                guard remoteCoOpNativeBroadcaster.hasBoundGuests else { continue }
+                guard remoteCoOpNativeBroadcaster.hasBoundGuests || remoteCoOpBrowserEgress?.hasGuests == true else { continue }
                 await requestKeyframeOverControlChannel()
             }
         }
