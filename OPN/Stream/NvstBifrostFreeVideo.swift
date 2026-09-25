@@ -522,6 +522,10 @@ extension NvstBifrostFreeTransport {
         onHdrModeChanged = handler
     }
 
+    public func setSessionLimitUpdateHandler(_ handler: (@MainActor @Sendable (StreamSessionLimitUpdate) -> Void)?) {
+        onSessionLimitUpdate = handler
+    }
+
     /// Rumble from the seat. Counted here; the routing to a physical pad is the host's business.
     func handleHapticEvents(_ events: [NvstHapticEvent]) {
         hapticEventsReceived &+= UInt64(events.count)
@@ -538,6 +542,11 @@ extension NvstBifrostFreeTransport {
         }
         guard let notify = onHdrModeChanged else { return }
         Task { @MainActor in notify(notification) }
+    }
+
+    func handleSessionLimitUpdate(_ update: StreamSessionLimitUpdate) {
+        guard let notify = onSessionLimitUpdate else { return }
+        Task { @MainActor in notify(update) }
     }
 
     /// Microseconds since this session started, as the remote-input timestamps are expressed.

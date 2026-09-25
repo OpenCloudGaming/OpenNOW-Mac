@@ -36,6 +36,8 @@ public enum StreamCommand: Equatable, Sendable {
     case toggleAntiAFK
     case togglePointerCapture
     case showQuitMenu
+    /// Shows the in-stream shortcut list, so the dock footer does not have to spell every chord out.
+    case showShortcutsHelp
     /// Ends the session through the stream surface's own end path, so a menu bar action tears down
     /// exactly what the in-stream quit menu tears down.
     case endSession
@@ -43,21 +45,6 @@ public enum StreamCommand: Equatable, Sendable {
     /// alive and resumable, the same action the in-stream controls offer.
     case pauseSession
     case toggleOnScreenKeyboard
-
-    static var shortcutGuide: String {
-        let bindings = OPNKeybindings.standard
-        return [
-            "\(bindings.combo(for: .toggleUnifiedHUD).label) HUD",
-            "\(bindings.combo(for: .toggleStatsHUD).label) Stats",
-            "\(bindings.combo(for: .toggleMicrophone).label) Mic",
-            "\(bindings.combo(for: .toggleRecording).label) Rec",
-            "\(bindings.combo(for: .saveReplay).label) Replay",
-            "\(bindings.combo(for: .takeScreenshot).label) Shot",
-            "\(bindings.combo(for: .toggleAntiAFK).label) AFK",
-            "\(bindings.combo(for: .togglePointerCapture).label) Capture",
-            "\(bindings.combo(for: .showQuitMenu).label) Quit",
-        ].joined(separator: "   ")
-    }
 
     static func shortcutCommand(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> StreamCommand? {
         OPNKeybindings.standard

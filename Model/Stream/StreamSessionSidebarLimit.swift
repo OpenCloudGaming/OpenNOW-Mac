@@ -25,4 +25,16 @@ struct StreamSessionSidebarLimit: Equatable {
     func remainingSeconds(at now: Date) -> Int {
         max(0, durationSeconds - Int(now.timeIntervalSince(startedAt)))
     }
+
+    /// `M:SS` countdown for the dock header, which is the only always-visible place for it now that
+    /// the status cards are gone.
+    func remainingTimeText(at now: Date) -> String {
+        let seconds = remainingSeconds(at: now)
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    /// Under five minutes reads as a warning; the seat enforces the real limit either way.
+    func isHealthy(at now: Date) -> Bool {
+        remainingSeconds(at: now) > 300
+    }
 }

@@ -46,6 +46,9 @@ struct NativeNVSTMediaStreamSurface: View {
     /// not outlive this view, and must not be rebuilt while it is on screen.
     @StateObject var model: NativeNVSTHostViewModel
     @AppStorage(OPNInterfacePreferences.uiScaleKey) var uiScale = OPNInterfacePreferences.defaultUIScale
+    /// Internal, not private: the section stack that reads and clears these lives in the HUD files.
+    @State var hudSectionDropTarget: OPNStreamHUDSection?
+    @State var isDropTargetingSectionsEnd = false
 
     init(
         configuration: StreamLaunchConfiguration,
@@ -120,12 +123,16 @@ struct NativeNVSTMediaStreamSurface: View {
             }
             if model.onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: model.onScreenKeyboard) }
             if model.streamControlsVisible { nativeStreamControlsOverlay }
+            if model.isShortcutsHelpVisible { nativeShortcutsHelpOverlay }
+            if model.isHUDCustomizeVisible { nativeHUDCustomizeOverlay }
             if !model.networkPathAvailable && !model.streamControlsVisible { nativeNetworkRecoveryOverlay }
             if !model.transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay.allowsHitTesting(false) }
         }
         .opnMotion(OPNDesign.Motion.panel, value: model.nativeStatsVisible)
         .opnMotion(OPNDesign.Motion.panel, value: model.unifiedHUDVisible)
         .opnMotion(OPNDesign.Motion.panel, value: model.streamControlsVisible)
+        .opnMotion(OPNDesign.Motion.panel, value: model.isShortcutsHelpVisible)
+        .opnMotion(OPNDesign.Motion.panel, value: model.isHUDCustomizeVisible)
         .opnInterfaceScale(uiScale)
     }
 

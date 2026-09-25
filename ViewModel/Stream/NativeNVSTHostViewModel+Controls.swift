@@ -12,81 +12,6 @@ import Foundation
 @MainActor
 extension NativeNVSTHostViewModel {
 
-    /// In the order the HUD draws them, grouped the way it lays them out: the CONTROLS and INPUT
-    /// panels are 4-wide icon grids, everything else is a full-width row. Pad navigation reads this
-    /// list, so it has to follow the screen — it used to run mic → audio → record → pointer → …,
-    /// crossing from one panel into the next mid-row.
-    /// The replay window's focus entry exists only in Instant Replay mode: a manual-only session
-    /// has no rolling window to save, which is the same separation Steam's modes draw.
-    var replayBufferFocusEntries: [StreamHUDFocusEntry] {
-        guard isInstantReplayEnabled else { return [] }
-        return [StreamHUDFocusEntry(id: "replay", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || !isReplayBufferActive || replayBufferState.isSaving, group: "controls", columns: 4, action: saveNativeReplayClip)]
-    }
-
-    var hudFocusEntries: [StreamHUDFocusEntry] {
-        [
-            StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "controls", columns: 4, action: toggleNativeMicrophone),
-            StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "controls", columns: 4, action: toggleNativeLocalAudioMute),
-            StreamHUDFocusEntry(id: "recording", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || recordingIsBusy, group: "controls", columns: 4, action: toggleNativeRecording),
-        ]
-        + replayBufferFocusEntries
-        + [
-            StreamHUDFocusEntry(id: "screenshot", isDisabled: !sidebarCapabilities.supports(.screenshot) || !isConnected || screenshotTask != nil, group: "controls", columns: 4, action: takeNativeScreenshot),
-            StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "controls", columns: 4, action: toggleNativeStatsHUD),
-            StreamHUDFocusEntry(id: "full-screen", isDisabled: nativeView?.window == nil, group: "controls", columns: 4, action: toggleNativeFullScreen),
-            StreamHUDFocusEntry(id: "pointer", isDisabled: !isConnected, group: "input", columns: 4, action: toggleNativePointerLock),
-            StreamHUDFocusEntry(id: "cursor-policy", isDisabled: !isConnected, group: "input", columns: 4, action: cycleCursorPolicy),
-            StreamHUDFocusEntry(id: "anti-afk", isDisabled: !sidebarCapabilities.supports(.antiAFK) || !isConnected, group: "input", columns: 4, action: toggleNativeAntiAFKMouseMovement),
-            StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerMapping = true }),
-            StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showingControllerOrder = true }),
-            StreamHUDFocusEntry(id: "quit", isDisabled: false, group: "input", columns: 4, action: { [weak self] in self?.showStreamControls() }),
-            StreamHUDFocusEntry(id: "mouse-sensitivity", isDisabled: !isConnected, action: cycleNativeMouseSensitivity),
-        ]
-        // The CONTROLLERS panel, and its rumble row, only exist while a pad is connected.
-        + (controllerBatteries.isEmpty ? [] : [StreamHUDFocusEntry(id: "rumble-intensity", isDisabled: false, action: cycleRumbleIntensity)])
-        + [
-            StreamHUDFocusEntry(id: "coop-invite", isDisabled: !sidebarCapabilities.supports(.remoteCoOp) || (remoteCoOpSnapshot.invite == nil && !canStartRemoteCoOpInvite), group: "coop", columns: 4, action: { [weak self] in
-                guard let self else { return }
-                if remoteCoOpSnapshot.invite == nil { startRemoteCoOpInvite() } else { stopRemoteCoOpInvite() }
-            }),
-            StreamHUDFocusEntry(id: "coop-copy", isDisabled: remoteCoOpSnapshot.invite == nil, group: "coop", columns: 4, action: { [weak self] in self?.copyRemoteCoOpInvite() }),
-        ]
-        + remoteCoOpParticipantFocusEntries
-        + [
-            StreamHUDFocusEntry(id: "stats-detail", isDisabled: false, action: cycleNativeStatsDetail),
-            StreamHUDFocusEntry(id: "stats-position", isDisabled: false, action: cycleNativeStatsPosition),
-            StreamHUDFocusEntry(id: "upscaling-tier", isDisabled: !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTier),
-            StreamHUDFocusEntry(id: "upscaling-target", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeUpscalingTarget),
-            StreamHUDFocusEntry(id: "clarity", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeClarity),
-            StreamHUDFocusEntry(id: "noise-reduction", isDisabled: !isConnected || upscalingModeIndex == 0 || !sidebarCapabilities.supports(.videoEnhancement), action: cycleNativeNoiseReduction),
-            StreamHUDFocusEntry(id: "pillarbox-fill", isDisabled: !isConnected, action: cycleNativePillarboxFill),
-            StreamHUDFocusEntry(id: "vsync", isDisabled: !isConnected, action: cycleNativeVsyncMode),
-        ]
-    }
-
-    /// One focus entry per guest, so approving and removing are reachable from a controller.
-    ///
-    /// Approval happens mid-game, which is exactly when reaching for the trackpad is worst - and a
-    /// guest waiting for approval cannot play until someone acts. Ordered to match the rows the HUD
-    /// draws, so pad navigation follows what is on screen.
-    var remoteCoOpParticipantFocusEntries: [StreamHUDFocusEntry] {
-        guard sidebarCapabilities.supports(.remoteCoOp) else { return [] }
-        return remoteCoOpSnapshot.participants.flatMap { participant -> [StreamHUDFocusEntry] in
-            var entries: [StreamHUDFocusEntry] = []
-            // Approve and remove sit side by side on the participant's row.
-            let group = "coop-participant-\(participant.id.uuidString)"
-            if participant.connectionState == .waitingForApproval {
-                entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, group: group, columns: 2, action: { [weak self] in
-                    self?.approveRemoteCoOpParticipant(participant.id)
-                }))
-            }
-            entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, group: group, columns: 2, action: { [weak self] in
-                self?.removeRemoteCoOpParticipant(participant.id)
-            }))
-            return entries
-        }
-    }
-
     /// Single source of truth for the segmented Picker's display order and label text, and for
     /// `cycleNativeUpscalingTier`'s gamepad wrap order - previously these were two independently
     /// hardcoded `[0, 2, 3]` arrays with nothing tying them together.
@@ -424,7 +349,10 @@ extension NativeNVSTHostViewModel {
             restoreManualCaptureOnHUDHide = nativeView?.manualPointerCaptureOverride ?? false
             nativeView?.remoteInputEnabled = false
             unifiedHUDVisible = true
-            hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled })?.id
+            // Open on the first real control, skipping headers and the power button; fall back to
+            // either only when every section is folded and nothing else is reachable.
+            hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled && $0.kind == .control })?.id
+                ?? hudFocusEntries.first(where: { !$0.isDisabled })?.id
         } else {
             unifiedHUDVisible = false
             hudFocusID = nil

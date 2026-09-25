@@ -39,7 +39,14 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeHUDNetworkPanel: some View {
-        StreamHUDSection(label: "NETWORK", spacing: 8) {
+        StreamHUDSection(
+            label: OPNStreamHUDSection.network.title,
+            spacing: 8,
+            isCollapsed: model.isHUDSectionCollapsed(.network),
+            isFocused: model.isHUDSectionHeaderFocused(.network),
+            reorderPayload: OPNStreamHUDSection.network.rawValue,
+            onToggle: { model.toggleHUDSection(.network) }
+        ) {
             StreamHUDWrappingRow(minimumItemWidth: 84) {
                 StreamHUDMetricCard(title: "Health", value: nativeNetworkHealthText, isPositive: nativeNetworkHealthIsGood)
                 StreamHUDMetricCard(title: "Latency", value: nativeLatencyText, isPositive: (model.latestNativeStats?.latencyMilliseconds ?? 0) < 90)

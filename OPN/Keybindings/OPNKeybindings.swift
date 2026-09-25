@@ -36,13 +36,14 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
     case toggleAntiAFK
     case togglePointerCapture
     case showQuitMenu
+    case showShortcutsHelp
     case openSearch
 
     var id: String { rawValue }
 
     var section: KeybindingSection {
         switch self {
-        case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .saveReplay, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu:
+        case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .saveReplay, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu, .showShortcutsHelp:
             return .stream
         case .openSearch:
             return .catalog
@@ -60,6 +61,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleAntiAFK: return "Toggle Anti-AFK"
         case .togglePointerCapture: return "Release Pointer"
         case .showQuitMenu: return "Open Quit Menu"
+        case .showShortcutsHelp: return "Show Shortcuts"
         case .openSearch: return "Search Games"
         }
     }
@@ -75,6 +77,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleAntiAFK: return "Toggle the anti-AFK mouse movement."
         case .togglePointerCapture: return "Give the pointer back to the Mac while a game holds it."
         case .showQuitMenu: return "Open the in-stream quit menu."
+        case .showShortcutsHelp: return "Show the list of in-stream shortcuts."
         case .openSearch: return "Focus the search field in the games catalog."
         }
     }
@@ -90,6 +93,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleAntiAFK: return OPNKeyCombo(keyCode: 40, modifiers: .command)
         case .togglePointerCapture: return OPNKeyCombo(keyCode: 35, modifiers: .command)
         case .showQuitMenu: return OPNKeyCombo(keyCode: 12, modifiers: .command)
+        case .showShortcutsHelp: return OPNKeyCombo(keyCode: 44, modifiers: .command)
         case .openSearch: return OPNKeyCombo(keyCode: 40, modifiers: .command)
         }
     }
@@ -105,6 +109,7 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .toggleAntiAFK: return .toggleAntiAFK
         case .togglePointerCapture: return .togglePointerCapture
         case .showQuitMenu: return .showQuitMenu
+        case .showShortcutsHelp: return .showShortcutsHelp
         case .openSearch: return nil
         }
     }
@@ -167,7 +172,9 @@ struct OPNKeybindings: Sendable {
     static let standard = OPNKeybindings(storage: .standard)
     static let didChangeNotification = Notification.Name("OPNKeybindingsDidChange")
 
-    private static let keyPrefix = "OpenNOW.Keybindings."
+    /// Every binding is stored under this prefix, which the iCloud settings registry allows so the
+    /// chords travel between Macs. Shared rather than duplicated so the two cannot drift.
+    static let storageKeyPrefix = "OpenNOW.Keybindings."
 
     private let storage: OPNAppPreferenceStorage
 
@@ -234,7 +241,7 @@ struct OPNKeybindings: Sendable {
     }
 
     private static func key(for action: KeybindingAction) -> String {
-        keyPrefix + action.rawValue
+        storageKeyPrefix + action.rawValue
     }
 }
 

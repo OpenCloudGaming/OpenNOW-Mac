@@ -13,13 +13,12 @@ enum OPNCloudSyncSettingsRegistry {
         "OpenNOW.MenuBar.",
         "OpenNOW.Input.",
         "OpenNOW.Controller.",
+        OPNKeybindings.storageKeyPrefix,
     ]
 
-    /// Keys outside every prefix that still carry a preference worth syncing. Keybindings store
-    /// themselves under their action's raw value with no prefix, so they are named here.
-    static let allowedKeys: Set<String> = Set(KeybindingAction.allCases.map(\.rawValue)).union([
-        OPNUpdatePreferences.automaticUpdateChecksEnabledKey,
-    ])
+    /// Keys outside every prefix that still carry a preference worth syncing. Keybindings share the
+    /// prefix above, so they travel without being named one by one.
+    static let allowedKeys: Set<String> = [OPNUpdatePreferences.automaticUpdateChecksEnabledKey]
 
     /// Matches an allowed prefix but must stay local: secrets, runtime state, values bound to this
     /// Mac, and the catalog keys the catalog codec carries under its own file.

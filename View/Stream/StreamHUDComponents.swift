@@ -45,6 +45,9 @@ struct StreamHUDActionRow: View {
     let isActive: Bool
     let isDisabled: Bool
     var isFocused = false
+    /// Grid tiles fill their panel's width so a two- or three-tile row has no dead space on the
+    /// right. Standalone rows (Remote Co-Op's invite buttons) keep the square 42pt footprint.
+    var isWidthFlexible = false
     let action: () -> Void
     @State private var isHovering = false
 
@@ -53,7 +56,8 @@ struct StreamHUDActionRow: View {
             Image(systemName: systemName)
                 .font(.streamFont(size: 15, weight: .bold))
                 .foregroundStyle(iconColor)
-                .frame(width: 42, height: 38)
+                .frame(width: isWidthFlexible ? nil : 42, height: 38)
+                .frame(maxWidth: isWidthFlexible ? .infinity : nil)
                 .background(rowBackground)
                 .overlay {
                     Rectangle()
@@ -65,9 +69,14 @@ struct StreamHUDActionRow: View {
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.46 : 1)
         .onHover { isHovering = $0 }
+        .preference(key: StreamHUDHoveredCaptionKey.self, value: isHovering ? hoverCaption : nil)
         .accessibilityLabel(title)
         .accessibilityHint(subtitle)
         .help(subtitle.isEmpty ? title : "\(title): \(subtitle)")
+    }
+
+    private var hoverCaption: String {
+        subtitle.isEmpty ? title : "\(title) · \(subtitle)"
     }
 
     private var strokeColor: Color {
@@ -94,22 +103,49 @@ enum StreamHUDFocusDirection: Equatable {
     var linearStep: Int { self == .left || self == .up ? -1 : 1 }
 }
 
+/// What a focus entry is: a control, a section's fold header, or a dock-wide action outside any
+/// section. The last two are skipped when the HUD opens so focus starts on a real control.
+enum StreamHUDFocusEntryKind {
+    case control
+    case sectionHeader
+    case globalAction
+}
+
 struct StreamHUDFocusEntry {
+    /// One section as the assembler needs it: its identity, its fold action, and its controls.
+    struct Section {
+        let section: OPNStreamHUDSection
+        let action: () -> Void
+        let content: [StreamHUDFocusEntry]
+    }
+
     let id: String
     let isDisabled: Bool
     let action: () -> Void
     /// Entries that share a group and sit next to each other in the list form one grid of
     /// `columns` tiles per row — the HUD's 4-wide icon panels. An entry with no group is a
-    /// full-width row of its own (a slider, a dropdown, a participant row).
+    /// full-width row of its own (a slider, a dropdown, a participant row, a section header).
     var group = ""
     var columns = 1
+    var kind: StreamHUDFocusEntryKind = .control
 
-    init(id: String, isDisabled: Bool, group: String = "", columns: Int = 1, action: @escaping () -> Void) {
+    init(id: String, isDisabled: Bool, group: String = "", columns: Int = 1, kind: StreamHUDFocusEntryKind = .control, action: @escaping () -> Void) {
         self.id = id
         self.isDisabled = isDisabled
         self.group = group
         self.columns = max(1, columns)
+        self.kind = kind
         self.action = action
+    }
+
+    /// Lays the sections out as one list: each header row followed by its controls, or the header
+    /// alone when folded, so a pad can still reach it to reopen the section.
+    static func sectioned(_ sections: [Section], collapsed: Set<OPNStreamHUDSection>) -> [StreamHUDFocusEntry] {
+        sections.flatMap { section -> [StreamHUDFocusEntry] in
+            let header = StreamHUDFocusEntry(id: section.section.focusID, isDisabled: false, kind: .sectionHeader, action: section.action)
+            guard !collapsed.contains(section.section) else { return [header] }
+            return [header] + section.content
+        }
     }
 
     /// Focus only ever lands on enabled rows, so both navigation and activation
@@ -235,6 +271,15 @@ struct StreamHUDExpandedPanelKey: PreferenceKey {
     static let defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
         value = value || nextValue()
+    }
+}
+
+/// The caption of the tile the pointer is over, lifted from the tile to its section so the same line
+/// that explains a gamepad focus also explains a hover. Nil when no tile is hovered.
+struct StreamHUDHoveredCaptionKey: PreferenceKey {
+    static let defaultValue: String? = nil
+    static func reduce(value: inout String?, nextValue: () -> String?) {
+        value = value ?? nextValue()
     }
 }
 
@@ -386,135 +431,9 @@ private struct StreamHUDDropdownRow: View {
     }
 }
 
-struct StreamUnifiedSidebar<Content: View>: View {
-    let title: String
-    let closeAction: () -> Void
-    let content: Content
-
-    init(title: String, closeAction: @escaping () -> Void, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.closeAction = closeAction
-        self.content = content()
-    }
-
-    var body: some View {
-        GeometryReader { proxy in
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    // The game's name is what the dock is about, so it carries the weight; the
-                    // eyebrow above it says which panel this is, matching the stats panel's header.
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("STREAM HUD")
-                            .font(.streamFont(size: 9, weight: .bold))
-                            .tracking(1.4)
-                            .foregroundStyle(StreamHUDTheme.textTertiary)
-                        Text(title)
-                            .font(.streamFont(size: 14, weight: .bold))
-                            .foregroundStyle(StreamHUDTheme.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    Spacer(minLength: 0)
-                    Button(action: closeAction) {
-                        Image(systemName: "xmark")
-                            .font(.streamFont(size: 11, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.82))
-                            .frame(width: 28, height: 28)
-                            .background(Color.white.opacity(0.08))
-                            .overlay { Rectangle().stroke(Color.white.opacity(0.14), lineWidth: 1) }
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityLabel("Close stream HUD")
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(StreamHUDTheme.appBar)
-                Rectangle().fill(StreamHUDTheme.divider).frame(height: 1)
-                ScrollView(.vertical, showsIndicators: false) {
-                    content
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 14)
-                }
-                Rectangle().fill(StreamHUDTheme.divider).frame(height: 1)
-                Text(StreamCommand.shortcutGuide)
-                    .font(.streamFont(size: 10, weight: .bold))
-                    .tracking(0.8)
-                    .foregroundStyle(StreamHUDTheme.textTertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 9)
-            }
-            .frame(width: StreamHUDTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
-            .background(StreamHUDTheme.panel.opacity(0.985))
-            .overlay(alignment: .trailing) { Rectangle().fill(StreamHUDTheme.divider).frame(width: 1) }
-            .overlay(alignment: .top) { Rectangle().fill(StreamHUDTheme.accent).frame(height: 2) }
-            .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        }
-        .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
-    }
-}
-
-struct StreamHUDSection<Content: View>: View {
-    let label: String
-    let spacing: CGFloat
-    /// Marks a section as still settling. Sits beside the label rather than in the content so it
-    /// reads as a property of the feature, not of one control inside it.
-    let showsBetaTag: Bool
-    /// What the focused control in this section does, for a pad user reading icon-only tiles.
-    /// Drawn in the accent colour under the content; nil hides the line.
-    let caption: String?
-    let content: Content
-
-    @State private var hasExpandedPanel = false
-
-    init(label: String, spacing: CGFloat = 10, showsBetaTag: Bool = false, caption: String? = nil, @ViewBuilder content: () -> Content) {
-        self.label = label
-        self.spacing = spacing
-        self.showsBetaTag = showsBetaTag
-        self.caption = caption
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: spacing) {
-            HStack(spacing: 6) {
-                Text(label)
-                    .font(.streamFont(size: 10, weight: .bold))
-                    .tracking(1.1)
-                    .foregroundStyle(StreamHUDTheme.textTertiary)
-                if showsBetaTag { OPNBetaTag(uiScale: 1, prominent: true) }
-                Spacer(minLength: 0)
-            }
-            content
-            if let caption, !caption.isEmpty {
-                Text(caption)
-                    .font(.streamFont(size: 10, weight: .bold))
-                    .foregroundStyle(StreamHUDTheme.accentSoft)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .accessibilityHidden(true)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            Rectangle().fill(Color.white.opacity(0.055))
-            Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1)
-        }
-        .onPreferenceChange(StreamHUDExpandedPanelKey.self) { hasExpandedPanel = $0 }
-        // Above every sibling section while one of this section's dropdowns is open, so the panel
-        // is not tinted by the next section's background painting over it.
-        .zIndex(hasExpandedPanel ? 50 : 0)
-    }
-}
-
-/// Wraps HUD cards and action buttons onto extra rows instead of overflowing
-/// the dock. An `HStack` cannot compress children past their intrinsic width,
-/// so rows spilled over the dock's trailing edge once the controller battery
-/// cards joined the status row.
+/// Wraps HUD metric cards onto extra rows instead of overflowing the dock.
+/// An `HStack` cannot compress children past their intrinsic width, so a row
+/// spilled over the dock's trailing edge once it held more cards than fit.
 struct StreamHUDWrappingRow<Content: View>: View {
     private let columns: [GridItem]
     private let spacing: CGFloat

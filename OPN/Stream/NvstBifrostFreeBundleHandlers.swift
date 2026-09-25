@@ -107,5 +107,12 @@ extension NvstBifrostFreeTransport {
                 }
             }
         }
+        bundle.onSessionLimitUpdate = { [weak self] update in
+            Task {
+                await self?.withCurrentBundleGeneration(generation) { transport in
+                    transport.handleSessionLimitUpdate(update)
+                }
+            }
+        }
     }
 }

@@ -3,16 +3,8 @@ import Foundation
 import SwiftUI
 
 extension NativeNVSTMediaStreamSurface {
-    /// Fixed rows of at most 4 buttons each, rather than the grid's adaptive wrap — the wrap could
-    /// pack 5 across on a wide sidebar (as seen with all 7 buttons: 5 then a stray 2), which reads
-    /// as an uneven long row instead of a deliberate grid.
-    /// Fixed 4 columns, not an adaptive wrap - the adaptive grid could pack 5 across on a wide
-    /// sidebar (5 then a stray 2 for these 7 buttons), which reads as an uneven long row instead of
-    /// a deliberate grid.
-    static let nativeHUDControlsColumns = Array(repeating: GridItem(.fixed(42), spacing: 8), count: 4)
-
-    /// One icon tile of the CONTROLS / INPUT grids. Declared as data so the grid and the caption
-    /// under it read the same title — a pad user has no hover tooltip to learn what an icon does.
+    /// One icon tile of a HUD grid. Declared as data so the grid and the caption under it read the
+    /// same title — a pad user has no hover tooltip to learn what an icon does.
     struct NativeHUDTile: Identifiable {
         let id: String
         let title: String
@@ -23,12 +15,14 @@ extension NativeNVSTMediaStreamSurface {
         let action: () -> Void
     }
 
-    var nativeHUDControlTiles: [NativeHUDTile] {
+    var nativeHUDAudioTiles: [NativeHUDTile] {
         [
+            // The glyph shows the current state, not the action: a green tile with a slashed mic read
+            // as "muted" while the microphone was live. Green now means audio is flowing.
             NativeHUDTile(id: "microphone",
                           title: model.microphoneEnabled ? "Mute microphone" : "Unmute microphone",
                           subtitle: nativeMicrophoneStatusText,
-                          systemName: model.microphoneEnabled ? "mic.slash.fill" : "mic.fill",
+                          systemName: model.microphoneEnabled ? "mic.fill" : "mic.slash.fill",
                           isActive: model.microphoneEnabled && model.microphoneAvailable,
                           isDisabled: !model.sidebarCapabilities.supports(.microphone) || !model.microphoneAvailable || model.microphoneUpdateTask != nil,
                           action: model.toggleNativeMicrophone),
@@ -36,9 +30,14 @@ extension NativeNVSTMediaStreamSurface {
                           title: model.nativeLocalAudioMuted ? "Unmute Local Audio" : "Mute Local Audio",
                           subtitle: model.nativeLocalAudioMuted ? "Muted on this Mac" : "Playing on this Mac",
                           systemName: model.nativeLocalAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                          isActive: model.nativeLocalAudioMuted,
+                          isActive: !model.nativeLocalAudioMuted,
                           isDisabled: !model.isConnected,
                           action: model.toggleNativeLocalAudioMute),
+        ]
+    }
+
+    var nativeHUDCaptureTiles: [NativeHUDTile] {
+        [
             NativeHUDTile(id: "recording",
                           title: model.recordingCanStop ? "Stop Recording" : "Record",
                           subtitle: model.recordingStatusText,
@@ -56,6 +55,11 @@ extension NativeNVSTMediaStreamSurface {
                           isActive: false,
                           isDisabled: !model.sidebarCapabilities.supports(.screenshot) || !model.isConnected || model.screenshotTask != nil,
                           action: model.takeNativeScreenshot),
+        ]
+    }
+
+    var nativeHUDDisplayTiles: [NativeHUDTile] {
+        [
             NativeHUDTile(id: "floating-stats",
                           title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
                           subtitle: "\(model.statsDetail.title) overlay",
@@ -73,17 +77,23 @@ extension NativeNVSTMediaStreamSurface {
         ]
     }
 
-    /// The replay tile is drawn only in Instant Replay mode, the way Steam's manual mode offers no
-    /// "save the last N" action at all.
-    private var replayControlTiles: [NativeHUDTile] {
-        guard model.isInstantReplayEnabled else { return [] }
-        return [NativeHUDTile(id: "replay",
-                              title: "Save Replay",
-                              subtitle: model.replayBufferStatusText,
-                              systemName: "film.stack",
-                              isActive: model.isReplayBufferActive,
-                              isDisabled: !model.sidebarCapabilities.supports(.recording) || !model.isConnected || !model.isReplayBufferActive || model.replayBufferState.isSaving,
-                              action: model.saveNativeReplayClip)]
+    var nativeHUDControllerTiles: [NativeHUDTile] {
+        [
+            NativeHUDTile(id: "controller-mapping",
+                          title: "Controller Mapping",
+                          subtitle: "Per-controller custom bindings",
+                          systemName: "gamecontroller",
+                          isActive: false,
+                          isDisabled: false,
+                          action: { model.showingControllerMapping = true }),
+            NativeHUDTile(id: "controller-order",
+                          title: "Reorder Controllers",
+                          subtitle: "Choose Player 1–4",
+                          systemName: "arrow.up.arrow.down",
+                          isActive: false,
+                          isDisabled: false,
+                          action: { model.showingControllerOrder = true }),
+        ]
     }
 
     var nativeHUDInputTiles: [NativeHUDTile] {
@@ -109,28 +119,20 @@ extension NativeNVSTMediaStreamSurface {
                           isActive: model.antiAFKMouseMovementEnabled,
                           isDisabled: !model.sidebarCapabilities.supports(.antiAFK) || !model.isConnected,
                           action: model.toggleNativeAntiAFKMouseMovement),
-            NativeHUDTile(id: "controller-mapping",
-                          title: "Controller Mapping",
-                          subtitle: "Per-controller custom bindings",
-                          systemName: "gamecontroller",
-                          isActive: false,
-                          isDisabled: false,
-                          action: { model.showingControllerMapping = true }),
-            NativeHUDTile(id: "controller-order",
-                          title: "Reorder Controllers",
-                          subtitle: "Choose Player 1–4",
-                          systemName: "arrow.up.arrow.down",
-                          isActive: false,
-                          isDisabled: false,
-                          action: { model.showingControllerOrder = true }),
-            NativeHUDTile(id: "quit",
-                          title: "Quit Menu",
-                          subtitle: "End session",
-                          systemName: "power",
-                          isActive: false,
-                          isDisabled: false,
-                          action: { model.showStreamControls() }),
         ]
+    }
+
+    /// The replay tile is drawn only in Instant Replay mode, the way Steam's manual mode offers no
+    /// "save the last N" action at all.
+    private var replayControlTiles: [NativeHUDTile] {
+        guard model.isInstantReplayEnabled else { return [] }
+        return [NativeHUDTile(id: "replay",
+                              title: "Save Replay",
+                              subtitle: model.replayBufferStatusText,
+                              systemName: "film.stack",
+                              isActive: model.isReplayBufferActive,
+                              isDisabled: !model.sidebarCapabilities.supports(.recording) || !model.isConnected || !model.isReplayBufferActive || model.replayBufferState.isSaving,
+                              action: model.saveNativeReplayClip)]
     }
 
     /// `Title · subtitle` of the focused tile in `tiles`, or nil when focus is elsewhere.
@@ -142,8 +144,11 @@ extension NativeNVSTMediaStreamSurface {
         return extra.first(where: { $0.id == focus })?.caption
     }
 
+    /// One row per panel, with the columns equal to the panel's tile count (capped at four), so the
+    /// row fills the panel width and a short panel leaves no dead space on the right.
     func nativeHUDTileGrid(_ tiles: [NativeHUDTile]) -> some View {
-        LazyVGrid(columns: Self.nativeHUDControlsColumns, alignment: .leading, spacing: 8) {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: min(max(tiles.count, 1), 4))
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
             ForEach(tiles) { tile in
                 StreamHUDActionRow(
                     title: tile.title,
@@ -152,22 +157,69 @@ extension NativeNVSTMediaStreamSurface {
                     isActive: tile.isActive,
                     isDisabled: tile.isDisabled,
                     isFocused: model.hudFocusID == tile.id,
+                    isWidthFlexible: true,
                     action: tile.action
                 )
             }
         }
     }
 
-    var nativeHUDControlsPanel: some View {
-        let tiles = nativeHUDControlTiles
-        return StreamHUDSection(label: "CONTROLS", spacing: 8, caption: nativeHUDCaption(for: tiles)) {
+    var nativeHUDAudioPanel: some View {
+        let tiles = nativeHUDAudioTiles
+        return StreamHUDSection(
+            label: OPNStreamHUDSection.audio.title,
+            spacing: 8,
+            caption: nativeHUDCaption(for: tiles),
+            isCollapsed: model.isHUDSectionCollapsed(.audio),
+            isFocused: model.isHUDSectionHeaderFocused(.audio),
+            reorderPayload: OPNStreamHUDSection.audio.rawValue,
+            onToggle: { model.toggleHUDSection(.audio) }
+        ) {
+            nativeHUDTileGrid(tiles)
+        }
+    }
+
+    var nativeHUDCapturePanel: some View {
+        let tiles = nativeHUDCaptureTiles
+        return StreamHUDSection(
+            label: OPNStreamHUDSection.capture.title,
+            spacing: 8,
+            caption: nativeHUDCaption(for: tiles),
+            isCollapsed: model.isHUDSectionCollapsed(.capture),
+            isFocused: model.isHUDSectionHeaderFocused(.capture),
+            reorderPayload: OPNStreamHUDSection.capture.rawValue,
+            onToggle: { model.toggleHUDSection(.capture) }
+        ) {
+            nativeHUDTileGrid(tiles)
+        }
+    }
+
+    var nativeHUDDisplayPanel: some View {
+        let tiles = nativeHUDDisplayTiles
+        return StreamHUDSection(
+            label: OPNStreamHUDSection.display.title,
+            spacing: 8,
+            caption: nativeHUDCaption(for: tiles),
+            isCollapsed: model.isHUDSectionCollapsed(.display),
+            isFocused: model.isHUDSectionHeaderFocused(.display),
+            reorderPayload: OPNStreamHUDSection.display.rawValue,
+            onToggle: { model.toggleHUDSection(.display) }
+        ) {
             nativeHUDTileGrid(tiles)
         }
     }
 
     var nativeHUDInputPanel: some View {
         let tiles = nativeHUDInputTiles
-        return StreamHUDSection(label: "INPUT", spacing: 8, caption: nativeHUDCaption(for: tiles, extra: [("mouse-sensitivity", "Mouse Sensitivity · A steps +25%")])) {
+        return StreamHUDSection(
+            label: OPNStreamHUDSection.input.title,
+            spacing: 8,
+            caption: nativeHUDCaption(for: tiles, extra: [("mouse-sensitivity", "Mouse Sensitivity · A steps +25%")]),
+            isCollapsed: model.isHUDSectionCollapsed(.input),
+            isFocused: model.isHUDSectionHeaderFocused(.input),
+            reorderPayload: OPNStreamHUDSection.input.rawValue,
+            onToggle: { model.toggleHUDSection(.input) }
+        ) {
             nativeHUDTileGrid(tiles)
             StreamHUDSliderRow(
                 label: "Mouse Sensitivity %",

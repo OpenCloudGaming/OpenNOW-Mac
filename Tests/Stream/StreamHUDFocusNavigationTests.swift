@@ -77,6 +77,33 @@ struct StreamHUDFocusNavigationTests {
         #expect(StreamHUDFocusEntry.focusID(from: "gone", direction: .up, in: hud) == "mic")
     }
 
+    /// A sectioned list leads with each header, and a collapsed section contributes only its header
+    /// so it stays reachable to reopen.
+    @Test func collapsedSectionsKeepTheirHeaderOnly() {
+        let sections: [StreamHUDFocusEntry.Section] = [
+            .init(section: .audio, action: {}, content: [entry("mic", group: "audio", columns: 4), entry("audio", group: "audio", columns: 4)]),
+            .init(section: .capture, action: {}, content: [entry("rec", group: "capture", columns: 4)]),
+        ]
+        let expanded = StreamHUDFocusEntry.sectioned(sections, collapsed: [])
+        #expect(expanded.map(\.id) == [OPNStreamHUDSection.audio.focusID, "mic", "audio", OPNStreamHUDSection.capture.focusID, "rec"])
+        let collapsed = StreamHUDFocusEntry.sectioned(sections, collapsed: [.audio])
+        #expect(collapsed.map(\.id) == [OPNStreamHUDSection.audio.focusID, OPNStreamHUDSection.capture.focusID, "rec"])
+        #expect(collapsed.first?.kind == .sectionHeader)
+    }
+
+    /// Down from a header reaches its first control when open, and the next section's header when
+    /// folded — the folded content is gone from the list, so navigation cannot land in it.
+    @Test func downFollowsTheFoldedState() {
+        let sections: [StreamHUDFocusEntry.Section] = [
+            .init(section: .audio, action: {}, content: [entry("mic", group: "audio", columns: 4)]),
+            .init(section: .capture, action: {}, content: [entry("rec", group: "capture", columns: 4)]),
+        ]
+        let expanded = StreamHUDFocusEntry.sectioned(sections, collapsed: [])
+        #expect(StreamHUDFocusEntry.focusID(from: OPNStreamHUDSection.audio.focusID, direction: .down, in: expanded) == "mic")
+        let collapsed = StreamHUDFocusEntry.sectioned(sections, collapsed: [.audio])
+        #expect(StreamHUDFocusEntry.focusID(from: OPNStreamHUDSection.audio.focusID, direction: .down, in: collapsed) == OPNStreamHUDSection.capture.focusID)
+    }
+
     @Test func trackerMapsDpadAndStickToDirections() {
         let tracker = StreamHUDGamepadTracker()
         let device = InputDeviceID("pad")

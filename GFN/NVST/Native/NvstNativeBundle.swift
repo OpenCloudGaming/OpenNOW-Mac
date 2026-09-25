@@ -77,6 +77,8 @@ public final class NvstNativeBundle: @unchecked Sendable {
     public var onSeatTermination: (@Sendable (NvstSeatTermination) -> Void)?
     public var onHapticEvents: (@Sendable ([NvstHapticEvent]) -> Void)?
     public var onHdrMode: (@Sendable (NvstHdrModeNotification) -> Void)?
+    /// The seat's live session-limit timer (`0x0103`), parsed from the same JSON the vendor client reads.
+    public var onSessionLimitUpdate: (@Sendable (StreamSessionLimitUpdate) -> Void)?
     /// Decoded game audio as it reaches the speaker, before any local mute, so a recording and a
     /// Co-Op guest keep hearing the game while these speakers are silenced.
     public var onGameAudioFrame: (@Sendable (UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
@@ -503,6 +505,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
             onHdrMode?(hdrMode)
             return
         }
+        if handleSessionLimitCommand(command) { return }
         if command.code == NvstAudioSurroundInfo.commandCode {
             if let info = NvstAudioSurroundInfo.parse(command) {
                 logger?("NVST audio-surround-info \(info.summary)")

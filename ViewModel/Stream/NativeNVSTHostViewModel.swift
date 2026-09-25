@@ -56,11 +56,22 @@ final class NativeNVSTHostViewModel: ObservableObject {
     var didEnd = false
     @Published var unifiedHUDVisible = false
     @Published var streamControlsVisible = false
+    /// The in-stream shortcut list. Opened by its binding (`⌘/` by default) or the dock footer.
+    @Published var isShortcutsHelpVisible = false
     @Published var nativeStatsVisible = false
     /// The overlay's stored shape, chosen in the unified HUD: how much detail it shows and which
     /// corner it occupies. The visible toggle above is per-session; these two persist.
     @Published var statsDetail: StreamStatsDetailLevel = OPNStreamStatsHUDSettings.detailLevel
     @Published var statsPosition: StreamStatsHUDPosition = OPNStreamStatsHUDSettings.position
+    /// Which unified-HUD sections the user has folded away. Persisted globally, so a folded section
+    /// is folded again the next time any HUD opens.
+    @Published var collapsedHUDSections: Set<OPNStreamHUDSection> = OPNStreamHUDSettings.collapsedSections
+    /// The order, hidden set, and clock choice the reader customized. All persisted globally.
+    @Published var hudSectionOrder: [OPNStreamHUDSection] = OPNStreamHUDSettings.sectionOrder
+    @Published var hiddenHUDSections: Set<OPNStreamHUDSection> = OPNStreamHUDSettings.hiddenSections
+    @Published var isHUDClockVisible: Bool = OPNStreamHUDSettings.isClockVisible
+    /// The dock's layout editor. Opened from the footer; separate from the shortcut list.
+    @Published var isHUDCustomizeVisible = false
     @Published var latestNativeStats: NativeNVSTPerformanceSnapshot?
     /// The renderer's view of the same second: surface format, drawable format, EDR, drawn/received.
     @Published var latestRenderDiagnostics: OPNVideoRenderDiagnosticsSnapshot?
@@ -428,6 +439,9 @@ final class NativeNVSTHostViewModel: ObservableObject {
             await bifrostFree.setHdrModeHandler { notification in
                 guard let self, !self.didEnd else { return }
                 self.nativeHdrModeText = notification.isHDR ? (notification.mode == .trueHdr ? "true-hdr" : "hdr") : ""
+            }
+            await bifrostFree.setSessionLimitUpdateHandler { [weak self] update in
+                self?.applyNativeSessionLimitUpdate(update)
             }
         }
     }

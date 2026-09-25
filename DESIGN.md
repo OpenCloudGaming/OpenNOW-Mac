@@ -769,7 +769,22 @@ OPEN RELEASES ON GITHUB secondary action.
 ### HUD Section (`hudSection`)
 
 Section Fill background, 1px Divider stroke, 10 padding. Label is an eyebrow (10pt bold,
-tracking 1.1, Text Tertiary). Used for CONTROLS, CO-OP, STATS, VIDEO panels.
+tracking 1.1, Text Tertiary) with a trailing chevron and a `line.3.horizontal` grab handle. The
+header is a button and a gamepad focus row: activating it (or clicking) folds the content away, and
+the folded set persists under `OpenNOW.Stream.HUDCollapsedSections`. Dragging the handle reorders
+the dock, persisted under `OpenNOW.Stream.HUDSectionOrder` and animated with `Motion.panel`; the
+drop draws a 2px accent insertion line above the target. Folded, only the header is drawn, so a pad
+can always reach it to reopen. Used for SESSION, AUDIO, CAPTURE, DISPLAY, INPUT, CONTROLLERS,
+NETWORK, STATS, CO-OP, UPSCALING and STREAM panels; each panel's label comes from the section enum.
+An icon panel draws one flexible column per tile (capped at four), so the row fills the panel width
+and a two- or three-tile row leaves no dead space on the right; a panel larger than four tiles wraps
+at four. The focused or hovered tile's `Title · subtitle` line draws in accent under the content, so
+a pad and a mouse user get the same label for an icon tile.
+
+The SESSION panel reads Elapsed (`M:SS`, or `H:MM:SS` past an hour) from the connection time, and
+Remaining from the session limit with a square consumption bar (accent, warning under 15%). The
+limit starts from the session descriptor and is corrected live by the seat's `0x0103` timer, so an
+extended or shortened limit does not drift.
 
 ### Metric Card (`hudMetricCard`)
 
@@ -779,12 +794,21 @@ value toward accent.
 
 ### HUD Dock (unified stream HUD)
 
-Full-height leading dock, width `min(344, max(220, streamWidth * 0.72))`. Panel
-background @ 0.985, 1px Divider trailing edge, 2px accent bar along the top edge, App
-Bar header block, Divider-separated shortcut footer. The footer leads with a live clock
-(accent 9pt clock symbol, 11pt bold Text Primary time, monospaced digits) stacked above
-the 10pt bold shortcut hint line. Gamepad/keyboard focus moves across action rows with
-accent focus strokes.
+Full-height leading dock, width `min(344, max(268, streamWidth * 0.72))`. Panel
+background @ 0.985, 1px Divider trailing edge, 2px accent bar along the top edge. App Bar
+header block: a leading power button that opens the stream pause/end menu, the eyebrow +
+title, the remaining session-time pill (accent, warning under five minutes, monospaced
+digits), and the close button. Footer: the live clock (11pt bold monospaced digits, off
+until enabled under `OpenNOW.Stream.HUDClockVisible`), then the Customize and Shortcuts
+entries. Gamepad/keyboard focus moves across action rows and section headers with accent
+focus strokes; the power button is itself a focus row. Section content is collapsible and
+reorderable — see HUD Section.
+
+The **HUD Layout editor** (footer → Customize, `nativeHUDCustomizeOverlay`) is a centered
+square dialog: an HUD LAYOUT eyebrow over the game title, one row per section with an
+eye / eye-slash toggle, a CLOCK row, then Reset layout and Done. Hiding a section persists
+under `OpenNOW.Stream.HUDHiddenSections`; Reset restores the default order, clears the
+hidden set, and turns the clock back on.
 
 ### Stream Modal Dialog (quit menu)
 

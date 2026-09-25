@@ -7,7 +7,13 @@ import SwiftUI
 
 extension NativeNVSTMediaStreamSurface {
     var nativeHUDStatsPanel: some View {
-        StreamHUDSection(label: "STATS") {
+        StreamHUDSection(
+            label: OPNStreamHUDSection.stats.title,
+            isCollapsed: model.isHUDSectionCollapsed(.stats),
+            isFocused: model.isHUDSectionHeaderFocused(.stats),
+            reorderPayload: OPNStreamHUDSection.stats.rawValue,
+            onToggle: { model.toggleHUDSection(.stats) }
+        ) {
             StreamStatsHUDShapeControls(
                 detailLevel: model.statsDetail,
                 position: model.statsPosition,

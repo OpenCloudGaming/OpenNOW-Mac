@@ -16,7 +16,9 @@ import Testing
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Interface.Appearance"))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Stream.Fps"))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Input.ControllerMappingProfiles"))
-        #expect(OPNCloudSyncSettingsRegistry.isSyncable(KeybindingAction.takeScreenshot.rawValue))
+        // A keybinding's stored key is its prefix plus the action, not the bare raw value.
+        #expect(OPNCloudSyncSettingsRegistry.isSyncable("\(OPNKeybindings.storageKeyPrefix)\(KeybindingAction.takeScreenshot.rawValue)"))
+        #expect(!OPNCloudSyncSettingsRegistry.isSyncable(KeybindingAction.takeScreenshot.rawValue))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable(OPNUpdatePreferences.automaticUpdateChecksEnabledKey))
 
         // The Instant Replay settings travel with the stream settings, storage budget included. The

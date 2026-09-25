@@ -7,8 +7,17 @@ extension NativeNVSTMediaStreamSurface {
     @ViewBuilder
     var nativeHUDControllersPanel: some View {
         if !model.controllerBatteries.isEmpty {
-            StreamHUDSection(label: "CONTROLLERS", spacing: 6,
-                             caption: model.hudFocusID == "rumble-intensity" ? "Rumble Intensity · A steps +25%, 0 is off" : nil) {
+            let tiles = nativeHUDControllerTiles
+            StreamHUDSection(
+                label: OPNStreamHUDSection.controllers.title,
+                spacing: 6,
+                caption: nativeHUDCaption(for: tiles, extra: [("rumble-intensity", "Rumble Intensity · A steps +25%, 0 is off")]),
+                isCollapsed: model.isHUDSectionCollapsed(.controllers),
+                isFocused: model.isHUDSectionHeaderFocused(.controllers),
+                reorderPayload: OPNStreamHUDSection.controllers.rawValue,
+                onToggle: { model.toggleHUDSection(.controllers) }
+            ) {
+                nativeHUDTileGrid(nativeHUDControllerTiles)
                 ForEach(model.controllerBatteries) { battery in
                     StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, isCharging: battery.charging)
                 }

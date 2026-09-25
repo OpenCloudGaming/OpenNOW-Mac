@@ -627,6 +627,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The seat's `0x010e` HDR mode notification, for the HUD and the log.
     public internal(set) var onHdrModeChanged: (@MainActor @Sendable (NvstHdrModeNotification) -> Void)?
     public internal(set) var lastHdrMode: NvstHdrModeNotification?
+    /// The seat's live session-limit timer (`0x0103`), for the HUD's countdown. Nil until the seat
+    /// sends one; until then the countdown runs from the limit recorded at connect.
+    public internal(set) var onSessionLimitUpdate: (@MainActor @Sendable (StreamSessionLimitUpdate) -> Void)?
 }
 
 extension NvstBifrostFreeTransport {

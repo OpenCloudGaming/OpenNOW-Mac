@@ -3,19 +3,14 @@ import Foundation
 import SwiftUI
 
 extension NativeNVSTMediaStreamSurface {
-    /// Two boxes, matching how every other HUD group (MIC/REC/AFK, NETWORK) already separates
-    /// itself: one for controls you change, one for the stream's own read-only facts. Previously
-    /// this was one flat "VIDEO" box mixing both, with a static "Target" info row that duplicated
-    /// (and could visibly contradict) the "Target Resolution" control above it.
-    var nativeHUDVideoPanel: some View {
-        Group {
-            nativeHUDUpscalingPanel
-            nativeHUDStreamInfoPanel
-        }
-    }
-
     var nativeHUDUpscalingPanel: some View {
-        StreamHUDSection(label: "UPSCALING") {
+        StreamHUDSection(
+            label: OPNStreamHUDSection.upscaling.title,
+            isCollapsed: model.isHUDSectionCollapsed(.upscaling),
+            isFocused: model.isHUDSectionHeaderFocused(.upscaling),
+            reorderPayload: OPNStreamHUDSection.upscaling.rawValue,
+            onToggle: { model.toggleHUDSection(.upscaling) }
+        ) {
             VStack(alignment: .leading, spacing: 10) {
                 // Display order is independent of the stored option array's order, which stays
                 // fixed for backward compatibility.
@@ -42,7 +37,13 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeHUDStreamInfoPanel: some View {
-        StreamHUDSection(label: "STREAM") {
+        StreamHUDSection(
+            label: OPNStreamHUDSection.stream.title,
+            isCollapsed: model.isHUDSectionCollapsed(.stream),
+            isFocused: model.isHUDSectionHeaderFocused(.stream),
+            reorderPayload: OPNStreamHUDSection.stream.rawValue,
+            onToggle: { model.toggleHUDSection(.stream) }
+        ) {
             VStack(alignment: .leading, spacing: 10) {
                 StreamHUDDropdown(
                     label: "Pillarbox Fill",

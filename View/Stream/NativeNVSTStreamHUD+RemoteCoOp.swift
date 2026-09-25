@@ -4,7 +4,15 @@ import SwiftUI
 
 extension NativeNVSTMediaStreamSurface {
     var nativeHUDRemoteCoOpPanel: some View {
-        StreamHUDSection(label: "CO-OP", spacing: 8, showsBetaTag: true) {
+        StreamHUDSection(
+            label: OPNStreamHUDSection.coop.title,
+            spacing: 8,
+            showsBetaTag: true,
+            isCollapsed: model.isHUDSectionCollapsed(.coop),
+            isFocused: model.isHUDSectionHeaderFocused(.coop),
+            reorderPayload: OPNStreamHUDSection.coop.rawValue,
+            onToggle: { model.toggleHUDSection(.coop) }
+        ) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
