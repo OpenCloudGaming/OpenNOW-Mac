@@ -130,8 +130,10 @@ struct NativeNVSTMediaStreamSurface: View {
             }
             if model.onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: model.onScreenKeyboard) }
             if model.streamControlsVisible { nativeStreamControlsOverlay }
-            // PiP hides the HUD entirely; this two-action strip is what stands in for it.
-            if model.isPictureInPicture { nativePictureInPictureControls }
+            // PiP hides the HUD entirely; this two-action strip is what stands in for it. It is
+            // suppressed while the stream controls panel is up, so the panel's own buttons are the
+            // only controls on screen while it asks its question.
+            if model.isPictureInPicture && !model.streamControlsVisible { nativePictureInPictureControls }
             if model.isShortcutsHelpVisible { nativeShortcutsHelpOverlay }
             if model.isHUDCustomizeVisible { nativeHUDCustomizeOverlay }
             if !model.networkPathAvailable && !model.streamControlsVisible { nativeNetworkRecoveryOverlay }
