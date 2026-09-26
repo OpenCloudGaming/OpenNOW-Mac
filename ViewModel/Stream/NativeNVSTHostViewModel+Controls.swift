@@ -355,7 +355,7 @@ extension NativeNVSTHostViewModel {
     }
 
     func setUnifiedHUDVisible(_ visible: Bool) {
-        // Never in PiP: the dock is 344pt wide at its narrowest and the whole window is 480pt.
+        // Never in PiP: the dock is 344pt wide at its narrowest and the whole window is 640pt.
         guard isConnected, !streamControlsVisible, !isPictureInPicture else { return }
         hudGamepadTracker.reset()
         closeHUDDropdown()
@@ -454,7 +454,7 @@ extension NativeNVSTHostViewModel {
     }
 
     /// The window is small and floating from here on, so every surface anchored to the window's top
-    /// corners has to go. The dock alone is 344pt wide in a 480pt window.
+    /// corners has to go. The dock alone is 344pt wide in a 640pt window.
     private func enterPictureInPicture(_ window: OPNStreamWindow) {
         unifiedHUDVisible = false
         isShortcutsHelpVisible = false

@@ -825,9 +825,10 @@ lives in the window's content.
 `.fullScreenAuxiliary`, so it does not float over full-screen apps or into another Space's full
 screen. Its titlebar buttons are hidden and the whole window is draggable, so the small picture is
 nothing but picture; the style mask is never mutated.
-- **Size.** 480pt wide, height from the stream's aspect ratio through the same pure geometry the
-windowed stage fits its picture with (`OPNStreamStageGeometry`), placed in the bottom-trailing
-corner of the visible frame with a 20pt margin.
+- **Size.** 640pt wide — half the stream window's default width, so a 16:9 picture is 640×360 —
+height from the stream's aspect ratio through the same pure geometry the windowed stage fits its
+picture with (`OPNStreamStageGeometry`). Centred in the screen's visible frame, then clamped so a
+visible frame smaller than the picture still leaves the window on screen.
 - **Focus and pointer.** Entering the mode never activates the app and never orders the window
 front, so it cannot take focus from whatever the user moved to. It keeps ordinary key status,
 though: the picture is in the game, and a PiP window that refused key status silently stopped
@@ -847,7 +848,7 @@ rewrites a child's `collectionBehavior` to `.ignoresCycle` on attach — droppin
 `.canJoinAllSpaces`. The parent's behaviour is therefore re-applied to every child window on the
 way in and on the way out.
 - **HUD.** Suppressed entirely, not scaled: the dock alone is 344pt wide at its narrowest, in a
-480pt window. Floating stats go with it.
+640pt window. Floating stats go with it.
 - **Control strip.** Two `StreamQuitMenuButton`s — **Restore** and **End Session** — sized to their
 content and centred along the bottom edge, not a bar across the window, over a Panel background @
 0.82 with a 1px Divider stroke. Spacing follows the Spacing scale: `xSmall` inside the panel and

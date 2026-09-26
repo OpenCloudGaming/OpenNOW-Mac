@@ -24,10 +24,10 @@ import AppKit
 @MainActor
 enum OPNStreamPictureInPicture {
     /// The box a PiP picture fits inside, before the stream's own aspect ratio decides the height.
-    /// 480pt is half the stream window's default width: big enough to read a HUD or subtitles in a
-    /// 16:9 picture (480x270), small enough to sit out of the way. 320pt read as a thumbnail.
-    static let box = CGSize(width: 480, height: 480)
-    static let margin: CGFloat = 20
+    /// 640pt is half the stream window's default width, so a 16:9 picture lands at 640x360 - half
+    /// the game, which is the point of watching it while something else has the screen. 320pt read
+    /// as a thumbnail and 480pt was still small.
+    static let box = CGSize(width: 640, height: 640)
 
     /// The aspect-preserving content size of the PiP picture, from the same pure geometry the
     /// windowed stage fits its picture with - `StreamStageLayout.contentSize` delegates to the same
@@ -54,21 +54,22 @@ enum OPNStreamPictureInPicture {
         return .enter
     }
 
-    /// Bottom-trailing corner of the screen's visible frame, so the small window clears the Dock
-    /// and the menu bar.
+    /// Centre of the screen's visible frame - centred on the usable area rather than the full
+    /// frame, so the small window clears the Dock and the menu bar.
     static func frame(contentSize: CGSize, in screen: NSScreen?) -> NSRect {
         let visibleFrame = (screen ?? NSScreen.main)?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: contentSize.width + margin * 2, height: contentSize.height + margin * 2)
+            ?? NSRect(origin: .zero, size: contentSize)
         return frame(contentSize: contentSize, visibleFrame: visibleFrame)
     }
 
     /// The placement arithmetic, with the screen taken out of it so it can be asserted directly.
+    ///
+    /// Centred, then clamped so a visible frame smaller than the picture still leaves the window on
+    /// screen rather than half off an edge.
     static func frame(contentSize: CGSize, visibleFrame: NSRect) -> NSRect {
         let origin = NSPoint(
-            x: max(visibleFrame.minX, visibleFrame.maxX - contentSize.width - margin),
-            // Both clamps matter: a visible frame narrower than the margin pair, or shorter than the
-            // picture, must still leave the small window on screen rather than off its floor.
-            y: max(visibleFrame.minY, min(visibleFrame.minY + margin, visibleFrame.maxY - contentSize.height - margin))
+            x: max(visibleFrame.minX, min(visibleFrame.midX - contentSize.width / 2, visibleFrame.maxX - contentSize.width)),
+            y: max(visibleFrame.minY, min(visibleFrame.midY - contentSize.height / 2, visibleFrame.maxY - contentSize.height))
         )
         return NSRect(origin: origin, size: contentSize)
     }

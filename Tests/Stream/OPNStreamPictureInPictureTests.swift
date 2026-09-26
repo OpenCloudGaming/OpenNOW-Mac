@@ -32,30 +32,30 @@ struct OPNStreamPictureInPictureTests {
         }
     }
 
-    /// 16:9 is the ordinary case and the one the HUD's dock width was measured against: at 480pt
+    /// 16:9 is the ordinary case and the one the HUD's dock width was measured against: at 640pt
     /// wide the dock (`min(344, max(268, width * 0.72))`) is its full 344pt, most of the window,
     /// which is why PiP suppresses it rather than scaling it.
-    @Test func aSixteenByNinePictureIsFourHundredAndEightyWide() {
+    @Test func aSixteenByNinePictureIsSixHundredAndFortyWide() {
         let size = OPNStreamPictureInPicture.contentSize(aspectRatio: 16.0 / 9.0)
-        #expect(abs(size.width - 480) < 0.001)
-        #expect(abs(size.height - 270) < 0.001)
+        #expect(abs(size.width - 640) < 0.001)
+        #expect(abs(size.height - 360) < 0.001)
         #expect(StreamHUDTheme.dockWidth(for: size.width) == 344)
     }
 
-    @Test func pictureInPictureSitsInTheBottomTrailingCornerOfTheVisibleFrame() {
+    @Test func pictureInPictureOpensInTheCentreOfTheVisibleFrame() {
         let visibleFrame = NSRect(x: 0, y: 25, width: 1440, height: 875)
-        let size = CGSize(width: 480, height: 270)
+        let size = CGSize(width: 640, height: 360)
         let frame = OPNStreamPictureInPicture.frame(contentSize: size, visibleFrame: visibleFrame)
-        #expect(abs(frame.maxX - (visibleFrame.maxX - OPNStreamPictureInPicture.margin)) < 0.001)
-        #expect(abs(frame.minY - (visibleFrame.minY + OPNStreamPictureInPicture.margin)) < 0.001)
+        #expect(abs(frame.midX - visibleFrame.midX) < 0.001)
+        #expect(abs(frame.midY - visibleFrame.midY) < 0.001)
         #expect(frame.size == size)
     }
 
-    /// A visible frame narrower than the margin pair must clamp rather than place the window off
+    /// A visible frame smaller than the picture must clamp rather than place the window half off
     /// screen, the same way the full-screen geometry helpers already clamp.
     @Test func pictureInPictureStaysOnScreenInATinyVisibleFrame() {
         let visibleFrame = NSRect(x: 0, y: 0, width: 200, height: 120)
-        let size = CGSize(width: 480, height: 270)
+        let size = CGSize(width: 640, height: 360)
         let frame = OPNStreamPictureInPicture.frame(contentSize: size, visibleFrame: visibleFrame)
         #expect(frame.minX >= visibleFrame.minX)
         #expect(frame.minY >= visibleFrame.minY)
