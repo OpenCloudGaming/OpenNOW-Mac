@@ -82,6 +82,9 @@ enum OPNStreamPictureInPicture {
             frame: window.frame,
             isMiniaturized: window.isMiniaturized
         )
+        // Saved here as well as on every move: a session that ends while in PiP never puts the
+        // windowed placement back, and the next launch should still open where the stream was.
+        OPNStreamWindowFrameStore.save(window.frame, pictureInPicture: false, defaults: window.frameStoreDefaults)
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.isPictureInPicture = true
         window.level = .floating
@@ -91,11 +94,22 @@ enum OPNStreamPictureInPicture {
         // working when the stream was being played and leaves the other app alone when it was not.
         setAllSpacesMembership(onChildWindowsOf: window, isMember: true)
         OPNStreamWindowChrome.apply(to: window, isPictureInPicture: true)
-        window.setFrame(frame(contentSize: contentSize(aspectRatio: aspectRatio), in: window.screen), display: true)
+        // The remembered PiP position, at the size the stream's own aspect ratio decides - a size
+        // remembered from a different game's ratio would be the wrong shape. Centred when there is
+        // nothing to remember.
+        let contentSize = contentSize(aspectRatio: aspectRatio)
+        let target: NSRect
+        if let remembered = OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: true, defaults: window.frameStoreDefaults) {
+            target = OPNStreamWindowFrameStore.onScreen(NSRect(origin: remembered.origin, size: contentSize))
+        } else {
+            target = frame(contentSize: contentSize, in: window.screen)
+        }
+        window.setFrame(target, display: true)
     }
 
     static func exit(_ window: OPNStreamWindow) {
         guard window.isPictureInPicture else { return }
+        OPNStreamWindowFrameStore.save(window.frame, pictureInPicture: true, defaults: window.frameStoreDefaults)
         window.isPictureInPicture = false
         OPNStreamWindowChrome.apply(to: window, isPictureInPicture: false)
         guard let state = window.windowedState else {

@@ -4,6 +4,14 @@ import Testing
 
 /// Lets one main-actor turn and a run-loop slice pass, so anything the code under test only holds
 /// weakly has been released by the time the assertions run.
+/// A stream window whose remembered placement lands in its own UserDefaults suite, so running the
+/// window tests never overwrites the placement the app itself saved.
+@MainActor
+private func makeTestStreamWindow() -> (window: OPNStreamWindow, suite: String) {
+    let suite = "OpenNOWTests.StreamWindow.\(UUID().uuidString)"
+    return (OPNStreamWindowFactory.make(defaults: UserDefaults(suiteName: suite) ?? .standard), suite)
+}
+
 @MainActor
 private func settleRunLoop() async {
     try? await Task.sleep(for: .milliseconds(120))
@@ -154,8 +162,11 @@ struct OPNStreamPictureInPictureTests {
     /// the bug this pins.
     @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
     func theCloseGuardSurvivesAndTheCloseButtonOnlyAsks() async {
-        let window = OPNStreamWindowFactory.make()
-        defer { window.close() }
+        let (window, suite) = makeTestStreamWindow()
+        defer {
+            window.close()
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
         var handlerCalls = 0
         window.closeRequestHandler = { handlerCalls += 1; return true }
 
@@ -183,9 +194,12 @@ struct OPNStreamPictureInPictureTests {
     /// non-activating - then put back exactly as it was.
     @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
     func pictureInPictureIsAModeOfTheSameWindow() {
-        let window = OPNStreamWindowFactory.make()
+        let (window, suite) = makeTestStreamWindow()
         let originalFrame = window.frame
-        defer { window.close() }
+        defer {
+            window.close()
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
 
         #expect(window.collectionBehavior.contains(.fullScreenPrimary))
         #expect(window.canBecomeKey)
@@ -219,8 +233,11 @@ struct OPNStreamPictureInPictureTests {
     /// picture floats across every Space. Live-measured on macOS 27.0; this pins the re-application.
     @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
     func theCarrierChildWindowFollowsTheParentIntoEverySpace() {
-        let window = OPNStreamWindowFactory.make()
-        defer { window.close() }
+        let (window, suite) = makeTestStreamWindow()
+        defer {
+            window.close()
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
         let carrier = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 360),
             styleMask: .borderless,

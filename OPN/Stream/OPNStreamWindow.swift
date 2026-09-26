@@ -59,6 +59,39 @@ final class OPNStreamWindow: NSWindow {
     /// reason; this window owns its own, which is also what keeps two windows from sharing one.
     var closeGuard: OPNStreamWindowCloseDelegateProxy?
 
+    /// Where this window's placement is remembered. Injectable so tests do not write into the real
+    /// preferences; the factory hands one in when it creates the window.
+    var frameStoreDefaults: UserDefaults = .standard
+
+    /// Keeps the window's placement saved as it moves, in the slot its current mode belongs to.
+    /// Observing move and resize rather than saving only at teardown matters because a quit that
+    /// never reaches `OPNStreamWindowPresenter.dismiss()` would otherwise forget where it was.
+    private var framePersistenceTokens: [NSObjectProtocol] = []
+
+    func startPersistingFrame() {
+        guard framePersistenceTokens.isEmpty else { return }
+        let centre = NotificationCenter.default
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
+            framePersistenceTokens.append(centre.addObserver(forName: name, object: self, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.persistFrame() }
+            })
+        }
+    }
+
+    func stopPersistingFrame() {
+        let centre = NotificationCenter.default
+        for token in framePersistenceTokens { centre.removeObserver(token) }
+        framePersistenceTokens.removeAll()
+    }
+
+    private func persistFrame() {
+        // A full-screen frame belongs to the Space, not to the user: restoring it would open the
+        // next session full-bleed. The exit re-fires the move, so the windowed placement is saved
+        // once the window is back on the desktop.
+        guard !styleMask.contains(.fullScreen) else { return }
+        OPNStreamWindowFrameStore.save(frame, pictureInPicture: isPictureInPicture, defaults: frameStoreDefaults)
+    }
+
     struct WindowedState {
         let level: NSWindow.Level
         let collectionBehavior: NSWindow.CollectionBehavior
@@ -101,7 +134,7 @@ enum OPNStreamWindowFactory {
     }
 
     /// Every window setting that has to be in place before the window is ever ordered in goes here.
-    static func make() -> OPNStreamWindow {
+    static func make(defaults: UserDefaults = .standard) -> OPNStreamWindow {
         let window = OPNStreamWindow(
             contentRect: NSRect(origin: .zero, size: defaultContentSize),
             styleMask: styleMask,
@@ -118,7 +151,30 @@ enum OPNStreamWindowFactory {
         window.isReleasedWhenClosed = false
         window.contentMinSize = minimumContentSize
         window.setContentSize(defaultContentSize)
+        // The last placement, or centred on the first run. Creating at `.zero` put every session in
+        // the bottom-left corner, which is the one place nobody picks.
+        window.frameStoreDefaults = defaults
+        if let remembered = OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: false, defaults: defaults) {
+            window.setFrame(OPNStreamWindowFrameStore.onScreen(remembered), display: false)
+        } else {
+            centre(window)
+        }
+        window.startPersistingFrame()
         window.collectionBehavior = collectionBehavior
         return window
+    }
+
+    private static func centre(_ window: NSWindow) {
+        guard let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
+        let size = window.frame.size
+        window.setFrame(
+            NSRect(
+                x: visibleFrame.midX - size.width / 2,
+                y: visibleFrame.midY - size.height / 2,
+                width: size.width,
+                height: size.height
+            ),
+            display: false
+        )
     }
 }

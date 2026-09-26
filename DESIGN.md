@@ -801,7 +801,10 @@ catalog stays mounted behind it for the whole session.
 titlebar with the title hidden — the same full-bleed arrangement as the catalog window, and the
 reason `StreamStageLayout` still reserves the top strip. PiP windows reserve nothing.
 - **Size.** 1280×720 content on creation, minimum 480×270, locked to the stream's aspect ratio
-while the session runs.
+while the session runs. Opening placement is remembered per mode (`OPNStreamWindowFrameStore`):
+the last windowed frame is restored, clamped onto a screen that still exists, and centred on the
+first run. AppKit's own frame autosave would not do here, because one window holds two placements
+and a single autosave name would let PiP's position overwrite the windowed one.
 - **Full screen.** `collectionBehavior` includes `.fullScreenPrimary` *before* the window is first
 ordered in. A stream window is created mid-session, so it cannot be granted the way the main
 window is (`WindowFitting.installEarlyFitting`), which is the whole reason this window is AppKit's.
@@ -827,8 +830,9 @@ screen. Its titlebar buttons are hidden and the whole window is draggable, so th
 nothing but picture; the style mask is never mutated.
 - **Size.** 640pt wide — half the stream window's default width, so a 16:9 picture is 640×360 —
 height from the stream's aspect ratio through the same pure geometry the windowed stage fits its
-picture with (`OPNStreamStageGeometry`). Centred in the screen's visible frame, then clamped so a
-visible frame smaller than the picture still leaves the window on screen.
+picture with (`OPNStreamStageGeometry`). It opens at the position it was last left at, clamped onto
+a screen that still exists; centred on the first run. Only the position is remembered, not the
+size: a size saved from a different game's aspect ratio would be the wrong shape.
 - **Focus and pointer.** Entering the mode never activates the app and never orders the window
 front, so it cannot take focus from whatever the user moved to. It keeps ordinary key status,
 though: the picture is in the game, and a PiP window that refused key status silently stopped

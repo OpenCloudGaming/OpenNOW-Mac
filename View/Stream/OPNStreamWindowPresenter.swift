@@ -135,6 +135,7 @@ final class OPNStreamWindowPresenter {
     /// `.onDisappear` teardown to run, and that is the difference between a session that ends and
     /// one that keeps a window nobody can see.
     private func orderOutAndClear(_ window: OPNStreamWindow) {
+        window.stopPersistingFrame()
         window.orderOut(nil)
         window.contentView = nil
     }
