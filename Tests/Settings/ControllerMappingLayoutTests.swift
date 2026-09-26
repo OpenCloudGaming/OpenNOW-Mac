@@ -9,28 +9,25 @@ struct ControllerMappingLayoutTests {
     private let dualShock = ControllerMappingDevice(id: "ds4", name: "DualShock 4", family: .dualShock4, hasTouchpad: true)
     private let generic = ControllerMappingDevice(id: "generic", name: "Generic", family: .generic, hasTouchpad: false)
 
-    @Test func disconnectedSelectionNeverFallsBackToSteam() {
-        for selection in [ControllerMappingSelection.none, .steamDefaults, .device("disconnected")] {
+    @Test func disconnectedSelectionNeverFallsBackToASpecificFamily() {
+        for selection in [ControllerMappingSelection.none, .family(.steam), .family(.dualShock4)] {
             #expect(selection.resolved(devices: []) == .none)
         }
     }
 
-    @Test func openingSelectsAnActuallyConnectedController() {
-        #expect(ControllerMappingSelection.none.resolved(devices: [dualShock]) == .device(dualShock.id))
-        #expect(ControllerMappingSelection.none.resolved(devices: [generic]) == .device(generic.id))
-        #expect(ControllerMappingSelection.none.resolved(devices: [steam]) == .device(steam.id))
+    @Test func openingSelectsTheFirstConnectedControllerFamily() {
+        #expect(ControllerMappingSelection.none.resolved(devices: [dualShock]) == .family(.dualShock4))
+        #expect(ControllerMappingSelection.none.resolved(devices: [generic]) == .family(.generic))
+        #expect(ControllerMappingSelection.none.resolved(devices: [steam]) == .family(.steam))
     }
 
-    @Test func hotplugPreservesSelectionUntilThatControllerDisconnects() {
-        let selection = ControllerMappingSelection.device(dualShock.id)
+    @Test func anyFamilyStaysSelectedWhileAnyControllerIsConnected() {
+        // A type's default has to be preparable without that pad being plugged in, so selection is
+        // bound to the family rather than to a connected device of that family.
+        let selection = ControllerMappingSelection.family(.dualShock4)
         #expect(selection.resolved(devices: [steam, dualShock, generic]) == selection)
-        #expect(selection.resolved(devices: [generic]) == .device(generic.id))
+        #expect(selection.resolved(devices: [steam, generic]) == selection)
         #expect(selection.resolved(devices: []) == .none)
-    }
-
-    @Test func steamDefaultsRequireAConnectedSteamController() {
-        #expect(ControllerMappingSelection.steamDefaults.resolved(devices: [dualShock, steam]) == .steamDefaults)
-        #expect(ControllerMappingSelection.steamDefaults.resolved(devices: [dualShock]) == .device(dualShock.id))
     }
 
     @Test(arguments: [CGFloat(1), 1.25, 1.5])

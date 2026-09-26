@@ -4,9 +4,14 @@ struct ControllerMappingView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.opnUIScale) var uiScale
     @ObservedObject var store: ControllerMappingStore
+    /// Whether a Remote Co-Op session is running. Guests keep the global Steam profile in this
+    /// version, so the sheet says so rather than letting a host discover a mapping that only half
+    /// applies. `false` when opened from Settings.
+    let remoteCoOpActive: Bool
 
-    init(store: ControllerMappingStore = .shared) {
+    init(store: ControllerMappingStore = .shared, remoteCoOpActive: Bool = false) {
         _store = ObservedObject(wrappedValue: store)
+        self.remoteCoOpActive = remoteCoOpActive
     }
     @StateObject var liveModel = ControllerMappingLiveModel()
     @ObservedObject var devices = ControllerMappingDevices.shared
@@ -38,18 +43,17 @@ struct ControllerMappingView: View {
     }
 
     var resolvedSelection: ControllerMappingSelection { selection.resolved(devices: devices.devices) }
-    var selectedDeviceID: InputDeviceID? {
-        guard case .device(let id) = resolvedSelection else { return nil }
-        return id
+    var family: ControllerFamily {
+        guard case .family(let family) = resolvedSelection else { return .generic }
+        return family
     }
-    var selectedDevice: ControllerMappingDevice? { devices.devices.first { $0.id == selectedDeviceID } }
-    var family: ControllerFamily { selectedDevice?.family ?? (resolvedSelection == .steamDefaults ? .steam : .generic) }
-    var availableControls: [ControllerControl] { selectedDevice?.controls ?? (resolvedSelection == .steamDefaults ? ControllerFamily.steam.controls : []) }
-    var savedProfile: ControllerMappingProfile? {
-        if resolvedSelection == .steamDefaults { return store.activeProfile }
-        guard let selectedDevice else { return nil }
-        return store.profile(for: selectedDevice.id, family: selectedDevice.family)
-    }
+    /// The first connected pad of the selected type, used only to drive the live diagram. The
+    /// mapping itself resolves by type, so this never gates which profile is edited.
+    var selectedDevice: ControllerMappingDevice? { devices.devices.first { $0.family == family } }
+    var selectedDeviceID: InputDeviceID? { selectedDevice?.id }
+    var availableControls: [ControllerControl] { selectedDevice?.controls ?? family.controls }
+    /// Decision 1's chain, including the running game when there is one.
+    var savedProfile: ControllerMappingProfile? { store.profile(for: family) }
 
     private var hasUnsavedChanges: Bool {
         guard let draft, let savedProfile else { return false }
@@ -69,10 +73,17 @@ struct ControllerMappingView: View {
             if resolvedSelection == .none {
                 disconnectedMessage
             } else {
-                devicePicker
+                familyPicker
                     .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                     .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
                     .zIndex(2)
+                if store.hasCurrentGame {
+                    SteamControllerModalRule()
+                    gameOverrideBar
+                        .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+                        .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
+                        .zIndex(2)
+                }
                 SteamControllerModalRule()
                 profileBar
                     .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
@@ -146,7 +157,7 @@ struct ControllerMappingView: View {
             Spacer()
 
             Button("New Profile") {
-                let profile = store.createProfile(named: "", family: family, activateSteamDefault: resolvedSelection == .steamDefaults)
+                let profile = store.createProfile(named: "", family: family)
                 selectProfile(profile.id)
             }
                 .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))

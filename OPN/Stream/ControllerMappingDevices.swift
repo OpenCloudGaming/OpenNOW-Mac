@@ -82,7 +82,6 @@ final class ControllerMappingDevices: ObservableObject {
         var order = playerOrder
         order.update(connectedIDs: next.map(\.id))
         if order != playerOrder { playerOrder = order }
-        ControllerMappingStore.shared.removeDisconnectedAssignments(connectedIDs: Set(next.map(\.id)))
     }
 
     func id(for controller: GCController) -> InputDeviceID? { nativeIDs[ObjectIdentifier(controller)] }

@@ -312,6 +312,7 @@ extension CatalogViewModel {
         streamProgressGeneration += 1
         cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
+        ControllerMappingStore.shared.endSession()
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
         clearLaunchFlow()
@@ -343,6 +344,7 @@ extension CatalogViewModel {
         let finishedConfiguration = activeStreamConfiguration
         cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
+        ControllerMappingStore.shared.endSession()
         activeStreamProgress = nil
         activeDiscordPresence = nil
         discordPresence.update(.idle)
@@ -483,8 +485,22 @@ extension CatalogViewModel {
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         OPNSessionReadyAction.prepareAuthorizationIfNeeded()
         activeStreamConfiguration = configuration
+        ControllerMappingStore.shared.beginSession(
+            appId: configuration.applicationID,
+            catalogIdentity: catalogIdentity(forApplicationID: configuration.applicationID)
+        )
         sessionInsights = nil
         clearLaunchFlow()
+    }
+
+    /// The game-level identity for a launch app id — the same key the mapping overrides use. It is
+    /// handed to the store so the running session can be resolved, and after a fresh launch it is
+    /// what the store records for a later resume to consult.
+    func catalogIdentity(forApplicationID applicationID: String) -> String? {
+        guard !applicationID.isEmpty,
+              let game = allKnownGames.first(where: { Self.game($0, matchesApplicationID: applicationID) }) else { return nil }
+        let identity = Self.identity(for: game)
+        return identity.isEmpty ? nil : identity
     }
 
     static func message(for error: Error) -> String {

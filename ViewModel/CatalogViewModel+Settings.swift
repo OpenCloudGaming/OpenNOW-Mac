@@ -6,6 +6,17 @@ struct SettingsOverriddenGame: Identifiable, Equatable {
     let title: String
 }
 
+/// One game's override for one controller type. A title can hold up to three rows — one per
+/// family — so the family is part of the identity, and deleting a profile removes the row here by
+/// construction (`ControllerMappingStore.deleteProfile`).
+struct SettingsControllerMappingOverride: Identifiable, Equatable {
+    var id: String { "\(catalogIdentity)|\(family.rawValue)" }
+    let catalogIdentity: String
+    let family: ControllerFamily
+    let title: String
+    let enabled: Bool
+}
+
 @MainActor
 extension CatalogViewModel {
     var isFreeTierAccount: Bool {
@@ -57,6 +68,41 @@ extension CatalogViewModel {
     func removeStreamingOverride(appId: String) {
         OPNStreamPreferences.deleteProfile(forGame: appId)
         loadSettingsPreferences()
+    }
+
+    /// Every `(game × controller type)` override, so one a user forgot they made can be found and
+    /// removed without launching the game. Keyed on `catalogIdentity`, so a title owned on two
+    /// storefronts appears once. The title falls back to the identity string when the catalog has
+    /// not been browsed this session, and the catalog is joined once per read rather than once per
+    /// row (a join allocates an array the size of the whole catalog).
+    var controllerMappingOverrideGames: [SettingsControllerMappingOverride] {
+        let overrides = ControllerMappingStore.shared.gameOverrides.entries
+        guard !overrides.isEmpty else { return [] }
+        var titles: [String: String] = [:]
+        for game in catalogGames + libraryGames + favoriteGames {
+            let identity = game.catalogIdentity
+            guard !identity.isEmpty, titles[identity] == nil else { continue }
+            titles[identity] = game.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return overrides.map { entry in
+            let fallback = entry.catalogIdentity
+            let title = titles[fallback].flatMap { $0.isEmpty ? nil : $0 } ?? fallback
+            return SettingsControllerMappingOverride(
+                catalogIdentity: entry.catalogIdentity,
+                family: entry.family,
+                title: title,
+                enabled: entry.override.enabled
+            )
+        }
+    }
+
+    /// A disabled override stays in the list and stays inert; removing it is the destructive act.
+    func setControllerMappingOverrideEnabled(_ enabled: Bool, catalogIdentity: String, family: ControllerFamily) {
+        ControllerMappingStore.shared.setOverrideEnabled(enabled, catalogIdentity: catalogIdentity, family: family)
+    }
+
+    func removeControllerMappingOverride(catalogIdentity: String, family: ControllerFamily) {
+        ControllerMappingStore.shared.removeOverride(catalogIdentity: catalogIdentity, family: family)
     }
 
     func setAspectIndex(_ index: Int) {
