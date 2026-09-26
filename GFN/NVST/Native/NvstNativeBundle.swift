@@ -20,10 +20,14 @@ public final class NvstNativeBundle: @unchecked Sendable {
     public struct MicrophoneSetup: Equatable, Sendable {
         public let volume: Double
         public let initiallyEnabled: Bool
+        /// The UID of the microphone to capture from. Nil or empty is "Default Device", which
+        /// follows the system default input for the whole session.
+        public let deviceUniqueID: String?
 
-        public init(volume: Double, initiallyEnabled: Bool) {
+        public init(volume: Double, initiallyEnabled: Bool, deviceUniqueID: String? = nil) {
             self.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
             self.initiallyEnabled = initiallyEnabled
+            self.deviceUniqueID = deviceUniqueID.flatMap { $0.isEmpty ? nil : $0 }
         }
     }
 
@@ -83,7 +87,15 @@ public final class NvstNativeBundle: @unchecked Sendable {
     /// Co-Op guest keep hearing the game while these speakers are silenced.
     public var onGameAudioFrame: (@Sendable (UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
     public var onMicrophoneAudioFrame: (@Sendable (UnsafeRawPointer?, UInt32, Double, UInt32) -> Void)?
+    /// The live capture meter, 0...1, at 20 Hz. Read off the PCM the device actually captured, so it
+    /// moves for the device in use and stays flat for one that is not.
     public var onMicrophoneLevel: (@Sendable (Double) -> Void)?
+    /// The chosen microphone went away and capture fell back to the system default. The saved UID is
+    /// emphatically not rewritten — the device is expected back.
+    public var onMicrophoneDeviceFallback: (@Sendable (NvstCaptureDeviceChange) -> Void)?
+    /// The set of input devices changed — a microphone was plugged in or taken away. The HUD's
+    /// picker reloads its rows from this rather than waiting to be reopened.
+    public var onMicrophoneDeviceListChange: (@Sendable () -> Void)?
 
     // MARK: - State
 
@@ -105,18 +117,6 @@ public final class NvstNativeBundle: @unchecked Sendable {
     public private(set) var audioChannelCount: Int
     public private(set) var inputProtocolVersion: UInt16?
     public private(set) var microphoneSenderSsrc: UInt32?
-
-    /// Whether the microphone was armed for this session, and the SSRC its RTP arrives on. The send
-    /// pipeline exists only when a setup was supplied, so this is what ANNOUNCE's
-    /// `rtcMicOnNativeBundle` must follow: a pipeline with no requested microphone would advertise
-    /// mic carriage the seat never asked for.
-    public var microphoneNegotiation: (negotiated: Bool, senderSsrc: UInt32?) {
-        let ssrc = microphoneSenderSsrc
-        return (ssrc != nil, ssrc)
-    }
-
-    /// Mic chat bytes uploaded, as the `0x208` report wants them.
-    public var microphoneSentBytes: UInt64 { sendPipeline?.snapshot.bytesSent ?? 0 }
 
     public var audioOutputLatencySeconds: Double? { audioDevice?.outputPathLatencySeconds }
     /// The seat's audio is a single stereo-or-surround stream, so the count is what the HUD reports
@@ -305,22 +305,15 @@ public final class NvstNativeBundle: @unchecked Sendable {
 
     // MARK: - Audio control
 
-    /// Silences this Mac's speakers only. Applied in the device after the tee, so a recording and a
-    /// Co-Op guest keep hearing the game.
-    public func setRemoteAudioMuted(_ muted: Bool) {
-        audioDevice?.isPlayoutMuted = muted
-    }
 
-    /// Flips the microphone gate. Muting stops packets rather than sending silence, which is what the
-    /// seat's jitter buffer conceals most cheaply and what makes "mic off" visible in the counters.
-    public func setMicrophoneCaptureEnabled(_ enabled: Bool) {
-        guard sendPipeline != nil else { return }
-        sendPipeline?.isMuted = !enabled
-    }
 
-    public func setMicrophoneVolume(_ volume: Double) {
-        sendPipeline?.gain = Float(min(max(volume.isFinite ? volume : 1, 0), 1))
-    }
+    /// Swaps the microphone the session captures from, mid-stream.
+    ///
+    /// Only the capture AudioUnit is replaced. The send pipeline, its SSRC, its RTP sequence and the
+    /// ANNOUNCE'd microphone contract are all untouched, which is what makes the change invisible to
+    /// the seat: no re-ANNOUNCE, no SDP round trip, no sequence the seat has already seen.
+
+    /// The UID capture is running on, and whether that is a fallback from a device that is gone.
 
     public func audioReception() async -> AudioReception? {
         guard let receivePipeline else { return nil }
@@ -394,7 +387,8 @@ public final class NvstNativeBundle: @unchecked Sendable {
         // receive pipeline all carry two channels. The device is therefore asked for stereo (its
         // own device may still fall to mono), and the fill maps the stereo decode onto whatever
         // channel count the hardware settled on rather than letting a wider layout misread it.
-        let device = NvstCoreAudioDevice(playoutChannelCount: Self.decodedAudioChannels)
+        let device = NvstCoreAudioDevice(playoutChannelCount: Self.decodedAudioChannels,
+                                         preferredInputDeviceUID: microphoneSetup?.deviceUniqueID)
         let outputChannels = device.outputChannels
         device.fillPlayout = { [weak self] destination, sampleCount in
             guard let pipeline = self?.receivePipeline else {
@@ -423,6 +417,11 @@ public final class NvstNativeBundle: @unchecked Sendable {
             microphoneStatsLock.unlock()
             onMicrophoneLevel?(level)
         }
+        device.onCaptureDeviceChange = { [weak self] change in
+            guard let self, change.isFallback else { return }
+            onMicrophoneDeviceFallback?(change)
+        }
+        device.onInputDeviceListChange = { [weak self] in self?.onMicrophoneDeviceListChange?() }
         device.isMicrophoneCaptureEnabled = { [weak self] in self?.sendPipeline?.isMuted == false }
         device.start()
         audioDevice = device
@@ -542,10 +541,58 @@ extension NvstNativeBundle {
             ? "down"
             : "\(association?.diagnosticState ?? "closed")(in=\(association?.inboundPackets ?? 0) opens=\(association?.requestedChannelCount ?? 0) resets=\(association?.streamResetsSeen ?? 0) appData=\(transport?.applicationDatagrams ?? 0))"
         let micStats = microphoneStatistics
-        let mic = microphoneSenderSsrc == nil ? "off" : "on(ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),tx=\(microphoneSentBytes),pkts=\(sendPipeline?.snapshot.packetsSent ?? 0),frames=\(micStats.capturedFrames),level=\(String(format: "%.3f", micStats.captureLevel)))"
+        // `dev` is the resolved capture device's UID, and `fallback` says the saved device is gone.
+        // Both are needed to tell "capturing the chosen microphone" from "capturing the default
+        // because the chosen one is unplugged" without opening the HUD.
+        let deviceState = microphoneDeviceState
+        let device = deviceState.uniqueID.map { "dev=\($0)fallback=\(deviceState.usesFallback) " } ?? ""
+        let mic = microphoneSenderSsrc == nil ? "off" : "on(\(device)ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),tx=\(microphoneSentBytes),pkts=\(sendPipeline?.snapshot.packetsSent ?? 0),frames=\(micStats.capturedFrames),level=\(String(format: "%.3f", micStats.captureLevel)))"
         let audio = receivePipeline.map {
             "receive[datagrams=\($0.snapshot.datagrams) authenticated=\($0.snapshot.authenticated) decoded=\($0.snapshot.packetsDecoded) lost=\($0.snapshot.packetsLost) recovered=\($0.snapshot.recoveredPackets) tagFail=\($0.snapshot.authenticationFailures) decodeFail=\($0.snapshot.decodeFailures) redFail=\($0.snapshot.malformedRedPackets)]"
         } ?? "receive[down]"
         return "sctp=\(sctp) control=\(isControlChannelOpen) feedback=\(isFeedbackChannelOpen) input=\(isInputReady) mic=\(mic) \(audio)"
+    }
+}
+
+
+extension NvstNativeBundle {
+    /// Whether the microphone was armed for this session, and the SSRC its RTP arrives on. The send
+    /// pipeline exists only when a setup was supplied, so this is what ANNOUNCE's
+    /// `rtcMicOnNativeBundle` must follow: a pipeline with no requested microphone would advertise
+    /// mic carriage the seat never asked for.
+    public var microphoneNegotiation: (negotiated: Bool, senderSsrc: UInt32?) {
+        let ssrc = microphoneSenderSsrc
+        return (ssrc != nil, ssrc)
+    }
+
+    /// Mic chat bytes uploaded, as the `0x208` report wants them.
+    public var microphoneSentBytes: UInt64 { sendPipeline?.snapshot.bytesSent ?? 0 }
+
+    /// Silences this Mac's speakers only. Applied in the device after the tee, so a recording and a
+    /// Co-Op guest keep hearing the game.
+    public func setRemoteAudioMuted(_ muted: Bool) {
+        audioDevice?.isPlayoutMuted = muted
+    }
+
+    /// Microphone control: what the capture gate, the gain and the capture device are, and how a
+    /// device swap reaches the running session. Split out of the class body, which is at its
+    /// length budget.
+    /// Flips the microphone gate. Muting stops packets rather than sending silence, which is what the
+    /// seat's jitter buffer conceals most cheaply and what makes "mic off" visible in the counters.
+    public func setMicrophoneCaptureEnabled(_ enabled: Bool) {
+        guard sendPipeline != nil else { return }
+        sendPipeline?.isMuted = !enabled
+    }
+
+    public func setMicrophoneVolume(_ volume: Double) {
+        sendPipeline?.gain = Float(min(max(volume.isFinite ? volume : 1, 0), 1))
+    }
+
+    public func setMicrophoneDevice(uid: String?) {
+        audioDevice?.setPreferredInputDevice(uid: uid)
+    }
+
+    public var microphoneDeviceState: (uniqueID: String?, usesFallback: Bool) {
+        audioDevice?.captureDeviceState ?? (nil, false)
     }
 }

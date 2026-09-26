@@ -470,15 +470,50 @@ extension NvstBifrostFreeTransport {
             guard enabled else { return }
             // Two distinct failure shapes for the HUD: a bundle-mode seat that failed to create
             // the section, and a legacy seat whose mic transport (RTSP `SETUP` + UDP RTP sink)
-            // OpenNOW has not recovered yet.
-            if microphoneOfferedOnBundle {
-                throw NativeNVSTError.transportFailed("The NVST bundle negotiated no microphone channel, so capture cannot start.")
-            }
-            throw NativeNVSTError.transportFailed(
-                "This seat uses a legacy NVST microphone transport that OpenNOW does not support. Voice chat is unavailable for this session.")
+            // OpenNOW has not recovered yet. Both live on `microphoneAvailability` so the disabled
+            // dropdown and this refusal cannot describe the same seat differently.
+            let unavailable = await microphoneAvailability()
+            throw NativeNVSTError.transportFailed(unavailable.failureMessage
+                ?? "The NVST bundle negotiated no microphone channel, so capture cannot start.")
         }
         bundle.setMicrophoneCaptureEnabled(enabled)
         logger?("NVST microphone \(enabled ? "enabled" : "disabled")")
+    }
+
+    /// Swaps the capture device on the live session. The bundle rebuilds only its capture AudioUnit;
+    /// the send pipeline and the ANNOUNCE'd contract are untouched, so nothing the seat can observe
+    /// changes except where the sound comes from.
+    public func setMicrophoneDevice(_ uid: String) async throws {
+        guard let bundle else { throw NativeNVSTError.notRunning }
+        guard microphoneNegotiated else {
+            let unavailable = await microphoneAvailability()
+            throw NativeNVSTError.transportFailed(unavailable.failureMessage
+                ?? "The NVST bundle negotiated no microphone channel, so capture cannot start.")
+        }
+        bundle.setMicrophoneDevice(uid: uid.isEmpty ? nil : uid)
+        logger?("NVST microphone device set to \(uid.isEmpty ? "Default Device" : uid)")
+    }
+
+    public func microphoneAvailability() async -> NativeNVSTMicrophoneAvailability {
+        // Before the bundle exists the seat's offer has not been seen, and guessing "legacy" here
+        // would grey the picker out for the whole of every session's bring-up.
+        guard bundle != nil else { return .pending }
+        guard microphoneNegotiated else {
+            return microphoneOfferedOnBundle ? .noBundleChannel : .legacyTransport
+        }
+        return .available
+    }
+
+    public func setMicrophoneLevelHandler(_ handler: (@MainActor @Sendable (Double) -> Void)?) async {
+        microphoneLevelHandler = handler
+    }
+
+    public func setMicrophoneFallbackHandler(_ handler: (@MainActor @Sendable (String) -> Void)?) async {
+        microphoneFallbackHandler = handler
+    }
+
+    public func setMicrophoneDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {
+        microphoneDeviceListHandler = handler
     }
 
     public func togglePerformanceOverlay() async throws {

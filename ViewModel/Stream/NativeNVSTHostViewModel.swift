@@ -103,6 +103,22 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var microphoneMode = "disabled"
     var microphonePendingStates: [Bool] = []
     @Published var microphoneUpdateTask: Task<Void, Never>?
+    /// The microphone picker's rows for the HUD's AUDIO panel, loaded from the same preference the
+    /// Settings picker writes. Kept on this model because this model owns the HUD, unlike
+    /// `CatalogViewModel.microphoneDeviceOptions`, which also serves Settings.
+    @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = [OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
+    /// The saved device is gone and capture fell back to the system default. The saved UID is not
+    /// rewritten; this only drives the label and the one-off message.
+    @Published var microphoneDeviceFallbackActive = false
+    /// The microphone picker's choice for this session, as a UID. Empty is "Default Device".
+    @Published var microphoneDeviceID = ""
+    /// A device change in flight, so the open dropdown marks the intended row rather than the one
+    /// capture is still on.
+    var microphonePendingDeviceID: String?
+    var pendingMicrophoneDeviceChanges: [String] = []
+    /// Whether this seat carries a microphone at all. `.pending` until the bundle is up, so nothing is
+    /// greyed out on the strength of a question that has not been answered yet.
+    @Published var microphoneTransportAvailability: NativeNVSTMicrophoneAvailability = .pending
     @Published var antiAFKMouseMovementEnabled = false
     /// Local speaker output only - a guest over Remote Co-Op still hears everything regardless, since
     /// the audio relay taps decoded PCM independently of the player this mutes. Exists for testing a
@@ -218,6 +234,13 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var showingControllerMapping = false
     @Published var showingControllerOrder = false
     @Published var hudFocusID: String?
+    /// Which pad-drivable dropdown is open, if any, and the row the pad stands on inside it. A
+    /// dropdown is a focus entry like any other control, but its confirm opens a list instead of
+    /// firing once, so the open list is HUD state the gamepad handler owns rather than view state.
+    @Published var openHUDDropdownID: String?
+    @Published var hudDropdownHighlightedItemID: String?
+    /// The live capture meter, 0...1, mirrored from the device at 20 Hz for the HUD's AUDIO panel.
+    @Published var microphoneLevel: Double = 0
     var hudGamepadTracker = StreamHUDGamepadTracker()
     @Published var recordingStatus = StreamRecordingStatus.idle
     /// The rolling instant-replay window's state, mirrored from the transport.
@@ -322,7 +345,18 @@ final class NativeNVSTHostViewModel: ObservableObject {
             cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
         microphoneMode = profile.microphoneMode.lowercased()
-        let microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: profile.microphoneVolume, mode: microphoneMode)
+        let microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: profile.microphoneVolume,
+                                                                                  mode: microphoneMode,
+                                                                                  deviceUniqueID: profile.microphoneDeviceId)
+        // The HUD's dropdown reads the same saved choice the Settings picker does, so the two agree
+        // on the device even before the stream has reported which one capture settled on.
+        microphoneDeviceOptions = OPNStreamPreferences.loadMicrophoneDeviceOptions()
+        microphoneDeviceFallbackActive = false
+        microphoneDeviceID = profile.microphoneDeviceId
+        microphonePendingDeviceID = nil
+        pendingMicrophoneDeviceChanges.removeAll()
+        microphoneTransportAvailability = .pending
+        microphoneLevel = 0
         microphoneAvailable = microphoneConfiguration.captureRequested
         microphoneEnabled = microphoneConfiguration.initiallyEnabled
         microphoneDesiredEnabled = microphoneEnabled
@@ -400,50 +434,29 @@ final class NativeNVSTHostViewModel: ObservableObject {
             await transport.setReplayBufferStateHandler { state in
                 self?.handleReplayBufferStateChanged(state)
             }
+            // The HUD's live mic meter and its "the device went away" notice. Both are published from
+            // the capture device, which is why they arrive as handlers rather than being polled.
+            await transport.setMicrophoneLevelHandler { level in
+                guard let self, !self.didEnd else { return }
+                // Published at 20 Hz while a session is live, and every published change re-evaluates the
+                // HUD. A sub-percent step is not visible on a bar 200 points wide, so it is dropped
+                // rather than re-rendering the overlay for it.
+                guard abs(level - self.microphoneLevel) >= 0.01 else { return }
+                self.microphoneLevel = level
+            }
+            await transport.setMicrophoneFallbackHandler { message in
+                guard let self, !self.didEnd else { return }
+                self.handleMicrophoneDeviceFallback(message)
+            }
+            // A microphone plugged in mid-stream is a row straight away, without the HUD being closed
+            // and reopened. The relabel pass is included: it is also how a re-plugged device stops
+            // being called a fallback.
+            await transport.setMicrophoneDeviceListHandler { [weak self] in
+                guard let self, !self.didEnd else { return }
+                self.refreshMicrophoneDeviceOptions()
+            }
         }
         return transport
-    }
-
-    /// The seat's asynchronous notifications, routed to the surfaces that act on them.
-    func attachSeatNotificationHandlers(_ bifrostFree: NvstBifrostFreeTransport, nativeView: NativeStreamView) {
-        Task { [weak self, weak nativeView] in
-            // Match the local pointer to the game's: the seat stops compositing its own cursor as
-            // soon as it starts publishing cursor state, so from then on the only pointer is ours
-            // and it has to appear and disappear when the game's does.
-            await bifrostFree.setRemoteCursorVisibilityHandler { isVisible in
-                nativeView?.setRemoteCursorVisible(isVisible)
-            }
-            // Whether the seat still draws a pointer of its own is a separate question from where
-            // the game's pointer is: it stops compositing on a bitmap-only notification and on the
-            // watchdog's deadline, neither of which publishes a visibility. The local cursor policy
-            // follows this, so a seat that goes quiet gives the pointer back instead of leaving the
-            // session with none.
-            await bifrostFree.setRemoteCursorCaptureHandler { isCompositing in
-                nativeView?.seatCompositesCursor = isCompositing
-            }
-            // Rumble: the seat names a pad slot and two motor amplitudes; the gamepad monitor
-            // behind the view knows which physical device (GameController pad or Steam
-            // Controller) holds that slot.
-            await bifrostFree.setHapticEventHandler { events in
-                guard let self, !self.didEnd else { return }
-                self.nativeHapticEventCount += events.count
-                for event in events {
-                    nativeView?.playHaptic(NativeNVSTHapticCommand(
-                        playerIndex: Int(event.gamepadIndex),
-                        lowFrequency: event.leftMotor,
-                        highFrequency: event.rightMotor,
-                        durationMilliseconds: event.effectiveDurationMilliseconds
-                    ))
-                }
-            }
-            await bifrostFree.setHdrModeHandler { notification in
-                guard let self, !self.didEnd else { return }
-                self.nativeHdrModeText = notification.isHDR ? (notification.mode == .trueHdr ? "true-hdr" : "hdr") : ""
-            }
-            await bifrostFree.setSessionLimitUpdateHandler { [weak self] update in
-                self?.applyNativeSessionLimitUpdate(update)
-            }
-        }
     }
 
     /// Drives the streaming path to a connected session, or reports why it did not get there.
