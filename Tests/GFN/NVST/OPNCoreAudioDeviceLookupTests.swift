@@ -7,10 +7,21 @@ import Testing
 /// resolution the picker, the Settings mic test and the capture device all share.
 ///
 /// These run against the real machine's CoreAudio graph rather than a stub, because the failure this
-/// covers is exactly a disagreement about what a UID names. A machine with no input device at all
-/// still passes the fallback cases; the known-UID cases skip themselves when there is nothing to
-/// resolve.
+/// covers is exactly a disagreement about what a UID names.
+///
+/// A hosted CI runner reports **no** input device at all, so every case that needs a real UID to
+/// resolve is gated rather than `#require`d: the trait is evaluated before the tests run, which is
+/// where "this machine has nothing to resolve" belongs. The device-free half — an empty or unknown
+/// UID resolving to the system default — still runs everywhere, including on that runner.
 @Suite struct OPNCoreAudioDeviceLookupTests {
+    /// Mirrors `CIWindowTestGate`'s shape: a condition on the machine, evaluated at collection time,
+    /// with a reason for the report instead of a failure.
+    private enum InputDeviceGate {
+        static let isAvailable = !OPNCoreAudioDeviceLookup.allInputDevices().isEmpty
+        static let skipReason = "Needs a real CoreAudio input device; a hosted runner reports none."
+    }
+
+
     @Test func anEmptyOrUnknownUIDResolvesToTheSystemDefaultInput() {
         let fallback = OPNCoreAudioDeviceLookup.defaultInputDevice()
         #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: nil) == fallback)
@@ -21,7 +32,8 @@ import Testing
         #expect(OPNCoreAudioDeviceLookup.uid(of: AudioDeviceID(kAudioObjectUnknown)) == nil)
     }
 
-    @Test func aKnownUIDResolvesToItsOwnDevice() throws {
+    @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
+    func aKnownUIDResolvesToItsOwnDevice() throws {
         let devices = OPNCoreAudioDeviceLookup.allInputDevices()
         try #require(!devices.isEmpty, "this machine reports no input device, so there is no UID to resolve")
         let device = devices[0]
@@ -41,7 +53,8 @@ import Testing
     /// The capture device resolves the saved UID at construction, and reports the fallback instead of
     /// losing the user's choice. No AudioUnit is opened here: resolution is the tested behaviour, and
     /// opening a unit would need a microphone the test runner may not have.
-    @Test func theCaptureDeviceResolvesASavedUIDAndReportsAMissingOne() throws {
+    @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
+    func theCaptureDeviceResolvesASavedUIDAndReportsAMissingOne() throws {
         let devices = OPNCoreAudioDeviceLookup.allInputDevices()
         try #require(!devices.isEmpty, "this machine reports no input device")
         let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
@@ -59,7 +72,8 @@ import Testing
 
     /// A deliberate change to a device that is present is not a fallback, and the saved UID is not
     /// rewritten by a fallback — replugging the device has to return capture to it.
-    @Test func aFallbackNeverRewritesTheSavedUID() async throws {
+    @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
+    func aFallbackNeverRewritesTheSavedUID() async throws {
         let devices = OPNCoreAudioDeviceLookup.allInputDevices()
         try #require(!devices.isEmpty, "this machine reports no input device")
         let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
@@ -83,7 +97,8 @@ import Testing
     /// No AudioUnit is opened here on purpose: starting an input unit from the test host raises the
     /// macOS microphone prompt. The rebuild the swap triggers is counted instead, and the playout half
     /// is asserted untouched.
-    @Test func aDeviceSwapRebuildsCaptureWithoutTouchingPlayout() throws {
+    @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
+    func aDeviceSwapRebuildsCaptureWithoutTouchingPlayout() throws {
         let devices = OPNCoreAudioDeviceLookup.allInputDevices()
         try #require(!devices.isEmpty, "this machine reports no input device")
         let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
@@ -106,7 +121,8 @@ import Testing
 
     /// A burst of notifications for one physical event collapses into one evaluation, and an
     /// environment that did not change the device it resolves to does not rebuild capture at all.
-    @Test func aBurstOfDeviceNotificationsCollapsesIntoOneEvaluation() async throws {
+    @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
+    func aBurstOfDeviceNotificationsCollapsesIntoOneEvaluation() async throws {
         let devices = OPNCoreAudioDeviceLookup.allInputDevices()
         try #require(!devices.isEmpty, "this machine reports no input device")
         let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
