@@ -5,13 +5,12 @@ struct ControllerMappingSession: Sendable {
     let deviceID: InputDeviceID
     let playerIndex: Int
     private(set) var profile: ControllerMappingProfile?
-    /// How the guide button resolves for this pad. Kept beside the engine rather than inside it
-    /// because it must keep working when `profile` is nil — remote input is off whenever a local
-    /// overlay owns the pad, and the guide is the button that closes that overlay.
+    /// Kept beside the engine because it must resolve when `profile` is nil — remote input is off
+    /// whenever a local overlay owns the pad, and the guide is the button that closes that overlay.
     private(set) var guideBinding: ControllerBindingTarget
     private var engine = ControllerBindingEngine()
     private var previousGamepadState: GamepadState?
-    private var guideActive = false
+    private var isGuideActive = false
 
     init(deviceID: InputDeviceID,
          playerIndex: Int,
@@ -36,37 +35,51 @@ struct ControllerMappingSession: Sendable {
 
     mutating func process(_ snapshot: ControllerInputSnapshot, now: ContinuousClock.Instant,
                           timestamp: MediaTimestamp) -> ControllerBindingResult {
-        var snapshot = snapshot
-        var commands: [KeybindingAction] = []
-        if case .streamCommand(let action) = guideBinding {
-            let guide = snapshot.buttons.contains(.mode)
-            if guide, !guideActive { commands.append(action) }
-            guideActive = guide
-            // Consumed: a guide bound to an app action never reaches the seat, and the engine must
-            // not fire the same command again through the ordinary control pass.
-            snapshot.buttons.remove(.mode)
-        } else {
-            guideActive = false
+        let guide = resolveGuide(in: snapshot)
+        guard let profile else {
+            return forwardingNativeSnapshot(guide, timestamp: timestamp)
         }
-        if let profile {
-            var result = engine.apply(profile: profile, snapshot: snapshot, deviceID: deviceID,
-                                      playerIndex: playerIndex, now: now, timestamp: timestamp)
-            result.commands.insert(contentsOf: commands, at: 0)
-            return result
-        }
-        let state = snapshot.gamepadState(deviceID: deviceID, playerIndex: playerIndex, timestamp: MediaTimestamp(nanoseconds: 0))
-        guard previousGamepadState != state else { return ControllerBindingResult(commands: commands) }
-        previousGamepadState = state
-        return ControllerBindingResult(
-            events: [.gamepad(snapshot.gamepadState(deviceID: deviceID, playerIndex: playerIndex, timestamp: timestamp))],
-            commands: commands
-        )
+        var result = engine.apply(profile: profile, snapshot: guide.snapshot, deviceID: deviceID,
+                                  playerIndex: playerIndex, now: now, timestamp: timestamp)
+        result.commands.insert(contentsOf: guide.commands, at: 0)
+        return result
     }
 
     mutating func reset(timestamp: MediaTimestamp) -> [UserInputEvent] {
         previousGamepadState = nil
-        guideActive = false
+        isGuideActive = false
         return engine.reset(deviceID: deviceID, playerIndex: playerIndex, timestamp: timestamp)
+    }
+
+    private mutating func resolveGuide(in snapshot: ControllerInputSnapshot) -> GuideResolution {
+        guard case .streamCommand(let action) = guideBinding else {
+            isGuideActive = false
+            return GuideResolution(snapshot: snapshot, commands: [])
+        }
+        let isGuidePressed = snapshot.buttons.contains(.mode)
+        let isNewPress = isGuidePressed && !isGuideActive
+        isGuideActive = isGuidePressed
+        var consumedSnapshot = snapshot
+        consumedSnapshot.buttons.remove(.mode)
+        return GuideResolution(snapshot: consumedSnapshot, commands: isNewPress ? [action] : [])
+    }
+
+    private mutating func forwardingNativeSnapshot(_ guide: GuideResolution,
+                                                   timestamp: MediaTimestamp) -> ControllerBindingResult {
+        let state = guide.snapshot.gamepadState(deviceID: deviceID, playerIndex: playerIndex,
+                                                timestamp: MediaTimestamp(nanoseconds: 0))
+        guard previousGamepadState != state else { return ControllerBindingResult(commands: guide.commands) }
+        previousGamepadState = state
+        return ControllerBindingResult(
+            events: [.gamepad(guide.snapshot.gamepadState(deviceID: deviceID, playerIndex: playerIndex, timestamp: timestamp))],
+            commands: guide.commands
+        )
+    }
+
+    /// A snapshot with the guide bit already consumed, plus the command that consumption fired.
+    private struct GuideResolution {
+        let snapshot: ControllerInputSnapshot
+        let commands: [KeybindingAction]
     }
 }
 

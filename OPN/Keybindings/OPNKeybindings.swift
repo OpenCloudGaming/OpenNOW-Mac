@@ -42,9 +42,8 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
 
-    /// The actions a controller control may be bound to. Built from the stream section, which is a
-    /// safe allowlist by construction: `openSearch` is catalog-only and the session-ending actions
-    /// (`endSession`, `pauseSession`) do not exist on this enum at all.
+    /// The actions a controller control may be bound to: the stream section, a safe allowlist that
+    /// excludes `openSearch` and never names `endSession`/`pauseSession`.
     static var controllerBindingActions: [KeybindingAction] {
         allCases.filter { $0.section == .stream }
     }

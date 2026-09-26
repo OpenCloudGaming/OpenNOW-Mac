@@ -157,20 +157,17 @@ public struct ControllerBindingEngine: Sendable {
             pass.events.append(.mouse(.wheel(deviceID: deviceID, delta: delta, timestamp: timestamp)))
 
         case .streamCommand(let action):
-            apply(streamCommand: action, control: control, isActive: isActive, wasActive: wasActive, into: &pass)
+            apply(streamCommand: action, control: control, isNewPress: isActive && !wasActive, into: &pass)
         }
     }
 
-    /// The guide button's command is resolved ahead of the engine so a tap can close the HUD it
-    /// opened; see `NativeGamepadMonitor.guideBinding(for:)`. Every other control fires its command
-    /// here, which also keeps HUD navigation collision-free: remote input is off while the HUD is
-    /// open, so no binding reaches this method then.
+    /// The guide's command resolves ahead of the engine so a tap can close the HUD it opened; see
+    /// `NativeGamepadMonitor.guideBinding(for:)`. Every other control fires its command here.
     private func apply(streamCommand action: KeybindingAction,
                        control: ControllerControl,
-                       isActive: Bool,
-                       wasActive: Bool,
+                       isNewPress: Bool,
                        into pass: inout DiscretePass) {
-        guard control != .guide, isActive, !wasActive else { return }
+        guard control != .guide, isNewPress else { return }
         pass.commands.append(action)
     }
 

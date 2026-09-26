@@ -6,6 +6,15 @@ private let guideDevice: InputDeviceID = "guide-test"
 private let guideStamp = MediaTimestamp(nanoseconds: 7)
 private let guideClock = ContinuousClock()
 
+/// Feeds the tracker one report at a time, so a test reads as the button sequence it describes.
+private final class GuideTapProbe {
+    private var tracker = SteamGuideTapTracker()
+
+    func releaseTap(_ buttons: GamepadButtons, pad: ControllerTrackpadState = ControllerTrackpadState()) -> Bool {
+        tracker.didReleaseTap(snapshot: ControllerInputSnapshot(buttons: buttons, rightPad: pad), deviceID: guideDevice)
+    }
+}
+
 @MainActor
 @Suite struct ControllerGuideBindingTests {
     private func makeStore() throws -> ControllerMappingStore {
@@ -97,52 +106,37 @@ private let guideClock = ContinuousClock()
     // MARK: - Steam guide tap detection
 
     @Test func guideTapFiresOnRelease() {
-        var tracker = SteamGuideTapTracker()
-        func step(_ buttons: GamepadButtons) -> Bool {
-            tracker.process(snapshot: ControllerInputSnapshot(buttons: buttons), deviceID: guideDevice)
-        }
-        #expect(!step([.mode]))
-        #expect(step([]))
+        let probe = GuideTapProbe()
+        #expect(!probe.releaseTap([.mode]))
+        #expect(probe.releaseTap([]))
     }
 
     @Test func guideHoldWithAChordPartnerDoesNotFire() {
-        var tracker = SteamGuideTapTracker()
-        func step(_ buttons: GamepadButtons, pad: ControllerTrackpadState = ControllerTrackpadState()) -> Bool {
-            tracker.process(snapshot: ControllerInputSnapshot(buttons: buttons, rightPad: pad), deviceID: guideDevice)
-        }
-        #expect(!step([.mode]))
-        #expect(!step([.mode, .west]))
-        #expect(!step([]))
+        let probe = GuideTapProbe()
+        #expect(!probe.releaseTap([.mode]))
+        #expect(!probe.releaseTap([.mode, .west]))
+        #expect(!probe.releaseTap([]))
     }
 
     @Test func guideHoldWithPadMotionDoesNotFire() {
-        var tracker = SteamGuideTapTracker()
-        func step(_ buttons: GamepadButtons, pad: ControllerTrackpadState) -> Bool {
-            tracker.process(snapshot: ControllerInputSnapshot(buttons: buttons, rightPad: pad), deviceID: guideDevice)
-        }
-        #expect(!step([.mode], pad: ControllerTrackpadState(x: 0.1, y: 0.1, touched: true)))
-        #expect(!step([.mode], pad: ControllerTrackpadState(x: 0.4, y: 0.1, touched: true)))
-        #expect(!step([], pad: ControllerTrackpadState()))
+        let probe = GuideTapProbe()
+        #expect(!probe.releaseTap([.mode], pad: ControllerTrackpadState(x: 0.1, y: 0.1, touched: true)))
+        #expect(!probe.releaseTap([.mode], pad: ControllerTrackpadState(x: 0.4, y: 0.1, touched: true)))
+        #expect(!probe.releaseTap([]))
     }
 
     @Test func restingThumbOnTheRightPadStillCountsAsATap() {
-        var tracker = SteamGuideTapTracker()
-        func step(_ buttons: GamepadButtons, pad: ControllerTrackpadState) -> Bool {
-            tracker.process(snapshot: ControllerInputSnapshot(buttons: buttons, rightPad: pad), deviceID: guideDevice)
-        }
-        #expect(!step([.mode], pad: ControllerTrackpadState(x: 0.3, y: 0.2, touched: true)))
-        #expect(!step([.mode], pad: ControllerTrackpadState(x: 0.3001, y: 0.2, touched: true)))
-        #expect(step([], pad: ControllerTrackpadState()))
+        let probe = GuideTapProbe()
+        #expect(!probe.releaseTap([.mode], pad: ControllerTrackpadState(x: 0.3, y: 0.2, touched: true)))
+        #expect(!probe.releaseTap([.mode], pad: ControllerTrackpadState(x: 0.3001, y: 0.2, touched: true)))
+        #expect(probe.releaseTap([]))
     }
 
     @Test func guideHoldWithAPadClickDoesNotFire() {
-        var tracker = SteamGuideTapTracker()
-        func step(_ buttons: GamepadButtons, pad: ControllerTrackpadState) -> Bool {
-            tracker.process(snapshot: ControllerInputSnapshot(buttons: buttons, rightPad: pad), deviceID: guideDevice)
-        }
-        #expect(!step([.mode], pad: ControllerTrackpadState()))
-        #expect(!step([.mode], pad: ControllerTrackpadState(pressed: true)))
-        #expect(!step([], pad: ControllerTrackpadState()))
+        let probe = GuideTapProbe()
+        #expect(!probe.releaseTap([.mode]))
+        #expect(!probe.releaseTap([.mode], pad: ControllerTrackpadState(pressed: true)))
+        #expect(!probe.releaseTap([]))
     }
 
     // MARK: - Monitor integration
@@ -183,18 +177,22 @@ private let guideClock = ContinuousClock()
         #expect(padState?.buttons.contains(.mode) == true)
     }
 
-    @Test func nativeGuideCommandFiresOncePerPressAndConsumesTheBit() {
+    @Test func nativeGuidePressFiresTheCommandOnce() {
         var session = ControllerMappingSession(deviceID: guideDevice, playerIndex: 0)
         let press = session.process(ControllerInputSnapshot(buttons: [.mode]), now: guideClock.now, timestamp: guideStamp)
         #expect(press.commands == [.toggleUnifiedHUD])
-        let padState = press.events.compactMap { if case .gamepad(let state) = $0 { state } else { nil } }.last
-        #expect(padState?.buttons.contains(.mode) == false)
-
         let held = session.process(ControllerInputSnapshot(buttons: [.mode]), now: guideClock.now, timestamp: guideStamp)
         #expect(held.commands.isEmpty)
         _ = session.process(ControllerInputSnapshot(), now: guideClock.now, timestamp: guideStamp)
         let again = session.process(ControllerInputSnapshot(buttons: [.mode]), now: guideClock.now, timestamp: guideStamp)
         #expect(again.commands == [.toggleUnifiedHUD])
+    }
+
+    @Test func nativeGuidePressNeverReachesTheSeat() {
+        var session = ControllerMappingSession(deviceID: guideDevice, playerIndex: 0)
+        let press = session.process(ControllerInputSnapshot(buttons: [.mode]), now: guideClock.now, timestamp: guideStamp)
+        let padState = press.events.compactMap { if case .gamepad(let state) = $0 { state } else { nil } }.last
+        #expect(padState?.buttons.contains(.mode) == false)
     }
 
     @Test func nativeOrdinaryControlCommandFiresThroughTheEngine() {

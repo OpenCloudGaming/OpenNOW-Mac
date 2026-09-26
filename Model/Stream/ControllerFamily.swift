@@ -28,13 +28,7 @@ public enum ControllerFamily: String, Codable, CaseIterable, Identifiable, Senda
     }
 
     public func label(for control: ControllerControl) -> String {
-        if control == .guide {
-            switch self {
-            case .steam: return "Steam"
-            case .generic: return "Guide"
-            case .dualShock4: return "PS"
-            }
-        }
+        guard control != .guide else { return guideLabel }
         guard self == .dualShock4 else { return control.label }
         switch control {
         case .faceA: return "×"
@@ -44,6 +38,14 @@ public enum ControllerFamily: String, Codable, CaseIterable, Identifiable, Senda
         case .select: return "SHARE"
         case .start: return "OPTIONS"
         default: return control.label
+        }
+    }
+
+    private var guideLabel: String {
+        switch self {
+        case .steam: return "Steam"
+        case .generic: return "Guide"
+        case .dualShock4: return "PS"
         }
     }
 }

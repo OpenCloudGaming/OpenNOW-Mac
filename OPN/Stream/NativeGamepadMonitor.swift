@@ -432,8 +432,8 @@ public final class NativeGamepadMonitor {
         }
         // The guide tap is resolved ahead of the binding engine so the same button can close the
         // HUD it opened: opening the HUD turns remote input off, which suspends every mapping.
-        if guideTapTracker.process(snapshot: snapshot, deviceID: deviceID),
-           case .streamCommand(let action) = guideBinding(for: .steam) {
+        let isGuideTapComplete = guideTapTracker.didReleaseTap(snapshot: snapshot, deviceID: deviceID)
+        if isGuideTapComplete, case .streamCommand(let action) = guideBinding(for: .steam) {
             onStreamCommand?(action)
         }
         if onScreenKeyboardCapture?(deviceID, snapshot) == true {
@@ -462,8 +462,7 @@ public final class NativeGamepadMonitor {
     }
 
     /// The guide binding for a controller type, defaulted when no profile exists or the profile
-    /// predates the guide button. Deliberately independent of `mappingsEnabled`: the guide is the
-    /// one binding that has to resolve while a local overlay owns the pad.
+    /// predates it. Independent of `mappingsEnabled`: it must resolve while a local overlay owns the pad.
     func guideBinding(for family: ControllerFamily) -> ControllerBindingTarget {
         mappingProvider.profile(for: family)?.binding(for: .guide) ?? ControllerMappingProfile.guideDefault
     }

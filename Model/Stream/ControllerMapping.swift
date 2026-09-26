@@ -12,9 +12,8 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
     case dpadUp, dpadDown, dpadLeft, dpadRight
     case leftGrip, leftGrip2, rightGrip, rightGrip2
     case select, start
-    /// The Steam / Xbox / PlayStation logo button. `mode` on the wire, and on a Steam Controller
-    /// it is also the local-cursor modifier and an OSK/power-off chord partner — see
-    /// `SteamGuideTapTracker` for how a tap is told apart from those roles.
+    /// The Steam / Xbox / PlayStation logo button (`mode` on the wire). On a Steam Controller it is
+    /// also a chord partner and the local-cursor modifier; see `SteamGuideTapTracker`.
     case guide
     case leftPadClick, rightPadClick, touchpadClick
     /// The 2026 controller's capacitive handle sensors. Distinct hardware from the four rear
@@ -148,9 +147,8 @@ public enum ControllerBindingTarget: Equatable, Sendable {
     case keyboardKey(keyCode: UInt16, modifiers: KeyboardModifiers)
     case mouseButton(MouseButton)
     case mouseScroll(Int16)
-    /// An action the app itself performs, so a pad can open the HUD, take a screenshot, mute the
-    /// mic or save a replay. The set offered in the editor is the stream section of
-    /// `KeybindingAction`, which is a safe allowlist: it cannot name a session-ending action.
+    /// An action the app itself performs. The editor offers the stream section of
+    /// `KeybindingAction`, which cannot name a session-ending or catalog-only action.
     case streamCommand(KeybindingAction)
     case disabled
 }

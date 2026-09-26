@@ -82,9 +82,8 @@ extension ControllerMappingView {
 
     // MARK: - HUD & actions editor
 
-    /// The app actions a pad can fire. Sourced from `KeybindingAction.controllerBindingActions`
-    /// (the stream section), so the list cannot name a session-ending or catalog-only action, and
-    /// the copy matches the Shortcuts page exactly.
+    /// The app actions a pad can fire, sourced from the safe allowlist so no session-ending or
+    /// catalog-only action can appear. The copy matches the Shortcuts page exactly.
     func actionsEditor(control: ControllerControl, target: ControllerBindingTarget) -> some View {
         let current: KeybindingAction? = {
             if case .streamCommand(let action) = target { return action }
