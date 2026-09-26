@@ -87,7 +87,8 @@ extension NativeNVSTHostViewModel {
     private var displayFocusEntries: [StreamHUDFocusEntry] {
         [
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "display", columns: 4, action: toggleNativeStatsHUD),
-            StreamHUDFocusEntry(id: "full-screen", isDisabled: nativeView?.window == nil, group: "display", columns: 4, action: toggleNativeFullScreen),
+            StreamHUDFocusEntry(id: "full-screen", isDisabled: isFullScreenTileDisabled, group: "display", columns: 4, action: toggleNativeFullScreen),
+            StreamHUDFocusEntry(id: "picture-in-picture", isDisabled: !sidebarCapabilities.supports(.pictureInPicture), group: "display", columns: 4, action: togglePictureInPicture),
         ]
     }
 

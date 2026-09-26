@@ -109,11 +109,11 @@ struct NativeNVSTMediaStreamSurface: View {
 
     @ViewBuilder var nativeWindowOverlay: some View {
         ZStack(alignment: .topLeading) {
-            if model.nativeStatsVisible && !model.streamControlsVisible { nativeStatsHUD.allowsHitTesting(false) }
+            if model.nativeStatsVisible && !model.streamControlsVisible && !model.isPictureInPicture { nativeStatsHUD.allowsHitTesting(false) }
             // Presentation is decided here rather than nested inside one `if` so the tap-catcher
             // and the dock carry separate transitions: a conditional ancestor animates as one
             // block, and the invisible catcher would slide in with the drawer.
-            if model.unifiedHUDVisible {
+            if model.unifiedHUDVisible && !model.isPictureInPicture {
                 Color.black.opacity(0.001)
                     .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
                     .onTapGesture {}
@@ -123,6 +123,8 @@ struct NativeNVSTMediaStreamSurface: View {
             }
             if model.onScreenKeyboardVisible { StreamOnScreenKeyboardOverlay(controller: model.onScreenKeyboard) }
             if model.streamControlsVisible { nativeStreamControlsOverlay }
+            // PiP hides the HUD entirely; this two-action strip is what stands in for it.
+            if model.isPictureInPicture { nativePictureInPictureControls }
             if model.isShortcutsHelpVisible { nativeShortcutsHelpOverlay }
             if model.isHUDCustomizeVisible { nativeHUDCustomizeOverlay }
             if !model.networkPathAvailable && !model.streamControlsVisible { nativeNetworkRecoveryOverlay }

@@ -42,6 +42,15 @@ extension NativeNVSTHostViewModel {
         configurePushToTalkMonitor(for: view, mode: profile.microphoneMode)
         configureInput(for: view)
         installNativeFullScreenObservers(for: view)
+        registerAsStreamWindowSessionSurface(for: view)
+    }
+
+    /// Announces this model to the window hosting it, so the window's close button can ask the
+    /// session instead of guessing at it. The window owns the decision - see
+    /// `OPNStreamWindowPresenter.handleCloseRequest` - this only makes the session reachable.
+    func registerAsStreamWindowSessionSurface(for view: NativeStreamView) {
+        guard let window = view.window as? OPNStreamWindow else { return }
+        window.sessionSurface = self
     }
 
     /// The HUD's full-screen tile reads `streamWindowIsFullScreen` rather than the style mask, so it

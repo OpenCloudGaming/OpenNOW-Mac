@@ -161,7 +161,6 @@ struct CatalogView: View {
     /// Settings is open so picking a colour repaints Settings instantly without rebuilding every
     /// rail and tile behind it; the catalog catches up when the reader returns to it.
     @State private var appliedCatalogThemeIdentity = ""
-    @State private var streamWindowTopInset: CGFloat = 0
     @State private var catalogWindowTopInset: CGFloat = 0
 
     private var measuredCatalogTopInset: CGFloat {
@@ -180,6 +179,7 @@ struct CatalogView: View {
     private var canPresentSyncConflictAlert: Bool {
         isCatalogPageActive
             && viewModel.activeStreamConfiguration == nil
+            && !OPNStreamWindowPresenter.shared.isPresented
             && !viewModel.isLaunchFlowVisible
             && !viewModel.isGameInfoVisible
     }
@@ -287,175 +287,154 @@ struct CatalogView: View {
         // pass, so the palette has to be resolved before they draw rather than in an `onChange`.
         let _ = OPNDesign.applyTheme(accent: accentColorPreset, appearance: appearancePreference, systemColorScheme: systemAppearance.colorScheme)
         ZStack {
-            if let streamConfiguration = viewModel.activeStreamConfiguration {
-                GeometryReader { proxy in
-                    StreamStageLayout(
-                        viewport: proxy.size,
-                        topInset: streamWindowTopInset,
-                        aspectRatio: CGFloat(viewModel.streamProfile.aspectRatio)
-                    ) { _ in
-                        StreamHostView(
-                            configuration: streamConfiguration,
-                            onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
-                            onRequiredSessionAd: { ad in
-                                try await viewModel.presentRequiredStreamAd(ad)
-                            },
-                            onEnd: { success, message, report in
-                                viewModel.finishActiveStream(success: success, message: message, report: report)
+            // The stream never lives here any more. A dedicated AppKit-owned window is created for
+            // it - see `OPNStreamWindowPresenter` - which is what lets the catalog stay mounted, and
+            // freely resizable, for the whole session instead of being torn down and re-decoded on
+            // the way back.
+            ZStack {
+                if controllerModeEnabled {
+                    ControllerCatalogView(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
+                        .transition(.opacity)
+                } else {
+                    VStack(spacing: 0) {
+                        CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
+                            .id(themeIdentity)
+                            // The bar's tooltips hang below its bounds, so it must outdraw the
+                            // content below it; the zIndexed overlays still cover it when open.
+                            .zIndex(1)
+                        ZStack {
+                            // The catalog stays mounted underneath Settings and Recordings
+                            // rather than being swapped out for them. Tearing it down drops
+                            // every rail, every tile and the decoded artwork each tile holds
+                            // in its own state, so coming back rebuilt and re-decoded the
+                            // whole page - a second or more of pinned CPU on a plain page
+                            // switch. Hidden, it costs a layout it has already done.
+                            CatalogContentView(viewModel: viewModel, isActive: isCatalogPageActive)
+                                .id(appliedCatalogThemeIdentity)
+                                .opacity(isCatalogPageActive ? 1 : 0)
+                                .disabled(!isCatalogPageActive)
+                                .accessibilityHidden(!isCatalogPageActive)
+                            if viewModel.selectedMainPage == .settings {
+                                SettingsView(viewModel: viewModel)
+                                    .id(themeIdentity)
+                            } else if viewModel.selectedMainPage == .screenshots {
+                                ScreenshotsView()
+                                    .id(themeIdentity)
+                            } else if viewModel.selectedMainPage == .recordings {
+                                RecordingsView()
+                                    .id(themeIdentity)
                             }
-                        )
-                        .id(streamConfiguration.id)
-                    }
-                }
-                .background(WindowTopInsetReader { streamWindowTopInset = $0 })
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea()
-                .transition(.opacity)
-            } else {
-                ZStack {
-                    if controllerModeEnabled {
-                        ControllerCatalogView(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
-                            .transition(.opacity)
-                    } else {
-                        VStack(spacing: 0) {
-                            CatalogTopBar(viewModel: viewModel, showsMainMenu: $showsMainMenu, showsAccountMenu: $showsAccountMenu, onSwitch: onSwitch, onSignOut: onSignOut, onForget: onForget)
-                                .id(themeIdentity)
-                                // The bar's tooltips hang below its bounds, so it must outdraw the
-                                // content below it; the zIndexed overlays still cover it when open.
-                                .zIndex(1)
-                            ZStack {
-                                // The catalog stays mounted underneath Settings and Recordings
-                                // rather than being swapped out for them. Tearing it down drops
-                                // every rail, every tile and the decoded artwork each tile holds
-                                // in its own state, so coming back rebuilt and re-decoded the
-                                // whole page - a second or more of pinned CPU on a plain page
-                                // switch. Hidden, it costs a layout it has already done.
-                                CatalogContentView(viewModel: viewModel, isActive: isCatalogPageActive)
-                                    .id(appliedCatalogThemeIdentity)
-                                    .opacity(isCatalogPageActive ? 1 : 0)
-                                    .disabled(!isCatalogPageActive)
-                                    .accessibilityHidden(!isCatalogPageActive)
-                                if viewModel.selectedMainPage == .settings {
-                                    SettingsView(viewModel: viewModel)
-                                        .id(themeIdentity)
-                                } else if viewModel.selectedMainPage == .screenshots {
-                                    ScreenshotsView()
-                                        .id(themeIdentity)
-                                } else if viewModel.selectedMainPage == .recordings {
-                                    RecordingsView()
-                                        .id(themeIdentity)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        .padding(.top, measuredCatalogTopInset)
-                        .transition(.opacity)
-
-                        // Both menus stay mounted and animate themselves in and out. Wrapping them
-                        // in an `if` here removed them before their exit transition could run, and
-                        // gave the scrim and the panel one shared transition instead of two.
-                        CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, topInset: measuredCatalogTopInset)
-                            .zIndex(12)
-
-                        CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
-                            .zIndex(13)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    if viewModel.isLaunchFlowVisible {
-                        VendorLaunchFlowOverlay(viewModel: viewModel)
-                            .transition(.opacity)
-                            .zIndex(20)
-                    }
-
-                    if viewModel.isGameInfoVisible {
-                        CatalogGameInfoOverlay(viewModel: viewModel, topInset: measuredCatalogTopInset)
-                            .transition(.opacity)
-                            .zIndex(17)
-                    }
-
-                    if viewModel.isStorePickerVisible {
-                        CatalogStorePickerOverlay(viewModel: viewModel, topInset: measuredCatalogTopInset)
-                            .transition(.opacity)
-                            .zIndex(18)
-                    }
-
-                    if viewModel.isDiagnosticsUploadConfirmationVisible {
-                        DiagnosticsUploadConfirmationDialog(
-                            cancel: { viewModel.cancelDiagnosticsUpload() },
-                            upload: { viewModel.confirmDiagnosticsUpload() },
-                            uiScale: uiScale
-                        )
-                        .transition(.opacity)
-                        .zIndex(19)
-                    }
-
-                    if let insights = viewModel.sessionInsights {
-                        SessionInsightsOverlay(
-                            insights: insights,
-                            uiScale: uiScale,
-                            dismiss: { isOptingOut in viewModel.dismissSessionInsights(isOptingOut: isOptingOut) }
-                        )
-                        .transition(.opacity)
-                        .zIndex(22)
-                    }
-
-                    if viewModel.isCollectionsPickerPresented {
-                        CatalogCollectionsPickerOverlay(viewModel: viewModel)
-                            .transition(.opacity)
-                            .zIndex(24)
-                    }
-
-                    if viewModel.isCollectionsManagerPresented {
-                        CatalogCollectionsManagerOverlay(viewModel: viewModel, close: { viewModel.dismissCollectionsManager() })
-                            .transition(.opacity)
-                            .zIndex(24)
-                    }
-
-                    if viewModel.collectionsDialog != nil {
-                        CatalogCollectionsDialogOverlay(viewModel: viewModel)
-                            .transition(.opacity)
-                            .zIndex(25)
-                    }
-
-                    if viewModel.isCollectionsIconPickerPresented {
-                        CatalogCollectionIconPickerOverlay(viewModel: viewModel)
-                            .transition(.opacity)
-                            .zIndex(27)
-                    }
-
-                    if viewModel.isCollectionsNoticePresented {
-                        CatalogCollectionsNoticeOverlay(viewModel: viewModel)
-                            .transition(.opacity)
-                            .zIndex(26)
-                    }
-                }
-                .background {
-                    // Mounted only while a collections surface is up: a permanently installed
-                    // monitor would eat Escape from whatever else owns it on the page.
-                    if viewModel.hasPresentedCollectionsOverlay {
-                        CatalogCollectionsEscapeMonitor { viewModel.dismissTopmostCollectionsOverlay() }
-                    }
-                }
-                .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
-                .environment(\.opnUIScale, uiScale)
-                .environment(\.opnTileDensity, tileDensity)
-            }
-
-            if viewModel.isStreamLaunchLoadingVisible {
-                VendorStreamLaunchLoadingOverlay(viewModel: viewModel, windowTopInset: measuredCatalogTopInset)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, measuredCatalogTopInset)
                     .transition(.opacity)
-                    .zIndex(10)
-                    .ignoresSafeArea()
+
+                    // Both menus stay mounted and animate themselves in and out. Wrapping them
+                    // in an `if` here removed them before their exit transition could run, and
+                    // gave the scrim and the panel one shared transition instead of two.
+                    CatalogMainMenuOverlay(viewModel: viewModel, isPresented: $showsMainMenu, topInset: measuredCatalogTopInset)
+                        .zIndex(12)
+
+                    CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
+                        .zIndex(13)
+                }
+                if viewModel.isLaunchFlowVisible {
+                    VendorLaunchFlowOverlay(viewModel: viewModel)
+                        .transition(.opacity)
+                        .zIndex(20)
+                }
+
+                if viewModel.isGameInfoVisible {
+                    CatalogGameInfoOverlay(viewModel: viewModel, topInset: measuredCatalogTopInset)
+                        .transition(.opacity)
+                        .zIndex(17)
+                }
+
+                if viewModel.isStorePickerVisible {
+                    CatalogStorePickerOverlay(viewModel: viewModel, topInset: measuredCatalogTopInset)
+                        .transition(.opacity)
+                        .zIndex(18)
+                }
+
+                if viewModel.isDiagnosticsUploadConfirmationVisible {
+                    DiagnosticsUploadConfirmationDialog(
+                        cancel: { viewModel.cancelDiagnosticsUpload() },
+                        upload: { viewModel.confirmDiagnosticsUpload() },
+                        uiScale: uiScale
+                    )
+                    .transition(.opacity)
+                    .zIndex(19)
+                }
+
+                if let insights = viewModel.sessionInsights {
+                    SessionInsightsOverlay(
+                        insights: insights,
+                        uiScale: uiScale,
+                        dismiss: { isOptingOut in viewModel.dismissSessionInsights(isOptingOut: isOptingOut) }
+                    )
+                    .transition(.opacity)
+                    .zIndex(22)
+                }
+
+                if viewModel.isCollectionsPickerPresented {
+                    CatalogCollectionsPickerOverlay(viewModel: viewModel)
+                        .transition(.opacity)
+                        .zIndex(24)
+                }
+
+                if viewModel.isCollectionsManagerPresented {
+                    CatalogCollectionsManagerOverlay(viewModel: viewModel, close: { viewModel.dismissCollectionsManager() })
+                        .transition(.opacity)
+                        .zIndex(24)
+                }
+
+                if viewModel.collectionsDialog != nil {
+                    CatalogCollectionsDialogOverlay(viewModel: viewModel)
+                        .transition(.opacity)
+                        .zIndex(25)
+                }
+
+                if viewModel.isCollectionsIconPickerPresented {
+                    CatalogCollectionIconPickerOverlay(viewModel: viewModel)
+                        .transition(.opacity)
+                        .zIndex(27)
+                }
+
+                if viewModel.isCollectionsNoticePresented {
+                    CatalogCollectionsNoticeOverlay(viewModel: viewModel)
+                        .transition(.opacity)
+                        .zIndex(26)
+                }
             }
+            .background {
+                // Mounted only while a collections surface is up: a permanently installed
+                // monitor would eat Escape from whatever else owns it on the page.
+                if viewModel.hasPresentedCollectionsOverlay {
+                    CatalogCollectionsEscapeMonitor { viewModel.dismissTopmostCollectionsOverlay() }
+                }
+            }
+            .background(WindowTopInsetReader { catalogWindowTopInset = $0 })
+            .environment(\.opnUIScale, uiScale)
+            .environment(\.opnTileDensity, tileDensity)
         }
         .ignoresSafeArea(edges: .all)
         .background(OPNDesign.Surface.app)
-        .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: viewModel.activeStreamConfiguration != nil))
+        // `isLocked: false`, which is not the same as deleting this: a catalog window locked to a
+        // stream's aspect ratio has to be released the one supported way
+        // (`StreamWindowGeometryGate.releaseAspectRatioLock`). Assigning `.zero` to
+        // `contentAspectRatio` looks like a release and leaves a live NaN divisor behind, which
+        // traps on the next titlebar double-click. The stream window carries the lock now.
+        .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: false))
         .task { @MainActor in
             viewModel.start()
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
-            updateWindowTitleForActiveStream()
+            // `initial: true` on the observer below can land before this task runs, so the
+            // presentation is re-asserted here as well. `present` is idempotent for the
+            // configuration it already holds, which keeps either order from rebuilding a live
+            // session's hosting view.
+            syncStreamWindowPresentation()
             // Bound for as long as this window is on screen: the menu bar surface follows the
             // launch flow through it, and can hand a launch back to it while it exists.
             viewModel.attachMenuBarSurface()
@@ -471,7 +450,7 @@ struct CatalogView: View {
             viewModel.updateMenuBarAccounts(accounts, signedOutAccountEmails: signedOutAccountEmails)
         }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in
-            updateWindowTitleForActiveStream()
+            syncStreamWindowPresentation()
             refreshSyncConflictAlert()
         }
         .onChange(of: themeIdentity, initial: true) { @MainActor _, newIdentity in
@@ -502,13 +481,20 @@ struct CatalogView: View {
         .preferredColorScheme(preferredColorScheme)
     }
 
-    private func updateWindowTitleForActiveStream() {
+    /// Hands a live stream to its own window, and takes it away again when the session ends.
+    ///
+    /// The game's title moved with the stream: it is the stream window's title now, and the catalog
+    /// window keeps its own. `present` is idempotent for the configuration it already holds, so the
+    /// catalog rebuilding behind the stream - a theme change, a page switch - cannot re-create the
+    /// hosting view and tear the session down.
+    private func syncStreamWindowPresentation() {
         guard let configuration = viewModel.activeStreamConfiguration else {
+            OPNStreamWindowPresenter.shared.dismiss()
             onWindowTitleChange(nil)
             return
         }
-        let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        onWindowTitleChange(title.isEmpty ? "GeForce NOW" : title)
+        OPNStreamWindowPresenter.shared.present(configuration: configuration, viewModel: viewModel)
+        onWindowTitleChange(nil)
     }
 
     private func consumePendingGameShortcut() {

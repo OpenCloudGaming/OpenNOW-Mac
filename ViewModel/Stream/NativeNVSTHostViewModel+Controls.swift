@@ -355,7 +355,8 @@ extension NativeNVSTHostViewModel {
     }
 
     func setUnifiedHUDVisible(_ visible: Bool) {
-        guard isConnected, !streamControlsVisible else { return }
+        // Never in PiP: the dock is 268pt wide at its narrowest and the whole window is 320pt.
+        guard isConnected, !streamControlsVisible, !isPictureInPicture else { return }
         hudGamepadTracker.reset()
         closeHUDDropdown()
         if visible {
@@ -421,13 +422,80 @@ extension NativeNVSTHostViewModel {
     /// is first painted, which is the only point the window server takes it reliably.
     /// A second toggle mid-animation cancels AppKit's entry, so transitions are refused, not queued.
     func toggleNativeFullScreen() {
-        guard let window = nativeView?.window, !isFullScreenTransitioning else { return }
+        // There is no full screen to enter from a small floating window; the tile is disabled in
+        // PiP and this is the same answer for the menu bar and the shortcut.
+        guard let window = nativeView?.window, !isFullScreenTransitioning, !isPictureInPicture else { return }
         guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
         // Read before the toggle: `.fullScreen` is only inserted once the transition finishes.
         let willEnterFullScreen = !window.styleMask.contains(.fullScreen)
         window.toggleFullScreen(nil)
         showNativeTransientStreamMessage(willEnterFullScreen ? "Entering full screen" : "Leaving full screen")
         OPNStreamTelemetry.capture("nvst.ui.fullscreen.toggle", level: .info, message: willEnterFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.", attributes: ["applicationID": configuration.applicationID, "fullScreen": String(willEnterFullScreen)])
+    }
+
+    /// PiP is a mode of the stream window, so this is a window change and nothing else: one surface,
+    /// one session, never a second window and never a reparented view.
+    ///
+    /// Pressed while the window is full screen it does what the user meant - leave full screen, then
+    /// enter PiP - because the exit is animated and the mode change would otherwise land mid
+    /// animation, which is the same reason `enterNativeFullScreenWhenSessionReady` waits and retries.
+    func togglePictureInPicture() {
+        guard let window = nativeView?.window as? OPNStreamWindow, !isEnding, !didEnd else { return }
+        guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
+        switch OPNStreamPictureInPicture.request(
+            isPictureInPicture: isPictureInPicture,
+            isFullScreen: window.styleMask.contains(.fullScreen),
+            isFullScreenTransitioning: isFullScreenTransitioning
+        ) {
+        case .leave: leavePictureInPicture(window)
+        case .leaveFullScreenThenEnter: leaveFullScreenThenEnterPictureInPicture(window, attempt: 0)
+        case .enter: enterPictureInPicture(window)
+        }
+    }
+
+    /// The window is small and floating from here on, so every surface anchored to the window's top
+    /// corners has to go. The dock alone is 268pt wide in a 320pt window.
+    private func enterPictureInPicture(_ window: OPNStreamWindow) {
+        unifiedHUDVisible = false
+        isShortcutsHelpVisible = false
+        isHUDCustomizeVisible = false
+        nativeStatsVisible = false
+        closeHUDDropdown()
+        hudFocusID = nil
+        if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
+        nativeView?.remoteInputEnabled = false
+        let aspectRatio = CGFloat(OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).aspectRatio)
+        OPNStreamPictureInPicture.enter(window, aspectRatio: aspectRatio)
+        isPictureInPicture = true
+        showNativeTransientStreamMessage("Picture in Picture")
+        OPNStreamTelemetry.capture("nvst.ui.pip.enter", level: .info, message: "Native NVST stream entered Picture in Picture.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    private func leavePictureInPicture(_ window: OPNStreamWindow) {
+        OPNStreamPictureInPicture.exit(window)
+        isPictureInPicture = false
+        OPNStreamTelemetry.capture("nvst.ui.pip.exit", level: .info, message: "Native NVST stream left Picture in Picture.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    /// Full screen first, PiP second, one retry beat at a time. Mirrors the session-ready helper
+    /// below: the exit is animated and AppKit refuses a second style-mask change while it runs.
+    private func leaveFullScreenThenEnterPictureInPicture(_ window: OPNStreamWindow, attempt: Int) {
+        guard attempt < Self.sessionReadyFullScreenAttemptLimit else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: NativeNVSTHostViewModel.sessionReadyFullScreenRetryDelay)
+            guard let self, !self.isEnding, !self.didEnd else { return }
+            guard let window = self.nativeView?.window as? OPNStreamWindow else { return }
+            if self.isFullScreenTransitioning || StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) {
+                self.leaveFullScreenThenEnterPictureInPicture(window, attempt: attempt + 1)
+                return
+            }
+            if window.styleMask.contains(.fullScreen) {
+                window.toggleFullScreen(nil)
+                self.leaveFullScreenThenEnterPictureInPicture(window, attempt: attempt + 1)
+                return
+            }
+            self.enterPictureInPicture(window)
+        }
     }
 
     /// The window is only reachable once the view is in a hierarchy and the aspect coordinator has

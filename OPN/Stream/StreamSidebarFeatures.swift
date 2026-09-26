@@ -10,6 +10,9 @@ enum StreamSidebarFeature: String, CaseIterable, Hashable, Sendable {
     case sessionLimit
     case remoteCoOp
     case videoEnhancement
+    /// A property of the window rather than of the transport, and still gated on purpose: this is
+    /// how Picture-in-Picture gets turned off if a render path cannot survive the mode change.
+    case pictureInPicture
 }
 
 struct StreamSidebarCapabilities: Equatable, Sendable {
@@ -25,6 +28,7 @@ struct StreamSidebarCapabilities: Equatable, Sendable {
         .sessionLimit,
         .remoteCoOp,
         .videoEnhancement,
+        .pictureInPicture,
     ])
 
     var visibleFeatures: [StreamSidebarFeature] {

@@ -77,9 +77,18 @@ enum OPNSessionReadyAction {
     private static func bringToFront() {
         let app = NSApplication.shared
         app.activate(ignoringOtherApps: true)
-        for window in app.windows where window.isVisible || window.isMiniaturized {
-            if window.isMiniaturized { window.deminiaturize(nil) }
-            window.makeKeyAndOrderFront(nil)
+        // A session that is ready appears in the dedicated stream window, so raising every window
+        // would put the catalog back on top of the game. The stream window is raised alone when
+        // there is one; every other window keeps the old behaviour, which is the launch-with-no-
+        // stream case the loop was written for.
+        if let streamWindow = OPNStreamWindowFactory.existing() {
+            if streamWindow.isMiniaturized { streamWindow.deminiaturize(nil) }
+            streamWindow.makeKeyAndOrderFront(nil)
+        } else {
+            for window in app.windows where window.isVisible || window.isMiniaturized {
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.makeKeyAndOrderFront(nil)
+            }
         }
         guard app.isActive else {
             app.requestUserAttention(.criticalRequest)
