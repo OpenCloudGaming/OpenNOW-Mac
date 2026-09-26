@@ -27,13 +27,14 @@ import AppKit
 
 final class OPNStreamWindow: NSWindow {
     /// PiP is a mode of this window, not a second window: the one window shrinks, floats and stays
-    /// on top. It is a viewing surface, so a PiP window refuses key and main status - clicking it
-    /// neither activates the app nor takes focus from whatever the user moved to, and remote input
-    /// stays gated off exactly as it is for any other unfocused stream surface.
+    /// on top.
+    ///
+    /// It stays an ordinary key window on purpose. A PiP window that refuses key status is a
+    /// viewing surface only - and this one has to keep playing: the picture is in the game, and the
+    /// mouse and keyboard have to reach it. What PiP must not do is *take* focus, which is why
+    /// entering the mode never activates the app or orders the window front; the user clicking it
+    /// is what makes it key, exactly as for the windowed stream.
     var isPictureInPicture = false
-
-    override var canBecomeKey: Bool { !isPictureInPicture }
-    override var canBecomeMain: Bool { !isPictureInPicture }
 
     /// What PiP entry replaced, so leaving PiP puts the window back exactly where it was.
     var windowedState: WindowedState?
@@ -47,6 +48,16 @@ final class OPNStreamWindow: NSWindow {
     /// it resolves. The close-button decision needs the session's state - whether there is one at
     /// all, and the controls panel it raises - and the surface is the only thing that has it.
     weak var sessionSurface: (any OPNStreamWindowSessionSurface)?
+
+    /// The close guard, held **strongly and by the window**.
+    ///
+    /// `NSWindow.delegate` is a `weak` property (AppKit's `NSWindow.h`), so a guard that is only
+    /// installed and never retained is deallocated as soon as the installing call returns: the
+    /// delegate slot goes back to `nil`, nothing answers `windowShouldClose`, and the close button
+    /// tears the window - and the session inside it - down with no prompt at all. That is exactly
+    /// what shipped once. `OPNMainWindowCloseGuard` keeps its proxy in a `static var` for the same
+    /// reason; this window owns its own, which is also what keeps two windows from sharing one.
+    var closeGuard: OPNStreamWindowCloseDelegateProxy?
 
     struct WindowedState {
         let level: NSWindow.Level

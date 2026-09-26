@@ -42,14 +42,17 @@ extension NativeNVSTHostViewModel {
         configurePushToTalkMonitor(for: view, mode: profile.microphoneMode)
         configureInput(for: view)
         installNativeFullScreenObservers(for: view)
-        registerAsStreamWindowSessionSurface(for: view)
+        attachStreamWindow(view.window)
     }
 
-    /// Announces this model to the window hosting it, so the window's close button can ask the
+    /// Points the window hosting this session at it, so the window's close button can ask the
     /// session instead of guessing at it. The window owns the decision - see
     /// `OPNStreamWindowPresenter.handleCloseRequest` - this only makes the session reachable.
-    func registerAsStreamWindowSessionSurface(for view: NativeStreamView) {
-        guard let window = view.window as? OPNStreamWindow else { return }
+    ///
+    /// Called from the surface whenever it lands in a window, and again when the native view
+    /// resolves, so a missing reference cannot outlive the moment the window is there.
+    func attachStreamWindow(_ window: NSWindow?) {
+        guard let window = window as? OPNStreamWindow, !didEnd else { return }
         window.sessionSurface = self
     }
 

@@ -463,7 +463,12 @@ extension NativeNVSTHostViewModel {
         closeHUDDropdown()
         hudFocusID = nil
         if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
-        nativeView?.remoteInputEnabled = false
+        // Input stays live. The picture is in the game, so the mouse and keyboard have to keep
+        // reaching it while the window is small - the same gate the HUD uses on its way out, which
+        // is `networkPathAvailable` rather than an unconditional `true`: the network monitor blocks
+        // input while the path is down and `isConnected` stays true through a drop.
+        nativeView?.remoteInputEnabled = networkPathAvailable
+        nativeView?.restoreInputFocus()
         let aspectRatio = CGFloat(OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).aspectRatio)
         OPNStreamPictureInPicture.enter(window, aspectRatio: aspectRatio)
         isPictureInPicture = true
@@ -474,6 +479,8 @@ extension NativeNVSTHostViewModel {
     private func leavePictureInPicture(_ window: OPNStreamWindow) {
         OPNStreamPictureInPicture.exit(window)
         isPictureInPicture = false
+        nativeView?.remoteInputEnabled = networkPathAvailable
+        nativeView?.restoreInputFocus()
         OPNStreamTelemetry.capture("nvst.ui.pip.exit", level: .info, message: "Native NVST stream left Picture in Picture.", attributes: ["applicationID": configuration.applicationID])
     }
 

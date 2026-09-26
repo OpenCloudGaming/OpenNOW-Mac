@@ -59,18 +59,21 @@ final class OPNStreamWindowCloseDelegateProxy: NSObject, NSWindowDelegate {
 enum OPNStreamWindowCloseGuard {
     /// Installs on a freshly created stream window. Idempotent, so a window reused for a later
     /// session keeps one guard rather than a stack of them.
-    @discardableResult
-    static func install(on window: OPNStreamWindow) -> OPNStreamWindowCloseDelegateProxy {
-        if let existing = window.delegate as? OPNStreamWindowCloseDelegateProxy { return existing }
+    static func install(on window: OPNStreamWindow) {
+        guard window.closeGuard == nil else { return }
         let proxy = OPNStreamWindowCloseDelegateProxy(forwardee: window.delegate)
+        // Stored on the window *before* the delegate slot is taken, and the order matters: the
+        // delegate property is weak, so a proxy that nothing else holds is deallocated on the way
+        // out of this function and the slot silently reverts to `nil`.
+        window.closeGuard = proxy
         window.delegate = proxy
         OPNLog.info(.app, "Stream window close guard installed; the close button always asks")
-        return proxy
     }
 
     /// Restores whatever delegate the window had, for the window's teardown.
     static func uninstall(from window: OPNStreamWindow) {
-        guard let proxy = window.delegate as? OPNStreamWindowCloseDelegateProxy else { return }
-        window.delegate = proxy.forwardee
+        guard let proxy = window.closeGuard else { return }
+        if window.delegate === proxy { window.delegate = proxy.forwardee }
+        window.closeGuard = nil
     }
 }

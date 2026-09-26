@@ -26,6 +26,16 @@ final class OPNStreamWindowPresenter {
     /// session (the iCloud conflict prompt) keeps out of the way.
     var isPresented: Bool { window != nil }
 
+    /// Brings the stream window forward. The catalog's running-session banner and the Dock's own
+    /// affordances both mean "show me the game" when they are clicked, and a PiP window comes back
+    /// as itself rather than being restored first.
+    func focus() {
+        guard let window else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     func present(configuration: StreamLaunchConfiguration, viewModel: CatalogViewModel) {
         if presentedConfigurationID == configuration.id, let window, window.isVisible { return }
         dismiss()
@@ -81,8 +91,16 @@ final class OPNStreamWindowPresenter {
     /// instead, and the window closes.
     private func handleCloseRequest(viewModel: CatalogViewModel?, window: OPNStreamWindow?) -> Bool {
         let surface = window?.sessionSurface
-        if case .prompt = Self.closeDecision(isConnected: surface?.isConnected) {
-            surface?.showStreamControls(completion: nil)
+        let decision = Self.closeDecision(isConnected: surface?.isConnected, hasActiveStream: StreamSessionLifecycle.hasActiveStream)
+        if case .prompt = decision {
+            if let surface {
+                surface.showStreamControls(completion: nil)
+            } else {
+                // The surface is unreachable but a session is live, so the panel is raised through
+                // the registry every other out-of-window surface uses. Same panel, same three
+                // answers, and no completion - so its third button still reads "End Stream".
+                _ = StreamSessionLifecycle.sendCommand(.showQuitMenu)
+            }
             return true
         }
         // Nothing to prompt about: the pending start is cancelled through the same not-connected
@@ -109,8 +127,19 @@ final class OPNStreamWindowPresenter {
         case cancelLaunchAndDismiss
     }
 
-    static func closeDecision(isConnected: Bool?) -> CloseDecision {
-        isConnected == true ? .prompt : .cancelLaunchAndDismiss
+    /// `isConnected` is `nil` when the window cannot name its surface at all.
+    ///
+    /// That case never silently cancels: if a stream is live anywhere, it prompts. Losing the
+    /// reference is the failure that shipped once - `NSWindow.delegate` is weak, the guard died,
+    /// and the close button ended a running session with no dialog - and the answer to "I cannot
+    /// tell whether there is a session" must never be "end it". Only a session that answers `false`
+    /// itself, or no session at all, takes the quiet path.
+    static func closeDecision(isConnected: Bool?, hasActiveStream: Bool) -> CloseDecision {
+        switch isConnected {
+        case true: return .prompt
+        case false: return .cancelLaunchAndDismiss
+        case nil: return hasActiveStream ? .prompt : .cancelLaunchAndDismiss
+        }
     }
 
     private static func windowTitle(for configuration: StreamLaunchConfiguration) -> String {

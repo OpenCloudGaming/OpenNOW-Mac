@@ -4,6 +4,11 @@
 //  the small window floats over ordinary windows and follows the user between Spaces and displays
 //  without floating over full-screen apps.
 //
+//  Entering the mode never activates the app and never orders the window front, so it cannot take
+//  focus from whatever the user moved to. It does **not** make the window non-key: the picture is in
+//  the game, so a PiP window that refused key status would silently stop accepting the mouse and
+//  keyboard. The user clicking it is what focuses it, exactly as for the windowed stream.
+//
 //  The sharp edge is the borderless carrier child window. `NativeStreamView` creates one - a
 //  borderless, clear carrier for the vendored NVST Metal view - and attaches it as a child of the
 //  stream window. AppKit rewrites the child's `collectionBehavior` to `.ignoresCycle` when it is
@@ -79,6 +84,9 @@ enum OPNStreamPictureInPicture {
         window.isPictureInPicture = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces]
+        // Deliberately no `makeKey`/`activate` here. The mode change is not an invitation to take
+        // focus; the window keeps whichever key status it already had, which is what leaves input
+        // working when the stream was being played and leaves the other app alone when it was not.
         setAllSpacesMembership(onChildWindowsOf: window, isMember: true)
         OPNStreamWindowChrome.apply(to: window, isPictureInPicture: true)
         window.setFrame(frame(contentSize: contentSize(aspectRatio: aspectRatio), in: window.screen), display: true)

@@ -76,13 +76,20 @@ struct NativeNVSTMediaStreamSurface: View {
             // on a struct SwiftUI merely scheduled another pass; on an `ObservableObject` it does
             // not. `resolveIfReady` latches on `didResolve` and `startIfNeeded` has its own guards,
             // so arriving a turn later is safe.
-            NativeNVSTStreamHostView { view in
-                Task { @MainActor in
-                    model.nativeView = view
-                    model.configureNativeView(view)
-                    model.startIfNeeded()
-                }
-            }
+            NativeNVSTStreamHostView(
+                onResolve: { view in
+                    Task { @MainActor in
+                        model.nativeView = view
+                        model.configureNativeView(view)
+                        model.startIfNeeded()
+                    }
+                },
+                // Re-registered whenever the surface lands in a window, not only at resolve time:
+                // the stream window's close button asks the session a question, and a registration
+                // that ran once - a turn late, off a deferred task - is the kind that goes missing
+                // silently and takes a running session with it.
+                onWindowChanged: { window in model.attachStreamWindow(window) }
+            )
             .ignoresSafeArea(.container, edges: [.horizontal, .bottom])
             nativeWindowOverlay
             if !model.isConnected {
@@ -142,15 +149,18 @@ struct NativeNVSTMediaStreamSurface: View {
 
 private struct NativeNVSTStreamHostView: NSViewRepresentable {
     let onResolve: @MainActor (NativeStreamView) -> Void
+    var onWindowChanged: @MainActor (NSWindow?) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NativeNVSTSurfaceContainerView {
         let view = NativeNVSTSurfaceContainerView(frame: .zero)
         view.onResolve = onResolve
+        view.onWindowChanged = onWindowChanged
         return view
     }
 
     func updateNSView(_ nsView: NativeNVSTSurfaceContainerView, context: Context) {
         nsView.onResolve = onResolve
+        nsView.onWindowChanged = onWindowChanged
         nsView.resolveIfReady()
     }
 
@@ -164,11 +174,13 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         nsView.streamView.onCommand = nil
         nsView.streamView.shouldHandleCommand = nil
         nsView.onResolve = nil
+        nsView.onWindowChanged = nil
     }
 
     final class NativeNVSTSurfaceContainerView: NSView {
         let streamView = NativeStreamView(frame: .zero)
         var onResolve: (@MainActor (NativeStreamView) -> Void)?
+        var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
         private var didResolve = false
 
         override init(frame frameRect: NSRect) {
@@ -185,6 +197,7 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            onWindowChanged?(window)
             resolveIfReady()
         }
 

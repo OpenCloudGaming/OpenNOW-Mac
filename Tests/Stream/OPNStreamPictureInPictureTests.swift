@@ -2,6 +2,16 @@ import AppKit
 import Testing
 @testable import OpenNOW
 
+/// Lets one main-actor turn and a run-loop slice pass, so anything the code under test only holds
+/// weakly has been released by the time the assertions run.
+@MainActor
+private func settleRunLoop() async {
+    try? await Task.sleep(for: .milliseconds(120))
+    await withCheckedContinuation { continuation in
+        DispatchQueue.main.async { continuation.resume() }
+    }
+}
+
 /// Picture-in-Picture is a mode of the dedicated stream window, so most of what can go wrong is
 /// window-server state rather than view state. These tests split the two: the pure decisions run
 /// everywhere, and the ones that need a real window are gated the same way the other AppKit tests
@@ -70,9 +80,15 @@ struct OPNStreamPictureInPictureTests {
 
     /// Always prompts when there is a session, never shows a dialog when there is not.
     @Test func theCloseButtonPromptsForALiveSessionOnly() {
-        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: true) == .prompt)
-        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: false) == .cancelLaunchAndDismiss)
-        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: nil) == .cancelLaunchAndDismiss)
+        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: true, hasActiveStream: true) == .prompt)
+        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: true, hasActiveStream: false) == .prompt)
+        // Not connected: a launch or a queue, with nothing to prompt about.
+        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: false, hasActiveStream: true) == .cancelLaunchAndDismiss)
+        // No surface to ask, but a stream is live: never silently end it. This is the shape of the
+        // bug where the close button tore down a running session with no dialog at all.
+        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: nil, hasActiveStream: true) == .prompt)
+        // No surface and no stream: nothing to prompt about.
+        #expect(OPNStreamWindowPresenter.closeDecision(isConnected: nil, hasActiveStream: false) == .cancelLaunchAndDismiss)
     }
 
     // MARK: - Capability gate
@@ -106,6 +122,37 @@ struct OPNStreamPictureInPictureTests {
         ))
     }
 
+    // MARK: - Close guard
+
+    /// `NSWindow.delegate` is a `weak` property. A guard that is installed and not retained is
+    /// deallocated the moment the installing call returns, the delegate slot reverts to `nil`, and
+    /// the close button tears the window - and the session inside it - down with no prompt. That is
+    /// the bug this pins.
+    @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
+    func theCloseGuardSurvivesAndTheCloseButtonOnlyAsks() async {
+        let window = OPNStreamWindowFactory.make()
+        defer { window.close() }
+        var handlerCalls = 0
+        window.closeRequestHandler = { handlerCalls += 1; return true }
+
+        OPNStreamWindowCloseGuard.install(on: window)
+        // A run-loop turn and a bit: anything held only weakly is gone by now.
+        await settleRunLoop()
+        #expect(window.delegate is OPNStreamWindowCloseDelegateProxy)
+
+        window.makeKeyAndOrderFront(nil)
+        await settleRunLoop()
+        window.standardWindowButton(.closeButton)?.performClick(nil)
+        await settleRunLoop()
+
+        #expect(handlerCalls == 1, "the close button has to reach the guard's handler")
+        #expect(window.isVisible, "the window never closes itself; the presenter decides")
+
+        OPNStreamWindowCloseGuard.uninstall(from: window)
+        #expect(window.delegate == nil)
+        #expect(window.closeGuard == nil)
+    }
+
     // MARK: - Window mode change
 
     /// The mode change on a real window: same window, shrunk, floated, joined to every Space, and
@@ -126,15 +173,16 @@ struct OPNStreamPictureInPictureTests {
         #expect(window.collectionBehavior.contains(.canJoinAllSpaces))
         // Windowed-only: PiP never floats over full-screen apps.
         #expect(!window.collectionBehavior.contains(.fullScreenAuxiliary))
-        // A viewing surface, so clicking it neither activates the app nor takes focus.
-        #expect(!window.canBecomeKey)
-        #expect(!window.canBecomeMain)
+        // Key status is kept. A PiP window that refuses it is a viewing surface only, and the
+        // picture is in the game - refusing key status silently stops the mouse and the keyboard.
+        // What the mode must not do is *take* focus, which is why entry never activates or orders
+        // the window front.
+        #expect(window.canBecomeKey)
         #expect(abs(window.frame.width / window.frame.height - 16.0 / 9.0) < 0.001)
 
         OPNStreamPictureInPicture.exit(window)
         #expect(!window.isPictureInPicture)
         #expect(window.windowedState == nil)
-        #expect(window.canBecomeKey)
         #expect(window.collectionBehavior.contains(.fullScreenPrimary))
         #expect(!window.collectionBehavior.contains(.canJoinAllSpaces))
         #expect(abs(window.frame.width - originalFrame.width) < 0.001)
