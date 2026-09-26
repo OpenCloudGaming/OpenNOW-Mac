@@ -122,6 +122,16 @@ struct OPNStreamPictureInPictureTests {
         ))
     }
 
+    // MARK: - Launch presentation
+
+    /// A launch must not pull the app forward. Doing it unconditionally made
+    /// `OPNSessionReadyAction.sessionDidBecomeReady`'s `guard !NSApp.isActive` short-circuit, which
+    /// quietly killed the session-ready action's Off and Notification choices.
+    @Test func aSessionLaunchOnlyTakesKeyWhenTheAppIsAlreadyFrontmost() {
+        #expect(OPNStreamWindowPresenter.launchPresentation(isAppActive: true) == .takeKey)
+        #expect(OPNStreamWindowPresenter.launchPresentation(isAppActive: false) == .orderFrontWithoutActivating)
+    }
+
     // MARK: - Close guard
 
     /// `NSWindow.delegate` is a `weak` property. A guard that is installed and not retained is

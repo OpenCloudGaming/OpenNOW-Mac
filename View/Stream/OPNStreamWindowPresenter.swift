@@ -55,7 +55,16 @@ final class OPNStreamWindowPresenter {
         self.window = window
         self.hostingView = hostingView
         presentedConfigurationID = configuration.id
-        window.makeKeyAndOrderFront(nil)
+        // A launch is not a "show me" action. `OPNMainWindow.present(activating:)` sets the rule the
+        // whole app follows - a session launch leaves the app where it is, and the Session Ready
+        // preference keeps the only say over whether OpenNOW comes forward - and an unconditional
+        // `makeKeyAndOrderFront` here broke it: the app activated the moment the stream window was
+        // created, so `OPNSessionReadyAction.sessionDidBecomeReady`'s `guard !isActive` short-
+        // circuited and its Off and Notification choices became dead code for any launch.
+        switch Self.launchPresentation(isAppActive: NSApp.isActive) {
+        case .takeKey: window.makeKeyAndOrderFront(nil)
+        case .orderFrontWithoutActivating: window.orderFront(nil)
+        }
         OPNLog.info(.launch, "Stream window presented for \(configuration.applicationID)")
     }
 
@@ -120,6 +129,23 @@ final class OPNStreamWindowPresenter {
     /// What the close button does. Pure, so the contract - always prompts when there is a session,
     /// never shows a dialog when there is not - is asserted without building a window.
     /// `nil` is "no stream surface is hosting this window yet".
+    /// How a *launching* stream window is ordered front.
+    ///
+    /// `takeKey` when OpenNOW is already frontmost: the window has to become key or the game gets no
+    /// input, and taking key from our own window costs nobody their focus. `orderFrontWithoutActivating`
+    /// when it is not, which is the case the Session Ready preference exists for - appearing behind
+    /// whatever the user moved to, and coming forward only if they asked it to.
+    ///
+    /// Distinct from `focus()`, which is a real "show me" action and always activates.
+    enum LaunchPresentation: Equatable {
+        case takeKey
+        case orderFrontWithoutActivating
+    }
+
+    static func launchPresentation(isAppActive: Bool) -> LaunchPresentation {
+        isAppActive ? .takeKey : .orderFrontWithoutActivating
+    }
+
     enum CloseDecision: Equatable {
         /// Raise the existing stream controls panel and leave the window where it is.
         case prompt
