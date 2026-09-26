@@ -227,6 +227,20 @@ custom_rules:
       - string
     message: "DESIGN.md Colors: a label on an accent fill uses OPNDesign.onAccent, which follows whichever accent is under it. Plain .black only reads on the bright accent, so it breaks on a light page."
 
+  design_no_catalog_dropdown_in_hud:
+    name: "Catalog dropdown inside the stream HUD"
+    included: ".*/View/Stream/.*\\.swift"
+    regex: '(?<![\w.])OPNDropdownMenu\s*[({]'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "AGENTS.md \"Stream HUD dropdowns\": OPNDropdownMenu is the catalog surface's control. Its panel is a plain overlay with the catalog fill and no StreamHUDExpandedPanelKey, so inside the HUD's translucent sidebar the next section paints over it and the open list reads as a translucent panel spilling across rows. Use StreamHUDDropdown, whose panel is opaque, lifts its section and opens upward."
+    severity: error
+
   design_no_hardcoded_surface_color:
     name: "Hardcoded colour channels"
     included: ".*/View/.*\\.swift"

@@ -169,7 +169,10 @@ extension NativeNVSTMediaStreamSurface {
         return StreamHUDSection(
             label: OPNStreamHUDSection.audio.title,
             spacing: 8,
-            caption: nativeHUDCaption(for: tiles, extra: [(NativeNVSTHostViewModel.microphoneDeviceDropdownID, model.microphoneDeviceCaption)]),
+            caption: nativeHUDCaption(for: tiles, extra: [
+                (NativeNVSTHostViewModel.microphoneModeDropdownID, model.microphoneModeCaption),
+                (NativeNVSTHostViewModel.microphoneDeviceDropdownID, model.microphoneDeviceCaption),
+            ]),
             isCollapsed: model.isHUDSectionCollapsed(.audio),
             isFocused: model.isHUDSectionHeaderFocused(.audio),
             reorderPayload: OPNStreamHUDSection.audio.rawValue,
@@ -191,44 +194,23 @@ extension NativeNVSTMediaStreamSurface {
         microphoneDropdownRow(
             label: "Microphone Mode",
             dropdownID: NativeNVSTHostViewModel.microphoneModeDropdownID,
-            selectionLabel: model.microphoneModeSelectionLabel,
-            isDisabled: model.isMicrophoneModeRowDisabled,
-            help: "How OpenNOW sends your voice"
+            selection: model.microphoneMode,
+            isDisabled: model.isMicrophoneModeRowDisabled
         )
     }
 
-    /// One row of the AUDIO panel: a label, then the dropdown trigger the pad opens.
-    func microphoneDropdownRow(label: String, dropdownID: String, selectionLabel: String, isDisabled: Bool, help: String) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(.streamFont(size: 11, weight: .medium))
-                .foregroundStyle(StreamHUDTheme.textTertiary)
-            Spacer(minLength: 8)
-            OPNDropdownMenu(
-                items: model.padDropdownItems(dropdownID).map(\.dropdownItem),
-                isDisabled: isDisabled,
-                // Capped so a long list scrolls rather than running the height of the HUD, and opened
-                // leftward because the sidebar's right edge is the video.
-                visibleItemCount: 6,
-                opensLeftByDefault: true,
-                isFocused: model.hudFocusID == dropdownID,
-                padDriver: model.padDropdown(dropdownID: dropdownID)
-            ) {
-                HStack(spacing: 4) {
-                    Text(selectionLabel)
-                    Image(systemName: "chevron.down")
-                }
-                .font(.streamFont(size: 10, weight: .bold))
-                .foregroundStyle(StreamHUDTheme.textPrimary)
-                .padding(.horizontal, 8)
-                .frame(height: 26)
-                .background(StreamHUDTheme.surfaceRaised)
-                .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
-                .contentShape(Rectangle())
-            }
-            .help(help)
-        }
-        .opacity(isDisabled ? 0.46 : 1)
+    /// One row of the AUDIO panel: the HUD's own dropdown, whose rows carry their own actions.
+    func microphoneDropdownRow(label: String, dropdownID: String, selection: String, isDisabled: Bool) -> some View {
+        StreamHUDDropdown(
+            label: label,
+            rows: model.padDropdownItems(dropdownID),
+            selection: selection,
+            isDisabled: isDisabled,
+            isFocused: model.hudFocusID == dropdownID,
+            // Capped so a long list scrolls rather than running the height of the HUD.
+            visibleItemCount: 6,
+            padDriver: model.padDropdown(dropdownID: dropdownID)
+        )
     }
 
     /// The microphone the stream captures from: where the picker's saved choice reaches capture, and
@@ -237,9 +219,8 @@ extension NativeNVSTMediaStreamSurface {
         microphoneDropdownRow(
             label: "Microphone Device",
             dropdownID: NativeNVSTHostViewModel.microphoneDeviceDropdownID,
-            selectionLabel: model.microphoneDeviceSelectionLabel,
-            isDisabled: model.isMicrophoneDeviceRowDisabled,
-            help: "The microphone OpenNOW captures from"
+            selection: model.selectedMicrophoneDeviceUID,
+            isDisabled: model.isMicrophoneDeviceRowDisabled
         )
     }
 

@@ -11,41 +11,6 @@ struct OPNDropdownItem: Identifiable {
     let action: () -> Void
 }
 
-/// One row of a pad-drivable dropdown, owned by the model rather than the view: a pad walks and
-/// commits rows before anything is drawn, so they cannot live in the view tree alone.
-struct OPNDropdownPadItem {
-    let id: String
-    let title: String
-    var isSelected = false
-    var isDestructive = false
-    var startsGroup = false
-    let action: () -> Void
-
-    /// The same row as the panel draws it. `action` is carried across unchanged: the panel wraps it
-    /// in a dismissal only for the pointer path.
-    var dropdownItem: OPNDropdownItem {
-        OPNDropdownItem(id: id,
-                        title: title,
-                        isSelected: isSelected,
-                        isDestructive: isDestructive,
-                        startsGroup: startsGroup,
-                        action: action)
-    }
-}
-
-/// Lets a pad-driven host own a dropdown's open state and highlighted row. A menu with no driver is
-/// pointer-only, exactly as it was before, with its own internal open state.
-struct OPNDropdownPadDriver {
-    /// Whether the panel is drawn.
-    let isPresented: Bool
-    /// The row the pad stands on, or nil when the panel just opened on nothing selectable.
-    let highlightedItemID: String?
-    /// Opens or closes the panel — a click on the trigger, and the pad's confirm on the trigger.
-    let toggle: () -> Void
-    /// Closes without selecting — an outside click, Escape, or the pad's cancel.
-    let close: () -> Void
-}
-
 struct OPNDropdownRow: View {
     let title: String
     var isSelected = false
@@ -180,7 +145,7 @@ struct OPNDropdownMenu<Label: View>: View {
     var isFocused = false
     /// Pad-driven presentation. Nil for the pointer-only call sites, which keep their own open state
     /// and behave exactly as before.
-    var padDriver: OPNDropdownPadDriver?
+    var padDriver: OPNDropdownPadDriver<String>?
     @ViewBuilder let label: () -> Label
 
     @Environment(\.opnUIScale) private var uiScale
@@ -315,7 +280,7 @@ struct OPNDropdownMenu<Label: View>: View {
         OPNDropdownPanel(items: dismissingItems,
                          width: panelWidth,
                          visibleItemCount: visibleItemCount,
-                         highlightedItemID: padDriver?.highlightedItemID)
+                         highlightedItemID: padDriver?.highlightedValue)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height
             } action: { height in

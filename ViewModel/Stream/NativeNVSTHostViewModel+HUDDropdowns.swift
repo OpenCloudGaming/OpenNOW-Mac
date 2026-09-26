@@ -24,10 +24,10 @@ extension NativeNVSTHostViewModel {
 
     /// What the menu `dropdownID` renders: whether it is open, which row the pad stands on, and the
     /// two things a trigger can do to it. Only one dropdown is open at a time.
-    func padDropdown(dropdownID: String) -> OPNDropdownPadDriver {
+    func padDropdown(dropdownID: String) -> OPNDropdownPadDriver<String> {
         OPNDropdownPadDriver(
             isPresented: openHUDDropdownID == dropdownID,
-            highlightedItemID: openHUDDropdownID == dropdownID ? hudDropdownHighlightedItemID : nil,
+            highlightedValue: openHUDDropdownID == dropdownID ? hudDropdownHighlightedItemID : nil,
             toggle: { [weak self] in self?.togglePadDropdown(dropdownID) },
             close: { [weak self] in self?.closeHUDDropdown(ifOpen: dropdownID) }
         )
