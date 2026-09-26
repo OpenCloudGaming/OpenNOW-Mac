@@ -129,6 +129,28 @@ struct NativeNVSTMicrophoneDeviceSelectionTests {
         }
     }
 
+    /// A recovery re-negotiates the microphone from the stored configuration, not from the HUD, so the
+    /// stored one has to follow the live mode — otherwise an Off is silently undone by a reconnect.
+    @Test func theStoredConfigurationFollowsTheLiveMode() {
+        withPreservedMicrophoneMode {
+            let (_, model) = makeHUDSurface()
+            model.isMicrophoneSectionNegotiated = true
+            model.microphoneDeviceUID = "usb-mic"
+
+            model.applyMicrophoneMode("voice-activity")
+            #expect(model.microphoneConfigurationForCurrentMode.captureRequested)
+            #expect(model.microphoneConfigurationForCurrentMode.initiallyEnabled)
+
+            model.applyMicrophoneMode("push-to-talk")
+            #expect(model.microphoneConfigurationForCurrentMode.captureRequested)
+            #expect(!model.microphoneConfigurationForCurrentMode.initiallyEnabled, "a reconnect must not open the microphone")
+
+            model.applyMicrophoneMode("disabled")
+            #expect(!model.microphoneConfigurationForCurrentMode.captureRequested, "a reconnect must not ask for a microphone section")
+            #expect(model.microphoneConfigurationForCurrentMode.deviceUniqueID == "usb-mic")
+        }
+    }
+
     /// A session that never asked for a microphone section cannot switch one on, which is the one limit
     /// of changing the mode mid-stream, and the copy has to say that rather than blame the seat.
     @Test func aSessionThatAskedForNoMicrophoneCannotSwitchOneOn() {

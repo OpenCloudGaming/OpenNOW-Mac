@@ -344,14 +344,12 @@ final class NativeNVSTHostViewModel: ObservableObject {
             cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
         microphoneMode = profile.microphoneMode.lowercased()
-        let microphoneConfiguration = NativeNVSTMicrophoneConfiguration.settings(volume: profile.microphoneVolume,
-                                                                                  mode: microphoneMode,
-                                                                                  deviceUniqueID: profile.microphoneDeviceId)
+        microphoneDeviceUID = profile.microphoneDeviceId
+        let microphoneConfiguration = microphoneConfigurationForCurrentMode
         // The HUD's dropdown reads the same saved choice the Settings picker does, so the two agree
         // on the device even before the stream has reported which one capture settled on.
         microphoneDeviceOptions = OPNStreamPreferences.loadMicrophoneDeviceOptions()
         isMicrophoneDeviceFallbackActive = false
-        microphoneDeviceUID = profile.microphoneDeviceId
         microphonePendingDeviceUID = nil
         pendingMicrophoneDeviceUIDs.removeAll()
         microphoneTransportAvailability = .pending

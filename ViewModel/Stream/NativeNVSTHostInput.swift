@@ -130,6 +130,15 @@ extension NativeNVSTHostViewModel {
                                            capabilities: OPNStreamPreferences.loadDeviceCapabilities())
     }
 
+    /// The microphone configuration this session negotiates from: the mode, the device and the volume
+    /// it started with. Kept in step with the live mode, because a recovery re-negotiates from this
+    /// rather than from whatever the HUD is showing.
+    var microphoneConfigurationForCurrentMode: NativeNVSTMicrophoneConfiguration {
+        NativeNVSTMicrophoneConfiguration.settings(volume: currentLaunchProfile.microphoneVolume,
+                                                   mode: microphoneMode,
+                                                   deviceUniqueID: microphoneDeviceUID)
+    }
+
     /// Arms or releases the push-to-talk key monitor for `mode`. Called when the input is attached and
     /// again whenever the mode changes mid-stream, so the chord has one definition for both.
     func configurePushToTalkMonitor(for view: NativeStreamView, mode: String) {

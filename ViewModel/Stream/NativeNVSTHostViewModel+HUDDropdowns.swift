@@ -185,6 +185,7 @@ extension NativeNVSTHostViewModel {
         microphoneAvailable = isMicrophoneSectionNegotiated && mode != "disabled"
         if let nativeView { configurePushToTalkMonitor(for: nativeView, mode: mode) }
         if mode == "voice-activity" { requestNativeMicrophoneEnabled(true, source: "mode") }
+        publishMicrophoneConfiguration()
         OPNStreamTelemetry.capture("nvst.ui.microphone.mode", level: .info, message: "Native NVST microphone mode changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode])
     }
 
@@ -234,6 +235,21 @@ extension NativeNVSTHostViewModel {
         microphoneDeviceUID = uid
         OPNStreamPreferences.saveMicrophoneDeviceId(uid)
         isMicrophoneDeviceFallbackActive = false
+        publishMicrophoneConfiguration()
+    }
+
+    /// Hands the transport the configuration a later bring-up resolves from, so a reconnect cannot undo
+    /// an Off or a device change. Only a new bundle reads it; the live session keeps running.
+    private func publishMicrophoneConfiguration() {
+        guard let path else { return }
+        let configuration = microphoneConfigurationForCurrentMode
+        Task { @MainActor in
+            do {
+                try await path.setMicrophoneConfiguration(configuration)
+            } catch {
+                OPNStreamTelemetry.capture("nvst.ui.microphone.configuration.failed", level: .warning, message: Self.message(for: error), attributes: ["applicationID": self.configuration.applicationID])
+            }
+        }
     }
 
     private func microphoneDeviceStatusMessage(for uid: String) -> String {
