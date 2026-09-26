@@ -85,11 +85,11 @@ final class OPNStreamWindowPresenter {
         // ordering it out while it is still full screen leaves that Space behind showing black,
         // forever - there is no window left to close it. The exit has to land first; see
         // `exitFullScreenBeforeDismissing`.
-        if Self.needsFullScreenExitBeforeDismissing(styleMask: window.styleMask) {
-            exitFullScreenBeforeDismissing(window)
-        } else {
-            orderOutAndClear(window)
+        guard Self.needsFullScreenExitBeforeDismissing(styleMask: window.styleMask) else {
+            tearDownWindow(window)
+            return
         }
+        exitFullScreenBeforeDismissing(window)
     }
 
     /// Whether a window has to leave full screen before it can be ordered out.
@@ -128,13 +128,12 @@ final class OPNStreamWindowPresenter {
 
     private func finishDismissing(_ window: OPNStreamWindow) {
         windowsLeavingFullScreen.removeValue(forKey: ObjectIdentifier(window))
-        orderOutAndClear(window)
+        tearDownWindow(window)
     }
 
-    /// Ordering out is not enough on its own: the hosting view has to go for the stream surface's
-    /// `.onDisappear` teardown to run, and that is the difference between a session that ends and
-    /// one that keeps a window nobody can see.
-    private func orderOutAndClear(_ window: OPNStreamWindow) {
+    /// Clearing the content is what runs the stream surface's `.onDisappear` teardown; ordering out
+    /// alone would leave a session behind a window nobody can see.
+    private func tearDownWindow(_ window: OPNStreamWindow) {
         window.stopPersistingFrame()
         window.orderOut(nil)
         window.contentView = nil
@@ -157,14 +156,7 @@ final class OPNStreamWindowPresenter {
         let surface = window?.sessionSurface
         let decision = Self.closeDecision(isConnected: surface?.isConnected, hasActiveStream: StreamSessionLifecycle.hasActiveStream)
         if case .prompt = decision {
-            if let surface {
-                surface.showStreamControls(completion: nil)
-            } else {
-                // The surface is unreachable but a session is live, so the panel is raised through
-                // the registry every other out-of-window surface uses. Same panel, same three
-                // answers, and no completion - so its third button still reads "End Stream".
-                _ = StreamSessionLifecycle.sendCommand(.showQuitMenu)
-            }
+            presentClosePrompt(for: surface)
             return true
         }
         // Nothing to prompt about: the pending start is cancelled through the same not-connected
@@ -179,6 +171,16 @@ final class OPNStreamWindowPresenter {
             self?.dismiss()
         }
         return false
+    }
+
+    /// Raises the stream controls panel. With no reachable surface the panel is raised through the
+    /// registry every other out-of-window surface uses - same panel, same three answers.
+    private func presentClosePrompt(for surface: (any OPNStreamWindowSessionSurface)?) {
+        guard let surface else {
+            _ = StreamSessionLifecycle.sendCommand(.showQuitMenu)
+            return
+        }
+        surface.showStreamControls(completion: nil)
     }
 
     /// What the close button does. Pure, so the contract - always prompts when there is a session,

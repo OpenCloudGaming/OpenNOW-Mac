@@ -54,8 +54,7 @@ enum OPNStreamPictureInPicture {
         return .enter
     }
 
-    /// Centre of the screen's visible frame - centred on the usable area rather than the full
-    /// frame, so the small window clears the Dock and the menu bar.
+    /// Centre of the screen's visible frame, so the small window clears the Dock and the menu bar.
     static func frame(contentSize: CGSize, in screen: NSScreen?) -> NSRect {
         let visibleFrame = (screen ?? NSScreen.main)?.visibleFrame
             ?? NSRect(origin: .zero, size: contentSize)
@@ -63,15 +62,8 @@ enum OPNStreamPictureInPicture {
     }
 
     /// The placement arithmetic, with the screen taken out of it so it can be asserted directly.
-    ///
-    /// Centred, then clamped so a visible frame smaller than the picture still leaves the window on
-    /// screen rather than half off an edge.
     static func frame(contentSize: CGSize, visibleFrame: NSRect) -> NSRect {
-        let origin = NSPoint(
-            x: max(visibleFrame.minX, min(visibleFrame.midX - contentSize.width / 2, visibleFrame.maxX - contentSize.width)),
-            y: max(visibleFrame.minY, min(visibleFrame.midY - contentSize.height / 2, visibleFrame.maxY - contentSize.height))
-        )
-        return NSRect(origin: origin, size: contentSize)
+        OPNStreamStageGeometry.centered(size: contentSize, within: visibleFrame)
     }
 
     static func enter(_ window: OPNStreamWindow, aspectRatio: CGFloat) {
@@ -84,7 +76,7 @@ enum OPNStreamPictureInPicture {
         )
         // Saved here as well as on every move: a session that ends while in PiP never puts the
         // windowed placement back, and the next launch should still open where the stream was.
-        OPNStreamWindowFrameStore.save(window.frame, pictureInPicture: false, defaults: window.frameStoreDefaults)
+        OPNStreamWindowFrameStore.save(window.frame, isPictureInPicture: false, defaults: window.frameStoreDefaults)
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.isPictureInPicture = true
         window.level = .floating
@@ -94,22 +86,24 @@ enum OPNStreamPictureInPicture {
         // working when the stream was being played and leaves the other app alone when it was not.
         setAllSpacesMembership(onChildWindowsOf: window, isMember: true)
         OPNStreamWindowChrome.apply(to: window, isPictureInPicture: true)
-        // The remembered PiP position, at the size the stream's own aspect ratio decides - a size
-        // remembered from a different game's ratio would be the wrong shape. Centred when there is
-        // nothing to remember.
         let contentSize = contentSize(aspectRatio: aspectRatio)
-        let target: NSRect
-        if let remembered = OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: true, defaults: window.frameStoreDefaults) {
-            target = OPNStreamWindowFrameStore.onScreen(NSRect(origin: remembered.origin, size: contentSize))
-        } else {
-            target = frame(contentSize: contentSize, in: window.screen)
-        }
-        window.setFrame(target, display: true)
+        window.setFrame(pictureInPictureFrame(for: window, contentSize: contentSize), display: true)
+    }
+
+    /// The remembered PiP position at the size the stream's aspect ratio decides: a size remembered
+    /// from another game's ratio would be the wrong shape. Centred when there is nothing to remember.
+    private static func pictureInPictureFrame(for window: OPNStreamWindow, contentSize: CGSize) -> NSRect {
+        let remembered = OPNStreamWindowFrameStore.rememberedFrame(
+            isPictureInPicture: true,
+            defaults: window.frameStoreDefaults
+        )
+        guard let remembered else { return frame(contentSize: contentSize, in: window.screen) }
+        return OPNStreamWindowFrameStore.onScreen(NSRect(origin: remembered.origin, size: contentSize))
     }
 
     static func exit(_ window: OPNStreamWindow) {
         guard window.isPictureInPicture else { return }
-        OPNStreamWindowFrameStore.save(window.frame, pictureInPicture: true, defaults: window.frameStoreDefaults)
+        OPNStreamWindowFrameStore.save(window.frame, isPictureInPicture: true, defaults: window.frameStoreDefaults)
         window.isPictureInPicture = false
         OPNStreamWindowChrome.apply(to: window, isPictureInPicture: false)
         guard let state = window.windowedState else {
@@ -135,11 +129,11 @@ enum OPNStreamPictureInPicture {
     /// ever be offered.
     static func setAllSpacesMembership(onChildWindowsOf window: NSWindow, isMember: Bool) {
         for child in window.childWindows ?? [] {
-            if isMember {
-                child.collectionBehavior.insert(.canJoinAllSpaces)
-            } else {
+            guard isMember else {
                 child.collectionBehavior.remove(.canJoinAllSpaces)
+                continue
             }
+            child.collectionBehavior.insert(.canJoinAllSpaces)
         }
     }
 }

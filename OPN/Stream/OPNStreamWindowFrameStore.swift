@@ -15,26 +15,21 @@ enum OPNStreamWindowFrameStore {
     static let windowedFrameKey = "OpenNOW.Stream.WindowedFrame"
     static let pictureInPictureFrameKey = "OpenNOW.Stream.PictureInPictureFrame"
 
-    static func rememberedFrame(pictureInPicture: Bool, defaults: UserDefaults = .standard) -> NSRect? {
-        guard let string = defaults.string(forKey: key(forPictureInPicture: pictureInPicture)), !string.isEmpty else {
-            return nil
-        }
-        let rect = NSRectFromString(string)
-        guard rect.origin.x.isFinite, rect.origin.y.isFinite,
-              rect.width.isFinite, rect.height.isFinite,
-              rect.width > 0, rect.height > 0 else { return nil }
-        return rect
+    static func rememberedFrame(isPictureInPicture: Bool, defaults: UserDefaults = .standard) -> NSRect? {
+        guard let string = defaults.string(forKey: key(isPictureInPicture: isPictureInPicture)),
+              !string.isEmpty else { return nil }
+        let frame = NSRectFromString(string)
+        guard isUsable(frame) else { return nil }
+        return frame
     }
 
-    static func save(_ frame: NSRect, pictureInPicture: Bool, defaults: UserDefaults = .standard) {
-        guard frame.origin.x.isFinite, frame.origin.y.isFinite,
-              frame.width.isFinite, frame.height.isFinite,
-              frame.width > 0, frame.height > 0 else { return }
-        defaults.set(NSStringFromRect(frame), forKey: key(forPictureInPicture: pictureInPicture))
+    static func save(_ frame: NSRect, isPictureInPicture: Bool, defaults: UserDefaults = .standard) {
+        guard isUsable(frame) else { return }
+        defaults.set(NSStringFromRect(frame), forKey: key(isPictureInPicture: isPictureInPicture))
     }
 
-    static func forget(pictureInPicture: Bool, defaults: UserDefaults = .standard) {
-        defaults.removeObject(forKey: key(forPictureInPicture: pictureInPicture))
+    static func forget(isPictureInPicture: Bool, defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: key(isPictureInPicture: isPictureInPicture))
     }
 
     /// Nudges a remembered frame back onto a screen, preferring the one it already overlaps.
@@ -47,13 +42,16 @@ enum OPNStreamWindowFrameStore {
         guard let visible = visibleFrames.first(where: { $0.intersects(frame) }) ?? visibleFrames.first else {
             return frame
         }
-        var rect = frame
-        rect.origin.x = max(visible.minX, min(rect.origin.x, visible.maxX - rect.width))
-        rect.origin.y = max(visible.minY, min(rect.origin.y, visible.maxY - rect.height))
-        return rect
+        return OPNStreamStageGeometry.clamped(frame, within: visible)
     }
 
-    private static func key(forPictureInPicture: Bool) -> String {
-        forPictureInPicture ? pictureInPictureFrameKey : windowedFrameKey
+    private static func key(isPictureInPicture: Bool) -> String {
+        isPictureInPicture ? pictureInPictureFrameKey : windowedFrameKey
+    }
+
+    private static func isUsable(_ frame: NSRect) -> Bool {
+        frame.origin.x.isFinite && frame.origin.y.isFinite
+            && frame.width.isFinite && frame.height.isFinite
+            && frame.width > 0 && frame.height > 0
     }
 }

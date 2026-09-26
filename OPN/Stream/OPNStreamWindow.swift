@@ -89,7 +89,7 @@ final class OPNStreamWindow: NSWindow {
         // next session full-bleed. The exit re-fires the move, so the windowed placement is saved
         // once the window is back on the desktop.
         guard !styleMask.contains(.fullScreen) else { return }
-        OPNStreamWindowFrameStore.save(frame, pictureInPicture: isPictureInPicture, defaults: frameStoreDefaults)
+        OPNStreamWindowFrameStore.save(frame, isPictureInPicture: isPictureInPicture, defaults: frameStoreDefaults)
     }
 
     struct WindowedState {
@@ -154,27 +154,17 @@ enum OPNStreamWindowFactory {
         // The last placement, or centred on the first run. Creating at `.zero` put every session in
         // the bottom-left corner, which is the one place nobody picks.
         window.frameStoreDefaults = defaults
-        if let remembered = OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: false, defaults: defaults) {
-            window.setFrame(OPNStreamWindowFrameStore.onScreen(remembered), display: false)
-        } else {
-            centre(window)
-        }
+        window.setFrame(initialFrame(for: window, defaults: defaults), display: false)
         window.startPersistingFrame()
         window.collectionBehavior = collectionBehavior
         return window
     }
 
-    private static func centre(_ window: NSWindow) {
-        guard let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
-        let size = window.frame.size
-        window.setFrame(
-            NSRect(
-                x: visibleFrame.midX - size.width / 2,
-                y: visibleFrame.midY - size.height / 2,
-                width: size.width,
-                height: size.height
-            ),
-            display: false
-        )
+    private static func initialFrame(for window: NSWindow, defaults: UserDefaults) -> NSRect {
+        if let remembered = OPNStreamWindowFrameStore.rememberedFrame(isPictureInPicture: false, defaults: defaults) {
+            return OPNStreamWindowFrameStore.onScreen(remembered)
+        }
+        guard let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame else { return window.frame }
+        return OPNStreamStageGeometry.centered(size: window.frame.size, within: visibleFrame)
     }
 }

@@ -200,10 +200,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// Mirrors the stream window. The style mask only flips once AppKit finishes its transition,
     /// and the green button, ⌃⌘F and the menu bar change it without going through the HUD.
     @Published var streamWindowIsFullScreen = false
-    /// True while the dedicated stream window is in Picture-in-Picture. PiP is a mode of that one
-    /// window - it shrinks, floats and joins every Space - and the HUD is suppressed in it, because
-    /// the dock alone (`StreamHUDTheme.dockWidth`) is 268pt wide in a 320pt window and would cover
-    /// nearly the whole picture.
+    /// True while the dedicated stream window is in Picture-in-Picture. The HUD is suppressed in the
+    /// mode: the dock alone (`StreamHUDTheme.dockWidth`) is 344pt wide in a 640pt window.
     @Published var isPictureInPicture = false
     /// The full-screen tile and its focus entry share this rather than each writing the condition
     /// out: a PiP window is small and floating, and there is no full screen to enter from it.

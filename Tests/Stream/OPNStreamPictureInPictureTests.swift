@@ -43,7 +43,7 @@ struct OPNStreamPictureInPictureTests {
     /// 16:9 is the ordinary case and the one the HUD's dock width was measured against: at 640pt
     /// wide the dock (`min(344, max(268, width * 0.72))`) is its full 344pt, most of the window,
     /// which is why PiP suppresses it rather than scaling it.
-    @Test func aSixteenByNinePictureIsSixHundredAndFortyWide() {
+    @Test func aSixteenByNinePictureOpensAtSixFortyByThreeSixty() {
         let size = OPNStreamPictureInPicture.contentSize(aspectRatio: 16.0 / 9.0)
         #expect(abs(size.width - 640) < 0.001)
         #expect(abs(size.height - 360) < 0.001)
@@ -161,7 +161,7 @@ struct OPNStreamPictureInPictureTests {
     /// the close button tears the window - and the session inside it - down with no prompt. That is
     /// the bug this pins.
     @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
-    func theCloseGuardSurvivesAndTheCloseButtonOnlyAsks() async {
+    func theRetainedCloseGuardLetsTheCloseButtonOnlyAsk() async {
         let (window, suite) = makeTestStreamWindow()
         defer {
             window.close()

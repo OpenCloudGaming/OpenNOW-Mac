@@ -19,14 +19,14 @@ import Testing
         let windowed = NSRect(x: 120, y: 80, width: 1280, height: 720)
         let pip = NSRect(x: 400, y: 300, width: 640, height: 360)
 
-        #expect(OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: false, defaults: defaults) == nil)
-        #expect(OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: true, defaults: defaults) == nil)
+        #expect(OPNStreamWindowFrameStore.rememberedFrame(isPictureInPicture: false, defaults: defaults) == nil)
+        #expect(OPNStreamWindowFrameStore.rememberedFrame(isPictureInPicture: true, defaults: defaults) == nil)
 
-        OPNStreamWindowFrameStore.save(windowed, pictureInPicture: false, defaults: defaults)
-        OPNStreamWindowFrameStore.save(pip, pictureInPicture: true, defaults: defaults)
+        OPNStreamWindowFrameStore.save(windowed, isPictureInPicture: false, defaults: defaults)
+        OPNStreamWindowFrameStore.save(pip, isPictureInPicture: true, defaults: defaults)
 
-        #expect(OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: false, defaults: defaults) == windowed)
-        #expect(OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: true, defaults: defaults) == pip)
+        #expect(OPNStreamWindowFrameStore.rememberedFrame(isPictureInPicture: false, defaults: defaults) == windowed)
+        #expect(OPNStreamWindowFrameStore.rememberedFrame(isPictureInPicture: true, defaults: defaults) == pip)
     }
 
     /// A zero-sized or unreadable frame must read as "nothing remembered", not as a window with no
@@ -36,10 +36,10 @@ import Testing
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(NSStringFromRect(NSRect(x: 0, y: 0, width: 0, height: 360)),
                      forKey: OPNStreamWindowFrameStore.windowedFrameKey)
-        #expect(OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: false, defaults: defaults) == nil)
+        #expect(OPNStreamWindowFrameStore.rememberedFrame(isPictureInPicture: false, defaults: defaults) == nil)
 
-        OPNStreamWindowFrameStore.save(NSRect(x: 0, y: 0, width: 0, height: 0), pictureInPicture: false, defaults: defaults)
-        #expect(OPNStreamWindowFrameStore.rememberedFrame(pictureInPicture: false, defaults: defaults) == nil)
+        OPNStreamWindowFrameStore.save(NSRect(x: 0, y: 0, width: 0, height: 0), isPictureInPicture: false, defaults: defaults)
+        #expect(OPNStreamWindowFrameStore.rememberedFrame(isPictureInPicture: false, defaults: defaults) == nil)
     }
 
     @Test func aRememberedFrameIsClampedOntoAScreen() {

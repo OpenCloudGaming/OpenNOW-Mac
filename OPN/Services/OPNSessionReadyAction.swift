@@ -77,25 +77,22 @@ enum OPNSessionReadyAction {
     private static func bringToFront() {
         let app = NSApplication.shared
         app.activate(ignoringOtherApps: true)
-        // A session that is ready appears in the dedicated stream window, so raising every window
-        // would put the catalog back on top of the game. The stream window is raised alone when
-        // there is one; every other window keeps the old behaviour, which is the launch-with-no-
-        // stream case the loop was written for.
-        if let streamWindow = OPNStreamWindowFactory.existing() {
-            if streamWindow.isMiniaturized { streamWindow.deminiaturize(nil) }
-            streamWindow.makeKeyAndOrderFront(nil)
-        } else {
-            for window in app.windows where window.isVisible || window.isMiniaturized {
-                if window.isMiniaturized { window.deminiaturize(nil) }
-                window.makeKeyAndOrderFront(nil)
-            }
-        }
+        // A ready session appears in the dedicated stream window; raising every window would put the
+        // catalog back on top of the game. With no stream window it is the launch-with-no-stream case.
+        let windowsToRaise = OPNStreamWindowFactory.existing().map { [$0 as NSWindow] }
+            ?? app.windows.filter { $0.isVisible || $0.isMiniaturized }
+        windowsToRaise.forEach(raise)
         guard app.isActive else {
             app.requestUserAttention(.criticalRequest)
             OPNLog.info(.app, "Session ready: activation refused by the system, bouncing the Dock icon instead")
             return
         }
         OPNLog.info(.app, "Session ready: brought OpenNOW to the front")
+    }
+
+    private static func raise(_ window: NSWindow) {
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
     }
 
     private static func postNotification(title: String) {
