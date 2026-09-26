@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 struct ControllerMappingView: View {
@@ -7,12 +8,29 @@ struct ControllerMappingView: View {
     /// Whether a Remote Co-Op session is running. Guests keep the global Steam profile, so the
     /// sheet says so instead of letting a host discover a mapping that only half applies.
     let isRemoteCoOpActive: Bool
+    /// Pad commands while the sheet is open over a stream. Empty from Settings, where the page's own
+    /// focus registry drives the pad instead.
+    let padCommands: AnyPublisher<ControllerInputCommand, Never>
+    /// Confirms an override change where the sheet has no message surface of its own.
+    let onAnnounce: ((String) -> Void)?
 
-    init(store: ControllerMappingStore = .shared, isRemoteCoOpActive: Bool = false) {
+    init(
+        store: ControllerMappingStore = .shared,
+        isRemoteCoOpActive: Bool = false,
+        padCommands: AnyPublisher<ControllerInputCommand, Never> = Empty().eraseToAnyPublisher(),
+        onAnnounce: ((String) -> Void)? = nil
+    ) {
         _store = ObservedObject(wrappedValue: store)
         self.isRemoteCoOpActive = isRemoteCoOpActive
+        self.padCommands = padCommands
+        self.onAnnounce = onAnnounce
     }
     @StateObject var liveModel = ControllerMappingLiveModel()
+    @StateObject var padFocus = ControllerSettingsFocusModel()
+    @Environment(\.controllerPageCommand) private var pageCommand
+    @State var isDeleteConfirmationPresented = false
+    @State var isDiscardConfirmationPresented = false
+    @State var pendingDiscardAction: (() -> Void)?
     @ObservedObject var devices = ControllerMappingDevices.shared
     @State var selection = ControllerMappingSelection.none
     @State var draft: ControllerMappingProfile?
@@ -58,7 +76,7 @@ struct ControllerMappingView: View {
     /// Decision 1's chain, including the running game when there is one.
     var savedProfile: ControllerMappingProfile? { store.profile(for: family) }
 
-    private var hasUnsavedChanges: Bool {
+    var hasUnsavedChanges: Bool {
         guard let draft, let savedProfile else { return false }
         return draft != savedProfile
     }
@@ -90,7 +108,7 @@ struct ControllerMappingView: View {
         )
         .background(OPNDesign.Surface.deep)
         .foregroundStyle(OPNDesign.Text.primary)
-        .onExitCommand { dismiss() }
+        .onExitCommand { requestDismiss() }
         .onAppear {
             liveModel.start()
             selection = resolvedSelection
@@ -103,6 +121,40 @@ struct ControllerMappingView: View {
         .onChange(of: selectedControl) {
             bindingKindOverride = nil
         }
+        // Sheet-owned pad focus: a sheet over the stream sits outside the Settings page that owns the
+        // settings registry, and overriding the environment here keeps its row order to itself.
+        .environment(\.controllerSettingsFocus, padFocus)
+        .environment(\.controllerFocusedRowID, padFocus.isActive ? padFocus.focusedID : nil)
+        .environment(\.controllerFocusActive, padFocus.isActive)
+        .environment(\.controllerRowCommand, padFocus.rowCommand)
+        .coordinateSpace(name: controllerSettingsFocusSpace)
+        .onPreferenceChange(ControllerFocusOrderKey.self) { padFocus.setOrder($0) }
+        .onReceive(padCommands) { applyPadCommand($0) }
+        .onChange(of: pageCommand) { _, command in
+            guard let command else { return }
+            applyPadCommand(command.command)
+        }
+        .onDisappear { padFocus.setActive(false) }
+        .opnConfirmation(
+            isPresented: $isDeleteConfirmationPresented,
+            eyebrow: "DELETE PROFILE",
+            title: deleteConfirmationTitle,
+            message: deleteConfirmationMessage,
+            actions: [
+                OPNConfirmationAction("CANCEL", role: .cancel) { },
+                OPNConfirmationAction("DELETE", role: .destructive) { performProfileDelete() },
+            ]
+        )
+        .opnConfirmation(
+            isPresented: $isDiscardConfirmationPresented,
+            eyebrow: "UNSAVED CHANGES",
+            title: "Discard changes?",
+            message: "Edits to \"\(draft?.name ?? "this profile")\" will be lost.",
+            actions: [
+                OPNConfirmationAction("KEEP EDITING", role: .cancel) { pendingDiscardAction = nil },
+                OPNConfirmationAction("DISCARD", role: .destructive) { confirmDiscard() },
+            ]
+        )
         // The calibration passes read the live pad on the same cadence the snapshots arrive on, in
         // their own loop rather than off snapshot changes: a capture held perfectly still would
         // otherwise stop receiving samples at the exact moment it needs them.
@@ -130,20 +182,19 @@ struct ControllerMappingView: View {
                     fillsWidth: false,
                     uiScale: uiScale
                 ) {
-                    if let id = savedProfile?.id {
-                        store.deleteProfile(id)
-                    }
+                    requestProfileDelete()
                 }
                 .help("Delete this profile")
+                .controllerFocusable(id: "mapping-delete", activate: { requestProfileDelete() })
             }
 
             Spacer()
 
             Button("New Profile") {
-                let profile = store.createProfile(named: "", family: family)
-                selectProfile(profile.id)
+                createProfile()
             }
                 .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
+                .controllerFocusable(id: "mapping-new-profile", activate: { createProfile() })
         }
     }
 
@@ -152,12 +203,12 @@ struct ControllerMappingView: View {
     private var profilePicker: some View {
         OPNDropdownMenu(
             items: [OPNDropdownItem(id: "passthrough", title: family == .steam ? "Steam defaults" : "No mapping (passthrough)",
-                                    isSelected: savedProfile == nil, action: { selectProfile(nil) })] + store.profiles.filter { $0.family == family }.map { profile in
+                                    isSelected: savedProfile == nil, action: { requestProfileSelection(nil) })] + store.profiles.filter { $0.family == family }.map { profile in
                 OPNDropdownItem(
                     id: profile.id.uuidString,
                     title: profile.name.isEmpty ? "Untitled" : profile.name,
                     isSelected: profile.id == savedProfile?.id,
-                    action: { selectProfile(profile.id) }
+                    action: { requestProfileSelection(profile.id) }
                 )
             }
         ) {
@@ -177,7 +228,8 @@ struct ControllerMappingView: View {
             .contentShape(Rectangle())
         }
         .fixedSize()
-        .help("Selecting another profile discards unsaved changes.")
+        .help("Selecting another profile asks before discarding unsaved changes.")
+        .controllerFocusable(id: "mapping-profile", adjust: { cycleProfile(delta: $0) })
     }
 
     private var nameField: some View {
@@ -202,56 +254,11 @@ struct ControllerMappingView: View {
         Binding(get: { draft?.name ?? "" }, set: { draft?.name = $0 })
     }
 
-    private var footer: some View {
-        HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-            if hasUnsavedChanges {
-                Text("UNSAVED CHANGES")
-                    .font(.settingsFont(size: 10 * uiScale, weight: .bold))
-                    .tracking(1.1)
-                    .foregroundStyle(OPNDesign.Semantic.warning)
-            }
-            Spacer()
-            Button(resolvedSelection == .none ? "CLOSE" : "CANCEL") { dismiss() }
-                .buttonStyle(OPNModalSecondaryButtonStyle(uiScale: uiScale))
-                .keyboardShortcut(.cancelAction)
-
-            if resolvedSelection != .none {
-                Button("SAVE") {
-                    if let draft { store.updateProfile(draft) }
-                    SteamControllerHIDMonitor.shared.refreshCaptureConfiguration()
-                    dismiss()
-                }
-                .buttonStyle(VendorGetInButtonStyle(uiScale: uiScale))
-                .keyboardShortcut(.defaultAction)
-                .disabled(!hasUnsavedChanges)
-                .opacity(hasUnsavedChanges ? 1 : 0.46)
-            }
-        }
-        .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
-        .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
-    }
-
     private func updateSelectedController() {
         liveModel.selectedDeviceID = selectedDeviceID
         selectedControl = availableControls.first ?? .faceA
         bindingKindOverride = nil
         draft = savedProfile
-    }
-
-    private var disconnectedMessage: some View {
-        VStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-            Image(systemName: "gamecontroller")
-                .font(.settingsFont(size: 40 * uiScale))
-                .foregroundStyle(OPNDesign.Text.muted)
-            Text("No controller connected")
-                .font(.settingsFont(size: 20 * uiScale, weight: .bold))
-            Text("Connect a controller to configure mappings. Your saved profiles are kept.")
-                .font(.settingsFont(size: 14 * uiScale))
-                .foregroundStyle(OPNDesign.Text.tertiary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     var noProfileMessage: some View {
