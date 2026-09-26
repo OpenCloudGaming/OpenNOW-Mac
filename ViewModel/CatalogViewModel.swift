@@ -99,7 +99,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
     case audio
     case input
     case keybindings
-    case recording
+    case capture
     case network
     case remoteCoOp
 
@@ -126,7 +126,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .audio: return "Audio"
         case .input: return "Input"
         case .keybindings: return "Keybindings"
-        case .recording: return "Recording"
+        case .capture: return "Capture"
         case .network: return "Network"
         case .remoteCoOp: return "Remote Co-Op"
         case .theme: return "Look"
@@ -144,7 +144,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .audio: return "Game output, surround, and the microphone the stream sends."
         case .input: return "Mouse, keyboard, and every controller OpenNOW speaks to."
         case .keybindings: return "Every shortcut OpenNOW owns, for controlling a stream or browsing the catalog."
-        case .recording: return "What \(OPNKeybindings.standard.combo(for: .toggleRecording).spokenLabel) writes to disk, and where to find it afterwards."
+        case .capture: return "What \(OPNKeybindings.standard.combo(for: .toggleRecording).spokenLabel) writes to disk, where screenshots and recordings are saved, and how to find them afterwards."
         case .network: return "Server location, stream transport, and proxy routing."
         case .remoteCoOp: return "Invite a friend into your session from a browser."
         case .theme: return "How OpenNOW looks: interface scale, accent, and the rails the home page draws its games in."
@@ -162,7 +162,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         case .audio: return "speaker.wave.2.fill"
         case .input: return "gamecontroller.fill"
         case .keybindings: return "keyboard"
-        case .recording: return "record.circle"
+        case .capture: return "record.circle"
         case .network: return "network"
         case .remoteCoOp: return "person.2.fill"
         case .theme: return "paintpalette.fill"
@@ -179,7 +179,7 @@ enum CatalogSettingsGroup: String, CaseIterable, Identifiable {
         switch self {
         case .account: return nil
         case .general, .theme, .iCloud, .system, .labs: return .app
-        case .video, .audio, .input, .keybindings, .recording: return .stream
+        case .video, .audio, .input, .keybindings, .capture: return .stream
         case .network, .remoteCoOp: return .connection
         }
     }
@@ -283,6 +283,7 @@ final class CatalogViewModel {
     var activeLaunchSession: OPNActiveStreamSessionDescriptor?
     var activeHomeSession: OPNActiveSessionObject?
     var streamProfile = OPNStreamPreferenceProfile()
+    var captureLocations = CatalogCaptureLocationState()
     var remoteCoOpPreferences = OPNRemoteCoOpPreferencesStore.load()
     /// Whether a Cloudflare relay key is stored. The token itself is never published - only whether
     /// one exists, so the UI can say so without holding it.

@@ -97,6 +97,9 @@ import Testing
             // The iCloud card's category toggles draw their titles from `OPNCloudSyncCategory` and
             // its two actions are `SettingsActionButton`s, none of which the row scan reads.
             "Back Up Now", "Restore from iCloud",
+            // The Capture page's folder rows are a custom label-and-buttons row, not the scanned
+            // `Settings…Row` family.
+            "Screenshots folder", "Recordings folder",
         ]
         // Keybinding rows draw their title from `KeybindingAction`, which the literal source scan
         // cannot read; the index builds those same titles from that same enum.

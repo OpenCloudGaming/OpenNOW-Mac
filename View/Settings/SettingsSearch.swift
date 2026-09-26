@@ -31,7 +31,7 @@ enum SettingsSearchIndex {
     /// lies about where the setting is: rows that exist only inside a modal wizard, and rows that
     /// appear only once another setting is switched on. The second kind hands its words to the
     /// control that gates it, so searching "socks" still reaches the session proxy.
-    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + keybindingEntries + recordingEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries + cloudSyncEntries
+    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + keybindingEntries + captureEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries + cloudSyncEntries
 
     private static let keybindingEntries: [SettingsSearchEntry] = KeybindingAction.allCases.map { action in
         SettingsSearchEntry(action.title, .keybindings, action.section.rawValue, keywords: ["shortcut", "hotkey", "keyboard", "binding", "rebind"])
@@ -134,12 +134,14 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Report an Issue", .general, "report-issue", keywords: ["bug", "feedback", "support", "problem", "crash", "nvidia", "stream quality", "contact", "diagnostics"]),
     ]
 
-    private static let recordingEntries: [SettingsSearchEntry] = [
-        SettingsSearchEntry("Video Bitrate", .recording, "recording", keywords: ["record", "capture", "quality", "file size"]),
-        SettingsSearchEntry("Audio Bitrate", .recording, "recording", keywords: ["record", "capture", "sound"]),
-        SettingsSearchEntry("Record Enhanced Video", .recording, "recording", keywords: ["record", "capture", "upscaled", "metalfx"]),
-        SettingsSearchEntry("Recording Mode", .recording, "recording", keywords: ["replay", "clip", "buffer", "rolling", "last minutes", "shadowplay", "highlights", "instant replay", "manual", "off", "length", "window", "duration", "2 hours", "clip length", "last seconds", "save"]),
-        SettingsSearchEntry("Your recordings", .recording, "library", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
+    private static let captureEntries: [SettingsSearchEntry] = [
+        SettingsSearchEntry("Video Bitrate", .capture, "recording", keywords: ["record", "capture", "quality", "file size"]),
+        SettingsSearchEntry("Audio Bitrate", .capture, "recording", keywords: ["record", "capture", "sound"]),
+        SettingsSearchEntry("Record Enhanced Video", .capture, "recording", keywords: ["record", "capture", "upscaled", "metalfx"]),
+        SettingsSearchEntry("Recording Mode", .capture, "recording", keywords: ["replay", "clip", "buffer", "rolling", "last minutes", "shadowplay", "highlights", "instant replay", "manual", "off", "length", "window", "duration", "2 hours", "clip length", "last seconds", "save"]),
+        SettingsSearchEntry("Your recordings", .capture, "library", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
+        SettingsSearchEntry("Screenshots folder", .capture, "storage", keywords: ["screenshots", "pictures", "folder", "location", "path", "change", "storage"]),
+        SettingsSearchEntry("Recordings folder", .capture, "storage", keywords: ["recordings", "videos", "movies", "folder", "location", "path", "change", "storage"]),
     ]
 
     private static let remoteCoOpEntries: [SettingsSearchEntry] = [
@@ -195,7 +197,7 @@ enum SettingsSearchIndex {
         .audio: AudioSettingsPage.sections,
         .input: InputSettingsGroup.sections,
         .keybindings: KeybindingsSettingsPage.sections,
-        .recording: RecordingSettingsGroup.sections,
+        .capture: CaptureSettingsGroup.sections,
         .network: NetworkSettingsGroup.sections,
         .remoteCoOp: [],
         .theme: ThemeSettingsPage.sections,
