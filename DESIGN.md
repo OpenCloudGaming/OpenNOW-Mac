@@ -837,8 +837,9 @@ way in and on the way out.
 - **HUD.** Suppressed entirely, not scaled: the dock alone is 268pt wide at its narrowest, in a
 320pt window. Floating stats go with it.
 - **Control strip.** Two `StreamQuitMenuButton`s — **Restore** and **End Session** — sized to their
-content in the bottom-trailing corner, not a bar across the window, over a Panel background @ 0.82
-with a 1px Divider stroke. It reveals on any pointer movement over the picture and fades out after
+content and centred along the bottom edge, not a bar across the window, over a Panel background @
+0.82 with a 1px Divider stroke. Spacing follows the Spacing scale: `xSmall` inside the panel and
+between the buttons (the HUD's action-row gap), `small` from the window edge. It reveals on any pointer movement over the picture and fades out after
 3 idle seconds, the same bargain the Remote Co-Op guest window makes for its overlay controls; it
 starts visible and only ever hides after a movement has been seen, so a window that never reports
 one leaves Restore reachable. End Session is the same call the in-stream quit menu makes. The strip

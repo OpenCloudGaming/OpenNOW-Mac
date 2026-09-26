@@ -6,15 +6,17 @@
 //  End Session is the same call the in-stream quit menu's third button makes, so a menu bar action
 //  and this strip tear down identically.
 //
-//  The strip is not a bar. It sizes to its two buttons and sits in the bottom-trailing corner
+//  The strip is not a bar. It sizes to its two buttons and sits centred along the bottom edge
 //  rather than spanning the window, and it shows itself only while the pointer is moving over the
 //  picture and fades back out after a few idle seconds - the same bargain the Remote Co-Op guest
 //  window makes for the controls over its video. It stays visible until the first pointer movement
 //  is seen, so a window that never reports one leaves Restore reachable rather than stranding the
 //  user in a picture with no way back.
 //
-//  Everything here scales with the dock's `opnInterfaceScale(uiScale)`, which the surrounding
-//  overlay already applies.
+//  Paddings and the gap between the buttons come from `OPNDesign.Spacing` (`xSmall` inside, `small`
+//  from the window edge), matching the HUD's action-row spacing. Everything here scales with the
+//  dock's `opnInterfaceScale(uiScale)`, which the surrounding overlay already applies - the tokens
+//  are pre-scale values, like the rest of the stream HUD.
 //
 
 import AppKit
@@ -29,7 +31,7 @@ struct NativeNVSTPictureInPictureControls: View {
     static let idleSeconds: UInt64 = 3
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: OPNDesign.Spacing.xSmall) {
             StreamQuitMenuButton(
                 title: "Restore",
                 isPrimary: true,
@@ -47,7 +49,7 @@ struct NativeNVSTPictureInPictureControls: View {
             )
             .frame(width: 104)
         }
-        .padding(6)
+        .padding(OPNDesign.Spacing.xSmall)
         .background(StreamHUDTheme.panel.opacity(0.82))
         .overlay {
             Rectangle()
@@ -56,8 +58,9 @@ struct NativeNVSTPictureInPictureControls: View {
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)
         .animation(.easeInOut(duration: 0.2), value: isVisible)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-        .padding(6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .padding(.horizontal, OPNDesign.Spacing.small)
+        .padding(.bottom, OPNDesign.Spacing.small)
         .background(
             PictureInPicturePointerTracker(onPointerActivity: reveal)
                 .allowsHitTesting(false)
