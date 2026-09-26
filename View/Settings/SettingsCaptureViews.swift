@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct RecordingSettingsPage: View {
+struct CaptureSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
 
@@ -167,11 +167,104 @@ struct InstantReplayCard: View {
     }
 }
 
-extension RecordingSettingsPage {
+extension CaptureSettingsPage {
     static let sections: [SettingsSection] = [
         SettingsSection("recording", "Recording"),
+        SettingsSection("storage", "Storage"),
         SettingsSection("library", "Library"),
     ]
+}
+
+/// Where the captures are written. Two rows, one per library, each naming the folder in use and
+/// offering the three things a reader wants from it: change it, put it back, or go there.
+struct CaptureStorageCard: View {
+    let viewModel: CatalogViewModel
+    let uiScale: CGFloat
+
+    var body: some View {
+        SettingsCard(title: "Storage", isNew: OPNNewSettings.isNew(.captureLocations), uiScale: uiScale) {
+            if let notice = viewModel.captureLocations.migrationNotice {
+                CaptureNoticeBanner(message: notice, uiScale: uiScale) {
+                    viewModel.acknowledgeCaptureMigrationNotice()
+                }
+                SettingsDivider(uiScale: uiScale)
+            }
+            CaptureFolderRow(library: .screenshots, viewModel: viewModel, uiScale: uiScale)
+            SettingsDivider(uiScale: uiScale)
+            CaptureFolderRow(library: .recordings, viewModel: viewModel, uiScale: uiScale)
+            if viewModel.captureLocations.shareOneFolder {
+                SettingsDivider(uiScale: uiScale)
+                Text("Both libraries point at one folder. That works, but the two sets of files sit together in Finder.")
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Semantic.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear { viewModel.refreshCaptureLocations() }
+    }
+}
+
+private struct CaptureFolderRow: View {
+    let library: OPNCaptureLibrary
+    let viewModel: CatalogViewModel
+    let uiScale: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
+            VStack(alignment: .leading, spacing: 4 * uiScale) {
+                Text(library.displayName)
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                Text(viewModel.captureDirectoryDisplayPath(for: library))
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(viewModel.captureDirectoryDisplayPath(for: library))
+                if let reason = viewModel.captureLocations.directories[library]?.rejectionReason {
+                    Text(reason)
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(OPNDesign.Semantic.warning)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack(spacing: 8 * uiScale) {
+                SettingsActionButton(title: "CHANGE…", tone: .secondary, uiScale: uiScale) {
+                    viewModel.chooseCaptureDirectory(library)
+                }
+                SettingsActionButton(title: "RESET TO DEFAULT", tone: .secondary, uiScale: uiScale) {
+                    viewModel.resetCaptureDirectory(library)
+                }
+                SettingsActionButton(title: "REVEAL IN FINDER", tone: .secondary, uiScale: uiScale) {
+                    viewModel.revealCaptureDirectory(library)
+                }
+                Spacer(minLength: 0)
+            }
+            if !viewModel.isCaptureLocationEditingEnabled {
+                Text("Folders cannot change while a stream is running.")
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.muted)
+            }
+        }
+        .disabled(!viewModel.isCaptureLocationEditingEnabled)
+    }
+}
+
+private struct CaptureNoticeBanner: View {
+    let message: String
+    let uiScale: CGFloat
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12 * uiScale) {
+            Text(message)
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8 * uiScale)
+            SettingsActionButton(title: "DISMISS", tone: .secondary, uiScale: uiScale, action: dismiss)
+        }
+    }
 }
 
 /// The way from the settings to what they produced. A destination named for a feature should be
@@ -201,15 +294,17 @@ struct RecordingLibraryCard: View {
     }
 }
 
-struct RecordingSettingsGroup: View {
+struct CaptureSettingsGroup: View {
     let viewModel: CatalogViewModel
     @Environment(\.opnUIScale) private var uiScale
 
-    static let sections: [SettingsSection] = RecordingSettingsPage.sections
+    static let sections: [SettingsSection] = CaptureSettingsPage.sections
 
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
-            RecordingSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            CaptureSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            CaptureStorageCard(viewModel: viewModel, uiScale: uiScale)
+                .settingsSection("storage")
             RecordingLibraryCard(viewModel: viewModel, uiScale: uiScale)
                 .settingsSection("library")
         }

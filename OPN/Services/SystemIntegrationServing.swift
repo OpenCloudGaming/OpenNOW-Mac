@@ -29,6 +29,11 @@ protocol SystemIntegrationServing {
     /// Brings Finder forward with `url` selected.
     func revealInFinder(_ url: URL)
 
+    /// Asks the reader for a directory and returns it, or nil when they cancel. Injected like the
+    /// rest of this protocol so a view model never has to import AppKit, and so a test can answer
+    /// without opening a panel.
+    func chooseDirectory(prompt: String, startingAt url: URL) -> URL?
+
     /// Stamps the bundled app icon onto the file at `url`, so a generated shortcut looks like the
     /// app in Finder. Silently does nothing if the icon resource is missing.
     func applyAppIcon(toFileAt url: URL)
@@ -56,6 +61,19 @@ struct AppKitSystemIntegration: SystemIntegrationServing {
 
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func chooseDirectory(prompt: String, startingAt url: URL) -> URL? {
+        let panel = NSOpenPanel()
+        panel.message = prompt
+        panel.prompt = "Choose"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = url
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
     }
 
     func applyAppIcon(toFileAt url: URL) {

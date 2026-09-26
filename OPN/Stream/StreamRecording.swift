@@ -17,7 +17,9 @@ public struct StreamRecording: Codable, Equatable, Identifiable, Sendable {
     public let enhancedVideo: Bool
     public let fileName: String
     public let fileSizeBytes: Int64
-    public let storageDirectoryPath: String?
+    /// Where the video and its sidecar live. Mutable so a library scan can heal a stale path from the
+    /// sidecar's own directory when the reader has moved the folder.
+    public var storageDirectoryPath: String?
 
     public var videoURL: URL { storageDirectory.appendingPathComponent(fileName) }
     public var metadataURL: URL { storageDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
@@ -29,9 +31,10 @@ public struct StreamRecording: Codable, Equatable, Identifiable, Sendable {
 }
 
 public enum StreamRecordingLibrary {
+    /// Where the reader's recordings live. A thin forwarder: `OPNCaptureLocations` owns the default,
+    /// the reader's override, and its validation.
     public static var recordingsDirectory: URL {
-        let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
-        return base.appendingPathComponent("NVIDIA", isDirectory: true).appendingPathComponent("GeForce NOW", isDirectory: true)
+        OPNCaptureLocations.recordingsDirectory
     }
 
     public static func recordingsDirectory(forGameTitle title: String) -> URL {
@@ -54,24 +57,14 @@ public enum StreamRecordingLibrary {
             .filter { $0.pathExtension.caseInsensitiveCompare("json") == .orderedSame }
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                guard let recording = try? JSONDecoder.recordingDecoder.decode(StreamRecording.self, from: data) else { return nil }
-                if recording.storageDirectoryPath == nil {
-                    return StreamRecording(
-                        id: recording.id,
-                        title: recording.title,
-                        applicationID: recording.applicationID,
-                        createdAt: recording.createdAt,
-                        durationSeconds: recording.durationSeconds,
-                        width: recording.width,
-                        height: recording.height,
-                        videoBitrateMbps: recording.videoBitrateMbps,
-                        audioBitrateKbps: recording.audioBitrateKbps,
-                        enhancedVideo: recording.enhancedVideo,
-                        fileName: recording.fileName,
-                        fileSizeBytes: recording.fileSizeBytes,
-                        storageDirectoryPath: url.deletingLastPathComponent().path
-                    )
-                }
+                guard var recording = try? JSONDecoder.recordingDecoder.decode(StreamRecording.self, from: data) else { return nil }
+                // A stored path that no longer exists — the folder moved, in Finder or by us — falls
+                // back to the sidecar's own directory, which also backfills a sidecar written before
+                // the field existed. Retained-replay clips keep their Application Support path.
+                recording.storageDirectoryPath = StreamScreenshotLibrary.resolvedStorageDirectoryPath(
+                    stored: recording.storageDirectoryPath,
+                    sidecarDirectory: url.deletingLastPathComponent()
+                )
                 return recording
             }
             .filter { FileManager.default.fileExists(atPath: $0.videoURL.path) }
@@ -106,10 +99,7 @@ public enum StreamRecordingLibrary {
     }
 
     private static func ensureWritableDirectory(at directory: URL) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let probe = directory.appendingPathComponent(".opennow-write-test", isDirectory: false)
-        try Data().write(to: probe, options: .atomic)
-        try? FileManager.default.removeItem(at: probe)
+        try OPNCaptureLocations.ensureWritableDirectory(at: directory)
     }
 }
 
