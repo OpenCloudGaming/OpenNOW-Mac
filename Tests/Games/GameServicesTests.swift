@@ -240,11 +240,13 @@ import Foundation
         }
     }
 
-    let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
+    // Matched by header rather than taken as `.first`: a session poll a previous test left running
+    // lands on this wildcard, and the request under test is the one carrying the id token.
+    let requests = SessionManagerURLProtocol.recordedRequests(host: host)
+    let request = try #require(requests.first { $0.value(forHTTPHeaderField: "Authorization") == "GFNJWT id-token" })
     let plan = try #require(result.2)
     #expect(request.httpMethod == "GET")
     #expect(request.url?.path == "/v2/session")
-    #expect(request.value(forHTTPHeaderField: "Authorization") == "GFNJWT id-token")
     #expect(result.0 == true)
     #expect(result.1 == "Launching Regression Game...")
     if case let .ready(configuration) = plan {
