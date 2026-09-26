@@ -145,7 +145,7 @@ final class SteamControllerTestModel: ObservableObject {
     }
 
     private func stepGyroReadout() {
-        guard let selectedDeviceID else {
+        guard selectedDeviceID != nil else {
             gyroReadout = .notConfigured
             gyroActivationHint = ""
             gyroActivation.reset()
