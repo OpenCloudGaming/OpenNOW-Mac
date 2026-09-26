@@ -792,6 +792,55 @@ Section Fill background, 1px Divider stroke, 10 padding, min height 58, equal wi
 Label 9pt bold @ 0.46 white (tracking 0.7); value 12pt bold. Positive state tints the
 value toward accent.
 
+### Dedicated Stream Window (`OPNStreamWindow`, `OPNStreamWindowPresenter`)
+
+A live stream is presented in its own AppKit-owned `NSWindow`, not in the catalog window. The
+catalog stays mounted behind it for the whole session.
+
+- **Chrome.** Titled, closable, miniaturizable, resizable, `fullSizeContentView`, transparent
+titlebar with the title hidden — the same full-bleed arrangement as the catalog window, and the
+reason `StreamStageLayout` still reserves the top strip. PiP windows reserve nothing.
+- **Size.** 1280×720 content on creation, minimum 480×270, locked to the stream's aspect ratio
+while the session runs.
+- **Full screen.** `collectionBehavior` includes `.fullScreenPrimary` *before* the window is first
+ordered in. A stream window is created mid-session, so it cannot be granted the way the main
+window is (`WindowFitting.installEarlyFitting`), which is the whole reason this window is AppKit's.
+- **Close.** The close button always raises the existing stream controls panel — the same 440-wide
+Stream Modal Dialog — and the window goes wherever the user's choice puts it. Resume leaves it
+open, Pause leaves a resumable seat and closes it, End tears the session down and closes it.
+There is no preference for this and no fourth dialog option.
+- **Dock.** Titled on purpose: `OPNDockIconController` counts a window towards the Dock icon
+exactly when its style mask contains `.titled`, so a stream window alone on screen keeps the Dock
+alive the way the catalog window used to.
+
+### Picture-in-Picture (`OPNStreamPictureInPicture`)
+
+PiP is **a mode of the stream window**, not a second window: the one window shrinks, floats and
+stays on top. Nothing is re-parented and no second video surface is created, because the session
+lives in the window's content.
+
+- **Window.** `level = .floating`, `collectionBehavior = .canJoinAllSpaces`. Windowed only — never
+`.fullScreenAuxiliary`, so it does not float over full-screen apps or into another Space's full
+screen. Its titlebar buttons are hidden and the whole window is draggable, so the small picture is
+nothing but picture; the style mask is never mutated.
+- **Size.** 320pt wide, height from the stream's aspect ratio through the same pure geometry the
+windowed stage fits its picture with (`OPNStreamStageGeometry`), placed in the bottom-trailing
+corner of the visible frame with a 20pt margin.
+- **Non-activating.** `canBecomeKey`/`canBecomeMain` answer `false` in this mode, so clicking it
+neither activates the app nor takes focus from whatever the user moved to. It is a viewing surface.
+- **Carrier child window.** The borderless NVST carrier is a child of the stream window, and AppKit
+rewrites a child's `collectionBehavior` to `.ignoresCycle` on attach — dropping
+`.canJoinAllSpaces`. The parent's behaviour is therefore re-applied to every child window on the
+way in and on the way out.
+- **HUD.** Suppressed entirely, not scaled: the dock alone is 268pt wide at its narrowest, in a
+320pt window. Floating stats go with it.
+- **Control strip.** Two `StreamQuitMenuButton`s along the bottom edge — **Restore** and **End
+Session** — over a Panel background @ 0.92 with a 1px accent @ 0.28 stroke. End Session is the same
+call the in-stream quit menu makes.
+- **Entry.** One tile in the unified HUD's Display section, `pip` glyph, state carried by
+`isActive` like its `floating-stats` sibling. The full-screen tile's inverse is disabled while in
+PiP; pressing the PiP tile while full screen leaves full screen first, then enters PiP.
+
 ### HUD Dock (unified stream HUD)
 
 Full-height leading dock, width `min(344, max(268, streamWidth * 0.72))`. Panel
