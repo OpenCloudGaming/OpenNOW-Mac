@@ -89,32 +89,84 @@ struct NativeNVSTMicrophoneDeviceSelectionTests {
         #expect(model.microphoneDevicePadItems().contains { $0.id == "hot-plugged" })
     }
 
-    @Test func theRowIsUnavailableWithNoMicrophone() {
+    // MARK: - The mode dropdown
+
+    @Test func theModeRowsMatchTheSettingsPicker() {
         let (_, model) = makeHUDSurface()
-        model.microphoneAvailable = false
-        model.microphoneMode = "disabled"
-        #expect(model.microphoneDeviceUnavailableReason == "Microphone is disabled in Settings.")
-        #expect(model.isMicrophoneDeviceRowDisabled)
+        model.microphoneMode = "push-to-talk"
+        let items = model.microphoneModePadItems()
+        #expect(items.map(\.title) == OPNStreamPreferences.microphoneModeOptions.map(\.label))
+        #expect(items.map(\.id) == OPNStreamPreferences.microphoneModeOptions.map(\.value))
+        #expect(items.first { $0.isSelected }?.id == "push-to-talk")
+        #expect(items.filter(\.isSelected).count == 1)
+        #expect(model.microphoneModeSelectionLabel == "Push-to-Talk")
+        #expect(model.microphoneModeCaption == "Microphone Mode \u{00b7} Push-to-Talk")
     }
 
-    /// A seat that negotiated no microphone section, and a legacy RTSP-mic seat, are the two failure
-    /// shapes the microphone toggle already refuses with; the disabled row repeats them word for word.
+    /// The mode is the capture gate and the chord, so applying it has to move all three: the live mode,
+    /// whether this session can capture at all, and the preference the next session resolves from.
+    @Test func applyingAModeMovesTheGateAndThePreference() {
+        withPreservedMicrophoneMode {
+            let (_, model) = makeHUDSurface()
+            model.isMicrophoneSectionNegotiated = true
+
+            model.applyMicrophoneMode("push-to-talk")
+            #expect(model.microphoneMode == "push-to-talk")
+            #expect(model.microphoneAvailable, "a held-to-talk session can still capture")
+            #expect(OPNStreamPreferences.loadProfile().microphoneMode == "push-to-talk")
+
+            model.applyMicrophoneMode("voice-activity")
+            #expect(model.microphoneAvailable)
+
+            model.applyMicrophoneMode("disabled")
+            #expect(model.microphoneMode == "disabled")
+            #expect(!model.microphoneAvailable, "off means this session has nothing to capture")
+            #expect(OPNStreamPreferences.loadProfile().microphoneMode == "disabled")
+
+            // Back on again in the same session: the section exists, only the mode changed.
+            model.applyMicrophoneMode("voice-activity")
+            #expect(model.microphoneAvailable)
+        }
+    }
+
+    /// A session that never asked for a microphone section cannot switch one on, which is the one limit
+    /// of changing the mode mid-stream, and the copy has to say that rather than blame the seat.
+    @Test func aSessionThatAskedForNoMicrophoneCannotSwitchOneOn() {
+        let (_, model) = makeHUDSurface()
+        model.isMicrophoneSectionNegotiated = false
+        model.microphoneTransportAvailability = .available
+        #expect(model.microphoneUnavailableReason == "The microphone was off when this session started, so it can only be enabled for the next one.")
+        #expect(model.isMicrophoneModeRowDisabled)
+    }
+
+    /// The mode row stays usable when the mode itself is off, because that is how it is turned back on.
+    @Test func theModeRowStaysUsableWhileTheModeIsOff() {
+        let (_, model) = makeHUDSurface()
+        model.isMicrophoneSectionNegotiated = true
+        model.microphoneMode = "disabled"
+        model.microphoneAvailable = false
+        #expect(model.microphoneUnavailableReason == nil)
+        #expect(!model.isMicrophoneModeRowDisabled)
+        #expect(model.isMicrophoneDeviceRowDisabled, "no capture means no device to route")
+    }
+
     @Test func theRowRepeatsTheTogglesFailureCopy() {
         let (_, model) = makeHUDSurface()
+        model.isMicrophoneSectionNegotiated = true
         model.microphoneAvailable = true
         model.microphoneMode = "voice-activity"
         model.microphoneDeviceOptions = [defaultDevice, pickedDevice()]
 
         model.microphoneTransportAvailability = .pending
-        #expect(model.microphoneDeviceUnavailableReason == nil, "not knowing yet must not grey the row out")
-        #expect(!model.isMicrophoneDeviceRowDisabled)
+        #expect(model.microphoneUnavailableReason == nil, "not knowing yet must not grey the row out")
+        #expect(!model.isMicrophoneModeRowDisabled)
 
         model.microphoneTransportAvailability = .noBundleChannel
-        #expect(model.microphoneDeviceUnavailableReason == NativeNVSTMicrophoneAvailability.noBundleChannel.failureMessage)
-        #expect(model.isMicrophoneDeviceRowDisabled)
+        #expect(model.microphoneUnavailableReason == NativeNVSTMicrophoneAvailability.noBundleChannel.failureMessage)
+        #expect(model.isMicrophoneModeRowDisabled)
 
         model.microphoneTransportAvailability = .legacyTransport
-        #expect(model.microphoneDeviceUnavailableReason == NativeNVSTMicrophoneAvailability.legacyTransport.failureMessage)
-        #expect(model.isMicrophoneDeviceRowDisabled)
+        #expect(model.microphoneUnavailableReason == NativeNVSTMicrophoneAvailability.legacyTransport.failureMessage)
+        #expect(model.isMicrophoneModeRowDisabled)
     }
 }

@@ -176,34 +176,46 @@ extension NativeNVSTMediaStreamSurface {
             onToggle: { model.toggleHUDSection(.audio) }
         ) {
             nativeHUDTileGrid(tiles)
-            // Below the tiles: a full-width row of its own, because it changes a setting rather than
-            // toggling a state, and the pad reads it as the row it draws as.
-            microphoneDeviceUnavailableNotice
+            // Below the tiles: full-width rows of their own, because they change settings rather than
+            // toggling a state, and the pad reads each as the row it draws as.
+            microphoneUnavailableNotice
+            nativeHUDMicrophoneModeRow
             nativeHUDMicrophoneDeviceRow
             nativeHUDMicrophoneLevelRow
         }
     }
 
-    /// The microphone the stream captures from: where the picker's saved choice reaches capture, and
-    /// where it can be changed without leaving the session.
-    var nativeHUDMicrophoneDeviceRow: some View {
+    /// Off, held-to-talk, or always capturing. Which modes are live depends on whether this session
+    /// asked for a microphone section, and the notice above the row says so when they are not.
+    var nativeHUDMicrophoneModeRow: some View {
+        microphoneDropdownRow(
+            label: "Microphone Mode",
+            dropdownID: NativeNVSTHostViewModel.microphoneModeDropdownID,
+            selectionLabel: model.microphoneModeSelectionLabel,
+            isDisabled: model.isMicrophoneModeRowDisabled,
+            help: "How OpenNOW sends your voice"
+        )
+    }
+
+    /// One row of the AUDIO panel: a label, then the dropdown trigger the pad opens.
+    func microphoneDropdownRow(label: String, dropdownID: String, selectionLabel: String, isDisabled: Bool, help: String) -> some View {
         HStack(spacing: 12) {
-            Text("Microphone Device")
+            Text(label)
                 .font(.streamFont(size: 11, weight: .medium))
                 .foregroundStyle(StreamHUDTheme.textTertiary)
             Spacer(minLength: 8)
             OPNDropdownMenu(
-                items: model.microphoneDevicePadItems().map(\.dropdownItem),
-                isDisabled: model.isMicrophoneDeviceRowDisabled,
-                // Capped so a machine with a dozen inputs scrolls rather than running the height of
-                // the HUD, and opened leftward because the sidebar's right edge is the video.
+                items: model.padDropdownItems(dropdownID).map(\.dropdownItem),
+                isDisabled: isDisabled,
+                // Capped so a long list scrolls rather than running the height of the HUD, and opened
+                // leftward because the sidebar's right edge is the video.
                 visibleItemCount: 6,
                 opensLeftByDefault: true,
-                isFocused: model.hudFocusID == NativeNVSTHostViewModel.microphoneDeviceDropdownID,
-                padDriver: model.padDropdown(dropdownID: NativeNVSTHostViewModel.microphoneDeviceDropdownID)
+                isFocused: model.hudFocusID == dropdownID,
+                padDriver: model.padDropdown(dropdownID: dropdownID)
             ) {
                 HStack(spacing: 4) {
-                    Text(model.microphoneDeviceSelectionLabel)
+                    Text(selectionLabel)
                     Image(systemName: "chevron.down")
                 }
                 .font(.streamFont(size: 10, weight: .bold))
@@ -214,16 +226,28 @@ extension NativeNVSTMediaStreamSurface {
                 .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
                 .contentShape(Rectangle())
             }
-            .help("The microphone OpenNOW captures from")
+            .help(help)
         }
-        .opacity(model.isMicrophoneDeviceRowDisabled ? 0.46 : 1)
+        .opacity(isDisabled ? 0.46 : 1)
     }
 
-    /// Why the picker is unusable, in the microphone toggle's own words. Drawn above the row rather
-    /// than instead of it, so the row the pad stands on stays where it was.
+    /// The microphone the stream captures from: where the picker's saved choice reaches capture, and
+    /// where it can be changed without leaving the session.
+    var nativeHUDMicrophoneDeviceRow: some View {
+        microphoneDropdownRow(
+            label: "Microphone Device",
+            dropdownID: NativeNVSTHostViewModel.microphoneDeviceDropdownID,
+            selectionLabel: model.microphoneDeviceSelectionLabel,
+            isDisabled: model.isMicrophoneDeviceRowDisabled,
+            help: "The microphone OpenNOW captures from"
+        )
+    }
+
+    /// Why the microphone rows are unusable, in the microphone tile's own words. Drawn above the rows
+    /// rather than instead of them, so the rows the pad stands on stay where they were.
     @ViewBuilder
-    var microphoneDeviceUnavailableNotice: some View {
-        if let reason = model.microphoneDeviceUnavailableReason {
+    var microphoneUnavailableNotice: some View {
+        if let reason = model.microphoneUnavailableReason {
             Text(reason)
                 .font(.streamFont(size: 10, weight: .medium))
                 .foregroundStyle(StreamHUDTheme.warning)

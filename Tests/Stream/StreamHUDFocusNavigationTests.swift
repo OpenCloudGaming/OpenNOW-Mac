@@ -135,6 +135,18 @@ struct StreamHUDFocusNavigationTests {
         return model
     }
 
+    /// The AUDIO panel's two dropdown rows are full-width and sit under the tiles in the order the
+    /// panel draws them, which is what makes the pad's walk follow what is on screen.
+    @Test func theMicrophoneRowsFollowThePanelOrder() {
+        let model = dropdownModel()
+        let ids = model.hudFocusEntries.map(\.id)
+        let modeIndex = ids.firstIndex(of: NativeNVSTHostViewModel.microphoneModeDropdownID)
+        let deviceIndex = ids.firstIndex(of: NativeNVSTHostViewModel.microphoneDeviceDropdownID)
+        #expect(modeIndex != nil)
+        #expect(deviceIndex == modeIndex.map { $0 + 1 }, "the mode row is drawn above the device row")
+        #expect(StreamHUDFocusEntry.rows(of: model.hudFocusEntries).contains { $0.count == 1 && $0[0] == modeIndex })
+    }
+
     @Test func aDropdownOpensOnTheRowInUse() {
         let model = dropdownModel()
         model.togglePadDropdown(NativeNVSTHostViewModel.microphoneDeviceDropdownID)

@@ -7,6 +7,7 @@ import Foundation
 @MainActor
 extension NativeNVSTHostViewModel {
     static let microphoneDeviceDropdownID = "microphone-device"
+    static let microphoneModeDropdownID = "microphone-mode"
     static let remoteCoOpQualityDropdownPrefix = "coop-quality-"
 
     // MARK: - Pad-driven dropdowns
@@ -15,6 +16,7 @@ extension NativeNVSTHostViewModel {
     /// which is how an unknown dropdown refuses to open instead of opening on nothing.
     func padDropdownItems(_ dropdownID: String) -> [OPNDropdownPadItem] {
         if dropdownID == Self.microphoneDeviceDropdownID { return microphoneDevicePadItems() }
+        if dropdownID == Self.microphoneModeDropdownID { return microphoneModePadItems() }
         guard dropdownID.hasPrefix(Self.remoteCoOpQualityDropdownPrefix),
               let participantID = UUID(uuidString: String(dropdownID.dropFirst(Self.remoteCoOpQualityDropdownPrefix.count))) else { return [] }
         return remoteCoOpQualityPadItems(participantID: participantID)
@@ -117,22 +119,80 @@ extension NativeNVSTHostViewModel {
         Int((min(max(microphoneLevel, 0), 1) * 100).rounded())
     }
 
-    /// Why the device row cannot be used: no seat microphone section, a legacy RTSP-mic seat, or
-    /// Settings' microphone mode being off. Nil when it can be used.
-    var microphoneDeviceUnavailableReason: String? {
-        guard microphoneAvailable else {
-            return microphoneMode == "disabled" ? "Microphone is disabled in Settings." : nil
+    // MARK: - The microphone mode dropdown
+
+    /// One row per mode Settings offers, in Settings' order and with Settings' own labels. The mode is
+    /// the gating policy — off, held to talk, or always capturing — and it persists for later sessions.
+    func microphoneModePadItems() -> [OPNDropdownPadItem] {
+        OPNStreamPreferences.microphoneModeOptions.map { option in
+            OPNDropdownPadItem(
+                id: option.value,
+                title: option.label,
+                isSelected: option.value == microphoneMode,
+                action: { [weak self] in self?.requestNativeMicrophoneMode(option.value) }
+            )
+        }
+    }
+
+    /// The caption the HUD shows for the focused mode row.
+    var microphoneModeCaption: String {
+        "Microphone Mode \u{00b7} \(microphoneModeSelectionLabel)"
+    }
+
+    var microphoneModeSelectionLabel: String {
+        OPNStreamPreferences.microphoneModeOptions.first { $0.value == microphoneMode }?.label ?? "Disabled"
+    }
+
+    /// Why the microphone cannot be used in this session, or nil when it can. A section that was never
+    /// requested is the one case the seat cannot be blamed for, so it is named first.
+    var microphoneUnavailableReason: String? {
+        guard isMicrophoneSectionNegotiated else {
+            return "The microphone was off when this session started, so it can only be enabled for the next one."
         }
         return microphoneTransportAvailability.failureMessage
     }
 
+    /// Whether the mode can be changed: the seat has to carry a microphone, and no change may be in
+    /// flight. Deliberately not gated on `microphoneAvailable` — switching the mode back on is the
+    /// whole point of the row when the mode is off.
+    var isMicrophoneModeRowDisabled: Bool {
+        !sidebarCapabilities.supports(.microphone)
+            || microphoneUpdateTask != nil
+            || microphoneUnavailableReason != nil
+    }
+
     // MARK: - Microphone commands
+
+    /// Applies a mode choice to the running session and saves it for the next one. Choosing "Disabled"
+    /// is always allowed, since it only stops capture.
+    func requestNativeMicrophoneMode(_ mode: String) {
+        guard isConnected, !isEnding, !didEnd else { return }
+        if mode != "disabled", let reason = microphoneUnavailableReason {
+            showNativeTransientStreamMessage(reason)
+            return
+        }
+        applyMicrophoneMode(mode)
+    }
+
+    /// Writes the mode everywhere it is read and applies it to the live session: the preference
+    /// Settings shares, the capture gate, and the push-to-talk chord.
+    func applyMicrophoneMode(_ mode: String) {
+        // Silences the session first: the mute path refuses to run once the mode has cleared the
+        // microphone's availability, and a mode change must never leave capture open.
+        if mode != "voice-activity" { requestNativeMicrophoneEnabled(false, source: "mode") }
+        microphoneMode = mode
+        OPNStreamPreferences.saveMicrophoneMode(mode)
+        microphoneAvailable = isMicrophoneSectionNegotiated && mode != "disabled"
+        if let nativeView { configurePushToTalkMonitor(for: nativeView, mode: mode) }
+        if mode == "voice-activity" { requestNativeMicrophoneEnabled(true, source: "mode") }
+        OPNStreamTelemetry.capture("nvst.ui.microphone.mode", level: .info, message: "Native NVST microphone mode changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode])
+    }
 
     /// Applies a device choice: refused with the reason when the seat cannot carry a microphone, and
     /// otherwise queued behind the mute toggle's pending-state machinery.
     func requestNativeMicrophoneDevice(_ uid: String) {
         guard let path, isConnected, !isEnding, !didEnd else { return }
-        if let reason = microphoneDeviceUnavailableReason {
+        if let reason = microphoneUnavailableReason {
             showNativeTransientStreamMessage(reason)
             return
         }

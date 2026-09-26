@@ -53,8 +53,11 @@ extension NativeNVSTHostViewModel {
         [
             StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "audio", columns: 4, action: toggleNativeMicrophone),
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "audio", columns: 4, action: toggleNativeLocalAudioMute),
-            // A full-width row of its own. Its confirm opens the list rather than firing once, so it
-            // routes through the pad-dropdown state.
+            // Two full-width rows of their own, in the order the panel draws them. Each confirm opens
+            // a list rather than firing once, so both route through the pad-dropdown state.
+            StreamHUDFocusEntry(id: Self.microphoneModeDropdownID, isDisabled: isMicrophoneModeRowDisabled, action: { [weak self] in
+                self?.togglePadDropdown(Self.microphoneModeDropdownID)
+            }),
             StreamHUDFocusEntry(id: Self.microphoneDeviceDropdownID, isDisabled: isMicrophoneDeviceRowDisabled, action: { [weak self] in
                 self?.togglePadDropdown(Self.microphoneDeviceDropdownID)
             }),
@@ -67,7 +70,7 @@ extension NativeNVSTHostViewModel {
         !sidebarCapabilities.supports(.microphone)
             || !microphoneAvailable
             || microphoneUpdateTask != nil
-            || microphoneDeviceUnavailableReason != nil
+            || microphoneUnavailableReason != nil
             || microphoneDeviceOptions.count <= 1
     }
 

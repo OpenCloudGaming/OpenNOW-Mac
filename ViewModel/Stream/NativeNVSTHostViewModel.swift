@@ -100,7 +100,10 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var microphoneAvailable = false
     @Published var microphoneEnabled = false
     var microphoneDesiredEnabled = false
+    /// The mode in force for this session, applied to capture and persisted for the next one.
     @Published var microphoneMode = "disabled"
+    /// Whether ANNOUNCE asked for a microphone section, which is what makes the mode switchable at all.
+    @Published var isMicrophoneSectionNegotiated = false
     var microphonePendingStates: [Bool] = []
     @Published var microphoneUpdateTask: Task<Void, Never>?
     /// The picker's rows for the HUD's AUDIO panel, read from the same preference Settings writes.
@@ -352,8 +355,11 @@ final class NativeNVSTHostViewModel: ObservableObject {
         microphonePendingDeviceUID = nil
         pendingMicrophoneDeviceUIDs.removeAll()
         microphoneTransportAvailability = .pending
+        // Whether this session has a microphone section is fixed at ANNOUNCE: a launch mode of
+        // "disabled" never requests one, so switching it on can only affect a later session.
+        isMicrophoneSectionNegotiated = microphoneConfiguration.captureRequested
         microphoneLevel = 0
-        microphoneAvailable = microphoneConfiguration.captureRequested
+        microphoneAvailable = isMicrophoneSectionNegotiated && microphoneMode != "disabled"
         microphoneEnabled = microphoneConfiguration.initiallyEnabled
         microphoneDesiredEnabled = microphoneEnabled
         microphonePendingStates.removeAll()

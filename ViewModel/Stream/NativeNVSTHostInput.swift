@@ -39,13 +39,7 @@ extension NativeNVSTHostViewModel {
         // device's and this value would otherwise letterbox and aim the pointer against a fiction.
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
         view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
-        let pushToTalkEnabled = profile.microphoneMode.caseInsensitiveCompare("push-to-talk") == .orderedSame
-        view.configurePushToTalk(
-            keyCode: pushToTalkEnabled ? profile.microphonePushToTalkKeyCode : nil,
-            modifierMask: profile.microphonePushToTalkModifierMask
-        ) { [weak self] enabled in
-            self?.requestNativeMicrophoneEnabled(enabled, source: "push-to-talk")
-        }
+        configurePushToTalkMonitor(for: view, mode: profile.microphoneMode)
         configureInput(for: view)
         installNativeFullScreenObservers(for: view)
     }
@@ -128,6 +122,23 @@ extension NativeNVSTHostViewModel {
             return
         }
         inputDispatcher?.enqueue(event)
+    }
+
+    /// The launch profile this session was resolved from, so a mid-stream change reads one source.
+    var currentLaunchProfile: OPNStreamPreferenceProfile {
+        OPNStreamPreferences.launchProfile(forGame: configuration.applicationID,
+                                           capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+    }
+
+    /// Arms or releases the push-to-talk key monitor for `mode`. Called when the input is attached and
+    /// again whenever the mode changes mid-stream, so the chord has one definition for both.
+    func configurePushToTalkMonitor(for view: NativeStreamView, mode: String) {
+        let profile = currentLaunchProfile
+        let isPushToTalkEnabled = mode.caseInsensitiveCompare("push-to-talk") == .orderedSame
+        view.configurePushToTalk(keyCode: isPushToTalkEnabled ? profile.microphonePushToTalkKeyCode : nil,
+                                 modifierMask: profile.microphonePushToTalkModifierMask) { [weak self] isHeld in
+            self?.requestNativeMicrophoneEnabled(isHeld, source: "push-to-talk")
+        }
     }
 
     func configureInput(for view: NativeStreamView) {
