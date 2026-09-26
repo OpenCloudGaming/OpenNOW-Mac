@@ -113,42 +113,23 @@ struct OPNStreamPictureInPictureTests {
         #expect(!OPNStreamWindowPresenter.needsFullScreenExitBeforeDismissing(styleMask: [.borderless]))
     }
 
-    /// The race the leftover window shipped from, pinned without a window server: a dismissal may
-    /// only tear the window down once the tracked transition is over *and* AppKit has cleared
-    /// `.fullScreen`. The mask alone is the trap - it clears before the Space collapse finishes
-    /// re-presenting the window - and an *enter* transition has not set it at all.
+    /// The race the leftover window shipped from: a dismissal may only tear the window down once the
+    /// tracked transition is over and `.fullScreen` is clear.
     @Test func aDismissalWaitsForTheFullScreenTransitionToLand() {
         let windowed = OPNStreamWindowFactory.styleMask
         let fullScreen = windowed.union(.fullScreen)
-        // Being overly explicit about the type inference for `.none`: it is the transition case.
-        let still: OPNStreamWindowPresenter.FullScreenTransition = .none
+        let settled: OPNStreamWindowPresenter.FullScreenTransition = .none
 
-        // Windowed, nothing in flight: unchanged - teardown proceeds at once.
         #expect(OPNStreamWindowPresenter.dismissalStep(
-            transition: still, styleMask: windowed, hasRequestedFullScreenExit: false) == .tearDownNow)
-        // Full screen, exit not yet asked for: toggle it out.
+            transition: settled, styleMask: windowed, isFullScreenExitRequested: false) == .tearDownNow)
         #expect(OPNStreamWindowPresenter.dismissalStep(
-            transition: still, styleMask: fullScreen, hasRequestedFullScreenExit: false) == .requestFullScreenExit)
-        // Exit requested; the mask may still be set: wait for it to clear.
+            transition: settled, styleMask: fullScreen, isFullScreenExitRequested: false) == .requestFullScreenExit)
         #expect(OPNStreamWindowPresenter.dismissalStep(
-            transition: still, styleMask: fullScreen, hasRequestedFullScreenExit: true) == .waitForExitToLand)
-        // Mid-enter: `.fullScreen` is not set yet, so wait for the enter to land before deciding.
+            transition: settled, styleMask: fullScreen, isFullScreenExitRequested: true) == .waitForExitToLand)
         #expect(OPNStreamWindowPresenter.dismissalStep(
-            transition: .entering, styleMask: windowed, hasRequestedFullScreenExit: false) == .waitForTransitionEnd)
-        // Mid-exit with the mask already clear is the exact trap: do not tear down yet.
+            transition: .entering, styleMask: windowed, isFullScreenExitRequested: false) == .waitForTransitionEnd)
         #expect(OPNStreamWindowPresenter.dismissalStep(
-            transition: .exiting, styleMask: windowed, hasRequestedFullScreenExit: false) == .waitForExitToLand)
-    }
-
-    /// The landing gate itself: the exit is done only when the transition is over and the mask is
-    /// clear together.
-    @Test func theFullScreenExitHasLandedOnlyWhenBothSignalsAgree() {
-        let windowed = OPNStreamWindowFactory.styleMask
-        let fullScreen = windowed.union(.fullScreen)
-        #expect(OPNStreamWindowPresenter.hasLandedFullScreenExit(transition: .none, styleMask: windowed))
-        #expect(!OPNStreamWindowPresenter.hasLandedFullScreenExit(transition: .none, styleMask: fullScreen))
-        #expect(!OPNStreamWindowPresenter.hasLandedFullScreenExit(transition: .exiting, styleMask: windowed))
-        #expect(!OPNStreamWindowPresenter.hasLandedFullScreenExit(transition: .entering, styleMask: fullScreen))
+            transition: .exiting, styleMask: windowed, isFullScreenExitRequested: false) == .waitForExitToLand)
     }
 
     // MARK: - Capability gate
