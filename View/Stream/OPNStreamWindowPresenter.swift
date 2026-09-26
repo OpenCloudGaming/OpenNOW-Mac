@@ -21,6 +21,9 @@ final class OPNStreamWindowPresenter {
     private(set) var window: OPNStreamWindow?
     private var presentedConfigurationID: UUID?
     private var hostingView: NSHostingView<OPNStreamWindowRootView>?
+    /// Windows that are leaving full screen before they can be torn down. Held strongly: the whole
+    /// point is that the window outlives the dismissal until its exit lands.
+    private var windowsLeavingFullScreen: [ObjectIdentifier: OPNStreamWindow] = [:]
 
     /// Whether a stream window is on screen. Read by the catalog so a surface that belongs to the
     /// session (the iCloud conflict prompt) keeps out of the way.
@@ -78,10 +81,61 @@ final class OPNStreamWindowPresenter {
         OPNStreamWindowCloseGuard.uninstall(from: window)
         window.closeRequestHandler = nil
         window.sessionSurface = nil
+        // A full-screen window cannot be ordered out directly. It lives in a Space of its own, and
+        // ordering it out while it is still full screen leaves that Space behind showing black,
+        // forever - there is no window left to close it. The exit has to land first; see
+        // `exitFullScreenBeforeDismissing`.
+        if Self.needsFullScreenExitBeforeDismissing(styleMask: window.styleMask) {
+            exitFullScreenBeforeDismissing(window)
+        } else {
+            orderOutAndClear(window)
+        }
+    }
+
+    /// Whether a window has to leave full screen before it can be ordered out.
+    ///
+    /// Pure, so the trap that ships a black screen stays assertable without a window server: a
+    /// full-screen window is in its own Space, and ordering it out there leaves the Space black
+    /// with no window left to close it.
+    static func needsFullScreenExitBeforeDismissing(styleMask: NSWindow.StyleMask) -> Bool {
+        styleMask.contains(.fullScreen)
+    }
+
+    /// Leaves full screen, then tears down once the exit has landed.
+    ///
+    /// The window is kept alive until the exit lands - releasing it on the way out would leave the
+    /// Space it is animating out of just as stuck. A cancelled launch and a rebind both land here
+    /// for the same window, so the second call is a no-op rather than a second toggle.
+    private func exitFullScreenBeforeDismissing(_ window: OPNStreamWindow) {
+        let id = ObjectIdentifier(window)
+        guard windowsLeavingFullScreen[id] == nil else { return }
+        windowsLeavingFullScreen[id] = window
+        window.toggleFullScreen(nil)
+        // Polled rather than observed, the same way `StreamWindowGeometryGate` waits out a nested
+        // run loop: the exit is animated and AppKit has no single notification that means "the
+        // Space is back", and a missed one would leave the teardown hanging with a window nobody
+        // can close. The cap is the exit's own worst case; a window that refuses to leave is
+        // ordered out anyway rather than kept forever.
+        Task { @MainActor [weak self] in
+            var remainingAttempts = 200
+            while window.styleMask.contains(.fullScreen), remainingAttempts > 0 {
+                remainingAttempts -= 1
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            self?.finishDismissing(window)
+        }
+    }
+
+    private func finishDismissing(_ window: OPNStreamWindow) {
+        windowsLeavingFullScreen.removeValue(forKey: ObjectIdentifier(window))
+        orderOutAndClear(window)
+    }
+
+    /// Ordering out is not enough on its own: the hosting view has to go for the stream surface's
+    /// `.onDisappear` teardown to run, and that is the difference between a session that ends and
+    /// one that keeps a window nobody can see.
+    private func orderOutAndClear(_ window: OPNStreamWindow) {
         window.orderOut(nil)
-        // Ordering out is not enough on its own: the hosting view has to go for the stream surface's
-        // `.onDisappear` teardown to run, and that is the difference between a session that ends and
-        // one that keeps a window nobody can see.
         window.contentView = nil
     }
 

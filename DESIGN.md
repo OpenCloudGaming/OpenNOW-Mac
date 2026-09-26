@@ -808,7 +808,9 @@ window is (`WindowFitting.installEarlyFitting`), which is the whole reason this 
 - **Close.** The close button always raises the existing stream controls panel — the same 440-wide
 Stream Modal Dialog — and the window goes wherever the user's choice puts it. Resume leaves it
 open, Pause leaves a resumable seat and closes it, End tears the session down and closes it.
-There is no preference for this and no fourth dialog option.
+There is no preference for this and no fourth dialog option. Closing while full screen leaves full
+screen first and tears down once it has: a full-screen window lives in a Space of its own, and
+ordering it out while it is still full screen leaves that Space showing black forever.
 - **Dock.** Titled on purpose: `OPNDockIconController` counts a window towards the Dock icon
 exactly when its style mask contains `.titled`, so a stream window alone on screen keeps the Dock
 alive the way the catalog window used to.

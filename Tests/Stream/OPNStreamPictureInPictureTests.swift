@@ -91,6 +91,20 @@ struct OPNStreamPictureInPictureTests {
         #expect(OPNStreamWindowPresenter.closeDecision(isConnected: nil, hasActiveStream: false) == .cancelLaunchAndDismiss)
     }
 
+    // MARK: - Full-screen teardown
+
+    /// A full-screen window lives in a Space of its own, and ordering it out while it is still full
+    /// screen leaves that Space showing black with no window left to close it - the bug this pins.
+    /// The teardown has to wait for the exit to land, so the decision is asserted here rather than
+    /// only discovered on screen.
+    @Test func aFullScreenWindowHasToLeaveFullScreenBeforeItCanBeDismissed() {
+        #expect(OPNStreamWindowPresenter.needsFullScreenExitBeforeDismissing(
+            styleMask: OPNStreamWindowFactory.styleMask.union(.fullScreen)))
+        #expect(!OPNStreamWindowPresenter.needsFullScreenExitBeforeDismissing(
+            styleMask: OPNStreamWindowFactory.styleMask))
+        #expect(!OPNStreamWindowPresenter.needsFullScreenExitBeforeDismissing(styleMask: [.borderless]))
+    }
+
     // MARK: - Capability gate
 
     /// The gate exists so PiP can be switched off if one render path cannot survive the mode change;
