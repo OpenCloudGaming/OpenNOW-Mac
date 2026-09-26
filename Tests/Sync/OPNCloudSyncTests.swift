@@ -16,11 +16,10 @@ import Testing
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Interface.Appearance"))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Stream.Fps"))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Input.ControllerMappingProfiles"))
-        // Per-game controller mapping: the override blob, the per-family defaults and the
-        // `appId → catalogIdentity` resume index are all machine-independent, so they must travel
-        // with the settings. Pinned by name so a later prefix change cannot silently drop them.
+        // Per-game controller mapping keys are machine-independent, so they must travel with the
+        // settings; pinned by name so a later prefix change cannot silently drop them.
         for key in [ControllerMappingStore.gameOverridesKey,
-                    ControllerMappingStore.defaultProfilesKey,
+                    ControllerMappingStore.familyDefaultsKey,
                     ControllerMappingStore.appIdIdentityIndexKey] {
             #expect(OPNCloudSyncSettingsRegistry.isSyncable(key), "\(key) must travel with the settings")
         }

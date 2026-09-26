@@ -11,22 +11,21 @@ import Testing
         return defaults
     }
 
-    @Test func freshInstallAutoActivatesADefaultPassthroughProfile() throws {
+    @Test func aFreshInstallActivatesTheDefaultPassthroughProfile() throws {
         let defaults = try makeDefaults()
         let store = ControllerMappingStore(defaults: defaults)
         #expect(store.profiles.count == 1)
-        #expect(store.activeProfileID == store.profiles.first?.id)
+        #expect(store.defaultProfileID(for: .steam) == store.profiles.first?.id)
         #expect(store.activeProfile?.rightPad.mode == .mouse)
         #expect(store.activeProfile?.binding(for: .rightPadClick) == .mouseButton(.left))
     }
 
-    @Test func migratesLegacyGripComboAndDisabledTrackpad() throws {
+    @Test func legacyGripProfileFoldsIntoTheFirstProfile() throws {
         let defaults = try makeDefaults()
         let legacyProfile = SteamControllerGripProfile(name: "Legacy", combos: [
             .l4: ControllerButtonChord(buttons: [.south]),
         ])
-        let data = try JSONEncoder().encode([legacyProfile])
-        defaults.set(data, forKey: "OpenNOW.Input.SteamControllerGripProfiles")
+        defaults.set(try JSONEncoder().encode([legacyProfile]), forKey: "OpenNOW.Input.SteamControllerGripProfiles")
         defaults.set(legacyProfile.id.uuidString, forKey: "OpenNOW.Input.SteamControllerGripActiveProfile")
         defaults.set(false, forKey: SteamControllerTrackpadMousePreference.key)
 
@@ -36,234 +35,238 @@ import Testing
         #expect(store.activeProfile?.binding(for: .rightPadClick) == .disabled)
     }
 
-    @Test func createUpdateAndDeletePersist() throws {
+    @Test func profileEditsPersistAcrossReload() throws {
         let defaults = try makeDefaults()
         let store = ControllerMappingStore(defaults: defaults)
-        let profile = store.createProfile(named: "Racing")
-        var updated = profile
-        updated.bindings[.faceA] = .keyboardKey(keyCode: 49, modifiers: [])
-        store.updateProfile(updated)
+        let racingProfile = store.createProfile(named: "Racing")
+        var editedProfile = racingProfile
+        editedProfile.bindings[.faceA] = .keyboardKey(keyCode: 49, modifiers: [])
+        store.updateProfile(editedProfile)
 
-        let reloaded = ControllerMappingStore(defaults: defaults)
-        #expect(reloaded.activeProfileID == profile.id)
-        #expect(reloaded.activeProfile?.binding(for: .faceA) == .keyboardKey(keyCode: 49, modifiers: []))
+        let reloadedStore = ControllerMappingStore(defaults: defaults)
+        #expect(reloadedStore.defaultProfileID(for: .steam) == racingProfile.id)
+        #expect(reloadedStore.activeProfile?.binding(for: .faceA) == .keyboardKey(keyCode: 49, modifiers: []))
 
-        reloaded.deleteProfile(profile.id)
-        #expect(reloaded.profiles.contains(where: { $0.id == profile.id }) == false)
+        reloadedStore.deleteProfile(racingProfile.id)
+        #expect(reloadedStore.profiles.contains(where: { $0.id == racingProfile.id }) == false)
     }
 
-    @Test func migratesAllSavedSteamProfilesWithoutChangingIDsOrBindings() throws {
+    @Test func migrationPreservesExistingSteamProfiles() throws {
         let defaults = try makeDefaults()
-        let first = ControllerMappingProfile(name: "First", bindings: [.faceA: .keyboardKey(keyCode: 49, modifiers: [.shift])])
-        var second = ControllerMappingProfile(name: "Second", bindings: [.leftGrip: .gamepadChord(ControllerButtonChord(buttons: [.north]))])
-        second.rightPad = ControllerPadSettings(mode: .mouse, sensitivity: 2.5, invertY: true)
-        let encoded = try JSONEncoder().encode([first, second])
-        var legacy = try #require(JSONSerialization.jsonObject(with: encoded) as? [[String: Any]])
-        for index in legacy.indices {
-            legacy[index].removeValue(forKey: "family")
-            legacy[index].removeValue(forKey: "touchpad")
+        let firstProfile = ControllerMappingProfile(name: "First", bindings: [.faceA: .keyboardKey(keyCode: 49, modifiers: [.shift])])
+        var secondProfile = ControllerMappingProfile(name: "Second", bindings: [.leftGrip: .gamepadChord(ControllerButtonChord(buttons: [.north]))])
+        secondProfile.rightPad = ControllerPadSettings(mode: .mouse, sensitivity: 2.5, invertY: true)
+        let encodedProfiles = try JSONEncoder().encode([firstProfile, secondProfile])
+        var legacyProfiles = try #require(JSONSerialization.jsonObject(with: encodedProfiles) as? [[String: Any]])
+        for index in legacyProfiles.indices {
+            legacyProfiles[index].removeValue(forKey: "family")
+            legacyProfiles[index].removeValue(forKey: "touchpad")
         }
-        defaults.set(try JSONSerialization.data(withJSONObject: legacy), forKey: "OpenNOW.Input.SteamControllerMappingProfiles")
-        defaults.set(second.id.uuidString, forKey: "OpenNOW.Input.SteamControllerMappingActiveProfile")
-        let migrated = ControllerMappingStore(defaults: defaults)
-        #expect(migrated.profiles == [first, second])
-        #expect(migrated.activeProfileID == second.id)
+        defaults.set(try JSONSerialization.data(withJSONObject: legacyProfiles), forKey: "OpenNOW.Input.SteamControllerMappingProfiles")
+        defaults.set(secondProfile.id.uuidString, forKey: ControllerMappingStore.legacySteamDefaultKey)
+
+        let migratedStore = ControllerMappingStore(defaults: defaults)
+        #expect(migratedStore.profiles == [firstProfile, secondProfile])
+        #expect(migratedStore.defaultProfileID(for: .steam) == secondProfile.id)
         #expect(defaults.data(forKey: ControllerMappingStore.profilesKey) != nil)
-        #expect(ControllerMappingStore(defaults: defaults).profiles == [first, second])
+        #expect(ControllerMappingStore(defaults: defaults).profiles == [firstProfile, secondProfile])
     }
 
     // MARK: - Per-family defaults
 
-    @Test func eachFamilyHoldsItsOwnDefaultAndItSurvivesRelaunch() throws {
+    @Test func eachFamilyKeepsItsOwnDefaultAcrossRelaunch() throws {
         let defaults = try makeDefaults()
         let store = ControllerMappingStore(defaults: defaults)
-        let steamDefault = try #require(store.activeProfileID)
-        let ds4 = store.createProfile(named: "DS4 aim", family: .dualShock4)
-        #expect(store.activeProfileID == steamDefault)
-        #expect(store.defaultProfileID(for: .dualShock4) == ds4.id)
-        #expect(store.profile(for: .steam)?.id == steamDefault)
-        #expect(store.profile(for: .dualShock4)?.id == ds4.id)
+        let steamDefaultID = try #require(store.defaultProfileID(for: .steam))
+        let dualShockProfile = store.createProfile(named: "DS4 aim", family: .dualShock4)
+        #expect(store.defaultProfileID(for: .steam) == steamDefaultID)
+        #expect(store.defaultProfileID(for: .dualShock4) == dualShockProfile.id)
+        #expect(store.profile(for: .steam)?.id == steamDefaultID)
+        #expect(store.profile(for: .dualShock4)?.id == dualShockProfile.id)
         #expect(store.profile(for: .generic) == nil)
 
-        let reopened = ControllerMappingStore(defaults: defaults)
-        #expect(reopened.defaultProfileID(for: .dualShock4) == ds4.id)
-        #expect(reopened.defaultProfileID(for: .steam) == steamDefault)
+        let reopenedStore = ControllerMappingStore(defaults: defaults)
+        #expect(reopenedStore.defaultProfileID(for: .dualShock4) == dualShockProfile.id)
+        #expect(reopenedStore.defaultProfileID(for: .steam) == steamDefaultID)
     }
 
     @Test func creatingAProfileMakesItThatFamilysDefault() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
-        let steamDefault = try #require(store.activeProfileID)
-        let generic = store.createProfile(named: "Generic pad", family: .generic)
-        #expect(store.defaultProfileID(for: .generic) == generic.id)
-        // The steam default is untouched: creating for one family never reassigns another.
-        #expect(store.activeProfileID == steamDefault)
+        let steamDefaultID = try #require(store.defaultProfileID(for: .steam))
+        let genericProfile = store.createProfile(named: "Generic pad", family: .generic)
+        #expect(store.defaultProfileID(for: .generic) == genericProfile.id)
+        // Creating for one family never reassigns another family's default.
+        #expect(store.defaultProfileID(for: .steam) == steamDefaultID)
     }
 
-    @Test func clearingADefaultIsNotUndoneByARelaunch() throws {
+    @Test func clearingADefaultSurvivesRelaunch() throws {
         let defaults = try makeDefaults()
         let store = ControllerMappingStore(defaults: defaults)
         store.setDefaultProfile(nil, for: .steam)
         #expect(store.profile(for: .steam) == nil)
-        let reopened = ControllerMappingStore(defaults: defaults)
-        #expect(reopened.profile(for: .steam) == nil)
+        let reopenedStore = ControllerMappingStore(defaults: defaults)
+        #expect(reopenedStore.profile(for: .steam) == nil)
     }
 
     // MARK: - Resolution chain
 
-    @Test func gameOverrideOutranksTheFamilyDefaultAndIsFamilyScoped() throws {
+    @Test func aGameOverrideOutranksTheFamilyDefault() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
-        let familyDefault = store.createProfile(named: "Generic default", family: .generic)
-        let racing = store.createProfile(named: "Racing", family: .generic)
-        store.setDefaultProfile(familyDefault.id, for: .generic)
+        let familyDefaultProfile = store.createProfile(named: "Generic default", family: .generic)
+        let racingProfile = store.createProfile(named: "Racing", family: .generic)
+        store.setDefaultProfile(familyDefaultProfile.id, for: .generic)
         store.beginSession(appId: "100", catalogIdentity: "game-100")
-        #expect(store.profile(for: .generic)?.id == familyDefault.id)
+        #expect(store.profile(for: .generic)?.id == familyDefaultProfile.id)
 
-        store.setGameOverride(profileID: racing.id, for: .generic)
-        #expect(store.profile(for: .generic)?.id == racing.id, "level 1: enabled override")
-        // A different type is unaffected by the generic override.
-        #expect(store.profile(for: .dualShock4) == nil)
-
-        store.endSession()
-        #expect(store.profile(for: .generic)?.id == familyDefault.id, "level 2: type default")
+        store.setGameOverride(profileID: racingProfile.id, for: .generic)
+        #expect(store.profile(for: .generic)?.id == racingProfile.id)
     }
 
-    @Test func aFamilyWithNoDefaultResolvesToBlankPassthrough() throws {
+    @Test func aGameOverrideLeavesOtherFamiliesUntouched() throws {
+        let store = ControllerMappingStore(defaults: try makeDefaults())
+        let racingProfile = store.createProfile(named: "Racing", family: .generic)
+        store.beginSession(appId: "100", catalogIdentity: "game-100")
+        store.setGameOverride(profileID: racingProfile.id, for: .generic)
+        #expect(store.profile(for: .dualShock4) == nil)
+    }
+
+    @Test func aFamilyWithoutADefaultResolvesToBlankPassthrough() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
         #expect(store.profile(for: .generic) == nil)
         store.beginSession(appId: "7", catalogIdentity: "game-7")
         #expect(store.profile(for: .generic) == nil)
     }
 
-    @Test func disabledOverrideIsInertButRetained() throws {
+    @Test func aDisabledOverrideIsRetainedYetInert() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
-        let familyDefault = store.createProfile(named: "Generic default", family: .generic)
-        let racing = store.createProfile(named: "Racing", family: .generic)
-        store.setDefaultProfile(familyDefault.id, for: .generic)
+        let familyDefaultProfile = store.createProfile(named: "Generic default", family: .generic)
+        let racingProfile = store.createProfile(named: "Racing", family: .generic)
+        store.setDefaultProfile(familyDefaultProfile.id, for: .generic)
         store.beginSession(appId: "100", catalogIdentity: "game-100")
-        store.setGameOverride(profileID: racing.id, for: .generic)
-        #expect(store.profile(for: .generic)?.id == racing.id)
+        store.setGameOverride(profileID: racingProfile.id, for: .generic)
+        #expect(store.profile(for: .generic)?.id == racingProfile.id)
 
         store.setGameOverrideEnabled(false, for: .generic)
-        #expect(store.profile(for: .generic)?.id == familyDefault.id, "disabled override must not resolve")
-        #expect(store.storedOverride(for: .generic)?.profileID == racing.id, "but it is retained")
+        #expect(store.profile(for: .generic)?.id == familyDefaultProfile.id)
+        #expect(store.storedOverride(for: .generic)?.profileID == racingProfile.id)
         #expect(store.activeOverride(for: .generic) == nil)
     }
 
-    @Test func anOverrideWhoseProfileIsAbsentLocallyFallsThrough() throws {
+    @Test func anOverrideWithoutALocalProfileFallsThrough() throws {
         let defaults = try makeDefaults()
-        let seeded = ControllerMappingStore(defaults: defaults)
-        let fallback = seeded.createProfile(named: "Fallback", family: .generic)
-        seeded.setDefaultProfile(fallback.id, for: .generic)
+        let seededStore = ControllerMappingStore(defaults: defaults)
+        let fallbackProfile = seededStore.createProfile(named: "Fallback", family: .generic)
+        seededStore.setDefaultProfile(fallbackProfile.id, for: .generic)
 
         // A blob from another Mac naming a profile this Mac has never merged.
-        let foreign = ControllerMappingGameOverrides(storage: [
+        let foreignOverrides = ControllerMappingGameOverrides(overridesByGameIdentity: [
             "game-100": ["generic": ControllerMappingGameOverride(profileID: UUID())],
         ])
-        defaults.set(try JSONEncoder().encode(foreign), forKey: ControllerMappingStore.gameOverridesKey)
+        defaults.set(try JSONEncoder().encode(foreignOverrides), forKey: ControllerMappingStore.gameOverridesKey)
 
         let store = ControllerMappingStore(defaults: defaults)
         store.beginSession(appId: "100", catalogIdentity: "game-100")
-        #expect(store.profile(for: .generic)?.id == fallback.id)
+        #expect(store.profile(for: .generic)?.id == fallbackProfile.id)
         #expect(store.activeOverride(for: .generic) == nil)
         #expect(store.storedOverride(for: .generic) != nil)
     }
 
-    @Test func deletedProfileClearsEveryDefaultAndOverrideReferencingIt() throws {
+    @Test func deletingAProfileClearsEveryReference() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
-        let shared = store.createProfile(named: "Shared", family: .generic)
-        store.setDefaultProfile(shared.id, for: .generic)
+        let sharedProfile = store.createProfile(named: "Shared", family: .generic)
+        store.setDefaultProfile(sharedProfile.id, for: .generic)
         store.beginSession(appId: "100", catalogIdentity: "game-100")
-        store.setGameOverride(profileID: shared.id, for: .generic)
+        store.setGameOverride(profileID: sharedProfile.id, for: .generic)
         store.beginSession(appId: "200", catalogIdentity: "game-200")
-        store.setGameOverride(profileID: shared.id, for: .generic)
+        store.setGameOverride(profileID: sharedProfile.id, for: .generic)
 
-        store.deleteProfile(shared.id)
+        store.deleteProfile(sharedProfile.id)
         #expect(store.defaultProfileID(for: .generic) == nil)
-        #expect(store.gameOverrides.override(for: "game-100", family: .generic) == nil)
-        #expect(store.gameOverrides.override(for: "game-200", family: .generic) == nil)
+        #expect(store.gameOverrides.override(forGameIdentity: "game-100", family: .generic) == nil)
+        #expect(store.gameOverrides.override(forGameIdentity: "game-200", family: .generic) == nil)
         #expect(store.gameOverrides.isEmpty)
     }
 
-    @Test func overridesAreKeyedOnCatalogIdentityNotAppId() throws {
+    @Test func overridesResolveByCatalogIdentityAcrossStorefronts() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
-        let racing = store.createProfile(named: "Racing", family: .generic)
+        let racingProfile = store.createProfile(named: "Racing", family: .generic)
         store.beginSession(appId: "100", catalogIdentity: "title-42")
-        store.setGameOverride(profileID: racing.id, for: .generic)
+        store.setGameOverride(profileID: racingProfile.id, for: .generic)
 
-        // A second storefront/app id for the same title resolves the same override.
+        // A second storefront's app id for the same title resolves the same override.
         store.beginSession(appId: "200", catalogIdentity: "title-42")
-        #expect(store.profile(for: .generic)?.id == racing.id)
-        #expect(store.gameOverrides.override(for: "title-42", family: .generic) != nil)
-        #expect(store.gameOverrides.override(for: "100", family: .generic) == nil)
+        #expect(store.profile(for: .generic)?.id == racingProfile.id)
+        #expect(store.gameOverrides.override(forGameIdentity: "title-42", family: .generic) != nil)
+        #expect(store.gameOverrides.override(forGameIdentity: "100", family: .generic) == nil)
     }
 
-    // MARK: - Session / resume index
+    // MARK: - Session and resume index
 
     @Test func aResumedSessionResolvesThroughTheAppIdIndex() throws {
         let defaults = try makeDefaults()
         let store = ControllerMappingStore(defaults: defaults)
-        let familyDefault = store.createProfile(named: "Generic default", family: .generic)
-        let racing = store.createProfile(named: "Racing", family: .generic)
-        store.setDefaultProfile(familyDefault.id, for: .generic)
+        let familyDefaultProfile = store.createProfile(named: "Generic default", family: .generic)
+        let racingProfile = store.createProfile(named: "Racing", family: .generic)
+        store.setDefaultProfile(familyDefaultProfile.id, for: .generic)
         store.beginSession(appId: "100", catalogIdentity: "title-42")
-        store.setGameOverride(profileID: racing.id, for: .generic)
+        store.setGameOverride(profileID: racingProfile.id, for: .generic)
 
-        // Resume: only the app id is known, exactly what `OPNActiveSessionEntry` carries.
-        let resumed = ControllerMappingStore(defaults: defaults)
-        resumed.beginSession(appId: "100", catalogIdentity: nil)
-        #expect(resumed.profile(for: .generic)?.id == racing.id)
+        // Resume carries only the app id, exactly what `OPNActiveSessionEntry` exposes.
+        let resumedStore = ControllerMappingStore(defaults: defaults)
+        resumedStore.beginSession(appId: "100", catalogIdentity: nil)
+        #expect(resumedStore.profile(for: .generic)?.id == racingProfile.id)
 
         // An unknown app id falls back to the type default rather than guessing.
-        resumed.beginSession(appId: "999", catalogIdentity: nil)
-        #expect(resumed.profile(for: .generic)?.id == familyDefault.id)
-        #expect(resumed.activeOverride(for: .generic) == nil)
+        resumedStore.beginSession(appId: "999", catalogIdentity: nil)
+        #expect(resumedStore.profile(for: .generic)?.id == familyDefaultProfile.id)
+        #expect(resumedStore.activeOverride(for: .generic) == nil)
     }
 
     @Test func endingASessionReturnsToTheFamilyDefault() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
-        let defaultProfile = store.createProfile(named: "Generic default", family: .generic)
-        let racing = store.createProfile(named: "Racing", family: .generic)
-        store.setDefaultProfile(defaultProfile.id, for: .generic)
+        let familyDefaultProfile = store.createProfile(named: "Generic default", family: .generic)
+        let racingProfile = store.createProfile(named: "Racing", family: .generic)
+        store.setDefaultProfile(familyDefaultProfile.id, for: .generic)
         store.beginSession(appId: "100", catalogIdentity: "game-100")
-        store.setGameOverride(profileID: racing.id, for: .generic)
-        #expect(store.profile(for: .generic)?.id == racing.id)
+        store.setGameOverride(profileID: racingProfile.id, for: .generic)
+        #expect(store.profile(for: .generic)?.id == racingProfile.id)
 
         store.endSession()
-        #expect(store.profile(for: .generic)?.id == defaultProfile.id)
-        #expect(store.hasCurrentGame == false)
+        #expect(store.profile(for: .generic)?.id == familyDefaultProfile.id)
+        #expect(store.isCurrentGameKnown == false)
     }
 
     // MARK: - Tolerance
 
-    @Test func corruptDataInTheNewKeysIsIgnoredWithoutFailingStartup() throws {
+    @Test func corruptStoredDataIsIgnoredAtStartup() throws {
         let defaults = try makeDefaults()
-        let profiles = ControllerMappingStore(defaults: defaults)
-        let profile = try #require(profiles.activeProfile)
+        let seededStore = ControllerMappingStore(defaults: defaults)
+        let seededProfile = try #require(seededStore.activeProfile)
         defaults.set(Data("not json".utf8), forKey: ControllerMappingStore.gameOverridesKey)
-        defaults.set(Data("not json".utf8), forKey: ControllerMappingStore.defaultProfilesKey)
+        defaults.set(Data("not json".utf8), forKey: ControllerMappingStore.familyDefaultsKey)
         defaults.set(Data("not json".utf8), forKey: ControllerMappingStore.appIdIdentityIndexKey)
 
         let store = ControllerMappingStore(defaults: defaults)
-        #expect(store.profiles.contains(profile))
+        #expect(store.profiles.contains(seededProfile))
         #expect(store.gameOverrides.isEmpty)
-        #expect(store.activeProfileID == profile.id, "a corrupt default key falls back to the first Steam profile")
+        #expect(store.defaultProfileID(for: .steam) == seededProfile.id)
         store.beginSession(appId: "100", catalogIdentity: nil)
-        #expect(store.hasCurrentGame == false)
-        #expect(store.profile(for: .steam)?.id == profile.id)
+        #expect(store.isCurrentGameKnown == false)
+        #expect(store.profile(for: .steam)?.id == seededProfile.id)
     }
 
-    @Test func legacySteamOnlyDefaultMigratesIntoThePerFamilyMap() throws {
+    @Test func legacySteamDefaultMigratesIntoTheFamilyMap() throws {
         let defaults = try makeDefaults()
-        let first = ControllerMappingProfile(name: "First")
-        let second = ControllerMappingProfile(name: "Second")
-        defaults.set(try JSONEncoder().encode([first, second]), forKey: ControllerMappingStore.profilesKey)
-        defaults.set(second.id.uuidString, forKey: ControllerMappingStore.legacyActiveProfileKey)
-        #expect(defaults.data(forKey: ControllerMappingStore.defaultProfilesKey) == nil)
+        let firstProfile = ControllerMappingProfile(name: "First")
+        let secondProfile = ControllerMappingProfile(name: "Second")
+        defaults.set(try JSONEncoder().encode([firstProfile, secondProfile]), forKey: ControllerMappingStore.profilesKey)
+        defaults.set(secondProfile.id.uuidString, forKey: ControllerMappingStore.legacySteamDefaultKey)
+        #expect(defaults.data(forKey: ControllerMappingStore.familyDefaultsKey) == nil)
 
         let store = ControllerMappingStore(defaults: defaults)
-        #expect(store.activeProfileID == second.id)
-        #expect(defaults.data(forKey: ControllerMappingStore.defaultProfilesKey) != nil)
-        // Read once: the superseded key carries nothing once the new one owns the default.
-        #expect(defaults.string(forKey: ControllerMappingStore.legacyActiveProfileKey) == nil)
+        #expect(store.defaultProfileID(for: .steam) == secondProfile.id)
+        #expect(defaults.data(forKey: ControllerMappingStore.familyDefaultsKey) != nil)
+        // Read once: the superseded key carries nothing once the new key owns the default.
+        #expect(defaults.string(forKey: ControllerMappingStore.legacySteamDefaultKey) == nil)
     }
 }

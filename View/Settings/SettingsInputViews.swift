@@ -211,48 +211,52 @@ struct InputSettingsPage: View {
     }
 
     /// The games whose controller mapping diverges from their type's default, and for which type.
-    /// Without this list an override is invisible: it is written in-stream and named nowhere the
-    /// reader can find it again. A disabled row stays here, because disabling keeps the override.
+    /// Without this list an override is written in-stream and named nowhere a reader can find it.
     private var perGameMappingsCard: some View {
-        let overrides = viewModel.controllerMappingOverrideGames
+        let overrides = viewModel.controllerMappingOverrideGames(for: mappingStore.gameOverrides.allOverrides)
         return SettingsCard(title: "Per-Game Controller Mapping", uiScale: uiScale) {
             Text("A game can use its own profile for each controller type, leaving every other game on the type default. Disabling an override keeps it but stops it applying; removing it is permanent.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                 .foregroundStyle(OPNDesign.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-            if overrides.isEmpty {
-                SettingsDivider(uiScale: uiScale)
-                Text("No per-game overrides. Open Controller Mapping during a stream to apply one.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                ForEach(overrides) { override in
-                    SettingsDivider(uiScale: uiScale)
-                    perGameMappingRow(override)
-                }
-            }
+            perGameMappingRows(overrides)
         }
         .settingsSection("per-game-mappings")
     }
 
-    private func perGameMappingRow(_ override: SettingsControllerMappingOverride) -> some View {
+    /// A disabled override stays listed because disabling keeps it; removing it is permanent.
+    @ViewBuilder
+    private func perGameMappingRows(_ overrides: [SettingsControllerMappingOverride]) -> some View {
+        if overrides.isEmpty {
+            SettingsDivider(uiScale: uiScale)
+            Text("No per-game overrides. Open Controller Mapping during a stream to apply one.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        ForEach(overrides) { gameOverride in
+            SettingsDivider(uiScale: uiScale)
+            perGameMappingRow(gameOverride)
+        }
+    }
+
+    private func perGameMappingRow(_ gameOverride: SettingsControllerMappingOverride) -> some View {
         HStack(spacing: 12 * uiScale) {
             VStack(alignment: .leading, spacing: 3 * uiScale) {
-                Text(override.title)
+                Text(gameOverride.title)
                     .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
-                Text("\(override.family.label) · \(override.enabled ? "Active in this game" : "Disabled — kept, not applied")")
+                Text("\(gameOverride.family.label) · \(gameOverride.isEnabled ? "Active in this game" : "Disabled — kept, not applied")")
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(override.enabled ? OPNDesign.Text.tertiary : OPNDesign.Text.muted)
+                    .foregroundStyle(gameOverride.isEnabled ? OPNDesign.Text.tertiary : OPNDesign.Text.muted)
             }
             Spacer(minLength: 8 * uiScale)
-            SettingsActionButton(title: override.enabled ? "DISABLE" : "ENABLE", minimumWidth: 84 * uiScale, uiScale: uiScale) {
-                viewModel.setControllerMappingOverrideEnabled(!override.enabled, catalogIdentity: override.catalogIdentity, family: override.family)
+            SettingsActionButton(title: gameOverride.isEnabled ? "DISABLE" : "ENABLE", minimumWidth: 84 * uiScale, uiScale: uiScale) {
+                viewModel.setControllerMappingOverrideEnabled(!gameOverride.isEnabled, catalogIdentity: gameOverride.catalogIdentity, family: gameOverride.family)
             }
             SettingsActionButton(title: "REMOVE", minimumWidth: 84 * uiScale, uiScale: uiScale) {
-                viewModel.removeControllerMappingOverride(catalogIdentity: override.catalogIdentity, family: override.family)
+                viewModel.removeControllerMappingOverride(catalogIdentity: gameOverride.catalogIdentity, family: gameOverride.family)
             }
         }
         .padding(.horizontal, 12 * uiScale)

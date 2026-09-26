@@ -74,8 +74,7 @@ import Testing
         var order = ControllerPlayerOrder()
         order.update(connectedIDs: ["first", "second"])
         order.move("second", direction: .earlier)
-        // Resolution is keyed on the controller type, so both pads keep the type default no matter
-        // how the player order changes.
+        // Resolution is keyed on the controller type, so player order never changes it.
         #expect(store.profile(for: .generic)?.id == profile.id)
         #expect(store.profile(for: .steam)?.id != profile.id)
     }

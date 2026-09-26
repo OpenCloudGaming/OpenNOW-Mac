@@ -22,8 +22,8 @@ struct ControllerMappingLayoutTests {
     }
 
     @Test func anyFamilyStaysSelectedWhileAnyControllerIsConnected() {
-        // A type's default has to be preparable without that pad being plugged in, so selection is
-        // bound to the family rather than to a connected device of that family.
+        // A type's default must be preparable without that pad plugged in, so selection binds to
+        // the family rather than to a connected device of that family.
         let selection = ControllerMappingSelection.family(.dualShock4)
         #expect(selection.resolved(devices: [steam, dualShock, generic]) == selection)
         #expect(selection.resolved(devices: [steam, generic]) == selection)

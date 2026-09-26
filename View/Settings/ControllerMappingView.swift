@@ -4,14 +4,13 @@ struct ControllerMappingView: View {
     @Environment(\.dismiss) var dismiss
     @Environment(\.opnUIScale) var uiScale
     @ObservedObject var store: ControllerMappingStore
-    /// Whether a Remote Co-Op session is running. Guests keep the global Steam profile in this
-    /// version, so the sheet says so rather than letting a host discover a mapping that only half
-    /// applies. `false` when opened from Settings.
-    let remoteCoOpActive: Bool
+    /// Whether a Remote Co-Op session is running. Guests keep the global Steam profile, so the
+    /// sheet says so instead of letting a host discover a mapping that only half applies.
+    let isRemoteCoOpActive: Bool
 
-    init(store: ControllerMappingStore = .shared, remoteCoOpActive: Bool = false) {
+    init(store: ControllerMappingStore = .shared, isRemoteCoOpActive: Bool = false) {
         _store = ObservedObject(wrappedValue: store)
-        self.remoteCoOpActive = remoteCoOpActive
+        self.isRemoteCoOpActive = isRemoteCoOpActive
     }
     @StateObject var liveModel = ControllerMappingLiveModel()
     @ObservedObject var devices = ControllerMappingDevices.shared
@@ -77,7 +76,7 @@ struct ControllerMappingView: View {
                     .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                     .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
                     .zIndex(2)
-                if store.hasCurrentGame {
+                if store.isCurrentGameKnown {
                     SteamControllerModalRule()
                     gameOverrideBar
                         .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
