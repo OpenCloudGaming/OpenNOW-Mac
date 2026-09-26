@@ -130,45 +130,14 @@ final class OPNMicrophoneLevelProbe: @unchecked Sendable {
 
     // MARK: - Device lookup
 
+    /// Resolution lives in `OPNCoreAudioDeviceLookup`, so this pre-flight test and the streaming path
+    /// cannot disagree about which device a saved UID names.
     static func inputDevice(matching uniqueId: String?) -> AudioDeviceID {
-        if let uniqueId, !uniqueId.isEmpty {
-            for device in allInputDevices() where uid(of: device) == uniqueId { return device }
-        }
-        return defaultInputDevice()
+        OPNCoreAudioDeviceLookup.inputDevice(matching: uniqueId)
     }
 
     static func defaultInputDevice() -> AudioDeviceID {
-        var device = AudioDeviceID(kAudioObjectUnknown)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &device) == noErr else {
-            return AudioDeviceID(kAudioObjectUnknown)
-        }
-        return device
-    }
-
-    /// Same enumeration as `OPNStreamPreferences.loadMicrophoneDeviceOptions`: only devices with
-    /// at least one input stream qualify, so a selected-but-gone device falls back to the default.
-    static func allInputDevices() -> [AudioDeviceID] {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize) == noErr, dataSize > 0 else { return [] }
-        let count = Int(dataSize) / MemoryLayout<AudioObjectID>.size
-        var devices = [AudioObjectID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &devices) == noErr else { return [] }
-        return devices.filter { device in
-            var streamAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
-            var streamDataSize: UInt32 = 0
-            return AudioObjectGetPropertyDataSize(device, &streamAddress, 0, nil, &streamDataSize) == noErr && streamDataSize > 0
-        }
-    }
-
-    static func uid(of device: AudioDeviceID) -> String? {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceUID, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        var value: Unmanaged<CFString>?
-        var size = UInt32(MemoryLayout<CFString?>.size)
-        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &value) == noErr, let value else { return nil }
-        return value.takeRetainedValue() as String
+        OPNCoreAudioDeviceLookup.defaultInputDevice()
     }
 
     // MARK: - Format

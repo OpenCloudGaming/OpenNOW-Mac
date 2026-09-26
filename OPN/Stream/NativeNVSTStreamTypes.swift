@@ -360,27 +360,50 @@ public enum NativeNVSTDynamicStreamingMode: UInt32, Equatable, Sendable {
     case on = 3
 }
 
+/// Whether this session can carry microphone capture at all, and why not when it cannot. The answer
+/// depends on the seat's DESCRIBE offer, so `pending` must not grey anything out.
+public enum NativeNVSTMicrophoneAvailability: Equatable, Sendable {
+    case pending
+    case available
+    /// A bundle-mode seat that offered no microphone section.
+    case noBundleChannel
+    /// A legacy seat whose microphone transport OpenNOW has not recovered.
+    case legacyTransport
+
+    public var failureMessage: String? {
+        switch self {
+        case .pending, .available: nil
+        case .noBundleChannel: "The NVST bundle negotiated no microphone channel, so capture cannot start."
+        case .legacyTransport: "This seat uses a legacy NVST microphone transport that OpenNOW does not support. Voice chat is unavailable for this session."
+        }
+    }
+}
+
 public struct NativeNVSTMicrophoneConfiguration: Equatable, Sendable {
     public let volume: Double
     public let voiceActivityEnabled: Bool
     public let captureRequested: Bool
     public let initiallyEnabled: Bool
+    /// The microphone picker's saved UID; empty means "Default Device". Carried to the capture device,
+    /// which is how the picker reaches the stream instead of only the Settings mic test.
+    public let deviceUniqueID: String
 
-    public init(volume: Double, voiceActivityEnabled: Bool, captureRequested: Bool, initiallyEnabled: Bool) {
+    public init(volume: Double, voiceActivityEnabled: Bool, captureRequested: Bool, initiallyEnabled: Bool, deviceUniqueID: String = "") {
         self.volume = min(max(volume.isFinite ? volume : 1, 0), 1)
         self.captureRequested = captureRequested
         self.voiceActivityEnabled = voiceActivityEnabled && captureRequested
         self.initiallyEnabled = initiallyEnabled && captureRequested
+        self.deviceUniqueID = deviceUniqueID
     }
 
-    public static func settings(volume: Double, mode: String) -> NativeNVSTMicrophoneConfiguration {
+    public static func settings(volume: Double, mode: String, deviceUniqueID: String = "") -> NativeNVSTMicrophoneConfiguration {
         switch mode.lowercased() {
         case "voice-activity":
-            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: true, captureRequested: true, initiallyEnabled: true)
+            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: true, captureRequested: true, initiallyEnabled: true, deviceUniqueID: deviceUniqueID)
         case "push-to-talk":
-            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: false, captureRequested: true, initiallyEnabled: false)
+            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: false, captureRequested: true, initiallyEnabled: false, deviceUniqueID: deviceUniqueID)
         default:
-            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: false, captureRequested: false, initiallyEnabled: false)
+            NativeNVSTMicrophoneConfiguration(volume: volume, voiceActivityEnabled: false, captureRequested: false, initiallyEnabled: false, deviceUniqueID: deviceUniqueID)
         }
     }
 }

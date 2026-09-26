@@ -53,7 +53,25 @@ extension NativeNVSTHostViewModel {
         [
             StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "audio", columns: 4, action: toggleNativeMicrophone),
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "audio", columns: 4, action: toggleNativeLocalAudioMute),
+            // Two full-width rows of their own, in the order the panel draws them. Each confirm opens
+            // a list rather than firing once, so both route through the pad-dropdown state.
+            StreamHUDFocusEntry(id: Self.microphoneModeDropdownID, isDisabled: isMicrophoneModeRowDisabled, action: { [weak self] in
+                self?.togglePadDropdown(Self.microphoneModeDropdownID)
+            }),
+            StreamHUDFocusEntry(id: Self.microphoneDeviceDropdownID, isDisabled: isMicrophoneDeviceRowDisabled, action: { [weak self] in
+                self?.togglePadDropdown(Self.microphoneDeviceDropdownID)
+            }),
         ]
+    }
+
+    /// Disabled for every reason the row cannot be used: no microphone in this session's mode, a seat
+    /// that carries none, or a device change already in flight behind the same transport call.
+    var isMicrophoneDeviceRowDisabled: Bool {
+        !sidebarCapabilities.supports(.microphone)
+            || !microphoneAvailable
+            || microphoneUpdateTask != nil
+            || microphoneUnavailableReason != nil
+            || microphoneDeviceOptions.count <= 1
     }
 
     private var captureFocusEntries: [StreamHUDFocusEntry] {
@@ -247,14 +265,21 @@ extension NativeNVSTHostViewModel {
         guard sidebarCapabilities.supports(.remoteCoOp) else { return [] }
         return remoteCoOpSnapshot.participants.flatMap { participant -> [StreamHUDFocusEntry] in
             var entries: [StreamHUDFocusEntry] = []
-            // Approve and remove sit side by side on the participant's row.
+            // The quality dropdown, then approve and remove, in the order the participant's row draws
+            // them, all one grid so up/down keeps the column the way the rest of the HUD does.
             let group = "coop-participant-\(participant.id.uuidString)"
-            if participant.connectionState == .waitingForApproval {
-                entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, group: group, columns: 2, action: { [weak self] in
+            let qualityID = Self.remoteCoOpQualityDropdownPrefix + participant.id.uuidString
+            let showsApprove = participant.connectionState == .waitingForApproval
+            let columns = showsApprove ? 3 : 2
+            entries.append(StreamHUDFocusEntry(id: qualityID, isDisabled: false, group: group, columns: columns, action: { [weak self] in
+                self?.togglePadDropdown(qualityID)
+            }))
+            if showsApprove {
+                entries.append(StreamHUDFocusEntry(id: "coop-approve-\(participant.id.uuidString)", isDisabled: false, group: group, columns: columns, action: { [weak self] in
                     self?.approveRemoteCoOpParticipant(participant.id)
                 }))
             }
-            entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, group: group, columns: 2, action: { [weak self] in
+            entries.append(StreamHUDFocusEntry(id: "coop-remove-\(participant.id.uuidString)", isDisabled: false, group: group, columns: columns, action: { [weak self] in
                 self?.removeRemoteCoOpParticipant(participant.id)
             }))
             return entries

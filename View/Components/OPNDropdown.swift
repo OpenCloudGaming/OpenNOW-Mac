@@ -15,6 +15,9 @@ struct OPNDropdownRow: View {
     let title: String
     var isSelected = false
     var isDestructive = false
+    /// True while the pad stands on this row. `false` for every pointer-only dropdown, where the
+    /// hover fill is the only affordance there has ever been.
+    var isHighlighted = false
     let action: () -> Void
 
     @Environment(\.opnUIScale) private var uiScale
@@ -36,7 +39,7 @@ struct OPNDropdownRow: View {
             }
             .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, minHeight: 30 * uiScale, alignment: .leading)
-            .background(isHovering ? Color.white.opacity(0.08) : .clear)
+            .background(background)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -44,9 +47,14 @@ struct OPNDropdownRow: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    private var background: Color {
+        if isHighlighted { return OPNDesign.accent.opacity(0.20) }
+        return isHovering ? Color.white.opacity(0.08) : .clear
+    }
+
     private var foreground: Color {
         if isDestructive { return OPNDesign.Semantic.destructive }
-        return isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary
+        return (isHovering || isHighlighted) ? OPNDesign.Text.primary : OPNDesign.Text.secondary
     }
 }
 
@@ -54,6 +62,8 @@ struct OPNDropdownPanel: View {
     let items: [OPNDropdownItem]
     var width: CGFloat?
     var visibleItemCount: Int?
+    /// The row the pad stands on, so the panel can mark it and keep it inside the capped height.
+    var highlightedItemID: String?
 
     @Environment(\.opnUIScale) private var uiScale
 
@@ -68,11 +78,17 @@ struct OPNDropdownPanel: View {
     var body: some View {
         Group {
             if let visibleItemCount, visibleItemCount > 0 {
-                ScrollView(.vertical) {
-                    rows
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) {
+                        rows
+                    }
+                    .contentMargins(.trailing, 12, for: .scrollContent)
+                    .frame(height: CGFloat(min(items.count, visibleItemCount)) * Self.rowHeight(scale: uiScale))
+                    // A pad walks rows the panel may have scrolled past; without this it would move
+                    // focus out of sight and the list would read as frozen.
+                    .onAppear { scroll(proxy) }
+                    .onChange(of: highlightedItemID) { _, _ in scroll(proxy) }
                 }
-                .contentMargins(.trailing, 12, for: .scrollContent)
-                .frame(height: CGFloat(min(items.count, visibleItemCount)) * Self.rowHeight(scale: uiScale))
             } else {
                 rows
             }
@@ -88,6 +104,12 @@ struct OPNDropdownPanel: View {
         }
     }
 
+    private func scroll(_ proxy: ScrollViewProxy) {
+        guard let highlightedItemID else { return }
+        // No animation: the row must be in place before the next press, not easing toward it.
+        proxy.scrollTo(highlightedItemID, anchor: .center)
+    }
+
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(items) { item in
@@ -101,8 +123,10 @@ struct OPNDropdownPanel: View {
                     title: item.title,
                     isSelected: item.isSelected,
                     isDestructive: item.isDestructive,
+                    isHighlighted: item.id == highlightedItemID,
                     action: item.action
                 )
+                .id(item.id)
             }
         }
     }
@@ -116,6 +140,12 @@ struct OPNDropdownMenu<Label: View>: View {
     /// (the HUD sidebar) where opening right would cover the video. An edge check still wins if there
     /// is not enough room to the left.
     var opensLeftByDefault = false
+    /// True while the pad stands on this menu. Strokes the trigger with the accent, the same
+    /// treatment every other focusable HUD control uses.
+    var isFocused = false
+    /// Pad-driven presentation. Nil for the pointer-only call sites, which keep their own open state
+    /// and behave exactly as before.
+    var padDriver: OPNDropdownPadDriver<String>?
     @ViewBuilder let label: () -> Label
 
     @Environment(\.opnUIScale) private var uiScale
@@ -124,13 +154,23 @@ struct OPNDropdownMenu<Label: View>: View {
     @State private var panelHeight: CGFloat = 0
     @State private var spaceProbe = DropdownSpaceProbe()
 
+    /// The panel is open when the pad's host says so, when a host is driving, and from this view's
+    /// own state otherwise — never both, or a click and the pad would fight over the same panel.
+    private var isOpen: Bool { padDriver?.isPresented ?? isPresented }
+
+    private func close() {
+        isPresented = false
+    }
+
     var body: some View {
-        Button {
-            spaceProbe.refresh()
-            isPresented.toggle()
-        } label: { label() }
+        Button(action: toggle) { label() }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .overlay {
+            if isFocused {
+                Rectangle().stroke(OPNDesign.accent, lineWidth: 2)
+            }
+        }
         .background(
             GeometryReader { proxy in
                 Color.clear
@@ -140,23 +180,44 @@ struct OPNDropdownMenu<Label: View>: View {
         )
         .background(DropdownSpaceProbeView(probe: spaceProbe))
         .overlay {
-            if isPresented {
+            if isOpen {
                 Color.black.opacity(0.001)
                     .frame(width: 6000, height: 6000)
                     .contentShape(Rectangle())
-                    .onTapGesture { isPresented = false }
+                    .onTapGesture { dismiss() }
             }
         }
         .overlay(alignment: panelAlignment) {
-            if isPresented {
+            if isOpen {
                 panel
             }
         }
-        .onExitCommand { isPresented = false }
-        .onChange(of: items.map(\.id)) { _, _ in isPresented = false }
+        .onExitCommand { dismiss() }
+        .onChange(of: items.map(\.id)) { _, _ in dismiss() }
+        .onChange(of: isDisabled) { _, disabled in
+            if disabled { dismiss() }
+        }
         // The panel is an overlay, so it still obeys sibling paint order: without this an open
         // menu draws underneath any control laid out after it.
-        .zIndex(isPresented ? 1 : 0)
+        .zIndex(isOpen ? 1 : 0)
+    }
+
+    private func toggle() {
+        guard let padDriver else {
+            spaceProbe.refresh()
+            isPresented.toggle()
+            return
+        }
+        padDriver.toggle()
+    }
+
+    /// Closes without selecting, through whichever owner holds the open state.
+    private func dismiss() {
+        guard let padDriver else {
+            close()
+            return
+        }
+        padDriver.close()
     }
 
     private var anchorSpacing: CGFloat {
@@ -216,7 +277,10 @@ struct OPNDropdownMenu<Label: View>: View {
     }
 
     private var measuredPanel: some View {
-        OPNDropdownPanel(items: dismissingItems, width: panelWidth, visibleItemCount: visibleItemCount)
+        OPNDropdownPanel(items: dismissingItems,
+                         width: panelWidth,
+                         visibleItemCount: visibleItemCount,
+                         highlightedItemID: padDriver?.highlightedValue)
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.height
             } action: { height in
@@ -233,7 +297,7 @@ struct OPNDropdownMenu<Label: View>: View {
                 isDestructive: item.isDestructive,
                 startsGroup: item.startsGroup
             ) {
-                isPresented = false
+                dismiss()
                 item.action()
             }
         }

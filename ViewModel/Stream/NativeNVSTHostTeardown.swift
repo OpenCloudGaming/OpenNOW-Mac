@@ -94,6 +94,7 @@ extension NativeNVSTHostViewModel {
         microphoneEnabled = false
         microphoneDesiredEnabled = false
         microphoneMode = "disabled"
+        isMicrophoneSectionNegotiated = false
         microphonePendingStates.removeAll()
         antiAFKMouseMovementEnabled = false
         batteryAlertTracker.reset()
@@ -181,6 +182,7 @@ extension NativeNVSTHostViewModel {
         microphoneEnabled = false
         microphoneDesiredEnabled = false
         microphoneMode = "disabled"
+        isMicrophoneSectionNegotiated = false
         microphonePendingStates.removeAll()
         antiAFKMouseMovementEnabled = false
         nativeStatsTask?.cancel()

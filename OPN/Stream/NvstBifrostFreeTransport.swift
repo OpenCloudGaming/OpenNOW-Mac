@@ -128,6 +128,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// to decide whether the bundle negotiates the mic send section; it must never throw (the
     /// launch dies right after "Launch plan ready" if it does).
     var microphoneConfiguration: NativeNVSTMicrophoneConfiguration?
+    /// The HUD's live meter and its fallback message. Delivered straight to the main actor, exactly
+    /// as the recording status handler is, because the device reports both from the CoreAudio thread.
+    var microphoneLevelHandler: (@MainActor @Sendable (Double) -> Void)?
+    var microphoneFallbackHandler: (@MainActor @Sendable (String) -> Void)?
+    var microphoneDeviceListHandler: (@MainActor @Sendable () -> Void)?
     /// Whether the bundle's answer really carries the mic send section. `setMicrophoneEnabled`
     /// and the teardown path key off this rather than the preference, so the runtime state can
     /// never claim a channel the negotiation did not create.

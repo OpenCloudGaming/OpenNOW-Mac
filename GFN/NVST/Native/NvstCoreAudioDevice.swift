@@ -19,6 +19,24 @@ private let nvstDefaultOutputListener: AudioObjectPropertyListenerProc = { _, _,
     return noErr
 }
 
+private let nvstInputDeviceListener: AudioObjectPropertyListenerProc = { _, _, _, clientData in
+    guard let clientData else { return noErr }
+    let device = Unmanaged<NvstCoreAudioDevice>.fromOpaque(clientData).takeUnretainedValue()
+    device.handleInputDeviceEnvironmentChange()
+    return noErr
+}
+
+/// Which device capture is running on, reported when it changes under the session's feet: the saved
+/// device came back, or it went away and capture fell back to the system default.
+public struct NvstCaptureDeviceChange: Equatable, Sendable {
+    /// The UID capture actually runs on. Nil when CoreAudio reports no default input at all.
+    public let resolvedUniqueID: String?
+    /// The UID the user chose. Nil or empty means "Default Device", which never counts as a fallback.
+    public let preferredUniqueID: String?
+    /// True when the chosen device is gone and capture is running on the default instead.
+    public let isFallback: Bool
+}
+
 /// The native audio device the NVST bundle's audio runs through.
 ///
 /// It replaces the libwebrtc `RTCAudioDevice` the bundle used to borrow: the playout callback is
@@ -41,6 +59,11 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     /// Silences this Mac's speakers only, applied after the tee. Never upstream of it.
     public var isPlayoutMuted = false
 
+    /// A capture device swap, or a plug/unplug that removes the one in use.
+    public var onCaptureDeviceChange: (@Sendable (NvstCaptureDeviceChange) -> Void)?
+    /// The set of input devices changed at all, whatever it resolved to — a device was plugged in.
+    public var onInputDeviceListChange: (@Sendable () -> Void)?
+
     let audioQueue = DispatchQueue(label: "io.opencg.opennow.nvst.coreaudio")
     private let requestedPlayoutChannels: Int
     private let capturesMicrophone: Bool
@@ -51,6 +74,19 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     private var inputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var captureScratch = [Int16]()
     private var lastLevelReportNanoseconds: UInt64 = 0
+    /// The UID the microphone picker saved, resolved on every rebuild. Nil is "Default Device".
+    private var preferredInputDeviceUID: String?
+    /// The UID capture is running on, and whether that is a fallback from a device that went away.
+    private var inputDeviceUniqueID: String?
+    private var isUsingFallbackInputDevice = false
+    /// Collapses the several notifications one physical plug fires into one deferred rebuild.
+    private var inputDeviceChangeWorkItem: DispatchWorkItem?
+    private var inputDeviceEvaluationCount = 0
+    private var captureRebuildCount = 0
+    private static let inputDeviceChangeDebounce = DispatchTimeInterval.milliseconds(250)
+    /// Guards the capture unit, its format and its scratch buffer against the render thread: a rebuild
+    /// mutates all three where `captureMicrophone` reads them.
+    private let captureStateLock = NSLock()
 
     /// The rate the callbacks exchange with the pipelines, always 48 kHz — the rate Opus, the RTP
     /// clock and the jitter buffer all assume. A device that runs at another rate is resampled by
@@ -75,17 +111,24 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
 
     public var outputPathLatencySeconds: TimeInterval { outputLatency + outputIOBufferDuration }
 
-    public init(playoutChannelCount: Int = 2, capturesMicrophone: Bool = true, monitorsDefaultOutputDevice: Bool = true) {
+    public init(playoutChannelCount: Int = 2,
+                capturesMicrophone: Bool = true,
+                monitorsDefaultOutputDevice: Bool = true,
+                preferredInputDeviceUID: String? = nil) {
         self.requestedPlayoutChannels = NvstCoreAudioFormat.supportedPlayoutChannelCount(playoutChannelCount)
         self.capturesMicrophone = capturesMicrophone
         self.monitorsDefaultOutput = monitorsDefaultOutputDevice
+        self.preferredInputDeviceUID = preferredInputDeviceUID.flatMap { $0.isEmpty ? nil : $0 }
         super.init()
         audioQueue.sync { updateDeviceParameters() }
         if monitorsDefaultOutputDevice { startDefaultOutputMonitoring() }
+        if capturesMicrophone { startInputDeviceMonitoring() }
     }
 
     deinit {
         stopDefaultOutputMonitoring()
+        stopInputDeviceMonitoring()
+        inputDeviceChangeWorkItem?.cancel()
         audioQueue.sync {
             stopPlayoutLocked()
             stopCaptureLocked()
@@ -132,6 +175,17 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     }
 
     func captureMicrophone(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, timestamp: UnsafePointer<AudioTimeStamp>?, busNumber: Int, frameCount: UInt32) -> OSStatus {
+        // The whole render is under the capture lock, so a device swap cannot dispose the unit
+        // underneath it. The level is handed back and delivered after the unlock.
+        var sampledLevel: Double?
+        captureStateLock.lock()
+        let status = renderCaptureLocked(actionFlags: actionFlags, timestamp: timestamp, frameCount: frameCount, sampledLevel: &sampledLevel)
+        captureStateLock.unlock()
+        if let sampledLevel { onMicrophoneLevel?(sampledLevel) }
+        return status
+    }
+
+    private func renderCaptureLocked(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, timestamp: UnsafePointer<AudioTimeStamp>?, frameCount: UInt32, sampledLevel: inout Double?) -> OSStatus {
         guard let captureUnit, let actionFlags, let timestamp else { return noErr }
         let channels = inputChannels
         let requiredSamples = Int(frameCount) * channels
@@ -150,12 +204,13 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
             )
             let status = AudioUnitRender(captureUnit, actionFlags, timestamp, 1, frameCount, &bufferList)
             guard status == noErr else { return status }
-            reportLevelWhenDue(base, count: requiredSamples)
             guard isMicrophoneCaptureEnabled?() == true else {
-                // Gated: hand the up-path silence rather than the microphone's samples.
+                // Gated: hand the up-path silence rather than the microphone's samples, and report a
+                // flat meter with it — a meter that moved while muted would be a lie.
                 base.update(repeating: 0, count: requiredSamples)
                 return noErr
             }
+            sampledLevel = levelWhenDue(base, count: requiredSamples)
             withUnsafePointer(to: &bufferList) { pointer in
                 onMicrophoneAudio?(UnsafeRawPointer(pointer), frameCount, inputSampleRate, UInt32(channels))
             }
@@ -167,15 +222,93 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         audioQueue.async { [weak self] in
             guard let self else { return }
             let wasPlaying = isPlayoutRunning
-            let wasCapturing = isCaptureRunning
             stopPlayoutLocked()
-            stopCaptureLocked()
             disposePlayoutUnitLocked()
-            disposeCaptureUnitLocked()
-            updateDeviceParameters()
+            rebuildCaptureLocked()
             if wasPlaying { _ = startPlayoutLocked() }
-            if wasCapturing { _ = startCaptureLocked() }
         }
+    }
+
+    /// The microphone picker's UID, applied to the running session. Only the capture unit is torn
+    /// down: the send pipeline, its SSRC and its RTP sequence were fixed at ANNOUNCE.
+    public func setPreferredInputDevice(uid: String?) {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            let normalizedUID = uid.flatMap { $0.isEmpty ? nil : $0 }
+            let previousDevice = inputDevice
+            let wasUsingFallbackDevice = isUsingFallbackInputDevice
+            preferredInputDeviceUID = normalizedUID
+            guard OPNCoreAudioDeviceLookup.inputDevice(matching: normalizedUID) == previousDevice else {
+                rebuildCaptureLocked()
+                notifyCaptureDeviceChange()
+                return
+            }
+            // Same device: re-read the parameters the HUD's fallback label is drawn from, without
+            // tearing down an AudioUnit for a no-op.
+            refreshCaptureDeviceParameters()
+            guard isUsingFallbackInputDevice != wasUsingFallbackDevice else { return }
+            notifyCaptureDeviceChange()
+        }
+    }
+
+    /// The UID capture is running on, and whether that is a fallback from a device that is gone.
+    public var captureDeviceState: (uniqueID: String?, isFallback: Bool) {
+        audioQueue.sync { (inputDeviceUniqueID, isUsingFallbackInputDevice) }
+    }
+
+    /// A plug or unplug, or a change of the system default input. Debounced: one physical event fires
+    /// several notifications, and each rebuild disposes and recreates an AudioUnit.
+    func handleInputDeviceEnvironmentChange() {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            inputDeviceChangeWorkItem?.cancel()
+            let item = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                inputDeviceChangeWorkItem = nil
+                inputDeviceEvaluationCount += 1
+                // A device that was plugged in is a row the picker should have, even when it is not
+                // the one capture is on, so this is announced before the resolved-device check.
+                onInputDeviceListChange?()
+                guard OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID) != inputDevice else { return }
+                rebuildCaptureLocked()
+                notifyCaptureDeviceChange()
+            }
+            inputDeviceChangeWorkItem = item
+            audioQueue.asyncAfter(deadline: .now() + Self.inputDeviceChangeDebounce, execute: item)
+        }
+    }
+
+    /// Test seam: debounced evaluations that ran, and how many rebuilt capture. A burst must collapse
+    /// into one evaluation, and only a genuine device change may become a rebuild.
+    var captureDeviceRebuildEvidence: (evaluations: Int, rebuilds: Int) {
+        audioQueue.sync { (inputDeviceEvaluationCount, captureRebuildCount) }
+    }
+
+    /// Stops, disposes and re-initialises the capture unit only, restarting it when it was running.
+    /// Disposal is mandatory: `initializeCaptureLocked` early-returns while `captureUnit != nil`.
+    private func rebuildCaptureLocked() {
+        captureRebuildCount += 1
+        let wasCapturing = isCaptureRunning
+        captureStateLock.lock()
+        defer { captureStateLock.unlock() }
+        stopCaptureLocked()
+        disposeCaptureUnitLocked()
+        updateDeviceParameters()
+        if wasCapturing { _ = startCaptureLocked() }
+    }
+
+    /// Re-reads the capture device parameters under the render thread's lock. The format fields it
+    /// rewrites are read on that thread even when the device itself did not move.
+    private func refreshCaptureDeviceParameters() {
+        captureStateLock.lock()
+        defer { captureStateLock.unlock() }
+        updateDeviceParameters()
+    }
+
+    private func notifyCaptureDeviceChange() {
+        onCaptureDeviceChange?(NvstCaptureDeviceChange(resolvedUniqueID: inputDeviceUniqueID,
+                                                      preferredUniqueID: preferredInputDeviceUID,
+                                                      isFallback: isUsingFallbackInputDevice))
     }
 
     // MARK: - Units
@@ -200,7 +333,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     }
 
     private func stopCaptureLocked() {
-        if captureUnit != nil, isCaptureRunning { AudioOutputUnitStop(captureUnit!) }
+        if let captureUnit, isCaptureRunning { AudioOutputUnitStop(captureUnit) }
         isCaptureRunning = false
     }
 
@@ -261,6 +394,39 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         self.captureUnit = nil
     }
 
+
+
+    /// The 0...1 meter reading, throttled to 20 a second, or nil when this frame is too soon after
+    /// the last one.
+
+
+    // MARK: - Devices
+
+    private func updateDeviceParameters() {
+        // Resolution is shared with the Settings mic test, so a pre-flight cannot disagree with the
+        // stream about a UID. A saved device that is gone resolves to the default, never a failure.
+        inputDevice = OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID)
+        inputDeviceUniqueID = OPNCoreAudioDeviceLookup.uid(of: inputDevice)
+        isUsingFallbackInputDevice = preferredInputDeviceUID != nil
+            && OPNCoreAudioDeviceLookup.inputDeviceIfPresent(matching: preferredInputDeviceUID) == nil
+        outputDevice = OPNCoreAudioDeviceLookup.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
+        deviceOutputSampleRate = nominalSampleRate(for: outputDevice, fallback: NvstCoreAudioFormat.sampleRate)
+        deviceInputSampleRate = nominalSampleRate(for: inputDevice, fallback: NvstCoreAudioFormat.sampleRate)
+        outputSampleRate = NvstCoreAudioFormat.sampleRate
+        inputSampleRate = NvstCoreAudioFormat.sampleRate
+        outputChannels = NvstCoreAudioFormat.playoutChannelCount(requested: requestedPlayoutChannels, deviceChannels: channelCount(for: outputDevice, scope: kAudioDevicePropertyScopeOutput))
+        inputChannels = NvstCoreAudioFormat.captureChannelCount(deviceChannels: channelCount(for: inputDevice, scope: kAudioDevicePropertyScopeInput))
+        outputLatency = latency(for: outputDevice, scope: kAudioDevicePropertyScopeOutput, sampleRate: deviceOutputSampleRate)
+    }
+
+
+
+
+}
+
+/// The device queries, the HAL unit construction and the plug/unplug listeners. Split out of the
+/// class body, which is at its length budget; `private` in this file keeps them reachable from it.
+extension NvstCoreAudioDevice {
     private func makeHALUnit() -> AudioUnit? {
         var description = AudioComponentDescription(
             componentType: kAudioUnitType_Output,
@@ -302,11 +468,11 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         }
     }
 
-    private func reportLevelWhenDue(_ samples: UnsafePointer<Int16>, count: Int) {
+    private func levelWhenDue(_ samples: UnsafePointer<Int16>, count: Int) -> Double? {
         let now = DispatchTime.now().uptimeNanoseconds
-        guard now - lastLevelReportNanoseconds >= 50_000_000 else { return }
+        guard now - lastLevelReportNanoseconds >= 50_000_000 else { return nil }
         lastLevelReportNanoseconds = now
-        onMicrophoneLevel?(NvstCoreAudioFormat.level(of: samples, count: count))
+        return NvstCoreAudioFormat.level(of: samples, count: count)
     }
 
     private func clear(_ bufferList: UnsafeMutablePointer<AudioBufferList>?) {
@@ -314,20 +480,6 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         for buffer in UnsafeMutableAudioBufferListPointer(bufferList) where buffer.mData != nil && buffer.mDataByteSize > 0 {
             memset(buffer.mData, 0, Int(buffer.mDataByteSize))
         }
-    }
-
-    // MARK: - Devices
-
-    private func updateDeviceParameters() {
-        inputDevice = OPNCoreAudioDeviceLookup.defaultAudioDevice(kAudioHardwarePropertyDefaultInputDevice)
-        outputDevice = OPNCoreAudioDeviceLookup.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
-        deviceOutputSampleRate = nominalSampleRate(for: outputDevice, fallback: NvstCoreAudioFormat.sampleRate)
-        deviceInputSampleRate = nominalSampleRate(for: inputDevice, fallback: NvstCoreAudioFormat.sampleRate)
-        outputSampleRate = NvstCoreAudioFormat.sampleRate
-        inputSampleRate = NvstCoreAudioFormat.sampleRate
-        outputChannels = NvstCoreAudioFormat.playoutChannelCount(requested: requestedPlayoutChannels, deviceChannels: channelCount(for: outputDevice, scope: kAudioDevicePropertyScopeOutput))
-        inputChannels = NvstCoreAudioFormat.captureChannelCount(deviceChannels: channelCount(for: inputDevice, scope: kAudioDevicePropertyScopeInput))
-        outputLatency = latency(for: outputDevice, scope: kAudioDevicePropertyScopeOutput, sampleRate: deviceOutputSampleRate)
     }
 
     private func nominalSampleRate(for device: AudioDeviceID, fallback: Double) -> Double {
@@ -373,6 +525,31 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         )
         guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &frames) == noErr, sampleRate > 0 else { return 0 }
         return Double(frames) / sampleRate
+    }
+
+    private func startInputDeviceMonitoring() {
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        for selector in [kAudioHardwarePropertyDefaultInputDevice, kAudioHardwarePropertyDevices] {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &address, nvstInputDeviceListener, context)
+        }
+    }
+
+    private func stopInputDeviceMonitoring() {
+        guard capturesMicrophone else { return }
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        for selector in [kAudioHardwarePropertyDefaultInputDevice, kAudioHardwarePropertyDevices] {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject), &address, nvstInputDeviceListener, context)
+        }
     }
 
     private func startDefaultOutputMonitoring() {

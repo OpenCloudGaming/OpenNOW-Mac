@@ -24,6 +24,14 @@ func withPreservedHUDSettings(_ body: () -> Void) {
     body()
 }
 
+/// Restores the persisted microphone mode around a test, so a mode one test applies cannot leak into
+/// the next one through `UserDefaults`. Restored through the same validated setter Settings uses.
+func withPreservedMicrophoneMode(_ body: () -> Void) {
+    let previousMode = OPNStreamPreferences.loadProfile().microphoneMode
+    defer { OPNStreamPreferences.saveMicrophoneMode(previousMode) }
+    body()
+}
+
 struct StubNativeNVSTSessionProvider: NativeNVSTSessionProvider {
     func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
         throw NativeNVSTError.transportFailed("unused")

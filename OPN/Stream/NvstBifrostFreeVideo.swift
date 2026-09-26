@@ -195,7 +195,8 @@ extension NvstBifrostFreeTransport {
             return nil
         }
         return NvstNativeBundle.MicrophoneSetup(volume: configuration.volume,
-                                                initiallyEnabled: configuration.initiallyEnabled)
+                                                initiallyEnabled: configuration.initiallyEnabled,
+                                                deviceUniqueID: configuration.deviceUniqueID)
     }
 
     func bringUpBundle(handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? {

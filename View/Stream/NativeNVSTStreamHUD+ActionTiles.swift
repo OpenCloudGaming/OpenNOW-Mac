@@ -169,14 +169,101 @@ extension NativeNVSTMediaStreamSurface {
         return StreamHUDSection(
             label: OPNStreamHUDSection.audio.title,
             spacing: 8,
-            caption: nativeHUDCaption(for: tiles),
+            caption: nativeHUDCaption(for: tiles, extra: [
+                (NativeNVSTHostViewModel.microphoneModeDropdownID, model.microphoneModeCaption),
+                (NativeNVSTHostViewModel.microphoneDeviceDropdownID, model.microphoneDeviceCaption),
+            ]),
             isCollapsed: model.isHUDSectionCollapsed(.audio),
             isFocused: model.isHUDSectionHeaderFocused(.audio),
             reorderPayload: OPNStreamHUDSection.audio.rawValue,
             onToggle: { model.toggleHUDSection(.audio) }
         ) {
             nativeHUDTileGrid(tiles)
+            // Below the tiles: full-width rows of their own, because they change settings rather than
+            // toggling a state, and the pad reads each as the row it draws as.
+            microphoneUnavailableNotice
+            nativeHUDMicrophoneModeRow
+            nativeHUDMicrophoneDeviceRow
+            nativeHUDMicrophoneLevelRow
         }
+    }
+
+    /// Off, held-to-talk, or always capturing. Which modes are live depends on whether this session
+    /// asked for a microphone section, and the notice above the row says so when they are not.
+    var nativeHUDMicrophoneModeRow: some View {
+        microphoneDropdownRow(
+            label: "Microphone Mode",
+            dropdownID: NativeNVSTHostViewModel.microphoneModeDropdownID,
+            selection: model.microphoneMode,
+            isDisabled: model.isMicrophoneModeRowDisabled
+        )
+    }
+
+    /// One row of the AUDIO panel: the HUD's own dropdown, whose rows carry their own actions.
+    func microphoneDropdownRow(label: String, dropdownID: String, selection: String, isDisabled: Bool) -> some View {
+        StreamHUDDropdown(
+            label: label,
+            rows: model.padDropdownItems(dropdownID),
+            selection: selection,
+            isDisabled: isDisabled,
+            isFocused: model.hudFocusID == dropdownID,
+            // Capped so a long list scrolls rather than running the height of the HUD.
+            visibleItemCount: 6,
+            padDriver: model.padDropdown(dropdownID: dropdownID)
+        )
+    }
+
+    /// The microphone the stream captures from: where the picker's saved choice reaches capture, and
+    /// where it can be changed without leaving the session.
+    var nativeHUDMicrophoneDeviceRow: some View {
+        microphoneDropdownRow(
+            label: "Microphone Device",
+            dropdownID: NativeNVSTHostViewModel.microphoneDeviceDropdownID,
+            selection: model.selectedMicrophoneDeviceUID,
+            isDisabled: model.isMicrophoneDeviceRowDisabled
+        )
+    }
+
+    /// Why the microphone rows are unusable, in the microphone tile's own words. Drawn above the rows
+    /// rather than instead of them, so the rows the pad stands on stay where they were.
+    @ViewBuilder
+    var microphoneUnavailableNotice: some View {
+        if let reason = model.microphoneUnavailableReason {
+            Text(reason)
+                .font(.streamFont(size: 10, weight: .medium))
+                .foregroundStyle(StreamHUDTheme.warning)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// The live meter, beside the picker. Scaled exactly as the Settings mic test scales its own, so
+    /// the pre-flight and the session read the same for the same input.
+    var nativeHUDMicrophoneLevelRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Text("Microphone Level")
+                    .font(.streamFont(size: 11, weight: .medium))
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
+                Spacer(minLength: 8)
+                Text("\(model.microphoneLevelPercent)%")
+                    .font(.streamFont(size: 11, weight: .bold))
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
+                    .frame(minWidth: 32, alignment: .trailing)
+            }
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(Color.white.opacity(0.075))
+                    Rectangle()
+                        .fill(StreamHUDTheme.accent)
+                        .frame(width: proxy.size.width * CGFloat(min(max(model.microphoneLevel, 0), 1)))
+                }
+            }
+            .frame(height: 6)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Microphone level")
+        .accessibilityValue("\(model.microphoneLevelPercent) percent")
     }
 
     var nativeHUDCapturePanel: some View {

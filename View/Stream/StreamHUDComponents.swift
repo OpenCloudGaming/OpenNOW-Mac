@@ -283,13 +283,24 @@ struct StreamHUDHoveredCaptionKey: PreferenceKey {
     }
 }
 
-struct StreamHUDDropdown: View {
+/// The stream HUD's own dropdown. Its panel is opaque over the sidebar's translucency, it lifts its
+/// section through `StreamHUDExpandedPanelKey`, and it opens upward when there is no room below.
+///
+/// `OPNDropdownMenu` does none of those — it is the catalog surface's control — so inside the HUD its
+/// panel reads as a translucent list the next section paints over. HUD dropdowns use this one:
+/// see AGENTS.md, "Stream HUD dropdowns".
+struct StreamHUDDropdown<Value: Hashable>: View {
     let label: String
-    let options: [(value: Int, title: String)]
-    let selection: Int
+    let options: [(value: Value, title: String)]
+    let selection: Value
     let isDisabled: Bool
-    let onSelect: (Int) -> Void
+    let onSelect: (Value) -> Void
     var isFocused = false
+    /// Caps the panel and scrolls it, for a list that can outgrow the dock (the microphone picker).
+    var visibleItemCount: Int?
+    /// Pad-driven presentation, owned by the model. Nil leaves the pointer in charge of the panel.
+    var padDriver: OPNDropdownPadDriver<Value>?
+
     @State private var isExpanded = false
     @State private var isHovering = false
     /// Where the button sits in the window, so the panel can open upward when there is no room
@@ -298,8 +309,15 @@ struct StreamHUDDropdown: View {
     @State private var buttonMaxY: CGFloat = 0
     @State private var windowHeight: CGFloat = 0
 
+    static var rowHeight: CGFloat { 30 }
+    static var panelWidth: CGFloat { 208 }
+
+    /// The panel is open when the pad's host says so, when a host is driving, and from this view's own
+    /// state otherwise — never both, or a click and the pad would fight over the same panel.
+    private var isOpen: Bool { padDriver?.isPresented ?? isExpanded }
+
     private var selectedTitle: String {
-        options.first(where: { $0.value == selection })?.title ?? options.first?.title ?? ""
+        options.first { $0.value == selection }?.title ?? options.first?.title ?? ""
     }
 
     var body: some View {
@@ -308,7 +326,7 @@ struct StreamHUDDropdown: View {
                 .font(.streamFont(size: 11, weight: .medium))
                 .foregroundStyle(StreamHUDTheme.textTertiary)
             Spacer(minLength: 8)
-            Button { isExpanded.toggle() } label: {
+            Button(action: toggle) {
                 HStack(spacing: 6) {
                     Text(selectedTitle)
                         .font(.streamFont(size: 12, weight: .bold))
@@ -317,26 +335,26 @@ struct StreamHUDDropdown: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(StreamHUDTheme.textSecondary)
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .rotationEffect(.degrees(isOpen ? 180 : 0))
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 26)
                 .background(Color.white.opacity(isHovering ? 0.14 : 0.075))
                 .overlay {
                     Rectangle()
-                        .stroke((isExpanded || isFocused) ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
+                        .stroke((isOpen || isFocused) ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .onHover { isHovering = $0 }
             .overlay {
-                if isExpanded {
+                if isOpen {
                     // Invisible full-screen catcher so any outside click dismisses.
                     Color.black.opacity(0.001)
                         .frame(width: 6000, height: 6000)
                         .contentShape(Rectangle())
-                        .onTapGesture { isExpanded = false }
+                        .onTapGesture { dismiss() }
                 }
             }
             .background(
@@ -352,58 +370,142 @@ struct StreamHUDDropdown: View {
                 }
             )
             .overlay(alignment: opensUpward ? .bottomTrailing : .topTrailing) {
-                if isExpanded {
+                if isOpen {
                     dropdownPanel
-                        .offset(y: opensUpward ? -30 : 30)
+                        .offset(y: opensUpward ? -Self.rowHeight : Self.rowHeight)
                 }
             }
-            .onExitCommand { isExpanded = false }
+            .onExitCommand { dismiss() }
         }
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.46 : 1)
-        .zIndex(isExpanded ? 10 : 0)
-        .preference(key: StreamHUDExpandedPanelKey.self, value: isExpanded)
+        .zIndex(isOpen ? 10 : 0)
+        .preference(key: StreamHUDExpandedPanelKey.self, value: isOpen)
         .onChange(of: isDisabled) { _, disabled in
-            if disabled { isExpanded = false }
+            if disabled { dismiss() }
         }
+        // A row that disappears while the panel is open — a microphone unplugged — must not leave the
+        // pad standing on a highlight that is gone.
+        .onChange(of: options.map(\.value)) { _, _ in dismiss() }
     }
 
-    /// Panel height is `rows * 30 + 8`; open upward when that would not fit under the button.
+    private func toggle() {
+        guard let padDriver else {
+            isExpanded.toggle()
+            return
+        }
+        padDriver.toggle()
+    }
+
+    private func dismiss() {
+        guard let padDriver else {
+            isExpanded = false
+            return
+        }
+        padDriver.close()
+    }
+
+    /// The rows the panel can show without scrolling, and therefore the height it asks for.
+    private var visibleRowCount: Int {
+        guard let visibleItemCount, visibleItemCount > 0 else { return options.count }
+        return min(options.count, visibleItemCount)
+    }
+
+    /// Open upward when the panel as drawn would not fit under the button.
     private var opensUpward: Bool {
         guard windowHeight > 0, buttonMaxY > 0 else { return false }
-        let panelHeight = CGFloat(options.count) * 30 + 8
+        let panelHeight = CGFloat(visibleRowCount) * Self.rowHeight + 8
         return buttonMaxY + panelHeight + 40 > windowHeight
     }
 
+    @ViewBuilder
     private var dropdownPanel: some View {
+        if visibleRowCount < options.count {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    rows
+                }
+                .contentMargins(.trailing, 12, for: .scrollContent)
+                .frame(height: CGFloat(visibleRowCount) * Self.rowHeight)
+                // A pad walks rows the panel has scrolled past; without this the highlight would move
+                // out of sight and the list would read as frozen.
+                .onAppear { scrollToHighlighted(proxy) }
+                .onChange(of: padDriver?.highlightedValue) { _, _ in scrollToHighlighted(proxy) }
+            }
+            .padding(.vertical, 4)
+            .frame(width: Self.panelWidth)
+            .background(panelFill)
+        } else {
+            rows
+                .padding(.vertical, 4)
+                .frame(width: Self.panelWidth)
+                .background(panelFill)
+        }
+    }
+
+    private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(options, id: \.value) { option in
                 StreamHUDDropdownRow(
                     title: option.title,
-                    isSelected: option.value == selection
+                    isSelected: option.value == selection,
+                    isHighlighted: option.value == padDriver?.highlightedValue
                 ) {
-                    isExpanded = false
+                    dismiss()
                     onSelect(option.value)
                 }
+                .id(option.value)
             }
         }
-        .padding(.vertical, 4)
-        .frame(width: 208)
-        // Two fills: the sidebar itself is slightly translucent over the video, and a single
-        // near-black fill over it still let the picture read through the panel.
-        .background(StreamHUDTheme.surfaceRaised)
-        .background(StreamHUDTheme.panel)
+    }
+
+    /// Two fills: the sidebar itself is slightly translucent over the video, and a single near-black
+    /// fill over it still let the picture read through the panel.
+    private var panelFill: some View {
+        ZStack {
+            StreamHUDTheme.surfaceRaised
+            StreamHUDTheme.panel
+        }
         .overlay {
             Rectangle()
                 .stroke(StreamHUDTheme.divider, lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.55), radius: 14, x: 0, y: 8)
     }
+
+    private func scrollToHighlighted(_ proxy: ScrollViewProxy) {
+        guard let highlightedValue = padDriver?.highlightedValue else { return }
+        // No animation: the row must be in place before the next press, not easing toward it.
+        proxy.scrollTo(highlightedValue, anchor: .center)
+    }
+}
+
+extension StreamHUDDropdown where Value == String {
+    /// A dropdown whose rows are the model's own, so the pointer and the pad run the same action. The
+    /// HUD's item-list dropdowns use this; the row id is what the pad highlights.
+    init(label: String,
+         rows: [OPNDropdownPadItem],
+         selection: String,
+         isDisabled: Bool,
+         isFocused: Bool = false,
+         visibleItemCount: Int? = nil,
+         padDriver: OPNDropdownPadDriver<String>? = nil) {
+        self.init(label: label,
+                  options: rows.map { ($0.id, $0.title) },
+                  selection: selection,
+                  isDisabled: isDisabled,
+                  onSelect: { value in rows.first { $0.id == value }?.action() },
+                  isFocused: isFocused,
+                  visibleItemCount: visibleItemCount,
+                  padDriver: padDriver)
+    }
 }
 
 private struct StreamHUDDropdownRow: View {
     let title: String
     let isSelected: Bool
+    /// True while the pad stands on this row. False for every pointer-only dropdown.
+    var isHighlighted = false
     let action: () -> Void
     @State private var isHovering = false
 
@@ -412,7 +514,7 @@ private struct StreamHUDDropdownRow: View {
             HStack(spacing: 8) {
                 Text(title)
                     .font(.streamFont(size: 12, weight: .bold))
-                    .foregroundStyle(isSelected ? StreamHUDTheme.accent : (isHovering ? StreamHUDTheme.textPrimary : StreamHUDTheme.textSecondary))
+                    .foregroundStyle(foreground)
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if isSelected {
@@ -422,12 +524,22 @@ private struct StreamHUDDropdownRow: View {
                 }
             }
             .padding(.horizontal, 12)
-            .frame(height: 30)
-            .background(Color.white.opacity(isHovering ? 0.08 : 0))
+            .frame(height: StreamHUDDropdown<String>.rowHeight)
+            .background(background)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+    }
+
+    private var background: Color {
+        if isHighlighted { return StreamHUDTheme.accent.opacity(0.20) }
+        return Color.white.opacity(isHovering ? 0.08 : 0)
+    }
+
+    private var foreground: Color {
+        if isSelected { return StreamHUDTheme.accent }
+        return (isHovering || isHighlighted) ? StreamHUDTheme.textPrimary : StreamHUDTheme.textSecondary
     }
 }
 

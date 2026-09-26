@@ -25,83 +25,6 @@ public extension NativeNVSTSessionProvider {
     }
 }
 
-public protocol NativeNVSTTransport: Sendable {
-    func prepare() async throws -> NVSTNativeBridgeStatus
-    func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection
-    func send(_ event: UserInputEvent) async throws
-    func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws
-    func setMicrophoneEnabled(_ enabled: Bool) async throws
-    func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws
-    func setLocalAudioPlaybackMuted(_ muted: Bool) async throws
-    func togglePerformanceOverlay() async throws
-    func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot?
-    func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws
-    func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws
-    func setL4SEnabled(_ enabled: Bool) async throws
-    /// Applies the client-facing half of a VSync change to a running session. The seat-facing
-    /// half was fixed at ANNOUNCE; see `NvstVsyncMode`. Throws `notRunning` without a session.
-    func setVsyncMode(_ mode: NvstVsyncMode) async throws
-    func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws
-    func startRecording(configuration: StreamRecordingConfiguration) async
-    func stopRecording() async
-    func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async
-    /// Starts keeping a rolling window of the stream. Returns false when there is no session to
-    /// buffer, so the caller never shows a window that will never fill.
-    func startReplayBuffer(configuration: StreamReplayBufferConfiguration) async -> Bool
-    func stopReplayBuffer() async
-    func saveReplayClip() async
-    func setReplayBufferStateHandler(_ handler: (@MainActor @Sendable (StreamReplayBufferState) -> Void)?) async
-    /// Renders the next decoded frame to an image. Nil when no frame arrives before the capture
-    /// times out, which is the honest answer for a paused or stalled stream.
-    func takeScreenshot() async -> StreamScreenshotImage?
-    func pause() async throws
-    func disconnect() async
-    func resetForRecovery() async
-    func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination>
-    func diagnosticMetadata() async -> [String: String]
-}
-
-public extension NativeNVSTTransport {
-    func sendAbsoluteMouseMove(_ event: NativeNVSTAbsoluteMouseEvent) async throws {
-        throw NativeNVSTError.notRunning
-    }
-
-    func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
-        nil
-    }
-
-    func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws { throw NativeNVSTError.notRunning }
-    func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws { throw NativeNVSTError.notRunning }
-    func setL4SEnabled(_ enabled: Bool) async throws { throw NativeNVSTError.notRunning }
-    func setVsyncMode(_ mode: NvstVsyncMode) async throws { throw NativeNVSTError.notRunning }
-    func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws { throw NativeNVSTError.notRunning }
-    func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
-    func setLocalAudioPlaybackMuted(_ muted: Bool) async throws { throw NativeNVSTError.notRunning }
-
-    /// Recording is optional for a transport. The status handler is the only channel the UI
-    /// listens on, so a transport that never installs one simply leaves the HUD at `.idle`.
-    func startRecording(configuration: StreamRecordingConfiguration) async {}
-    func stopRecording() async {}
-    func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async {}
-
-    /// Instant Replay is optional for the same reason, but a transport that cannot buffer says so
-    /// rather than accepting the request and never emitting a state.
-    func startReplayBuffer(configuration: StreamReplayBufferConfiguration) async -> Bool { false }
-    func stopReplayBuffer() async {}
-    func saveReplayClip() async {}
-    func setReplayBufferStateHandler(_ handler: (@MainActor @Sendable (StreamReplayBufferState) -> Void)?) async {}
-
-    func pause() async throws {
-        throw NativeNVSTError.notRunning
-    }
-
-    func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination> {
-        AsyncStream { $0.finish() }
-    }
-
-    func resetForRecovery() async { await disconnect() }
-    func diagnosticMetadata() async -> [String: String] { [:] }
-}
 
 public enum NativeNVSTError: LocalizedError, Equatable, Sendable {
     case alreadyRunning
@@ -357,6 +280,26 @@ public actor NativeNVSTStreamingPath {
 
     public func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {
         try await transport.setMicrophoneConfiguration(configuration)
+    }
+
+    public func setMicrophoneDevice(_ uid: String) async throws {
+        try await transport.setMicrophoneDevice(uid)
+    }
+
+    public func microphoneAvailability() async -> NativeNVSTMicrophoneAvailability {
+        await transport.microphoneAvailability()
+    }
+
+    public func setMicrophoneLevelHandler(_ handler: (@MainActor @Sendable (Double) -> Void)?) async {
+        await transport.setMicrophoneLevelHandler(handler)
+    }
+
+    public func setMicrophoneFallbackHandler(_ handler: (@MainActor @Sendable (String) -> Void)?) async {
+        await transport.setMicrophoneFallbackHandler(handler)
+    }
+
+    public func setMicrophoneDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {
+        await transport.setMicrophoneDeviceListHandler(handler)
     }
 
     public func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot? {
