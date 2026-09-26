@@ -295,9 +295,13 @@ struct CatalogView: View {
                 // The running stream's artwork behind the page. The catalog window stays mounted for
                 // the whole session, so this is what makes it read as "this game is running" rather
                 // than as a catalog someone left open. Games page only: Settings and Recordings are
-                // in this same stack and have nothing to do with the stream.
+                // in this same stack and have nothing to do with the stream. Measured by a
+                // `GeometryReader` so the backdrop frames itself to the window instead of reporting
+                // an ideal size the page would inherit - see `VendorRunningStreamBackdrop`.
                 if viewModel.isStreamRunning && isCatalogPageActive {
-                    VendorRunningStreamBackdrop(artworkURL: viewModel.runningStreamArtworkURL)
+                    GeometryReader { proxy in
+                        VendorRunningStreamBackdrop(artworkURL: viewModel.runningStreamArtworkURL, viewport: proxy.size)
+                    }
                 }
                 if controllerModeEnabled {
                     ControllerCatalogView(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)

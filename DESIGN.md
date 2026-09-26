@@ -864,7 +864,8 @@ thing.
 - **Backdrop.** The running stream's artwork, artwork fill, 18pt blur, then `OPNDesign.Surface.scrim`
 and the same top/bottom black gradient the store picker uses. Behind the page, never hit-testable,
 hidden from accessibility. Games page only — Settings and Recordings share the stack and have
-nothing to do with the stream.
+nothing to do with the stream. Measured by a `GeometryReader` and framed to that size: a
+full-window backdrop left free to report its own ideal size can resize the page it sits behind.
 
 Both appear only for a *running* stream. A suspended seat keeps `VendorActiveSessionHomeBanner`:
 no stream is playing there, and the action that matters is RESUME rather than FOCUS.

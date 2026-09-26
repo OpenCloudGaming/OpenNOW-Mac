@@ -79,14 +79,21 @@ struct VendorRunningStreamHomeBanner: View {
 ///
 /// Deliberately not hit-testable and hidden from accessibility: it is a backdrop, and everything
 /// the page offers is still drawn on top of it.
+///
+/// The size is passed in and applied as an explicit frame rather than left as an unbounded
+/// `maxWidth`/`maxHeight` child with `ignoresSafeArea()`. As a ZStack sibling that is free to report
+/// its own ideal size, a full-window backdrop can resize the page it sits behind - the page then
+/// lays out larger than the window and reads as cropped. The store picker's artwork solves this the
+/// same way: `GeometryReader` measures, the backdrop frames itself to that measurement.
 struct VendorRunningStreamBackdrop: View {
     let artworkURL: URL?
+    let viewport: CGSize
 
     var body: some View {
         ZStack {
             if let artworkURL {
                 CatalogRemoteImage(url: artworkURL, contentMode: .fill, maxPixelSize: 1920)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(width: viewport.width, height: viewport.height)
                     .clipped()
                     .blur(radius: 18)
             }
@@ -97,7 +104,7 @@ struct VendorRunningStreamBackdrop: View {
                 endPoint: .bottom
             )
         }
-        .ignoresSafeArea()
+        .frame(width: viewport.width, height: viewport.height)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
