@@ -12,4 +12,5 @@ import Testing
     #expect(StreamSidebarCapabilities.nativeNVST.supports(.videoEnhancement))
     #expect(StreamSidebarCapabilities.nativeNVST.supports(.recording))
     #expect(StreamSidebarCapabilities.nativeNVST.supports(.remoteCoOp))
+    #expect(StreamSidebarCapabilities.nativeNVST.supports(.pictureInPicture))
 }
