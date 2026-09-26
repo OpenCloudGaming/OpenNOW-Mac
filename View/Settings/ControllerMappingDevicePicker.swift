@@ -48,6 +48,34 @@ extension ControllerMappingView {
         }
     }
 
+    /// Every row of the editor, in paint order: the type picker on top, then the rows stacked below.
+    @ViewBuilder
+    var profileEditorContent: some View {
+        familyPicker
+            .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+            .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
+            .zIndex(Self.typePickerRowZIndex)
+        if store.isCurrentGameKnown {
+            SteamControllerModalRule()
+            gameOverrideBar
+                .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+                .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
+                .zIndex(Self.stackedRowZIndex)
+        }
+        SteamControllerModalRule()
+        profileBar
+            .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
+            .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
+            .zIndex(Self.stackedRowZIndex)
+        SteamControllerModalRule()
+        if draft != nil {
+            configuratorLayout
+        }
+        if draft == nil {
+            noProfileMessage
+        }
+    }
+
     /// Writes the profile picker's selection onto the selected type's default. For steam this is the
     /// value the sheet already wrote; for the other two it turns an inert profile into their default.
     func selectProfile(_ id: UUID?) {

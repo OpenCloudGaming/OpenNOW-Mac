@@ -25,8 +25,8 @@ struct ControllerMappingView: View {
     private static let bindingPanelWidth: CGFloat = 320
     /// A dropdown panel is an overlay, so it obeys sibling paint order. The type picker must clear
     /// every row below it; every other row only has to clear the configurator underneath.
-    private static let dropdownRowZIndex: Double = 2
-    private static let contentRowZIndex: Double = 1
+    static let typePickerRowZIndex: Double = 2
+    static let stackedRowZIndex: Double = 1
 
     private var sheetSize: CGSize {
         SteamControllerSheetMetrics.size(width: 1120, height: 720, uiScale: uiScale)
@@ -75,29 +75,9 @@ struct ControllerMappingView: View {
             SteamControllerModalRule()
             if resolvedSelection == .none {
                 disconnectedMessage
-            } else {
-                familyPicker
-                    .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
-                    .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
-                    .zIndex(Self.dropdownRowZIndex)
-                if store.isCurrentGameKnown {
-                    SteamControllerModalRule()
-                    gameOverrideBar
-                        .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
-                        .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
-                        .zIndex(Self.contentRowZIndex)
-                }
-                SteamControllerModalRule()
-                profileBar
-                    .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
-                    .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
-                    .zIndex(Self.contentRowZIndex)
-                SteamControllerModalRule()
-                if draft != nil {
-                    configuratorLayout
-                } else {
-                    noProfileMessage
-                }
+            }
+            if resolvedSelection != .none {
+                profileEditorContent
             }
             SteamControllerModalRule()
             footer
@@ -137,7 +117,7 @@ struct ControllerMappingView: View {
         }
     }
 
-    private var profileBar: some View {
+    var profileBar: some View {
         HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             profilePicker
             if draft != nil {
@@ -274,7 +254,7 @@ struct ControllerMappingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var noProfileMessage: some View {
+    var noProfileMessage: some View {
         VStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             Image(systemName: "gamecontroller")
                 .font(.settingsFont(size: 40 * uiScale))
@@ -288,7 +268,7 @@ struct ControllerMappingView: View {
 
     // MARK: - Layout
 
-    private var configuratorLayout: some View {
+    var configuratorLayout: some View {
         HStack(spacing: 0) {
             categorySidebar
                 .frame(width: Self.sidebarWidth * uiScale)
