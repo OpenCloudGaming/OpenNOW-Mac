@@ -109,7 +109,11 @@ struct ControllerMappingView: View {
         )
         .background(OPNDesign.Surface.deep)
         .foregroundStyle(OPNDesign.Text.primary)
-        .onExitCommand { requestDismiss() }
+        .onExitCommand {
+            // A confirmation owns Escape while it is up; the modal itself dismisses on exit.
+            guard !isDeleteConfirmationPresented, !isDiscardConfirmationPresented else { return }
+            requestDismiss()
+        }
         .onAppear {
             liveModel.start()
             selection = resolvedSelection
@@ -136,26 +140,9 @@ struct ControllerMappingView: View {
             applyPadCommand(command.command)
         }
         .onDisappear { padFocus.setActive(false) }
-        .opnConfirmation(
-            isPresented: $isDeleteConfirmationPresented,
-            eyebrow: "DELETE PROFILE",
-            title: deleteConfirmationTitle,
-            message: deleteConfirmationMessage,
-            actions: [
-                OPNConfirmationAction("CANCEL", role: .cancel) { },
-                OPNConfirmationAction("DELETE", role: .destructive) { performProfileDelete() },
-            ]
-        )
-        .opnConfirmation(
-            isPresented: $isDiscardConfirmationPresented,
-            eyebrow: "UNSAVED CHANGES",
-            title: "Discard changes?",
-            message: "Edits to \"\(draft?.name ?? "this profile")\" will be lost.",
-            actions: [
-                OPNConfirmationAction("KEEP EDITING", role: .cancel) { pendingDiscardAction = nil },
-                OPNConfirmationAction("DISCARD", role: .destructive) { confirmDiscard() },
-            ]
-        )
+        // Confirmed inside the sheet, not through the window-root presenter: a SwiftUI sheet is its
+        // own window, so a root-hosted modal renders behind it and is invisible.
+        .overlay { confirmationOverlay }
         // The calibration passes read the live pad on the same cadence the snapshots arrive on, in
         // their own loop rather than off snapshot changes: a capture held perfectly still would
         // otherwise stop receiving samples at the exact moment it needs them.
@@ -167,6 +154,36 @@ struct ControllerMappingView: View {
                                    deltaTime: ControllerMappingLiveModel.sampleInterval)
                 try? await Task.sleep(for: ControllerMappingLiveModel.pollInterval)
             }
+        }
+    }
+
+    @ViewBuilder var confirmationOverlay: some View {
+        if isDeleteConfirmationPresented {
+            OPNConfirmationPanel(
+                eyebrow: "DELETE PROFILE",
+                title: deleteConfirmationTitle,
+                message: deleteConfirmationMessage,
+                actions: [
+                    OPNConfirmationAction("CANCEL", role: .cancel) { isDeleteConfirmationPresented = false },
+                    OPNConfirmationAction("DELETE", role: .destructive) {
+                        isDeleteConfirmationPresented = false
+                        performProfileDelete()
+                    },
+                ],
+                dismiss: { isDeleteConfirmationPresented = false }
+            )
+        }
+        if isDiscardConfirmationPresented {
+            OPNConfirmationPanel(
+                eyebrow: "UNSAVED CHANGES",
+                title: "Discard changes?",
+                message: "Edits to \"\(draft?.name ?? "this profile")\" will be lost.",
+                actions: [
+                    OPNConfirmationAction("KEEP EDITING", role: .cancel) { dismissDiscardConfirmation() },
+                    OPNConfirmationAction("DISCARD", role: .destructive) { confirmDiscard() },
+                ],
+                dismiss: { dismissDiscardConfirmation() }
+            )
         }
     }
 
