@@ -213,7 +213,7 @@ struct InputSettingsPage: View {
     /// The games whose controller mapping diverges from their type's default, and for which type.
     /// Without this list an override is written in-stream and named nowhere a reader can find it.
     private var perGameMappingsCard: some View {
-        let overrides = viewModel.controllerMappingOverrideGames(for: mappingStore.gameOverrides.allOverrides)
+        let overrides = viewModel.controllerMappingOverrideGames(from: mappingStore)
         return SettingsCard(title: "Per-Game Controller Mapping", uiScale: uiScale) {
             Text("A game can use its own profile for each controller type, leaving every other game on the type default. Disabling an override keeps it but stops it applying; removing it is permanent.")
                 .font(.settingsFont(size: 12 * uiScale, weight: .medium))
@@ -247,9 +247,9 @@ struct InputSettingsPage: View {
                     .font(.settingsFont(size: 13 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
-                Text("\(gameOverride.family.label) · \(gameOverride.isEnabled ? "Active in this game" : "Disabled — kept, not applied")")
+                Text(gameOverride.subtitle)
                     .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                    .foregroundStyle(gameOverride.isEnabled ? OPNDesign.Text.tertiary : OPNDesign.Text.muted)
+                    .foregroundStyle(gameOverride.isEnabled && !gameOverride.isProfileMissing ? OPNDesign.Text.tertiary : OPNDesign.Text.muted)
             }
             Spacer(minLength: 8 * uiScale)
             SettingsActionButton(title: gameOverride.isEnabled ? "DISABLE" : "ENABLE", minimumWidth: 84 * uiScale, uiScale: uiScale) {

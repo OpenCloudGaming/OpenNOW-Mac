@@ -9,6 +9,7 @@ public final class ControllerMappingStore: ObservableObject {
     nonisolated public static let familyDefaultsKey = "OpenNOW.Input.ControllerMappingActiveProfileByFamily"
     nonisolated public static let gameOverridesKey = "OpenNOW.Input.ControllerMappingGameOverrides"
     nonisolated public static let appIdIdentityIndexKey = "OpenNOW.Input.ControllerMappingAppIdIndex"
+    nonisolated public static let gameTitlesKey = "OpenNOW.Input.ControllerMappingGameTitles"
     nonisolated public static let legacySteamDefaultKey = "OpenNOW.Input.SteamControllerMappingActiveProfile"
 
     @Published public private(set) var profiles: [ControllerMappingProfile]
@@ -19,6 +20,9 @@ public final class ControllerMappingStore: ObservableObject {
     @Published public private(set) var currentGameIdentity: String?
 
     private var gameIdentityByAppId: [String: String]
+    /// `catalogIdentity → title`, so the resume path and the Settings list can name a game without
+    /// a catalog load. Machine-independent, so it travels with the settings backup.
+    private var gameTitleByGameIdentity: [String: String]
     private var currentAppId: String?
 
     @Published private var revision = 0
@@ -132,17 +136,20 @@ public final class ControllerMappingStore: ObservableObject {
 
     /// Starts or resumes a session. The identity is known on a fresh launch, or read back from the
     /// index a previous launch wrote, so a resume resolves the same override as a fresh launch.
-    func beginSession(appId: String, catalogIdentity: String?) {
+    func beginSession(appId: String, catalogIdentity: String?, title: String? = nil) {
         let trimmedAppId = appId.trimmingCharacters(in: .whitespacesAndNewlines)
         currentAppId = trimmedAppId.isEmpty ? nil : trimmedAppId
         let previousGameIdentity = currentGameIdentity
         currentGameIdentity = resolveGameIdentity(catalogIdentity: catalogIdentity)
-        let previousIndex = gameIdentityByAppId
+        let previousIdentityByAppId = gameIdentityByAppId
+        let previousTitleByIdentity = gameTitleByGameIdentity
         recordGameIdentityForCurrentApp()
-        let didIndexChange = gameIdentityByAppId != previousIndex
+        recordGameTitle(catalogIdentity: catalogIdentity, title: title)
+        let didStoredGameChange = gameIdentityByAppId != previousIdentityByAppId
+            || gameTitleByGameIdentity != previousTitleByIdentity
         let didGameChange = currentGameIdentity != previousGameIdentity
-        guard didIndexChange || didGameChange else { return }
-        guard didIndexChange else {
+        guard didStoredGameChange || didGameChange else { return }
+        guard didStoredGameChange else {
             bumpRevision()
             return
         }
@@ -164,6 +171,27 @@ public final class ControllerMappingStore: ObservableObject {
         return gameIdentityByAppId[currentAppId]
     }
 
+    /// Persists the title a game identity was launched under, so a resumed session and the Settings
+    /// list can name it. Only a catalog-resolved launch carries a real title, not the app-id fallback.
+    private func recordGameTitle(catalogIdentity: String?, title: String?) {
+        let gameIdentity = catalogIdentity?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !gameIdentity.isEmpty else { return }
+        let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trimmedTitle.isEmpty else { return }
+        guard gameTitleByGameIdentity[gameIdentity] != trimmedTitle else { return }
+        gameTitleByGameIdentity[gameIdentity] = trimmedTitle
+    }
+
+    /// The recorded title for a game identity, when this Mac has ever launched it from the catalog.
+    func gameTitle(forGameIdentity gameIdentity: String) -> String? {
+        gameTitleByGameIdentity[gameIdentity]
+    }
+
+    /// How many per-game overrides bind this profile, so a delete can say what it is about to drop.
+    func overrideCount(referencingProfile profileID: UUID) -> Int {
+        gameOverrides.allOverrides.filter { $0.gameOverride.profileID == profileID }.count
+    }
+
     /// Persists `appId → catalogIdentity` while both are known, for a later resume of this session.
     private func recordGameIdentityForCurrentApp() {
         guard let currentAppId, let currentGameIdentity else { return }
@@ -181,6 +209,7 @@ public final class ControllerMappingStore: ObservableObject {
         defaultProfileIDs = Self.loadDefaultProfileIDs(defaults: defaults, profiles: loadedProfiles)
         gameOverrides = Self.loadGameOverrides(defaults: defaults)
         gameIdentityByAppId = Self.loadGameIdentityByAppId(defaults: defaults)
+        gameTitleByGameIdentity = Self.loadGameTitlesByGameIdentity(defaults: defaults)
         let isProfilesKeyMissing = defaults.data(forKey: Self.profilesKey) == nil
         let isFamilyDefaultsKeyMissing = defaults.data(forKey: Self.familyDefaultsKey) == nil
         guard isProfilesKeyMissing || isFamilyDefaultsKeyMissing else { return }
@@ -239,6 +268,12 @@ public final class ControllerMappingStore: ObservableObject {
         return decoded
     }
 
+    private static func loadGameTitlesByGameIdentity(defaults: UserDefaults) -> [String: String] {
+        guard let storedData = defaults.data(forKey: gameTitlesKey),
+              let decoded = try? JSONDecoder().decode([String: String].self, from: storedData) else { return [:] }
+        return decoded
+    }
+
     // MARK: - Profiles
 
     /// Creating a profile makes it that controller type's default; the sheet states that in the UI.
@@ -288,6 +323,7 @@ public final class ControllerMappingStore: ObservableObject {
         write(familyDefaultsByRawValue, toKey: Self.familyDefaultsKey)
         write(gameOverrides, toKey: Self.gameOverridesKey)
         write(gameIdentityByAppId, toKey: Self.appIdIdentityIndexKey)
+        write(gameTitleByGameIdentity, toKey: Self.gameTitlesKey)
         // The superseded steam-only key is never written again; the new key owns the default.
         defaults.removeObject(forKey: Self.legacySteamDefaultKey)
     }

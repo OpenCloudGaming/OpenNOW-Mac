@@ -14,6 +14,41 @@ struct SettingsControllerMappingOverride: Identifiable, Equatable {
     let family: ControllerFamily
     let title: String
     let isEnabled: Bool
+    /// The referenced profile is not on this Mac, so the override is inert and resolution falls
+    /// through — shown as such rather than as "active".
+    let isProfileMissing: Bool
+    /// Name of the type default this row falls back to, empty when the type has none.
+    let fallbackProfileName: String
+
+    /// Builds one row from a stored override. Pure, so the status and fallback rules are testable
+    /// without standing up a catalog view model.
+    static func make(
+        entry: ControllerMappingGameOverrideEntry,
+        profilesByID: [UUID: ControllerMappingProfile],
+        defaultProfileIDByFamily: [ControllerFamily: UUID],
+        title: String
+    ) -> SettingsControllerMappingOverride {
+        let fallbackProfileName = defaultProfileIDByFamily[entry.family].flatMap { profilesByID[$0]?.name } ?? ""
+        return SettingsControllerMappingOverride(
+            catalogIdentity: entry.gameIdentity,
+            family: entry.family,
+            title: title,
+            isEnabled: entry.gameOverride.isEnabled,
+            isProfileMissing: profilesByID[entry.gameOverride.profileID] == nil,
+            fallbackProfileName: fallbackProfileName
+        )
+    }
+
+    /// Says what the override actually does, including the inert case where its profile is not on
+    /// this Mac and resolution is falling through to the type default.
+    var subtitle: String {
+        guard !isProfileMissing else {
+            let fallback = fallbackProfileName.isEmpty ? "no mapping" : "the \"\(fallbackProfileName)\" default"
+            return "\(family.label) · Profile missing on this Mac — falls back to \(fallback)"
+        }
+        guard isEnabled else { return "\(family.label) · Disabled — kept, not applied" }
+        return "\(family.label) · Active in this game"
+    }
 }
 
 @MainActor
@@ -71,16 +106,23 @@ extension CatalogViewModel {
 
     /// Every (game × controller type) override, so one a user forgot can be found without
     /// launching the game. Keyed on `catalogIdentity`, so a two-storefront title appears once.
-    func controllerMappingOverrideGames(for overrides: [ControllerMappingGameOverrideEntry]) -> [SettingsControllerMappingOverride] {
+    func controllerMappingOverrideGames(from store: ControllerMappingStore) -> [SettingsControllerMappingOverride] {
+        let overrides = store.gameOverrides.allOverrides
         guard !overrides.isEmpty else { return [] }
         let titlesByGameIdentity = catalogTitlesByGameIdentity()
+        let profilesByID = Dictionary(store.profiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let defaultProfileIDByFamily = ControllerFamily.allCases.reduce(into: [ControllerFamily: UUID]()) { result, family in
+            result[family] = store.defaultProfileID(for: family)
+        }
         return overrides.map { entry in
-            let title = titlesByGameIdentity[entry.gameIdentity] ?? entry.gameIdentity
-            return SettingsControllerMappingOverride(
-                catalogIdentity: entry.gameIdentity,
-                family: entry.family,
-                title: title,
-                isEnabled: entry.gameOverride.isEnabled
+            let title = titlesByGameIdentity[entry.gameIdentity]
+                ?? store.gameTitle(forGameIdentity: entry.gameIdentity)
+                ?? entry.gameIdentity
+            return SettingsControllerMappingOverride.make(
+                entry: entry,
+                profilesByID: profilesByID,
+                defaultProfileIDByFamily: defaultProfileIDByFamily,
+                title: title
             )
         }
     }

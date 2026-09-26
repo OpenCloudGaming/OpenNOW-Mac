@@ -222,6 +222,38 @@ import Testing
         #expect(resumedStore.activeOverride(for: .generic) == nil)
     }
 
+    @Test func aCatalogLaunchRecordsTheGamesTitleForLaterReads() throws {
+        let defaults = try makeDefaults()
+        let store = ControllerMappingStore(defaults: defaults)
+        store.beginSession(appId: "100", catalogIdentity: "title-42", title: "Racing Game")
+        #expect(store.gameTitle(forGameIdentity: "title-42") == "Racing Game")
+
+        // A resume carries no title, but the identity and its name survive the relaunch.
+        let resumedStore = ControllerMappingStore(defaults: defaults)
+        resumedStore.beginSession(appId: "100", catalogIdentity: nil)
+        #expect(resumedStore.currentGameIdentity == "title-42")
+        #expect(resumedStore.gameTitle(forGameIdentity: "title-42") == "Racing Game")
+    }
+
+    @Test func anAppIdFallbackTitleIsNotRecorded() throws {
+        let store = ControllerMappingStore(defaults: try makeDefaults())
+        // The resume path's own fallback ("App ID 123") arrives with no catalog identity, so it must
+        // not overwrite the real title or invent one.
+        store.beginSession(appId: "123", catalogIdentity: nil, title: "App ID 123")
+        #expect(store.gameTitle(forGameIdentity: "123") == nil)
+    }
+
+    @Test func overrideCountReportsWhatDeletingAProfileWouldDrop() throws {
+        let store = ControllerMappingStore(defaults: try makeDefaults())
+        let sharedProfile = store.createProfile(named: "Shared", family: .generic)
+        store.beginSession(appId: "100", catalogIdentity: "game-100")
+        store.setGameOverride(profileID: sharedProfile.id, for: .generic)
+        store.beginSession(appId: "200", catalogIdentity: "game-200")
+        store.setGameOverride(profileID: sharedProfile.id, for: .generic)
+        #expect(store.overrideCount(referencingProfile: sharedProfile.id) == 2)
+        #expect(store.overrideCount(referencingProfile: UUID()) == 0)
+    }
+
     @Test func endingASessionReturnsToTheFamilyDefault() throws {
         let store = ControllerMappingStore(defaults: try makeDefaults())
         let familyDefaultProfile = store.createProfile(named: "Generic default", family: .generic)
