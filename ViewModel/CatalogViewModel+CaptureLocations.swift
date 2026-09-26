@@ -1,6 +1,5 @@
 //  Where the Capture page's two libraries are written, and the three things a reader can do to a
-//  folder: change it, put it back, or go there. Kept out of `CatalogViewModel+Settings` so the
-//  preference setters stay one file about stream settings.
+//  folder: change it, put it back, or go there.
 //
 
 import Foundation
@@ -16,7 +15,7 @@ struct CatalogCaptureDirectoryState: Equatable {
 /// new folder beside a stale warning.
 struct CatalogCaptureLocationState: Equatable {
     var directories: [OPNCaptureLibrary: CatalogCaptureDirectoryState] = [:]
-    var shareOneFolder = false
+    var isSharingOneFolder = false
     var migrationNotice: String?
 }
 
@@ -36,20 +35,19 @@ extension CatalogViewModel {
         }
         captureLocations = CatalogCaptureLocationState(
             directories: directories,
-            shareOneFolder: OPNCaptureLocations.librariesShareDirectory(),
+            isSharingOneFolder: OPNCaptureLocations.isSharingOneFolder(),
             migrationNotice: OPNCaptureMigration.pendingNotice
         )
     }
 
     func chooseCaptureDirectory(_ library: OPNCaptureLibrary) {
         guard isCaptureLocationEditingEnabled else {
-            actionMessage = "Change the \(library.displayName.lowercased()) folder once the stream has ended."
+            reportCaptureLocationLocked(library)
             return
         }
-        let current = resolvedCaptureDirectory(library)
         guard let chosen = systemIntegration.chooseDirectory(
             prompt: "Choose where OpenNOW saves \(library.displayName.lowercased()).",
-            startingAt: current
+            startingAt: resolvedCaptureDirectory(library)
         ) else {
             return
         }
@@ -58,7 +56,7 @@ extension CatalogViewModel {
 
     func setCaptureDirectory(_ url: URL, for library: OPNCaptureLibrary) {
         guard isCaptureLocationEditingEnabled else {
-            actionMessage = "Change the \(library.displayName.lowercased()) folder once the stream has ended."
+            reportCaptureLocationLocked(library)
             return
         }
         do {
@@ -89,14 +87,17 @@ extension CatalogViewModel {
     func captureDirectoryDisplayPath(for library: OPNCaptureLibrary) -> String {
         let path = resolvedCaptureDirectory(library).path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path == home { return "~" }
-        if path.hasPrefix(home + "/") { return "~" + path.dropFirst(home.count) }
-        return path
+        guard path.hasPrefix(home + "/") else { return path }
+        return "~" + path.dropFirst(home.count)
     }
 
     func acknowledgeCaptureMigrationNotice() {
         OPNCaptureMigration.acknowledgeNotice()
         captureLocations.migrationNotice = nil
+    }
+
+    private func reportCaptureLocationLocked(_ library: OPNCaptureLibrary) {
+        actionMessage = "Change the \(library.displayName.lowercased()) folder once the stream has ended."
     }
 
     private func resolvedCaptureDirectory(_ library: OPNCaptureLibrary) -> URL {

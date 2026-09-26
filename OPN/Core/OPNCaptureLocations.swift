@@ -1,15 +1,13 @@
 import Foundation
 
-/// The two media libraries OpenNOW owns, named so a caller can talk about "the screenshots folder"
-/// without repeating which preference key or default that means.
+/// The two media libraries OpenNOW owns, named so a caller can talk about a folder without
+/// repeating which preference key or default that means.
 public enum OPNCaptureLibrary: String, CaseIterable, Sendable {
     case screenshots
     case recordings
 
-    /// The `UserDefaults` key the reader's own choice lives under. Deliberately outside every
-    /// `OPNCloudSyncSettingsRegistry` allow-list prefix, and denied there by name anyway: a filesystem
-    /// path is bound to this Mac, and syncing one to a Mac where it does not exist leaves a broken
-    /// library rather than a convenience.
+    /// The `UserDefaults` key the reader's own choice lives under. Outside every sync allow-list
+    /// prefix and denied by name: a filesystem path belongs to one Mac.
     public var preferenceKey: String {
         switch self {
         case .screenshots: return "OpenNOW.Capture.ScreenshotsDirectoryPath"
@@ -25,10 +23,8 @@ public enum OPNCaptureLibrary: String, CaseIterable, Sendable {
         }
     }
 
-    /// The folder OpenNOW writes into when the reader has not chosen one. Screenshots live under
-    /// Pictures and recordings under Movies because those are the media folders macOS relocates
-    /// without telling anyone; `urls(for:in:)` resolves that relocation, and the home-directory path
-    /// is only the fallback for when it cannot be resolved at all.
+    /// Screenshots live under Pictures and recordings under Movies, resolved with `urls(for:in:)` so
+    /// a relocated media folder is followed; the home path is only the last-resort fallback.
     public func defaultDirectory(fileManager: FileManager = .default, baseDirectory: URL? = nil) -> URL {
         if let baseDirectory {
             return baseDirectory.appendingPathComponent(rawValue, isDirectory: true)
@@ -36,16 +32,25 @@ public enum OPNCaptureLibrary: String, CaseIterable, Sendable {
         if let testRoot = OPNCaptureLocations.testRootDirectory {
             return testRoot.appendingPathComponent(rawValue, isDirectory: true)
         }
-        let base: URL
+        return productionDefaultDirectory(fileManager: fileManager)
+    }
+
+    /// The documented default, kept free of the test-run redirect so it can be asserted directly.
+    func productionDefaultDirectory(fileManager: FileManager = .default) -> URL {
+        mediaFolder(fileManager: fileManager).appendingPathComponent(Self.brandFolderName, isDirectory: true)
+    }
+
+    private static let brandFolderName = "OpenNOW"
+
+    private func mediaFolder(fileManager: FileManager) -> URL {
         switch self {
         case .screenshots:
-            base = fileManager.urls(for: .picturesDirectory, in: .userDomainMask).first
+            return fileManager.urls(for: .picturesDirectory, in: .userDomainMask).first
                 ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Pictures", isDirectory: true)
         case .recordings:
-            base = fileManager.urls(for: .moviesDirectory, in: .userDomainMask).first
+            return fileManager.urls(for: .moviesDirectory, in: .userDomainMask).first
                 ?? fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Movies", isDirectory: true)
         }
-        return base.appendingPathComponent("OpenNOW", isDirectory: true)
     }
 }
 
@@ -72,17 +77,15 @@ public enum OPNCaptureLocationError: LocalizedError, Equatable {
 /// What a library root resolved to, and why it is not the reader's choice when it is not.
 public struct OPNCaptureLocationResolution: Equatable, Sendable {
     public let url: URL
-    /// The stored override, even when it was rejected: the settings page shows what was asked for.
+    /// The stored override, kept even when rejected so the settings page can show what was asked for.
     public let overridePath: String?
-    /// Non-nil when a stored override could not be used and the default is standing in.
     public let rejectionReason: String?
 
-    public var usedOverride: Bool { overridePath != nil && rejectionReason == nil }
+    public var isUsingOverride: Bool { overridePath != nil && rejectionReason == nil }
 }
 
 /// One source of truth for where OpenNOW writes the media it owns. The screenshot and recording
-/// libraries forward here, so every existing consumer — the library scans, the replay buffer, iCloud
-/// sync — follows a reader's choice without knowing this type exists.
+/// libraries forward here, so every consumer follows a reader's choice without knowing this exists.
 public enum OPNCaptureLocations {
     public static var screenshotsDirectory: URL { directory(for: .screenshots) }
     public static var recordingsDirectory: URL { directory(for: .recordings) }
@@ -94,8 +97,8 @@ public enum OPNCaptureLocations {
         resolve(library, storage: storage, fileManager: fileManager, baseDirectory: baseDirectory).url
     }
 
-    /// Resolves a library root, falling back to the default when a stored override is missing,
-    /// unreadable, or otherwise unusable, and saying why so the reader is not left guessing.
+    /// Resolves a library root, falling back to the default when a stored override is unusable and
+    /// saying why, so the reader is never left guessing where a library went.
     public static func resolve(_ library: OPNCaptureLibrary,
                                storage: OPNAppPreferenceStorage = .standard,
                                fileManager: FileManager = .default,
@@ -115,8 +118,8 @@ public enum OPNCaptureLocations {
         return OPNCaptureLocationResolution(url: overrideURL, overridePath: overridePath, rejectionReason: nil)
     }
 
-    /// The reader's stored choice, or nil when none is set. Blank counts as unset rather than as a
-    /// path, so a preference written empty resolves the default instead of a relative URL.
+    /// The reader's stored choice, or nil when none is set. Blank counts as unset, so a preference
+    /// written empty resolves the default instead of a relative URL.
     public static func storedOverridePath(for library: OPNCaptureLibrary,
                                           storage: OPNAppPreferenceStorage = .standard) -> String? {
         guard let value = storage.string(forKey: library.preferenceKey)?
@@ -139,10 +142,10 @@ public enum OPNCaptureLocations {
     }
 
     /// True when both libraries have been pointed at one folder. The picker warns rather than blocks:
-    /// a reader may genuinely want one folder, and the write probe already keeps it usable.
-    public static func librariesShareDirectory(storage: OPNAppPreferenceStorage = .standard,
-                                               fileManager: FileManager = .default,
-                                               baseDirectory: URL? = nil) -> Bool {
+    /// a reader may want one folder, and the write probe keeps it usable either way.
+    public static func isSharingOneFolder(storage: OPNAppPreferenceStorage = .standard,
+                                          fileManager: FileManager = .default,
+                                          baseDirectory: URL? = nil) -> Bool {
         let screenshots = directory(for: .screenshots, storage: storage, fileManager: fileManager, baseDirectory: baseDirectory)
         let recordings = directory(for: .recordings, storage: storage, fileManager: fileManager, baseDirectory: baseDirectory)
         return screenshots.standardizedFileURL.path == recordings.standardizedFileURL.path
@@ -212,15 +215,16 @@ public enum OPNCaptureLocations {
         return path == parent || path.hasPrefix(parent + "/")
     }
 
-    /// Tests must never write into the reader's real Pictures or Movies folder. SwiftPM runs the
-    /// suite inside an `.xctest` bundle, so the roots resolve under one process-wide temporary
-    /// directory there. Production is untouched: this keys off how the process was launched, not off
-    /// a preference a reader could set.
+    /// Tests must never write into the reader's real media folders. SwiftPM runs the suite inside an
+    /// `.xctest` bundle, so the roots resolve under one process-wide temporary directory there.
     static let testRootDirectory: URL? = {
         let environment = ProcessInfo.processInfo.environment
         let isTestProcess = Bundle.main.bundlePath.hasSuffix(".xctest")
             || environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestBundlePath"] != nil
+            // `swift test` runs Swift Testing through `swiftpm-testing-helper`, whose bundle path and
+            // environment reveal nothing. The linked XCTest class is the dependable tell.
+            || NSClassFromString("XCTestCase") != nil
         guard isTestProcess else { return nil }
         return FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenNOWTests-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)

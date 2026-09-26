@@ -17,9 +17,24 @@ public struct StreamScreenshot: Codable, Equatable, Identifiable, Sendable {
     /// Albums this shot belongs to. Empty means unfiled; an album the reader deleted is pruned when
     /// the screenshot is next saved rather than rewritten eagerly.
     public var albumIDs: [UUID]
-    /// Where the picture and its sidecar live. Mutable so a library scan can heal a stale path from
-    /// the sidecar's own directory when the reader has moved the folder.
-    public var storageDirectoryPath: String?
+    public let storageDirectoryPath: String?
+
+    /// A copy of this shot pointing at where it was actually found, used when a stored path has gone
+    /// stale and the sidecar's own directory is the truth.
+    func replacingStorageDirectoryPath(_ path: String) -> StreamScreenshot {
+        StreamScreenshot(
+            id: id,
+            title: title,
+            applicationID: applicationID,
+            createdAt: createdAt,
+            width: width,
+            height: height,
+            fileName: fileName,
+            fileSizeBytes: fileSizeBytes,
+            albumIDs: albumIDs,
+            storageDirectoryPath: path
+        )
+    }
 
     public var imageURL: URL { storageDirectory.appendingPathComponent(fileName) }
     public var metadataURL: URL { storageDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
@@ -81,28 +96,28 @@ public enum StreamScreenshotLibrary {
         screenshotMetadataURLs()
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                guard var screenshot = try? JSONDecoder.recordingDecoder.decode(StreamScreenshot.self, from: data) else { return nil }
+                guard let decoded = try? JSONDecoder.recordingDecoder.decode(StreamScreenshot.self, from: data) else { return nil }
                 // A stored path that no longer exists — the folder moved, in Finder or by us — falls
-                // back to the sidecar's own directory. Genuinely out-of-root items keep their path.
-                screenshot.storageDirectoryPath = resolvedStorageDirectoryPath(
-                    stored: screenshot.storageDirectoryPath,
+                // back to the sidecar's own directory. Out-of-root items keep their path.
+                let screenshot = decoded.replacingStorageDirectoryPath(healedStoragePath(
+                    stored: decoded.storageDirectoryPath,
                     sidecarDirectory: url.deletingLastPathComponent()
-                )
+                ))
                 guard FileManager.default.fileExists(atPath: screenshot.imageURL.path) else { return nil }
                 return screenshot
             }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    /// The one rule behind folder moves being non-destructive: honour a stored path while it exists,
+    /// The rule behind folder moves being non-destructive: honour a stored path while it exists,
     /// otherwise resolve beside the sidecar that named the item.
-    static func resolvedStorageDirectoryPath(stored: String?,
-                                             sidecarDirectory: URL,
-                                             fileManager: FileManager = .default) -> String {
-        if let stored, !stored.isEmpty, fileManager.fileExists(atPath: stored) {
-            return stored
+    static func healedStoragePath(stored: String?,
+                                  sidecarDirectory: URL,
+                                  fileManager: FileManager = .default) -> String {
+        guard let stored, !stored.isEmpty, fileManager.fileExists(atPath: stored) else {
+            return sidecarDirectory.path
         }
-        return sidecarDirectory.path
+        return stored
     }
 
     public static func loadAlbums() -> [ScreenshotAlbum] {

@@ -19,8 +19,8 @@ struct OPNCaptureLocationsTests {
     }
 
     @Test func defaultsLiveUnderOpenNOWInTheReadersMediaFolders() {
-        let screenshots = OPNCaptureLibrary.screenshots.defaultDirectory()
-        let recordings = OPNCaptureLibrary.recordings.defaultDirectory()
+        let screenshots = OPNCaptureLibrary.screenshots.productionDefaultDirectory()
+        let recordings = OPNCaptureLibrary.recordings.productionDefaultDirectory()
         #expect(screenshots.path.hasSuffix("Pictures/OpenNOW"))
         #expect(recordings.path.hasSuffix("Movies/OpenNOW"))
         #expect(screenshots.path != recordings.path)
@@ -35,7 +35,7 @@ struct OPNCaptureLocationsTests {
         OPNCaptureLocations.setOverride(chosen, for: .screenshots, storage: storage)
         let resolution = OPNCaptureLocations.resolve(.screenshots, storage: storage, baseDirectory: base)
 
-        #expect(resolution.usedOverride)
+        #expect(resolution.isUsingOverride)
         #expect(resolution.url.standardizedFileURL == chosen.standardizedFileURL)
         #expect(OPNCaptureLocations.storedOverridePath(for: .screenshots, storage: storage) == chosen.standardizedFileURL.path)
     }
@@ -76,7 +76,7 @@ struct OPNCaptureLocationsTests {
         OPNCaptureLocations.setOverride(cloud, for: .screenshots, storage: storage)
 
         let resolution = OPNCaptureLocations.resolve(.screenshots, storage: storage, baseDirectory: base)
-        #expect(!resolution.usedOverride)
+        #expect(!resolution.isUsingOverride)
         #expect(resolution.rejectionReason != nil)
         #expect(resolution.url.standardizedFileURL == base.appendingPathComponent("screenshots", isDirectory: true).standardizedFileURL)
         #expect(!FileManager.default.fileExists(atPath: cloud.path))
@@ -102,11 +102,11 @@ struct OPNCaptureLocationsTests {
         let base = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: base) }
 
-        #expect(!OPNCaptureLocations.librariesShareDirectory(storage: storage, baseDirectory: base))
+        #expect(!OPNCaptureLocations.isSharingOneFolder(storage: storage, baseDirectory: base))
         let shared = base.appendingPathComponent("Shared", isDirectory: true)
         OPNCaptureLocations.setOverride(shared, for: .screenshots, storage: storage)
         OPNCaptureLocations.setOverride(shared, for: .recordings, storage: storage)
-        #expect(OPNCaptureLocations.librariesShareDirectory(storage: storage, baseDirectory: base))
+        #expect(OPNCaptureLocations.isSharingOneFolder(storage: storage, baseDirectory: base))
     }
 
     @Test func theLibrariesFollowAnOverrideThroughTheirForwarders() throws {
@@ -123,11 +123,9 @@ struct OPNCaptureLocationsTests {
 /// The rest of the suite must never write into the reader's real folders; the redirect that makes
 /// that true is keyed off the launched process, so this reads as an invariant rather than a fixture.
 struct OPNCaptureTestIsolationTests {
-    @Test func testRunsNeverResolveIntoTheRealMediaFolders() {
-        guard OPNCaptureLocations.testRootDirectory != nil else {
-            // Not a test process (for example a plain `swift run` of the library); nothing to assert.
-            return
-        }
+    @Test func testRunsNeverResolveIntoTheRealMediaFolders() throws {
+        // A test run must redirect the roots; missing the redirect is the failure, not a skip.
+        _ = try #require(OPNCaptureLocations.testRootDirectory, "the test run did not redirect capture roots")
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         for library in OPNCaptureLibrary.allCases {
             let path = OPNCaptureLocations.directory(for: library).path

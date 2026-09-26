@@ -30,8 +30,7 @@ protocol SystemIntegrationServing {
     func revealInFinder(_ url: URL)
 
     /// Asks the reader for a directory and returns it, or nil when they cancel. Injected like the
-    /// rest of this protocol so a view model never has to import AppKit, and so a test can answer
-    /// without opening a panel.
+    /// rest of this protocol, so a test can answer without opening a panel.
     func chooseDirectory(prompt: String, startingAt url: URL) -> URL?
 
     /// Stamps the bundled app icon onto the file at `url`, so a generated shortcut looks like the

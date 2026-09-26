@@ -175,8 +175,8 @@ extension CaptureSettingsPage {
     ]
 }
 
-/// Where the captures are written. Two rows, one per library, each naming the folder in use and
-/// offering the three things a reader wants from it: change it, put it back, or go there.
+/// Where the captures are written: one row per library, each naming the folder in use and offering
+/// the three things a reader wants from it — change it, put it back, or go there.
 struct CaptureStorageCard: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
@@ -192,7 +192,7 @@ struct CaptureStorageCard: View {
             CaptureFolderRow(library: .screenshots, viewModel: viewModel, uiScale: uiScale)
             SettingsDivider(uiScale: uiScale)
             CaptureFolderRow(library: .recordings, viewModel: viewModel, uiScale: uiScale)
-            if viewModel.captureLocations.shareOneFolder {
+            if viewModel.captureLocations.isSharingOneFolder {
                 SettingsDivider(uiScale: uiScale)
                 Text("Both libraries point at one folder. That works, but the two sets of files sit together in Finder.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
@@ -211,42 +211,62 @@ private struct CaptureFolderRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10 * uiScale) {
-            VStack(alignment: .leading, spacing: 4 * uiScale) {
-                Text(library.displayName)
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text(viewModel.captureDirectoryDisplayPath(for: library))
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help(viewModel.captureDirectoryDisplayPath(for: library))
-                if let reason = viewModel.captureLocations.directories[library]?.rejectionReason {
-                    Text(reason)
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Semantic.warning)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            HStack(spacing: 8 * uiScale) {
-                SettingsActionButton(title: "CHANGE…", tone: .secondary, uiScale: uiScale) {
-                    viewModel.chooseCaptureDirectory(library)
-                }
-                SettingsActionButton(title: "RESET TO DEFAULT", tone: .secondary, uiScale: uiScale) {
-                    viewModel.resetCaptureDirectory(library)
-                }
-                SettingsActionButton(title: "REVEAL IN FINDER", tone: .secondary, uiScale: uiScale) {
-                    viewModel.revealCaptureDirectory(library)
-                }
-                Spacer(minLength: 0)
-            }
-            if !viewModel.isCaptureLocationEditingEnabled {
-                Text("Folders cannot change while a stream is running.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.muted)
-            }
+            details
+            actions
+            lockedMessage
         }
         .disabled(!viewModel.isCaptureLocationEditingEnabled)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 4 * uiScale) {
+            Text(library.displayName)
+                .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                .foregroundStyle(OPNDesign.Text.primary)
+            Text(displayPath)
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(displayPath)
+            rejectionMessage
+        }
+    }
+
+    private var actions: some View {
+        HStack(spacing: 8 * uiScale) {
+            SettingsActionButton(title: "CHANGE…", tone: .secondary, uiScale: uiScale) {
+                viewModel.chooseCaptureDirectory(library)
+            }
+            SettingsActionButton(title: "RESET TO DEFAULT", tone: .secondary, uiScale: uiScale) {
+                viewModel.resetCaptureDirectory(library)
+            }
+            SettingsActionButton(title: "REVEAL IN FINDER", tone: .secondary, uiScale: uiScale) {
+                viewModel.revealCaptureDirectory(library)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder private var rejectionMessage: some View {
+        if let reason = viewModel.captureLocations.directories[library]?.rejectionReason {
+            Text(reason)
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Semantic.warning)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var lockedMessage: some View {
+        if !viewModel.isCaptureLocationEditingEnabled {
+            Text("Folders cannot change while a stream is running.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.muted)
+        }
+    }
+
+    private var displayPath: String {
+        viewModel.captureDirectoryDisplayPath(for: library)
     }
 }
 

@@ -17,9 +17,27 @@ public struct StreamRecording: Codable, Equatable, Identifiable, Sendable {
     public let enhancedVideo: Bool
     public let fileName: String
     public let fileSizeBytes: Int64
-    /// Where the video and its sidecar live. Mutable so a library scan can heal a stale path from the
-    /// sidecar's own directory when the reader has moved the folder.
-    public var storageDirectoryPath: String?
+    public let storageDirectoryPath: String?
+
+    /// A copy of this recording pointing at where it was actually found, used when a stored path has
+    /// gone stale and the sidecar's own directory is the truth.
+    func replacingStorageDirectoryPath(_ path: String) -> StreamRecording {
+        StreamRecording(
+            id: id,
+            title: title,
+            applicationID: applicationID,
+            createdAt: createdAt,
+            durationSeconds: durationSeconds,
+            width: width,
+            height: height,
+            videoBitrateMbps: videoBitrateMbps,
+            audioBitrateKbps: audioBitrateKbps,
+            enhancedVideo: enhancedVideo,
+            fileName: fileName,
+            fileSizeBytes: fileSizeBytes,
+            storageDirectoryPath: path
+        )
+    }
 
     public var videoURL: URL { storageDirectory.appendingPathComponent(fileName) }
     public var metadataURL: URL { storageDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
@@ -57,15 +75,13 @@ public enum StreamRecordingLibrary {
             .filter { $0.pathExtension.caseInsensitiveCompare("json") == .orderedSame }
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                guard var recording = try? JSONDecoder.recordingDecoder.decode(StreamRecording.self, from: data) else { return nil }
-                // A stored path that no longer exists — the folder moved, in Finder or by us — falls
-                // back to the sidecar's own directory, which also backfills a sidecar written before
-                // the field existed. Retained-replay clips keep their Application Support path.
-                recording.storageDirectoryPath = StreamScreenshotLibrary.resolvedStorageDirectoryPath(
-                    stored: recording.storageDirectoryPath,
+                guard let decoded = try? JSONDecoder.recordingDecoder.decode(StreamRecording.self, from: data) else { return nil }
+                // A missing path also backfills a sidecar written before the field existed, and a
+                // retained-replay clip keeps its Application Support path.
+                return decoded.replacingStorageDirectoryPath(StreamScreenshotLibrary.healedStoragePath(
+                    stored: decoded.storageDirectoryPath,
                     sidecarDirectory: url.deletingLastPathComponent()
-                )
-                return recording
+                ))
             }
             .filter { FileManager.default.fileExists(atPath: $0.videoURL.path) }
             .sorted { $0.createdAt > $1.createdAt }

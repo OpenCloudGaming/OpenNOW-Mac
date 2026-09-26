@@ -39,7 +39,7 @@ struct OPNCaptureMigrationTests {
         }
 
         func migrate(moveItem: ((URL, URL) throws -> Void)? = nil) -> OPNCaptureMigration.Result {
-            OPNCaptureMigration.migrateIfNeeded(
+            OPNCaptureMigration.runMigration(
                 storage: storage,
                 legacyRoots: { self.legacy($0) },
                 destinations: { self.destination($0) },
@@ -83,7 +83,7 @@ struct OPNCaptureMigrationTests {
 
         let second = fixture.migrate()
         #expect(second.movedLibraries.isEmpty)
-        #expect(!second.ranMigration)
+        #expect(!second.isMigrationRun)
     }
 
     @Test func anExistingDestinationStopsTheMoveAndLeavesTheLegacyTreeAlone() throws {
@@ -188,6 +188,12 @@ struct OPNCaptureMigrationTests {
     }
 }
 
+/// Enumeration hands back `/private/var/...` for a `/var/...` root, so paths are canonicalised
+/// before a comparison.
+private func canonicalPath(_ path: String) -> String {
+    URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+}
+
 /// D2: an item resolves from where its sidecar was found once the stored path stops existing, so a
 /// folder move — ours or the reader's own in Finder — loses nothing.
 struct OPNCaptureItemResolutionTests {
@@ -200,7 +206,7 @@ struct OPNCaptureItemResolutionTests {
     @Test func aMissingStoredPathFallsBackToTheSidecarsDirectory() throws {
         let sidecarDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: sidecarDirectory) }
-        let resolved = StreamScreenshotLibrary.resolvedStorageDirectoryPath(
+        let resolved = StreamScreenshotLibrary.healedStoragePath(
             stored: "/definitely/not/here",
             sidecarDirectory: sidecarDirectory
         )
@@ -212,7 +218,7 @@ struct OPNCaptureItemResolutionTests {
         defer { try? FileManager.default.removeItem(at: outside) }
         let sidecarDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: sidecarDirectory) }
-        let resolved = StreamScreenshotLibrary.resolvedStorageDirectoryPath(
+        let resolved = StreamScreenshotLibrary.healedStoragePath(
             stored: outside.path,
             sidecarDirectory: sidecarDirectory
         )
@@ -244,8 +250,11 @@ struct OPNCaptureItemResolutionTests {
         try Data([1, 2, 3]).write(to: image)
 
         let loaded = try #require(StreamScreenshotLibrary.loadScreenshots().first { $0.id == id })
-        #expect(loaded.storageDirectoryPath == root.path)
-        #expect(loaded.imageURL.standardizedFileURL == image.standardizedFileURL)
+        // Enumeration hands back `/private/var/...` for a temporary-directory root, so both sides are
+        // canonicalised before comparing.
+        let loadedDirectory = try #require(loaded.storageDirectoryPath)
+        #expect(canonicalPath(loadedDirectory) == canonicalPath(root.path))
+        #expect(loaded.imageURL.resolvingSymlinksInPath() == image.resolvingSymlinksInPath())
     }
 
     @Test func aRecordingWithAStalePathStillLoadsFromItsSidecar() throws {
@@ -275,6 +284,7 @@ struct OPNCaptureItemResolutionTests {
         try Data([1, 2, 3]).write(to: video)
 
         let loaded = try #require(StreamRecordingLibrary.loadRecordings().first { $0.id == id })
-        #expect(loaded.storageDirectoryPath == directory.path)
+        let loadedDirectory = try #require(loaded.storageDirectoryPath)
+        #expect(canonicalPath(loadedDirectory) == canonicalPath(directory.path))
     }
 }

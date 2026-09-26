@@ -48,9 +48,9 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         OPNMainWindowCloseGuard.install()
         OPNDockIconController.install()
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
-        // Before the first sync pass: the mirror reads the screenshots root, and a launch that synced
-        // first would copy the legacy folder's contents into an empty new library.
-        let migration = OPNCaptureMigration.migrateIfNeeded()
+        // Before the first sync pass: a launch that synced first would copy the legacy folder's
+        // contents into an empty new library.
+        let migration = OPNCaptureMigration.runMigration()
         if !migration.movedLibraries.isEmpty || !migration.warnings.isEmpty {
             OPNLog.info(.app, "Capture library migration moved \(migration.movedLibraries.map(\.rawValue)) warnings=\(migration.warnings.count)")
         }
