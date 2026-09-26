@@ -65,11 +65,11 @@ struct RemoteCoOpGuestView: View {
     /// paper over. Kept anyway, by request: entry working is worth more than nothing. If the button
     /// does not respond, `⌃⌘F` or `Esc` are the way out.
     private func enableFullScreenOnHostingWindow() {
-        if let window = NSApp.keyWindow {
+        if let window = NSApplication.shared.keyWindow {
             configureForFullScreen(window)
         } else {
             DispatchQueue.main.async {
-                NSApp.keyWindow.map(configureForFullScreen)
+                NSApplication.shared.keyWindow.map(configureForFullScreen)
             }
         }
     }

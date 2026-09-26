@@ -312,6 +312,7 @@ extension CatalogViewModel {
         streamProgressGeneration += 1
         cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
+        ControllerMappingStore.shared.endSession()
         activeStreamProgress = nil
         isActiveStreamLaunchOverlayVisible = false
         clearLaunchFlow()
@@ -343,6 +344,7 @@ extension CatalogViewModel {
         let finishedConfiguration = activeStreamConfiguration
         cancelActiveStreamAdPlayback()
         activeStreamConfiguration = nil
+        ControllerMappingStore.shared.endSession()
         activeStreamProgress = nil
         activeDiscordPresence = nil
         discordPresence.update(.idle)
@@ -483,8 +485,21 @@ extension CatalogViewModel {
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         OPNSessionReadyAction.prepareAuthorizationIfNeeded()
         activeStreamConfiguration = configuration
+        let sessionGame = catalogGame(forApplicationID: configuration.applicationID)
+        ControllerMappingStore.shared.beginSession(
+            appId: configuration.applicationID,
+            catalogIdentity: sessionGame?.catalogIdentity,
+            title: sessionGame?.title
+        )
         sessionInsights = nil
         clearLaunchFlow()
+    }
+
+    /// The catalog game a launch app id belongs to, so the mapping store can key an override on the
+    /// game-level identity and record its title for a later resume to name.
+    func catalogGame(forApplicationID applicationID: String) -> OPNCatalogGameObject? {
+        guard !applicationID.isEmpty else { return nil }
+        return allKnownGames.first { Self.game($0, matchesApplicationID: applicationID) }
     }
 
     static func message(for error: Error) -> String {

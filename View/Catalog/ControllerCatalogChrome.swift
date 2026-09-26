@@ -303,7 +303,7 @@ struct ControllerKeyboardInputBridge: NSViewRepresentable {
         /// signature satisfies on its own — so every command except up/down was handed back to the
         /// responder chain and the arrows navigated nothing.
         @MainActor private static var isTextInputActive: Bool {
-            guard let responder = NSApp.keyWindow?.firstResponder else { return false }
+            guard let responder = NSApplication.shared.keyWindow?.firstResponder else { return false }
             if let textView = responder as? NSTextView { return textView.isEditable }
             return responder is NSTextField
         }

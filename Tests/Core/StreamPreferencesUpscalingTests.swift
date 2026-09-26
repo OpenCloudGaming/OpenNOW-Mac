@@ -91,61 +91,59 @@ import Testing
         }
     }
 
-    @Test func legacyWebRTCPreferencesPreserveSettingsForNVSTLaunches() async throws {
-        try await streamPreferencesTestIsolationLock.withLock {
-            let legacyTransportKey = "OpenNOW.Stream.TransportModeIndex"
-            let legacyNoticeKey = "OpenNOW.Stream.LegacyTransportNoticeDismissed"
-            let keys = OPNStreamPreferences.streamingProfileKeys + [
-                legacyTransportKey,
-                legacyNoticeKey,
-                gameProfilesKey,
-                steamBigPictureModeKey,
-                OPNStreamPreferences.Keys.selectedRegionUrl,
-                OPNStreamPreferences.Keys.persistInGameSettings
-            ]
-            try withPreservedPreferences(keys) {
-                for key in keys { removePreferenceValue(key) }
-                OPNStreamPreferences.saveRecordingMode(.off)
-                OPNStreamPreferences.saveAspectIndex(0)
-                OPNStreamPreferences.saveResolutionIndex(3)
-                OPNStreamPreferences.saveBitrateIndex(3)
-                OPNStreamPreferences.saveGameVolume(0.6)
-                OPNStreamPreferences.saveMicrophoneVolume(0.4)
-                OPNStreamPreferences.saveSteamBigPictureMode(true)
-                OPNStreamPreferences.saveUpscalingSettings(mode: 2, sharpness: 7, denoise: 3)
-                let globalProfile = OPNStreamPreferences.loadProfile()
-                let appId = "123"
-                var gameProfile = globalProfile
-                gameProfile.upscalingModeIndex = 1
-                gameProfile.upscalingMode = 3
-                gameProfile.upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[1]
-                gameProfile.upscalingSharpness = 12
-                gameProfile.pillarboxFillDim = 80
-                gameProfile.gameVolume = 0.3
-                OPNStreamPreferences.saveProfile(forGame: appId, profile: gameProfile)
-                let expectedLaunchProfile = OPNStreamPreferences.launchProfile(forGame: appId, capabilities: OPNStreamDeviceCapabilities())
-                let storage = OPNAppPreferenceStorage.standard
-                var storedGameProfile = try #require(storage.dictionary(forKey: gameProfilesKey)?[appId] as? [String: Any])
-                storedGameProfile[legacyTransportKey] = 0
-                storage.set([appId: storedGameProfile], forKey: gameProfilesKey)
-                storage.set(0, forKey: legacyTransportKey)
-                storage.set(true, forKey: legacyNoticeKey)
+    @Test func legacyWebRTCPreferencesPreserveSettingsForNVSTLaunches() throws {
+        let legacyTransportKey = "OpenNOW.Stream.TransportModeIndex"
+        let legacyNoticeKey = "OpenNOW.Stream.LegacyTransportNoticeDismissed"
+        let keys = OPNStreamPreferences.streamingProfileKeys + [
+            legacyTransportKey,
+            legacyNoticeKey,
+            gameProfilesKey,
+            steamBigPictureModeKey,
+            OPNStreamPreferences.Keys.selectedRegionUrl,
+            OPNStreamPreferences.Keys.persistInGameSettings
+        ]
+        try withPreservedPreferences(keys) {
+            for key in keys { removePreferenceValue(key) }
+            OPNStreamPreferences.saveRecordingMode(.off)
+            OPNStreamPreferences.saveAspectIndex(0)
+            OPNStreamPreferences.saveResolutionIndex(3)
+            OPNStreamPreferences.saveBitrateIndex(3)
+            OPNStreamPreferences.saveGameVolume(0.6)
+            OPNStreamPreferences.saveMicrophoneVolume(0.4)
+            OPNStreamPreferences.saveSteamBigPictureMode(true)
+            OPNStreamPreferences.saveUpscalingSettings(mode: 2, sharpness: 7, denoise: 3)
+            let globalProfile = OPNStreamPreferences.loadProfile()
+            let appId = "123"
+            var gameProfile = globalProfile
+            gameProfile.upscalingModeIndex = 1
+            gameProfile.upscalingMode = 3
+            gameProfile.upscalingModeOption = OPNStreamPreferences.upscalingModeOptions[1]
+            gameProfile.upscalingSharpness = 12
+            gameProfile.pillarboxFillDim = 80
+            gameProfile.gameVolume = 0.3
+            OPNStreamPreferences.saveProfile(forGame: appId, profile: gameProfile)
+            let expectedLaunchProfile = OPNStreamPreferences.launchProfile(forGame: appId, capabilities: OPNStreamDeviceCapabilities())
+            let storage = OPNAppPreferenceStorage.standard
+            var storedGameProfile = try #require(storage.dictionary(forKey: gameProfilesKey)?[appId] as? [String: Any])
+            storedGameProfile[legacyTransportKey] = 0
+            storage.set([appId: storedGameProfile], forKey: gameProfilesKey)
+            storage.set(0, forKey: legacyTransportKey)
+            storage.set(true, forKey: legacyNoticeKey)
 
-                let loadedGlobalProfile = OPNStreamPreferences.loadProfile()
-                let loadedGameProfile = try #require(OPNStreamPreferences.loadProfile(forGame: appId))
-                let launchProfile = OPNStreamPreferences.launchProfile(forGame: appId, capabilities: OPNStreamDeviceCapabilities())
+            let loadedGlobalProfile = OPNStreamPreferences.loadProfile()
+            let loadedGameProfile = try #require(OPNStreamPreferences.loadProfile(forGame: appId))
+            let launchProfile = OPNStreamPreferences.launchProfile(forGame: appId, capabilities: OPNStreamDeviceCapabilities())
 
-                #expect(loadedGlobalProfile == globalProfile)
-                #expect(loadedGameProfile == gameProfile)
-                #expect(launchProfile == expectedLaunchProfile)
-                for profile in [loadedGlobalProfile, loadedGameProfile, launchProfile] {
-                    try expectNVSTRequestPreservesProfile(profile)
-                }
-                OPNStreamPreferences.saveProfile(forGame: appId, profile: loadedGameProfile)
-                let savedGameProfile = try #require(storage.dictionary(forKey: gameProfilesKey)?[appId] as? [String: Any])
-                #expect(savedGameProfile[legacyTransportKey] == nil)
-                #expect(OPNStreamPreferences.loadProfile(forGame: appId) == gameProfile)
+            #expect(loadedGlobalProfile == globalProfile)
+            #expect(loadedGameProfile == gameProfile)
+            #expect(launchProfile == expectedLaunchProfile)
+            for profile in [loadedGlobalProfile, loadedGameProfile, launchProfile] {
+                try expectNVSTRequestPreservesProfile(profile)
             }
+            OPNStreamPreferences.saveProfile(forGame: appId, profile: loadedGameProfile)
+            let savedGameProfile = try #require(storage.dictionary(forKey: gameProfilesKey)?[appId] as? [String: Any])
+            #expect(savedGameProfile[legacyTransportKey] == nil)
+            #expect(OPNStreamPreferences.loadProfile(forGame: appId) == gameProfile)
         }
     }
 

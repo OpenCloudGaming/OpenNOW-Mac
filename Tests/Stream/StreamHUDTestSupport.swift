@@ -4,32 +4,36 @@ import Foundation
 /// Restores every persisted HUD preference around a test, so a test that rearranges, hides, folds,
 /// or toggles the clock cannot leak into the next one through `UserDefaults`.
 func withPreservedHUDSettings(_ body: () -> Void) {
-    let defaults = UserDefaults.standard
-    let keys = [
-        OPNStreamHUDSettings.collapsedSectionsKey,
-        OPNStreamHUDSettings.sectionOrderKey,
-        OPNStreamHUDSettings.hiddenSectionsKey,
-        OPNStreamHUDSettings.clockVisibleKey,
-    ]
-    let existing = keys.map { ($0, defaults.object(forKey: $0)) }
-    defer {
-        for (key, value) in existing {
-            if let value {
+    withExclusivePreferenceDomain {
+        let defaults = UserDefaults.standard
+        let keys = [
+            OPNStreamHUDSettings.collapsedSectionsKey,
+            OPNStreamHUDSettings.sectionOrderKey,
+            OPNStreamHUDSettings.hiddenSectionsKey,
+            OPNStreamHUDSettings.clockVisibleKey,
+        ]
+        let existing = keys.map { ($0, defaults.object(forKey: $0)) }
+        defer {
+            for (key, value) in existing {
+                guard let value else {
+                    defaults.removeObject(forKey: key)
+                    continue
+                }
                 defaults.set(value, forKey: key)
-            } else {
-                defaults.removeObject(forKey: key)
             }
         }
+        body()
     }
-    body()
 }
 
 /// Restores the persisted microphone mode around a test, so a mode one test applies cannot leak into
 /// the next one through `UserDefaults`. Restored through the same validated setter Settings uses.
 func withPreservedMicrophoneMode(_ body: () -> Void) {
-    let previousMode = OPNStreamPreferences.loadProfile().microphoneMode
-    defer { OPNStreamPreferences.saveMicrophoneMode(previousMode) }
-    body()
+    withExclusivePreferenceDomain {
+        let previousMode = OPNStreamPreferences.loadProfile().microphoneMode
+        defer { OPNStreamPreferences.saveMicrophoneMode(previousMode) }
+        body()
+    }
 }
 
 struct StubNativeNVSTSessionProvider: NativeNVSTSessionProvider {

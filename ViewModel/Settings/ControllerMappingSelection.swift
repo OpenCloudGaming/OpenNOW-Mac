@@ -1,19 +1,15 @@
 import Foundation
 
+/// What the mapping sheet edits. Bounded to controller types: resolution is keyed on type × game.
 enum ControllerMappingSelection: Equatable {
     case none
-    case steamDefaults
-    case device(InputDeviceID)
+    case family(ControllerFamily)
 
+    /// Any family is editable while a pad is connected, so a type's default can be prepared before
+    /// that pad arrives; with nothing connected the sheet shows its disconnected message instead.
     func resolved(devices: [ControllerMappingDevice]) -> Self {
-        guard let first = devices.first else { return .none }
-        switch self {
-        case .steamDefaults where devices.contains(where: { $0.family == .steam }):
-            return .steamDefaults
-        case .device(let id) where devices.contains(where: { $0.id == id }):
-            return self
-        default:
-            return .device(first.id)
-        }
+        guard let firstDevice = devices.first else { return .none }
+        guard case .family = self else { return .family(firstDevice.family) }
+        return self
     }
 }
