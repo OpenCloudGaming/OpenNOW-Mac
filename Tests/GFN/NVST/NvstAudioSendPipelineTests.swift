@@ -132,4 +132,52 @@ import Testing
         #expect(sender.push(capturedPCM: Array(tone().suffix(240))).isEmpty)
         #expect(sender.snapshot.framesEncoded == 0)
     }
+
+    /// A microphone device swap changes what feeds this pipeline and nothing about the pipeline. The
+    /// contract was fixed at ANNOUNCE — SSRC 1, payload type 111, 10 ms frames — and the sequence
+    /// must stay contiguous across the swap, because the seat has already seen the numbers before it
+    /// and a reset would look like a stale talkspurt rather than a new device.
+    @Test func aCaptureDeviceSwapKeepsTheSequenceContiguousAndNeverResetsThePipeline() throws {
+        let directions = try makeDirections()
+        let sender = try NvstAudioSendPipeline(srtp: directions.outbound, framesPerPacket: Self.framesPerPacket, initialSequenceNumber: 4000, initialTimestamp: 96_000)
+        let receiver = try NvstAudioReceivePipeline(srtp: directions.inbound, framesPerPacket: Self.framesPerPacket)
+
+        // A second "device" at a different pitch, so the far end hears the swap rather than a
+        // continuous tone that could have come from either microphone.
+        var otherTone = tone()
+        for frame in 0..<Self.framesPerPacket {
+            let value = Float(sin(2.0 * Double.pi * 880.0 * Double(frame) / 48_000.0)) * 0.5
+            otherTone[frame * 2] = value
+            otherTone[frame * 2 + 1] = value
+        }
+
+        var sequences: [UInt16] = []
+        func push(_ samples: [Float]) throws {
+            for datagram in sender.push(capturedPCM: samples) {
+                let packet = try #require(NvstAudioRtpPacket.parse(datagram, tagLength: directions.outbound.authenticationTagLength))
+                sequences.append(packet.sequenceNumber)
+                #expect(packet.ssrc == 1)
+                #expect(packet.payloadType == 111)
+                receiver.ingest(datagram)
+            }
+        }
+        for _ in 0..<4 { try push(tone()) }
+        let swapIndex = sequences.count
+        for _ in 0..<4 { try push(otherTone) }
+
+        #expect(swapIndex > 0)
+        #expect(sequences.count > swapIndex + 1)
+        for index in 1..<sequences.count {
+            #expect(sequences[index] == sequences[index - 1] &+ 1,
+                    "sequence jumped from \(sequences[index - 1]) to \(sequences[index]) across the device swap")
+        }
+        // The RTP clock kept its grid too: a swap must not restamp the next packet.
+        let elapsedFrames = UInt32(sequences.count) * UInt32(Self.framesPerPacket)
+        #expect(sender.timestamp == 96_000 + elapsedFrames)
+        var pcm = receiver.pull()
+        pcm += receiver.flush()
+        #expect((pcm.map { abs($0) }.max() ?? 0) > 0.1, "nothing audible survived the swap")
+        #expect(receiver.snapshot.authenticationFailures == 0)
+        #expect(sender.snapshot.encodeFailures == 0)
+    }
 }
