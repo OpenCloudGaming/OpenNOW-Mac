@@ -525,15 +525,6 @@ private struct ControllerGamesPage: View {
                             )
                         }
 
-                        if viewModel.isStreamRunning {
-                            VendorRunningStreamHomeBanner(
-                                title: viewModel.runningStreamTitle,
-                                availableWidth: layout.contentWidth,
-                                onFocus: { OPNStreamWindowPresenter.shared.focus() },
-                                onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
-                            )
-                        }
-
                         ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections), height: layout.heroHeight)
                             .frame(width: layout.contentWidth)
                             .padding(.top, (layout.compactHeight ? 10 : 14) * uiScale)
@@ -562,6 +553,17 @@ private struct ControllerGamesPage: View {
                         }
                     }
                     .padding(.bottom, 46 * uiScale)
+                }
+                // Sticky, not scrolled - same as the mouse catalog's banner.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if viewModel.isStreamRunning {
+                        VendorRunningStreamHomeBanner(
+                            title: viewModel.runningStreamTitle,
+                            availableWidth: layout.contentWidth,
+                            onFocus: { OPNStreamWindowPresenter.shared.focus() },
+                            onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
+                        )
+                    }
                 }
                 .onChange(of: selectedRailIndex) { _, index in
                     guard sections.indices.contains(index) else { return }

@@ -863,7 +863,11 @@ PiP; pressing the PiP tile while full screen leaves full screen first, then ente
 What the catalog shows while a stream runs in its own window. The catalog window stays mounted for
 the whole session, so without this the app has a live game and a page that looks idle.
 
-- **Banner.** The active-session banner's slot, chrome and control (`VendorActiveSessionBannerButtonStyle`):
+- **Banner.** Pinned with a top `safeAreaInset` on the page's scroll view, so it stays visible
+while the page scrolls — the one fact that holds for the whole session, needed most when the user
+has scrolled down to the rails. A pinned `Section` header would require a `LazyVStack`, which the
+home page deliberately avoids. Chrome and control are the active-session banner's
+(`VendorActiveSessionBannerButtonStyle`):
 `OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline along the bottom,
 `CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a 10pt bold accent
 eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold with the stream's own
