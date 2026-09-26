@@ -167,26 +167,18 @@ extension NativeNVSTMediaStreamSurface {
     /// costs the others nothing. "Session default" is a distinct choice from the preset that happens
     /// to match it today: a guest left on it follows later changes to the session setting.
     func nativeHUDRemoteCoOpQualityMenu(_ participant: OPNRemoteCoOpParticipant) -> some View {
-        OPNDropdownMenu(
-            items: [
-                OPNDropdownItem(
-                    id: "session-default",
-                    title: "Session Default",
-                    isSelected: participant.qualityPreset == nil,
-                    action: { model.setRemoteCoOpParticipantQualityPreset(nil, for: participant.id) }
-                )
-            ] + OPNRemoteCoOpQualityPreset.allCases.map { preset in
-                OPNDropdownItem(
-                    id: preset.label,
-                    title: preset.label,
-                    isSelected: participant.qualityPreset == preset,
-                    action: { model.setRemoteCoOpParticipantQualityPreset(preset, for: participant.id) }
-                )
-            },
+        let focusID = Self.remoteCoOpQualityFocusID(for: participant)
+        // The rows come from the model, not from this view: a pad has to be able to walk and commit
+        // them before anything is drawn, and one definition keeps the pointer and the pad selecting
+        // the same thing.
+        return OPNDropdownMenu(
+            items: model.padDropdownItems(focusID).map(\.dropdownItem),
             // The sidebar's right edge is the video: open into the sidebar, not over the game. Capped
             // so the full preset list scrolls instead of running the height of the HUD.
             visibleItemCount: 6,
-            opensLeftByDefault: true
+            opensLeftByDefault: true,
+            isFocused: model.hudFocusID == focusID,
+            padDriver: model.padDropdown(id: focusID)
         ) {
             HStack(spacing: 4) {
                 Text(participant.qualityPreset?.label ?? "Auto")
@@ -201,5 +193,11 @@ extension NativeNVSTMediaStreamSurface {
             .contentShape(Rectangle())
         }
         .help("Stream quality for this guest")
+    }
+
+    /// The pad focus identity of a guest's quality dropdown, built the same way the model builds it
+    /// so the entry and the menu cannot drift apart.
+    static func remoteCoOpQualityFocusID(for participant: OPNRemoteCoOpParticipant) -> String {
+        NativeNVSTHostViewModel.remoteCoOpQualityDropdownPrefix + participant.id.uuidString
     }
 }

@@ -80,15 +80,29 @@ extension NativeNVSTHostViewModel {
         guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
         case .move(let direction):
-            moveHUDFocus(direction)
+            // An open dropdown owns the pad: every direction walks its rows, so a horizontal stick
+            // nudge does not silently close a panel the user just opened. Focus stays on the trigger,
+            // which is what makes cancel land back on it.
+            if isHUDDropdownOpen {
+                moveHUDDropdownHighlight(step: direction.linearStep)
+            } else {
+                moveHUDFocus(direction)
+            }
         case .activate:
-            StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
+            if isHUDDropdownOpen {
+                commitHUDDropdownHighlight()
+            } else {
+                StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
+            }
         case .back:
-            setUnifiedHUDVisible(false)
+            // Back leaves the panel first and only then the HUD; closing both at once is how a user
+            // who mistook a long list for the end of the HUD loses the stream overlay entirely.
+            if isHUDDropdownOpen { closeHUDDropdown() } else { setUnifiedHUDVisible(false) }
         }
     }
 
     func moveHUDFocus(_ direction: StreamHUDFocusDirection) {
+        guard !isHUDDropdownOpen else { return }
         guard let next = StreamHUDFocusEntry.focusID(from: hudFocusID, direction: direction, in: hudFocusEntries) else { return }
         hudFocusID = next
     }
@@ -288,6 +302,9 @@ extension NativeNVSTHostViewModel {
     func cancelNativeShortcutTasks() {
         microphoneUpdateTask?.cancel()
         microphoneUpdateTask = nil
+        pendingMicrophoneDeviceChanges.removeAll()
+        microphonePendingDeviceID = nil
+        closeHUDDropdown()
         antiAFKMouseMovementTask?.cancel()
         antiAFKMouseMovementTask = nil
         transientStreamMessageTask?.cancel()
@@ -341,8 +358,14 @@ extension NativeNVSTHostViewModel {
     func setUnifiedHUDVisible(_ visible: Bool) {
         guard isConnected, !streamControlsVisible else { return }
         hudGamepadTracker.reset()
+        closeHUDDropdown()
         if visible {
             if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
+            // Asked again on every open: the seat's answer is only known once its DESCRIBE offer has
+            // been seen, so a session that was still negotiating when it launched can answer now.
+            refreshMicrophoneTransportAvailability()
+            // Hot-plug: a microphone connected since the HUD was last open is a row now.
+            refreshMicrophoneDeviceOptions()
             // Read before the input drop: dropping remote input releases the pointer, and the
             // release is the one place that forgets the override. Without this the HUD silently
             // ended a capture the player took by hand, and closing it again left the pointer free.
