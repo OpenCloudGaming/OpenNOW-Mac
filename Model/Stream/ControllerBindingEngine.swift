@@ -2,7 +2,10 @@ import Foundation
 
 public struct ControllerBindingResult: Sendable {
     public var events: [UserInputEvent] = []
-    public var nextReapplyDelay: Duration?
+    public var nextReapplyDelay: Duration? = nil
+    /// App actions a binding asked for. They are not `UserInputEvent`s because they never go on the
+    /// wire — the caller performs them locally instead.
+    public var commands: [KeybindingAction] = []
 }
 
 /// Turns a raw `ControllerInputSnapshot` into the events the stream actually sees,
@@ -106,7 +109,7 @@ public struct ControllerBindingEngine: Sendable {
             timestamp: timestamp
         )))
 
-        return ControllerBindingResult(events: pass.events, nextReapplyDelay: pass.nextReapplyDelay)
+        return ControllerBindingResult(events: pass.events, nextReapplyDelay: pass.nextReapplyDelay, commands: pass.commands)
     }
 
     /// What one discrete pass accumulates while walking the controls.
@@ -118,6 +121,7 @@ public struct ControllerBindingEngine: Sendable {
         var events: [UserInputEvent] = []
         var keys: [UInt16: KeyboardModifiers] = [:]
         var mouseButtons: Set<MouseButton> = []
+        var commands: [KeybindingAction] = []
     }
 
     /// Folds one control's binding into the pass.
@@ -151,7 +155,23 @@ public struct ControllerBindingEngine: Sendable {
         case .mouseScroll(let delta):
             guard isActive, !wasActive else { return }
             pass.events.append(.mouse(.wheel(deviceID: deviceID, delta: delta, timestamp: timestamp)))
+
+        case .streamCommand(let action):
+            apply(streamCommand: action, control: control, isActive: isActive, wasActive: wasActive, into: &pass)
         }
+    }
+
+    /// The guide button's command is resolved ahead of the engine so a tap can close the HUD it
+    /// opened; see `NativeGamepadMonitor.guideBinding(for:)`. Every other control fires its command
+    /// here, which also keeps HUD navigation collision-free: remote input is off while the HUD is
+    /// open, so no binding reaches this method then.
+    private func apply(streamCommand action: KeybindingAction,
+                       control: ControllerControl,
+                       isActive: Bool,
+                       wasActive: Bool,
+                       into pass: inout DiscretePass) {
+        guard control != .guide, isActive, !wasActive else { return }
+        pass.commands.append(action)
     }
 
     /// A chord's modifiers go down first; the action buttons follow only once the modifier lead

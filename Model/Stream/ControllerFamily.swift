@@ -28,6 +28,13 @@ public enum ControllerFamily: String, Codable, CaseIterable, Identifiable, Senda
     }
 
     public func label(for control: ControllerControl) -> String {
+        if control == .guide {
+            switch self {
+            case .steam: return "Steam"
+            case .generic: return "Guide"
+            case .dualShock4: return "PS"
+            }
+        }
         guard self == .dualShock4 else { return control.label }
         switch control {
         case .faceA: return "×"

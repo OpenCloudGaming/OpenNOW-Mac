@@ -94,6 +94,7 @@ public final class NativeGamepadMonitor {
         }
     }
     private var chordTracker = StreamOSKChordTracker()
+    private var guideTapTracker = SteamGuideTapTracker()
     private var onScreenKeyboardCapturedDevices: Set<InputDeviceID> = []
     private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
     /// Pending "motors off" for each Steam Controller currently rumbling.
@@ -105,6 +106,9 @@ public final class NativeGamepadMonitor {
     /// Steam+X toggles the on-screen keyboard. Fired for every Steam Controller
     /// report, including while the keyboard captures the device.
     public var onChordCommand: ((StreamOSKChordCommand) -> Void)?
+    /// An app action a binding asked for. Delivered outside the wire path on purpose: a command
+    /// must not be dropped by the gate that suppresses keyboard and mouse while mappings are off.
+    public var onStreamCommand: ((KeybindingAction) -> Void)?
     /// Returning true hands the raw snapshot to the on-screen keyboard instead of
     /// the binding engine. The keyboard also owns button navigation while active.
     public var onScreenKeyboardCapture: ((InputDeviceID, ControllerInputSnapshot) -> Bool)?
@@ -227,6 +231,7 @@ public final class NativeGamepadMonitor {
         reapplyTasks.removeAll()
         releaseSteamBindings()
         chordTracker.reset()
+        guideTapTracker.reset()
         onScreenKeyboardCapturedDevices.removeAll()
         if !localCursorModeHeld.isEmpty {
             localCursorModeHeld.removeAll()
@@ -341,6 +346,7 @@ public final class NativeGamepadMonitor {
         }
         for deviceID in previousSteamSlots.keys where newSteamSlots[deviceID] == nil {
             chordTracker.removeDevice(deviceID)
+            guideTapTracker.removeDevice(deviceID)
             onScreenKeyboardCapturedDevices.remove(deviceID)
         }
         let staleCursorDeviceIDs = localCursorModeHeld.filter { newSteamSlots[$0] == nil }
@@ -384,7 +390,9 @@ public final class NativeGamepadMonitor {
                 self.pollState.pendingEvents.append(contentsOf: events)
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    let commands = self.pollingQueue.sync { self.pollState.takePendingCommands() }
                     let pending = self.pollingQueue.sync { self.pollState.takePendingEvents() }
+                    for command in commands { self.onStreamCommand?(command) }
                     for event in pending { self.emitInputEvent(event) }
                 }
             }, onBatteryChange: { [weak self] changes in
@@ -422,6 +430,12 @@ public final class NativeGamepadMonitor {
         if let command = chord.command {
             onChordCommand?(command)
         }
+        // The guide tap is resolved ahead of the binding engine so the same button can close the
+        // HUD it opened: opening the HUD turns remote input off, which suspends every mapping.
+        if guideTapTracker.process(snapshot: snapshot, deviceID: deviceID),
+           case .streamCommand(let action) = guideBinding(for: .steam) {
+            onStreamCommand?(action)
+        }
         if onScreenKeyboardCapture?(deviceID, snapshot) == true {
             if onScreenKeyboardCapturedDevices.insert(deviceID).inserted {
                 applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: ControllerInputSnapshot(), includePointerMotion: true)
@@ -445,6 +459,13 @@ public final class NativeGamepadMonitor {
         if localCursorModeHeld.remove(deviceID) != nil {
             SteamControllerLocalCursorInjector.shared.reset()
         }
+    }
+
+    /// The guide binding for a controller type, defaulted when no profile exists or the profile
+    /// predates the guide button. Deliberately independent of `mappingsEnabled`: the guide is the
+    /// one binding that has to resolve while a local overlay owns the pad.
+    func guideBinding(for family: ControllerFamily) -> ControllerBindingTarget {
+        mappingProvider.profile(for: family)?.binding(for: .guide) ?? ControllerMappingProfile.guideDefault
     }
 
     private func applyNativeBatteryChanges(_ changes: [ControllerBatteryInfo]) {

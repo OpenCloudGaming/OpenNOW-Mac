@@ -51,13 +51,14 @@ struct ControllerMappingView: View {
     }
 
     enum BindingKind: String, CaseIterable, Identifiable {
-        case gamepad, keyboard, mouse, off
+        case gamepad, keyboard, mouse, actions, off
         var id: String { rawValue }
         var label: String {
             switch self {
             case .gamepad: "Gamepad"
             case .keyboard: "Keyboard"
             case .mouse: "Mouse"
+            case .actions: "HUD & Actions"
             case .off: "Off"
             }
         }
@@ -385,6 +386,8 @@ struct ControllerMappingView: View {
                             draft?.bindings[control] = .disabled
                         case .gamepad:
                             if committedKind != .gamepad { draft?.bindings[control] = .passthroughButton }
+                        case .actions:
+                            if committedKind != .actions { draft?.bindings[control] = ControllerMappingProfile.guideDefault }
                         case .keyboard, .mouse:
                             break // wait for the recorder / chip picker below to commit a concrete value
                         }
@@ -397,6 +400,8 @@ struct ControllerMappingView: View {
                         keyboardEditor(control: control, target: target)
                     case .mouse:
                         mouseEditor(control: control, target: target)
+                    case .actions:
+                        actionsEditor(control: control, target: target)
                     case .off:
                         EmptyView()
                     }
@@ -431,6 +436,7 @@ struct ControllerMappingView: View {
         case .passthroughButton, .gamepadChord: .gamepad
         case .keyboardKey: .keyboard
         case .mouseButton, .mouseScroll: .mouse
+        case .streamCommand: .actions
         case .disabled: .off
         }
     }

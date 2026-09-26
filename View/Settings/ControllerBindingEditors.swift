@@ -80,6 +80,32 @@ extension ControllerMappingView {
         }
     }
 
+    // MARK: - HUD & actions editor
+
+    /// The app actions a pad can fire. Sourced from `KeybindingAction.controllerBindingActions`
+    /// (the stream section), so the list cannot name a session-ending or catalog-only action, and
+    /// the copy matches the Shortcuts page exactly.
+    func actionsEditor(control: ControllerControl, target: ControllerBindingTarget) -> some View {
+        let current: KeybindingAction? = {
+            if case .streamCommand(let action) = target { return action }
+            return nil
+        }()
+        return VStack(alignment: .leading, spacing: 6 * uiScale) {
+            ForEach(KeybindingAction.controllerBindingActions) { action in
+                SteamControllerChip(
+                    label: action.title,
+                    isSelected: current == action,
+                    height: 30,
+                    alignment: .leading,
+                    uiScale: uiScale
+                ) {
+                    draft?.bindings[control] = .streamCommand(action)
+                }
+                .help(action.subtitle)
+            }
+        }
+    }
+
     // MARK: - Pad/stick behavior section
 
     enum PadSettingsKind {
