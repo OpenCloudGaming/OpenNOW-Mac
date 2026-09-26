@@ -11,12 +11,8 @@ struct OPNDropdownItem: Identifiable {
     let action: () -> Void
 }
 
-/// One row of a pad-drivable dropdown, owned by the model rather than the view.
-///
-/// A controller handler has to walk and commit rows before anything is drawn — the pad's confirm is
-/// what opens the panel in the first place — so the rows have to exist outside the view tree. The
-/// HUD's dropdowns build their `OPNDropdownItem`s from these, which keeps one definition of "which
-/// rows, in which order, doing what" for the pointer and the pad.
+/// One row of a pad-drivable dropdown, owned by the model rather than the view: a pad walks and
+/// commits rows before anything is drawn, so they cannot live in the view tree alone.
 struct OPNDropdownPadItem {
     let id: String
     let title: String
@@ -37,11 +33,8 @@ struct OPNDropdownPadItem {
     }
 }
 
-/// Lets a pad-driven host own a dropdown's open state and highlighted row.
-///
-/// The host changes these values and the menu renders them, which is what lets the panel be opened,
-/// walked and committed without a pointer. A menu with no driver behaves exactly as it did before:
-/// pointer-only, with its own internal open state.
+/// Lets a pad-driven host own a dropdown's open state and highlighted row. A menu with no driver is
+/// pointer-only, exactly as it was before, with its own internal open state.
 struct OPNDropdownPadDriver {
     /// Whether the panel is drawn.
     let isPresented: Bool
@@ -147,9 +140,9 @@ struct OPNDropdownPanel: View {
     }
 
     private func scroll(_ proxy: ScrollViewProxy) {
-        guard highlightedItemID != nil else { return }
-        // No animation: the pad's row must be in place before the next press, not easing toward it.
-        if let id = highlightedItemID { proxy.scrollTo(id, anchor: .center) }
+        guard let highlightedItemID else { return }
+        // No animation: the row must be in place before the next press, not easing toward it.
+        proxy.scrollTo(highlightedItemID, anchor: .center)
     }
 
     private var rows: some View {
@@ -205,14 +198,7 @@ struct OPNDropdownMenu<Label: View>: View {
     }
 
     var body: some View {
-        Button {
-            if let padDriver {
-                padDriver.toggle()
-            } else {
-                spaceProbe.refresh()
-                isPresented.toggle()
-            }
-        } label: { label() }
+        Button(action: toggle) { label() }
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .overlay {
@@ -251,9 +237,22 @@ struct OPNDropdownMenu<Label: View>: View {
         .zIndex(isOpen ? 1 : 0)
     }
 
+    private func toggle() {
+        guard let padDriver else {
+            spaceProbe.refresh()
+            isPresented.toggle()
+            return
+        }
+        padDriver.toggle()
+    }
+
     /// Closes without selecting, through whichever owner holds the open state.
     private func dismiss() {
-        if let padDriver { padDriver.close() } else { close() }
+        guard let padDriver else {
+            close()
+            return
+        }
+        padDriver.close()
     }
 
     private var anchorSpacing: CGFloat {

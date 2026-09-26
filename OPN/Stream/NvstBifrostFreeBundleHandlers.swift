@@ -1,9 +1,8 @@
 import Foundation
 
 extension NvstBifrostFreeTransport {
-    /// The live meter and the "your microphone went away" notice. Both originate on the CoreAudio
-    /// render thread, so both hop to the main actor before reaching the HUD; the level is throttled to
-    /// 20 Hz at the device, not here.
+    /// The live meter and the "your microphone went away" notice. Both originate on the render thread,
+    /// so both hop to the main actor; the level is throttled to 20 Hz at the device.
     func installMicrophoneHandlers(_ bundle: NvstNativeBundle) {
         bundle.onMicrophoneLevel = { [weak self] level in
             Task {

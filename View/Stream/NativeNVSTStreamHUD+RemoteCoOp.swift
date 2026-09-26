@@ -168,9 +168,8 @@ extension NativeNVSTMediaStreamSurface {
     /// to match it today: a guest left on it follows later changes to the session setting.
     func nativeHUDRemoteCoOpQualityMenu(_ participant: OPNRemoteCoOpParticipant) -> some View {
         let focusID = Self.remoteCoOpQualityFocusID(for: participant)
-        // The rows come from the model, not from this view: a pad has to be able to walk and commit
-        // them before anything is drawn, and one definition keeps the pointer and the pad selecting
-        // the same thing.
+        // Rows come from the model: a pad walks and commits them before anything is drawn, and one
+        // definition keeps the pointer and the pad selecting the same thing.
         return OPNDropdownMenu(
             items: model.padDropdownItems(focusID).map(\.dropdownItem),
             // The sidebar's right edge is the video: open into the sidebar, not over the game. Capped
@@ -178,7 +177,7 @@ extension NativeNVSTMediaStreamSurface {
             visibleItemCount: 6,
             opensLeftByDefault: true,
             isFocused: model.hudFocusID == focusID,
-            padDriver: model.padDropdown(id: focusID)
+            padDriver: model.padDropdown(dropdownID: focusID)
         ) {
             HStack(spacing: 4) {
                 Text(participant.qualityPreset?.label ?? "Auto")

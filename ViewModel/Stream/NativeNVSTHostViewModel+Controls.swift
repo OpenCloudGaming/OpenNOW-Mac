@@ -80,9 +80,8 @@ extension NativeNVSTHostViewModel {
         guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
         case .move(let direction):
-            // An open dropdown owns the pad: every direction walks its rows, so a horizontal stick
-            // nudge does not silently close a panel the user just opened. Focus stays on the trigger,
-            // which is what makes cancel land back on it.
+            // An open dropdown owns the pad: every direction walks its rows, and focus stays on the
+            // trigger so cancel lands back on it.
             if isHUDDropdownOpen {
                 moveHUDDropdownHighlight(step: direction.linearStep)
             } else {
@@ -302,8 +301,8 @@ extension NativeNVSTHostViewModel {
     func cancelNativeShortcutTasks() {
         microphoneUpdateTask?.cancel()
         microphoneUpdateTask = nil
-        pendingMicrophoneDeviceChanges.removeAll()
-        microphonePendingDeviceID = nil
+        pendingMicrophoneDeviceUIDs.removeAll()
+        microphonePendingDeviceUID = nil
         closeHUDDropdown()
         antiAFKMouseMovementTask?.cancel()
         antiAFKMouseMovementTask = nil

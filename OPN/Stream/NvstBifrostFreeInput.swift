@@ -480,9 +480,8 @@ extension NvstBifrostFreeTransport {
         logger?("NVST microphone \(enabled ? "enabled" : "disabled")")
     }
 
-    /// Swaps the capture device on the live session. The bundle rebuilds only its capture AudioUnit;
-    /// the send pipeline and the ANNOUNCE'd contract are untouched, so nothing the seat can observe
-    /// changes except where the sound comes from.
+    /// Swaps the capture device on the live session. The bundle rebuilds only its capture AudioUnit,
+    /// so nothing the seat can observe changes except where the sound comes from.
     public func setMicrophoneDevice(_ uid: String) async throws {
         guard let bundle else { throw NativeNVSTError.notRunning }
         guard microphoneNegotiated else {

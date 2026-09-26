@@ -178,54 +178,57 @@ extension NativeNVSTMediaStreamSurface {
             nativeHUDTileGrid(tiles)
             // Below the tiles: a full-width row of its own, because it changes a setting rather than
             // toggling a state, and the pad reads it as the row it draws as.
+            microphoneDeviceUnavailableNotice
             nativeHUDMicrophoneDeviceRow
             nativeHUDMicrophoneLevelRow
         }
     }
 
-    /// The microphone the stream captures from. The picker in Settings has always existed and the
-    /// choice has always been saved; until now nothing downstream read it, so this row is where the
-    /// choice reaches the stream — and where it can be changed without leaving the session.
-    @ViewBuilder
+    /// The microphone the stream captures from: where the picker's saved choice reaches capture, and
+    /// where it can be changed without leaving the session.
     var nativeHUDMicrophoneDeviceRow: some View {
+        HStack(spacing: 12) {
+            Text("Microphone Device")
+                .font(.streamFont(size: 11, weight: .medium))
+                .foregroundStyle(StreamHUDTheme.textTertiary)
+            Spacer(minLength: 8)
+            OPNDropdownMenu(
+                items: model.microphoneDevicePadItems().map(\.dropdownItem),
+                isDisabled: model.isMicrophoneDeviceRowDisabled,
+                // Capped so a machine with a dozen inputs scrolls rather than running the height of
+                // the HUD, and opened leftward because the sidebar's right edge is the video.
+                visibleItemCount: 6,
+                opensLeftByDefault: true,
+                isFocused: model.hudFocusID == NativeNVSTHostViewModel.microphoneDeviceDropdownID,
+                padDriver: model.padDropdown(dropdownID: NativeNVSTHostViewModel.microphoneDeviceDropdownID)
+            ) {
+                HStack(spacing: 4) {
+                    Text(model.microphoneDeviceSelectionLabel)
+                    Image(systemName: "chevron.down")
+                }
+                .font(.streamFont(size: 10, weight: .bold))
+                .foregroundStyle(StreamHUDTheme.textPrimary)
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(StreamHUDTheme.surfaceRaised)
+                .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+                .contentShape(Rectangle())
+            }
+            .help("The microphone OpenNOW captures from")
+        }
+        .opacity(model.isMicrophoneDeviceRowDisabled ? 0.46 : 1)
+    }
+
+    /// Why the picker is unusable, in the microphone toggle's own words. Drawn above the row rather
+    /// than instead of it, so the row the pad stands on stays where it was.
+    @ViewBuilder
+    var microphoneDeviceUnavailableNotice: some View {
         if let reason = model.microphoneDeviceUnavailableReason {
-            // The same words the microphone toggle refuses with, rather than a new and vaguer line:
-            // the picker is unusable for exactly the reason the toggle already explains.
             Text(reason)
                 .font(.streamFont(size: 10, weight: .medium))
                 .foregroundStyle(StreamHUDTheme.warning)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            HStack(spacing: 12) {
-                Text("Microphone Device")
-                    .font(.streamFont(size: 11, weight: .medium))
-                    .foregroundStyle(StreamHUDTheme.textTertiary)
-                Spacer(minLength: 8)
-                OPNDropdownMenu(
-                    items: model.microphoneDevicePadItems().map(\.dropdownItem),
-                    isDisabled: model.isMicrophoneDeviceRowDisabled,
-                    // Capped so a machine with a dozen inputs scrolls rather than running the height of
-                    // the HUD, and opened leftward because the sidebar's right edge is the video.
-                    visibleItemCount: 6,
-                    opensLeftByDefault: true,
-                    isFocused: model.hudFocusID == NativeNVSTHostViewModel.microphoneDeviceDropdownID,
-                    padDriver: model.padDropdown(id: NativeNVSTHostViewModel.microphoneDeviceDropdownID)
-                ) {
-                    HStack(spacing: 4) {
-                        Text(model.microphoneDeviceSelectionLabel)
-                        Image(systemName: "chevron.down")
-                    }
-                    .font(.streamFont(size: 10, weight: .bold))
-                    .foregroundStyle(StreamHUDTheme.textPrimary)
-                    .padding(.horizontal, 8)
-                    .frame(height: 26)
-                    .background(StreamHUDTheme.surfaceRaised)
-                    .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
-                    .contentShape(Rectangle())
-                }
-                .help("The microphone OpenNOW captures from")
-            }
         }
     }
 

@@ -103,19 +103,16 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var microphoneMode = "disabled"
     var microphonePendingStates: [Bool] = []
     @Published var microphoneUpdateTask: Task<Void, Never>?
-    /// The microphone picker's rows for the HUD's AUDIO panel, loaded from the same preference the
-    /// Settings picker writes. Kept on this model because this model owns the HUD, unlike
-    /// `CatalogViewModel.microphoneDeviceOptions`, which also serves Settings.
+    /// The picker's rows for the HUD's AUDIO panel, read from the same preference Settings writes.
     @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = [OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
-    /// The saved device is gone and capture fell back to the system default. The saved UID is not
-    /// rewritten; this only drives the label and the one-off message.
-    @Published var microphoneDeviceFallbackActive = false
+    /// The saved device is gone and capture fell back. Drives the label and the one-off message.
+    @Published var isMicrophoneDeviceFallbackActive = false
     /// The microphone picker's choice for this session, as a UID. Empty is "Default Device".
-    @Published var microphoneDeviceID = ""
+    @Published var microphoneDeviceUID = ""
     /// A device change in flight, so the open dropdown marks the intended row rather than the one
     /// capture is still on.
-    var microphonePendingDeviceID: String?
-    var pendingMicrophoneDeviceChanges: [String] = []
+    var microphonePendingDeviceUID: String?
+    var pendingMicrophoneDeviceUIDs: [String] = []
     /// Whether this seat carries a microphone at all. `.pending` until the bundle is up, so nothing is
     /// greyed out on the strength of a question that has not been answered yet.
     @Published var microphoneTransportAvailability: NativeNVSTMicrophoneAvailability = .pending
@@ -235,8 +232,7 @@ final class NativeNVSTHostViewModel: ObservableObject {
     @Published var showingControllerOrder = false
     @Published var hudFocusID: String?
     /// Which pad-drivable dropdown is open, if any, and the row the pad stands on inside it. A
-    /// dropdown is a focus entry like any other control, but its confirm opens a list instead of
-    /// firing once, so the open list is HUD state the gamepad handler owns rather than view state.
+    /// dropdown's confirm opens a list instead of firing once, so the gamepad handler owns this.
     @Published var openHUDDropdownID: String?
     @Published var hudDropdownHighlightedItemID: String?
     /// The live capture meter, 0...1, mirrored from the device at 20 Hz for the HUD's AUDIO panel.
@@ -351,10 +347,10 @@ final class NativeNVSTHostViewModel: ObservableObject {
         // The HUD's dropdown reads the same saved choice the Settings picker does, so the two agree
         // on the device even before the stream has reported which one capture settled on.
         microphoneDeviceOptions = OPNStreamPreferences.loadMicrophoneDeviceOptions()
-        microphoneDeviceFallbackActive = false
-        microphoneDeviceID = profile.microphoneDeviceId
-        microphonePendingDeviceID = nil
-        pendingMicrophoneDeviceChanges.removeAll()
+        isMicrophoneDeviceFallbackActive = false
+        microphoneDeviceUID = profile.microphoneDeviceId
+        microphonePendingDeviceUID = nil
+        pendingMicrophoneDeviceUIDs.removeAll()
         microphoneTransportAvailability = .pending
         microphoneLevel = 0
         microphoneAvailable = microphoneConfiguration.captureRequested
@@ -438,9 +434,8 @@ final class NativeNVSTHostViewModel: ObservableObject {
             // the capture device, which is why they arrive as handlers rather than being polled.
             await transport.setMicrophoneLevelHandler { level in
                 guard let self, !self.didEnd else { return }
-                // Published at 20 Hz while a session is live, and every published change re-evaluates the
-                // HUD. A sub-percent step is not visible on a bar 200 points wide, so it is dropped
-                // rather than re-rendering the overlay for it.
+                // Published at 20 Hz, and every published change re-evaluates the HUD, so a step too
+                // small to show on the bar is dropped.
                 guard abs(level - self.microphoneLevel) >= 0.01 else { return }
                 self.microphoneLevel = level
             }
@@ -448,9 +443,8 @@ final class NativeNVSTHostViewModel: ObservableObject {
                 guard let self, !self.didEnd else { return }
                 self.handleMicrophoneDeviceFallback(message)
             }
-            // A microphone plugged in mid-stream is a row straight away, without the HUD being closed
-            // and reopened. The relabel pass is included: it is also how a re-plugged device stops
-            // being called a fallback.
+            // A microphone plugged in mid-stream becomes a row straight away. Relabelling is also how
+            // a re-plugged device stops being called a fallback.
             await transport.setMicrophoneDeviceListHandler { [weak self] in
                 guard let self, !self.didEnd else { return }
                 self.refreshMicrophoneDeviceOptions()

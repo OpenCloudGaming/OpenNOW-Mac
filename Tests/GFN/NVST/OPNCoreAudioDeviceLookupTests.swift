@@ -3,26 +3,25 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// Microphone device selection, the half that can be exercised without a stream: the UID → device
-/// resolution the picker, the Settings mic test and the capture device all share.
-///
-/// These run against the real machine's CoreAudio graph rather than a stub, because the failure this
-/// covers is exactly a disagreement about what a UID names.
-///
-/// A hosted CI runner reports **no** input device at all, so every case that needs a real UID to
-/// resolve is gated rather than `#require`d: the trait is evaluated before the tests run, which is
-/// where "this machine has nothing to resolve" belongs. The device-free half — an empty or unknown
-/// UID resolving to the system default — still runs everywhere, including on that runner.
+/// The UID → device resolution the picker, the Settings mic test and the capture device all share.
+/// A hosted runner reports no input device, so cases needing a real UID are skipped, not failed.
 @Suite struct OPNCoreAudioDeviceLookupTests {
-    /// Mirrors `CIWindowTestGate`'s shape: a condition on the machine, evaluated at collection time,
-    /// with a reason for the report instead of a failure.
     private enum InputDeviceGate {
         static let isAvailable = !OPNCoreAudioDeviceLookup.allInputDevices().isEmpty
         static let skipReason = "Needs a real CoreAudio input device; a hosted runner reports none."
     }
 
+    private func inputDevices() throws -> [AudioDeviceID] {
+        let devices = OPNCoreAudioDeviceLookup.allInputDevices()
+        try #require(!devices.isEmpty, "a CoreAudio input device")
+        return devices
+    }
 
-    @Test func anEmptyOrUnknownUIDResolvesToTheSystemDefaultInput() {
+    private func inputDeviceUID(_ device: AudioDeviceID) throws -> String {
+        try #require(OPNCoreAudioDeviceLookup.uid(of: device), "a UID for device \(device)")
+    }
+
+    @Test func anUnusableUIDResolvesToTheSystemDefaultInput() {
         let fallback = OPNCoreAudioDeviceLookup.defaultInputDevice()
         #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: nil) == fallback)
         #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: "") == fallback)
@@ -33,11 +32,9 @@ import Testing
     }
 
     @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
-    func aKnownUIDResolvesToItsOwnDevice() throws {
-        let devices = OPNCoreAudioDeviceLookup.allInputDevices()
-        try #require(!devices.isEmpty, "this machine reports no input device, so there is no UID to resolve")
-        let device = devices[0]
-        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: device))
+    func aPresentUIDResolvesToItsOwnDevice() throws {
+        let device = try inputDevices()[0]
+        let uid = try inputDeviceUID(device)
         #expect(!uid.isEmpty)
         #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: uid) == device)
         #expect(OPNCoreAudioDeviceLookup.inputDeviceIfPresent(matching: uid) == device)
@@ -46,62 +43,52 @@ import Testing
     @Test func everyEnumeratedDeviceIsInputCapable() {
         for device in OPNCoreAudioDeviceLookup.allInputDevices() {
             #expect(device != AudioDeviceID(kAudioObjectUnknown))
-            #expect(OPNCoreAudioDeviceLookup.uid(of: device) != nil, "device \(device) has no UID, so no picker row could name it")
+            #expect(OPNCoreAudioDeviceLookup.uid(of: device) != nil, "device \(device) has no UID")
         }
     }
 
-    /// The capture device resolves the saved UID at construction, and reports the fallback instead of
-    /// losing the user's choice. No AudioUnit is opened here: resolution is the tested behaviour, and
-    /// opening a unit would need a microphone the test runner may not have.
+    /// Resolution is the tested behaviour, so no AudioUnit is opened: that needs a microphone the
+    /// runner may not have, and it raises the macOS permission prompt.
     @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
-    func theCaptureDeviceResolvesASavedUIDAndReportsAMissingOne() throws {
-        let devices = OPNCoreAudioDeviceLookup.allInputDevices()
-        try #require(!devices.isEmpty, "this machine reports no input device")
-        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
-        let present = NvstCoreAudioDevice(preferredInputDeviceUID: uid)
-        #expect(present.captureDeviceState.uniqueID == uid)
-        #expect(!present.captureDeviceState.usesFallback)
+    func theCaptureDeviceResolvesASavedUID() throws {
+        let uid = try inputDeviceUID(inputDevices()[0])
+        let device = NvstCoreAudioDevice(preferredInputDeviceUID: uid)
+        #expect(device.captureDeviceState.uniqueID == uid)
+        #expect(!device.captureDeviceState.isFallback)
+    }
 
+    @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
+    func theCaptureDeviceReportsFallbackForAMissingUID() throws {
         let gone = NvstCoreAudioDevice(preferredInputDeviceUID: "no-such-microphone-\(UUID().uuidString)")
-        #expect(gone.captureDeviceState.usesFallback)
-        #expect(gone.captureDeviceState.uniqueID == OPNCoreAudioDeviceLookup.uid(of: OPNCoreAudioDeviceLookup.defaultInputDevice()))
+        #expect(gone.captureDeviceState.isFallback)
+        let defaultUID = OPNCoreAudioDeviceLookup.uid(of: OPNCoreAudioDeviceLookup.defaultInputDevice())
+        #expect(gone.captureDeviceState.uniqueID == defaultUID)
 
         let automatic = NvstCoreAudioDevice()
-        #expect(!automatic.captureDeviceState.usesFallback, "an empty UID is Default Device, never a fallback")
+        #expect(!automatic.captureDeviceState.isFallback, "an empty UID is Default Device, not a fallback")
     }
 
-    /// A deliberate change to a device that is present is not a fallback, and the saved UID is not
-    /// rewritten by a fallback — replugging the device has to return capture to it.
+    /// A fallback is a resolution result, never a write to the saved device: replugging it has to
+    /// return capture to the user's choice.
     @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
-    func aFallbackNeverRewritesTheSavedUID() async throws {
-        let devices = OPNCoreAudioDeviceLookup.allInputDevices()
-        try #require(!devices.isEmpty, "this machine reports no input device")
-        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
-        let gone = "no-such-microphone-\(UUID().uuidString)"
-        let device = NvstCoreAudioDevice(preferredInputDeviceUID: gone)
-        #expect(device.captureDeviceState.usesFallback)
-        // The preference behind the fallback is untouched: a fallback is a resolution result, not a
-        // write to the saved device, so replugging it returns capture to the user's choice.
+    func aFallbackIsClearedWhenTheSavedDeviceIsSelected() async throws {
+        let uid = try inputDeviceUID(inputDevices()[0])
+        let device = NvstCoreAudioDevice(preferredInputDeviceUID: "no-such-microphone-\(UUID().uuidString)")
+        #expect(device.captureDeviceState.isFallback)
+
         device.setPreferredInputDevice(uid: uid)
-        #expect(!device.captureDeviceState.usesFallback)
+        #expect(!device.captureDeviceState.isFallback)
         #expect(device.captureDeviceState.uniqueID == uid)
+
         device.setPreferredInputDevice(uid: nil)
-        #expect(!device.captureDeviceState.usesFallback, "Default Device is a choice, not a fallback")
+        #expect(!device.captureDeviceState.isFallback, "Default Device is a choice, not a fallback")
     }
 
-    /// A device swap rebuilds capture and only capture. The send pipeline, its SSRC and its RTP
-    /// sequence live on the bundle side and are pinned separately (`NvstAudioSendPipelineTests`); what
-    /// this holds is that the swap never takes playout down with it, which is what would stall the
-    /// video-adjacent audio path on every microphone change.
-    ///
-    /// No AudioUnit is opened here on purpose: starting an input unit from the test host raises the
-    /// macOS microphone prompt. The rebuild the swap triggers is counted instead, and the playout half
-    /// is asserted untouched.
+    /// A swap rebuilds capture and only capture: the send pipeline and its RTP sequence are pinned in
+    /// `NvstAudioSendPipelineTests`, and playout must not be torn down with the microphone.
     @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
     func aDeviceSwapRebuildsCaptureWithoutTouchingPlayout() throws {
-        let devices = OPNCoreAudioDeviceLookup.allInputDevices()
-        try #require(!devices.isEmpty, "this machine reports no input device")
-        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
+        let uid = try inputDeviceUID(inputDevices()[0])
         let device = NvstCoreAudioDevice(preferredInputDeviceUID: nil)
         let before = device.captureDeviceRebuildEvidence
         let playoutBefore = (device.isPlayoutRunning, device.outputSampleRate, device.outputChannels)
@@ -110,7 +97,7 @@ import Testing
         #expect(device.captureDeviceState.uniqueID == uid)
         #expect(device.captureDeviceRebuildEvidence.rebuilds == before.rebuilds + 1)
 
-        // Selecting the same device again is not a swap: nothing to rebuild.
+        // Selecting the device already in use is not a swap: nothing to rebuild.
         device.setPreferredInputDevice(uid: uid)
         #expect(device.captureDeviceRebuildEvidence.rebuilds == before.rebuilds + 1)
 
@@ -119,34 +106,26 @@ import Testing
         #expect(device.outputChannels == playoutBefore.2)
     }
 
-    /// A burst of notifications for one physical event collapses into one evaluation, and an
-    /// environment that did not change the device it resolves to does not rebuild capture at all.
-    @Test(.enabled(if: InputDeviceGate.isAvailable, Comment(rawValue: InputDeviceGate.skipReason)))
+    /// One physical plug fires several notifications, and each rebuild recreates an AudioUnit, so the
+    /// burst has to collapse into one evaluation and must not rebuild when nothing resolved differently.
+    @Test(.enabled(if: OPNCoreAudioDeviceLookup.allInputDevices().count > 1,
+                   Comment(rawValue: "Needs two input devices to move capture between them.")))
     func aBurstOfDeviceNotificationsCollapsesIntoOneEvaluation() async throws {
-        let devices = OPNCoreAudioDeviceLookup.allInputDevices()
-        try #require(!devices.isEmpty, "this machine reports no input device")
-        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: devices[0]))
+        let devices = try inputDevices()
+        let uid = try inputDeviceUID(devices[0])
         let device = NvstCoreAudioDevice(preferredInputDeviceUID: uid)
         let afterSelection = device.captureDeviceRebuildEvidence
         #expect(afterSelection.evaluations == 0, "selecting at construction is not an environment evaluation")
+
         for _ in 0..<8 { device.handleInputDeviceEnvironmentChange() }
         try await Task.sleep(for: .milliseconds(600))
         let evidence = device.captureDeviceRebuildEvidence
-        #expect(evidence.evaluations == 1, "eight notifications for one event ran \(evidence.evaluations) evaluations")
-        #expect(evidence.rebuilds == afterSelection.rebuilds, "an unchanged environment must not rebuild capture")
-        // A genuine change does rebuild, exactly once — this is the rebuild the burst must not repeat
-        // for the notifications that do not change anything. Skipped when the machine has a single
-        // input device, since then no UID resolves anywhere but the same device.
-        // A device that is neither the one in use nor the system default, so each change below really
-        // does move capture to a different device and a default-fallback really is a move too.
-        if let other = devices.first(where: {
-            OPNCoreAudioDeviceLookup.uid(of: $0) != uid && $0 != OPNCoreAudioDeviceLookup.defaultInputDevice()
-        }) {
-            let otherUID = try #require(OPNCoreAudioDeviceLookup.uid(of: other))
-            device.setPreferredInputDevice(uid: otherUID)
-            #expect(device.captureDeviceRebuildEvidence.rebuilds == afterSelection.rebuilds + 1)
-            device.setPreferredInputDevice(uid: "no-such-microphone-\(UUID().uuidString)")
-            #expect(device.captureDeviceRebuildEvidence.rebuilds == afterSelection.rebuilds + 2)
-        }
+        #expect(evidence.evaluations == 1, "eight notifications ran \(evidence.evaluations) evaluations")
+        #expect(evidence.rebuilds == afterSelection.rebuilds, "an unchanged environment must not rebuild")
+
+        // A genuine change does rebuild, once per move.
+        let otherDevice = try #require(devices.first { OPNCoreAudioDeviceLookup.uid(of: $0) != uid }, "a second input device")
+        device.setPreferredInputDevice(uid: try inputDeviceUID(otherDevice))
+        #expect(device.captureDeviceRebuildEvidence.rebuilds == afterSelection.rebuilds + 1)
     }
 }

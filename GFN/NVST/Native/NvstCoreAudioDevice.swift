@@ -59,11 +59,9 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     /// Silences this Mac's speakers only, applied after the tee. Never upstream of it.
     public var isPlayoutMuted = false
 
-    /// A capture device swap, or a plug/unplug that removes the one in use. Never fires for a
-    /// deliberate change to a device that is present.
+    /// A capture device swap, or a plug/unplug that removes the one in use.
     public var onCaptureDeviceChange: (@Sendable (NvstCaptureDeviceChange) -> Void)?
-    /// The set of input devices changed at all, whatever it resolved to. Fires for a device that was
-    /// plugged in, which is what makes it selectable without reopening the HUD.
+    /// The set of input devices changed at all, whatever it resolved to — a device was plugged in.
     public var onInputDeviceListChange: (@Sendable () -> Void)?
 
     let audioQueue = DispatchQueue(label: "io.opencg.opennow.nvst.coreaudio")
@@ -76,25 +74,18 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     private var inputDevice = AudioDeviceID(kAudioObjectUnknown)
     private var captureScratch = [Int16]()
     private var lastLevelReportNanoseconds: UInt64 = 0
-    /// The UID the microphone picker saved, resolved on every rebuild. Nil or empty is
-    /// "Default Device", which follows the system default input wherever it goes.
+    /// The UID the microphone picker saved, resolved on every rebuild. Nil is "Default Device".
     private var preferredInputDeviceUID: String?
     /// The UID capture is running on, and whether that is a fallback from a device that went away.
     private var inputDeviceUniqueID: String?
-    private var inputUsesFallbackDevice = false
-    /// CoreAudio fires several notifications for one physical plug or unplug, and every rebuild
-    /// disposes and recreates an AudioUnit, so the burst is collapsed into one deferred rebuild.
+    private var isUsingFallbackInputDevice = false
+    /// Collapses the several notifications one physical plug fires into one deferred rebuild.
     private var inputDeviceChangeWorkItem: DispatchWorkItem?
     private var inputDeviceEvaluationCount = 0
     private var captureRebuildCount = 0
     private static let inputDeviceChangeDebounce = DispatchTimeInterval.milliseconds(250)
-    /// Guards the capture unit and its format against the CoreAudio render thread.
-    ///
-    /// `captureMicrophone` runs on the IO thread and reads `captureUnit`, `inputChannels` and
-    /// `captureScratch`, while a rebuild mutates all three on `audioQueue`. Without this a device
-    /// swap could dispose the unit underneath an in-flight callback. The render path already takes an
-    /// `NSLock` inside `NvstAudioSendPipeline.push`, so this adds no new kind of blocking to that
-    /// thread; the critical section is a unit swap, which the hardware is not calling into anyway.
+    /// Guards the capture unit, its format and its scratch buffer against the render thread: a rebuild
+    /// mutates all three where `captureMicrophone` reads them.
     private let captureStateLock = NSLock()
 
     /// The rate the callbacks exchange with the pipelines, always 48 kHz — the rate Opus, the RTP
@@ -184,10 +175,8 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     }
 
     func captureMicrophone(actionFlags: UnsafeMutablePointer<AudioUnitRenderActionFlags>?, timestamp: UnsafePointer<AudioTimeStamp>?, busNumber: Int, frameCount: UInt32) -> OSStatus {
-        // The whole render is under the capture lock, so a device swap on `audioQueue` cannot dispose
-        // the unit or reallocate the scratch buffer underneath it. The level reading is handed back
-        // rather than delivered here: nothing outside the device's own state should run while the
-        // lock is held, and a receiver that hops to its own queue must be free to do so.
+        // The whole render is under the capture lock, so a device swap cannot dispose the unit
+        // underneath it. The level is handed back and delivered after the unlock.
         var sampledLevel: Double?
         captureStateLock.lock()
         let status = renderCaptureLocked(actionFlags: actionFlags, timestamp: timestamp, frameCount: frameCount, sampledLevel: &sampledLevel)
@@ -217,8 +206,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
             guard status == noErr else { return status }
             guard isMicrophoneCaptureEnabled?() == true else {
                 // Gated: hand the up-path silence rather than the microphone's samples, and report a
-                // flat meter with it. A meter that moved while muted would say the seat is hearing
-                // something it is not.
+                // flat meter with it — a meter that moved while muted would be a lie.
                 base.update(repeating: 0, count: requiredSamples)
                 return noErr
             }
@@ -241,42 +229,35 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         }
     }
 
-    /// The microphone picker's UID, applied to the running session.
-    ///
-    /// Only the capture unit is torn down. The send pipeline, its SSRC and its RTP sequence are
-    /// untouched, because the seat's microphone contract was fixed at ANNOUNCE and a device change
-    /// must not look like a new talkspurt to it.
+    /// The microphone picker's UID, applied to the running session. Only the capture unit is torn
+    /// down: the send pipeline, its SSRC and its RTP sequence were fixed at ANNOUNCE.
     public func setPreferredInputDevice(uid: String?) {
         audioQueue.async { [weak self] in
             guard let self else { return }
-            let normalized = uid.flatMap { $0.isEmpty ? nil : $0 }
+            let normalizedUID = uid.flatMap { $0.isEmpty ? nil : $0 }
             let previousDevice = inputDevice
-            let previousFallback = inputUsesFallbackDevice
-            preferredInputDeviceUID = normalized
-            if OPNCoreAudioDeviceLookup.inputDevice(matching: normalized) != previousDevice {
+            let wasUsingFallbackDevice = isUsingFallbackInputDevice
+            preferredInputDeviceUID = normalizedUID
+            guard OPNCoreAudioDeviceLookup.inputDevice(matching: normalizedUID) == previousDevice else {
                 rebuildCaptureLocked()
-            } else {
-                // Same device: still re-read the parameters, because the fallback bookkeeping is what
-                // the HUD reads to decide whether to label the default "(fallback)". Under the same
-                // lock the rebuild takes, since this rewrites the format fields the render thread
-                // reads even when the device itself did not move.
-                captureStateLock.lock()
-                updateDeviceParameters()
-                captureStateLock.unlock()
-            }
-            if inputDevice != previousDevice || inputUsesFallbackDevice != previousFallback {
                 notifyCaptureDeviceChange()
+                return
             }
+            // Same device: re-read the parameters the HUD's fallback label is drawn from, without
+            // tearing down an AudioUnit for a no-op.
+            refreshCaptureDeviceParameters()
+            guard isUsingFallbackInputDevice != wasUsingFallbackDevice else { return }
+            notifyCaptureDeviceChange()
         }
     }
 
     /// The UID capture is running on, and whether that is a fallback from a device that is gone.
-    public var captureDeviceState: (uniqueID: String?, usesFallback: Bool) {
-        audioQueue.sync { (inputDeviceUniqueID, inputUsesFallbackDevice) }
+    public var captureDeviceState: (uniqueID: String?, isFallback: Bool) {
+        audioQueue.sync { (inputDeviceUniqueID, isUsingFallbackInputDevice) }
     }
 
-    /// A plug or unplug, or a change of the system default input. Debounced: one physical event
-    /// fires several notifications and each rebuild disposes and recreates an AudioUnit.
+    /// A plug or unplug, or a change of the system default input. Debounced: one physical event fires
+    /// several notifications, and each rebuild disposes and recreates an AudioUnit.
     func handleInputDeviceEnvironmentChange() {
         audioQueue.async { [weak self] in
             guard let self else { return }
@@ -285,11 +266,10 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
                 guard let self else { return }
                 inputDeviceChangeWorkItem = nil
                 inputDeviceEvaluationCount += 1
-                // Announced even when capture itself does not move: a device that was plugged in is a
-                // row the picker should have whether or not it is the one in use.
+                // A device that was plugged in is a row the picker should have, even when it is not
+                // the one capture is on, so this is announced before the resolved-device check.
                 onInputDeviceListChange?()
-                let resolved = OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID)
-                guard resolved != inputDevice else { return }
+                guard OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID) != inputDevice else { return }
                 rebuildCaptureLocked()
                 notifyCaptureDeviceChange()
             }
@@ -298,17 +278,14 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         }
     }
 
-    /// Test seam: how many debounced environment evaluations ran, and how many of them actually
-    /// rebuilt capture. A burst of CoreAudio notifications for one physical event must collapse into
-    /// a single evaluation, and only a genuine device change may become a rebuild.
+    /// Test seam: debounced evaluations that ran, and how many rebuilt capture. A burst must collapse
+    /// into one evaluation, and only a genuine device change may become a rebuild.
     var captureDeviceRebuildEvidence: (evaluations: Int, rebuilds: Int) {
         audioQueue.sync { (inputDeviceEvaluationCount, captureRebuildCount) }
     }
 
     /// Stops, disposes and re-initialises the capture unit only, restarting it when it was running.
-    ///
-    /// Disposal is mandatory, not tidiness: `initializeCaptureLocked` early-returns while
-    /// `captureUnit != nil`, so a swap that skipped it would silently keep capturing the old device.
+    /// Disposal is mandatory: `initializeCaptureLocked` early-returns while `captureUnit != nil`.
     private func rebuildCaptureLocked() {
         captureRebuildCount += 1
         let wasCapturing = isCaptureRunning
@@ -320,10 +297,18 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         if wasCapturing { _ = startCaptureLocked() }
     }
 
+    /// Re-reads the capture device parameters under the render thread's lock. The format fields it
+    /// rewrites are read on that thread even when the device itself did not move.
+    private func refreshCaptureDeviceParameters() {
+        captureStateLock.lock()
+        defer { captureStateLock.unlock() }
+        updateDeviceParameters()
+    }
+
     private func notifyCaptureDeviceChange() {
         onCaptureDeviceChange?(NvstCaptureDeviceChange(resolvedUniqueID: inputDeviceUniqueID,
                                                       preferredUniqueID: preferredInputDeviceUID,
-                                                      isFallback: inputUsesFallbackDevice))
+                                                      isFallback: isUsingFallbackInputDevice))
     }
 
     // MARK: - Units
@@ -348,7 +333,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     }
 
     private func stopCaptureLocked() {
-        if captureUnit != nil, isCaptureRunning { AudioOutputUnitStop(captureUnit!) }
+        if let captureUnit, isCaptureRunning { AudioOutputUnitStop(captureUnit) }
         isCaptureRunning = false
     }
 
@@ -418,13 +403,11 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     // MARK: - Devices
 
     private func updateDeviceParameters() {
-        // Resolution is shared with the Settings mic test — see `OPNCoreAudioDeviceLookup` — so the
-        // pre-flight and the stream cannot disagree about which device a saved UID names. A saved UID
-        // whose device is gone resolves to the system default and is reported as a fallback rather
-        // than overwriting the user's choice.
+        // Resolution is shared with the Settings mic test, so a pre-flight cannot disagree with the
+        // stream about a UID. A saved device that is gone resolves to the default, never a failure.
         inputDevice = OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID)
         inputDeviceUniqueID = OPNCoreAudioDeviceLookup.uid(of: inputDevice)
-        inputUsesFallbackDevice = preferredInputDeviceUID != nil
+        isUsingFallbackInputDevice = preferredInputDeviceUID != nil
             && OPNCoreAudioDeviceLookup.inputDeviceIfPresent(matching: preferredInputDeviceUID) == nil
         outputDevice = OPNCoreAudioDeviceLookup.defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
         deviceOutputSampleRate = nominalSampleRate(for: outputDevice, fallback: NvstCoreAudioFormat.sampleRate)
@@ -435,9 +418,6 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         inputChannels = NvstCoreAudioFormat.captureChannelCount(deviceChannels: channelCount(for: inputDevice, scope: kAudioDevicePropertyScopeInput))
         outputLatency = latency(for: outputDevice, scope: kAudioDevicePropertyScopeOutput, sampleRate: deviceOutputSampleRate)
     }
-
-
-
 
 
 

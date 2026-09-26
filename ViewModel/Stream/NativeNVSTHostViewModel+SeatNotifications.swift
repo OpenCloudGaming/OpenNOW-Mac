@@ -1,5 +1,4 @@
-//  The seat's asynchronous notifications, routed to the surfaces that act on them. Split out of the
-//  session model's own file, which is already at its body-length budget, exactly as `+HUDSections` was.
+//  The seat's asynchronous notifications, routed to the surfaces that act on them.
 //
 //  swiftlint:disable:next no_appkit_in_view_model
 import AppKit

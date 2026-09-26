@@ -2,100 +2,94 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// The HUD half of microphone device selection: the rows the dropdown offers, the label that says
-/// which device is actually capturing, and what happens when the saved device goes away.
-///
-/// The transport call itself needs a live session, so what is pinned here is the state the session is
-/// drawn from — which is where a fallback can silently destroy the user's preference, and where a
-/// stale option list hides a microphone that was just plugged in.
+/// The HUD half of microphone device selection: the rows, the label naming the device in use, and the
+/// state a fallback leaves behind. The transport call itself needs a live session.
 @MainActor
 struct NativeNVSTMicrophoneDeviceSelectionTests {
     private var defaultDevice: OPNStreamMicrophoneDeviceOption {
         OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)
     }
 
-    private func usbDevice(_ label: String = "USB Mic", id: String = "usb-mic") -> OPNStreamMicrophoneDeviceOption {
-        OPNStreamMicrophoneDeviceOption(label: label, uniqueId: id)
+    private func pickedDevice(_ label: String = "USB Mic", uid: String = "usb-mic") -> OPNStreamMicrophoneDeviceOption {
+        OPNStreamMicrophoneDeviceOption(label: label, uniqueId: uid)
+    }
+
+    /// A model whose picker offers the default and one USB microphone, with the USB one in use.
+    private func modelWithTwoDevices() -> NativeNVSTHostViewModel {
+        let (_, model) = makeHUDSurface()
+        model.microphoneDeviceOptions = [defaultDevice, pickedDevice()]
+        model.microphoneDeviceUID = "usb-mic"
+        return model
     }
 
     @Test func theRowsAreTheSavedChoicesWithTheDefaultFirst() {
-        let (_, model) = makeHUDSurface()
-        model.microphoneDeviceOptions = [defaultDevice, usbDevice("USB Mic", id: "usb-USB Mic")]
-        model.microphoneDeviceID = "usb-USB Mic"
+        let model = modelWithTwoDevices()
         let items = model.microphoneDevicePadItems()
-        #expect(items.map(\.id) == ["", "usb-USB Mic"])
+        #expect(items.map(\.id) == ["", "usb-mic"])
         #expect(items[0].title == "Default Device")
         #expect(items[1].title == "USB Mic")
         #expect(items[1].isSelected, "the row in use is the one the checkmark marks")
-        #expect(items[0].isSelected == false)
+        #expect(!items[0].isSelected)
     }
 
-    /// The label has to name what is capturing, so the picker never claims a device that is not in
-    /// use. A fallback is called out rather than quietly relabelling the default.
-    @Test func theTriggerLabelNamesTheDeviceAndCallsOutAFallback() {
-        let (_, model) = makeHUDSurface()
-        model.microphoneDeviceOptions = [defaultDevice, usbDevice("USB Mic", id: "usb-USB Mic")]
-        model.microphoneDeviceID = "usb-USB Mic"
+    @Test func theTriggerLabelNamesTheDeviceInUse() {
+        let model = modelWithTwoDevices()
         #expect(model.microphoneDeviceSelectionLabel == "USB Mic")
+        #expect(model.microphoneDeviceCaption == "Microphone Device \u{00b7} USB Mic")
 
-        model.microphoneDeviceID = ""
-        #expect(model.microphoneDeviceSelectionLabel == "Default Device")
-
-        model.microphoneDeviceFallbackActive = true
-        #expect(model.microphoneDeviceSelectionLabel == "Default Device (fallback)")
-        #expect(model.microphoneDevicePadItems().first?.title == "Default Device (fallback)")
-        // Selecting the default for real clears the fallback label.
-        model.microphoneDeviceFallbackActive = false
+        model.microphoneDeviceUID = ""
         #expect(model.microphoneDeviceSelectionLabel == "Default Device")
     }
 
-    /// A saved UID that is not in the list is the fallback, and the fallback is a resolution result:
-    /// the UID stays saved so a re-plugged microphone returns to the user's choice.
-    @Test func aMissingSavedDeviceIsAFallbackAndIsNotRewritten() {
+    /// The label has to name what is capturing, so it never claims a device that is not in use.
+    @Test func theTriggerLabelCallsOutAFallback() {
+        let model = modelWithTwoDevices()
+        model.isMicrophoneDeviceFallbackActive = true
+        #expect(model.microphoneDeviceSelectionLabel == "USB Mic (fallback)")
+        #expect(model.microphoneDevicePadItems().first?.title == "Default Device (fallback)")
+    }
+
+    @Test func aMissingSavedDeviceIsReportedAsAFallback() {
         let (_, model) = makeHUDSurface()
-        model.microphoneDeviceID = "usb-unplugged"
+        model.microphoneDeviceUID = "usb-unplugged"
         model.microphoneDeviceOptions = [defaultDevice]
         model.resolveMicrophoneDeviceFallback()
-        #expect(model.microphoneDeviceFallbackActive)
+        #expect(model.isMicrophoneDeviceFallbackActive)
+    }
 
-        model.microphoneDeviceOptions = [defaultDevice, usbDevice("USB Mic", id: "usb-unplugged")]
+    @Test func aPresentSavedDeviceIsNotAFallback() {
+        let model = modelWithTwoDevices()
         model.resolveMicrophoneDeviceFallback()
-        #expect(!model.microphoneDeviceFallbackActive, "the device came back and the label reverts")
-        #expect(model.microphoneDeviceID == "usb-unplugged")
-        #expect(model.microphoneDeviceSelectionLabel == "USB Mic")
+        #expect(!model.isMicrophoneDeviceFallbackActive)
+        #expect(model.microphoneDeviceUID == "usb-mic", "resolving never rewrites the saved UID")
     }
 
     /// The device went away mid-stream: capture fell back, the user is told in the transport's words,
-    /// and the preference is untouched. This is the one path that could quietly make a fallback
-    /// permanent.
-    @Test func theFallbackReachesTheHudAndKeepsTheSavedUid() {
+    /// and the preference is untouched — this is the one path that could make a fallback permanent.
+    @Test func theFallbackReachesTheHud() {
         let (_, model) = makeHUDSurface()
-        model.microphoneDeviceID = "usb-unplugged"
+        model.microphoneDeviceUID = "usb-unplugged"
         model.microphoneDeviceOptions = [defaultDevice]
         model.handleMicrophoneDeviceFallback("Microphone unavailable \u{2014} using Default Device.")
-        #expect(model.microphoneDeviceFallbackActive)
+        #expect(model.isMicrophoneDeviceFallbackActive)
         #expect(model.transientStreamMessage == "Microphone unavailable \u{2014} using Default Device.")
-        #expect(model.microphoneDeviceID == "usb-unplugged", "the saved UID must survive a fallback")
-        #expect(model.microphoneDeviceSelectionLabel == "Default Device (fallback)")
+        #expect(model.microphoneDeviceUID == "usb-unplugged", "the saved UID must survive a fallback")
     }
 
-    /// A microphone plugged in mid-stream becomes a row without closing the HUD: the list is reloaded
-    /// from CoreAudio, which is what makes a hot-plug selectable at all.
-    @Test func aHotPluggedDeviceBecomesARowAndClearsTheFallbackLabel() {
+    @Test func aHotPluggedDeviceBecomesARow() {
         let (_, model) = makeHUDSurface()
-        model.microphoneDeviceID = "hot-plugged"
+        model.microphoneDeviceUID = "hot-plugged"
         model.microphoneDeviceOptions = [defaultDevice]
         model.resolveMicrophoneDeviceFallback()
-        #expect(model.microphoneDeviceFallbackActive)
-        model.microphoneDeviceOptions = [defaultDevice, OPNStreamMicrophoneDeviceOption(label: "Hot Plugged", uniqueId: "hot-plugged")]
+        #expect(model.isMicrophoneDeviceFallbackActive)
+
+        model.microphoneDeviceOptions = [defaultDevice, pickedDevice("Hot Plugged", uid: "hot-plugged")]
         model.resolveMicrophoneDeviceFallback()
-        #expect(!model.microphoneDeviceFallbackActive)
+        #expect(!model.isMicrophoneDeviceFallbackActive, "the device came back and the label reverts")
         #expect(model.microphoneDevicePadItems().contains { $0.id == "hot-plugged" })
     }
 
-    /// Settings turned the microphone off, so there is nothing for a picker to choose between — and
-    /// the reason is the same sentence the microphone tile already says.
-    @Test func theRowIsUnavailableWithNoMicrophoneAndSaysWhy() {
+    @Test func theRowIsUnavailableWithNoMicrophone() {
         let (_, model) = makeHUDSurface()
         model.microphoneAvailable = false
         model.microphoneMode = "disabled"
@@ -104,13 +98,13 @@ struct NativeNVSTMicrophoneDeviceSelectionTests {
     }
 
     /// A seat that negotiated no microphone section, and a legacy RTSP-mic seat, are the two failure
-    /// shapes the microphone toggle already refuses with; the disabled row repeats them word for word
-    /// rather than inventing a third explanation.
-    @Test func theSeatFailureCopyIsTheTogglesOwn() {
+    /// shapes the microphone toggle already refuses with; the disabled row repeats them word for word.
+    @Test func theRowRepeatsTheTogglesFailureCopy() {
         let (_, model) = makeHUDSurface()
         model.microphoneAvailable = true
         model.microphoneMode = "voice-activity"
-        model.microphoneDeviceOptions = [defaultDevice, usbDevice()]
+        model.microphoneDeviceOptions = [defaultDevice, pickedDevice()]
+
         model.microphoneTransportAvailability = .pending
         #expect(model.microphoneDeviceUnavailableReason == nil, "not knowing yet must not grey the row out")
         #expect(!model.isMicrophoneDeviceRowDisabled)

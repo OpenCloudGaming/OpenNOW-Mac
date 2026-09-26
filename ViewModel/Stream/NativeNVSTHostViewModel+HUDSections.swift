@@ -53,8 +53,8 @@ extension NativeNVSTHostViewModel {
         [
             StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "audio", columns: 4, action: toggleNativeMicrophone),
             StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "audio", columns: 4, action: toggleNativeLocalAudioMute),
-            // A full-width row of its own, under the grid the HUD draws it under. Confirm opens the
-            // list rather than firing once, so this entry routes through the pad-dropdown state.
+            // A full-width row of its own. Its confirm opens the list rather than firing once, so it
+            // routes through the pad-dropdown state.
             StreamHUDFocusEntry(id: Self.microphoneDeviceDropdownID, isDisabled: isMicrophoneDeviceRowDisabled, action: { [weak self] in
                 self?.togglePadDropdown(Self.microphoneDeviceDropdownID)
             }),

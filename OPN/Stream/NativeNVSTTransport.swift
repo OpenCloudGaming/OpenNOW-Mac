@@ -1,8 +1,5 @@
-//  The transport contract the streaming path drives: input, microphone, recording and diagnostics.
-//  Split from `NativeNVSTStreamingPath` itself, which is at its file-length budget.
-//
-//  Every method past the session's lifecycle has a default here, so a transport that lacks a
-//  capability refuses in one place rather than failing to compile at one call site.
+//  The transport contract the streaming path drives, split out of `NativeNVSTStreamingPath` itself,
+//  which is at its file-length budget. Every capability past the session lifecycle has a default.
 public protocol NativeNVSTTransport: Sendable {
     func prepare() async throws -> NVSTNativeBridgeStatus
     func connect(allocation: NativeNVSTSessionAllocation, mediaReceiver: any NativeNVSTMediaReceiver) async throws -> NativeNVSTTransportConnection
@@ -11,8 +8,7 @@ public protocol NativeNVSTTransport: Sendable {
     func setMicrophoneEnabled(_ enabled: Bool) async throws
     func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws
     /// Swaps the microphone this session captures from, mid-stream. Only the capture unit is rebuilt:
-    /// the seat's microphone contract was fixed at ANNOUNCE, so no re-ANNOUNCE, no SDP round trip and
-    /// no RTP sequence reset happens here. Throws `notRunning` without a session.
+    /// the seat's microphone contract was fixed at ANNOUNCE. Throws `notRunning` without a session.
     func setMicrophoneDevice(_ uid: String) async throws
     /// Whether the seat can carry microphone capture, and why not when it cannot. Asked when the HUD
     /// is opened, since the answer depends on the seat's DESCRIBE offer.

@@ -133,10 +133,8 @@ import Testing
         #expect(sender.snapshot.framesEncoded == 0)
     }
 
-    /// A microphone device swap changes what feeds this pipeline and nothing about the pipeline. The
-    /// contract was fixed at ANNOUNCE — SSRC 1, payload type 111, 10 ms frames — and the sequence
-    /// must stay contiguous across the swap, because the seat has already seen the numbers before it
-    /// and a reset would look like a stale talkspurt rather than a new device.
+    /// A device swap changes what feeds this pipeline and nothing about it: the contract was fixed at
+    /// ANNOUNCE, so the sequence must stay contiguous or the seat sees a stale talkspurt.
     @Test func aCaptureDeviceSwapKeepsTheSequenceContiguousAndNeverResetsThePipeline() throws {
         let directions = try makeDirections()
         let sender = try NvstAudioSendPipeline(srtp: directions.outbound, framesPerPacket: Self.framesPerPacket, initialSequenceNumber: 4000, initialTimestamp: 96_000)

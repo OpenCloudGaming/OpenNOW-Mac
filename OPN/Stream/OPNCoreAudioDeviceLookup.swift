@@ -3,10 +3,6 @@ import Foundation
 
 /// The one place in the app that resolves CoreAudio devices: the system default for a selector, and
 /// an input device by the UID the microphone picker saves.
-///
-/// Enumerating here rather than at each call site matters because the Settings mic test and the
-/// streaming capture path must agree on which device a UID names. When they disagreed, a user could
-/// pass a pre-flight mic test on their chosen microphone and still stream from the built-in one.
 enum OPNCoreAudioDeviceLookup {
     static func defaultAudioDevice(_ selector: AudioObjectPropertySelector) -> AudioDeviceID {
         var device = AudioDeviceID(kAudioObjectUnknown)
@@ -30,27 +26,21 @@ enum OPNCoreAudioDeviceLookup {
         defaultAudioDevice(kAudioHardwarePropertyDefaultOutputDevice)
     }
 
-    /// The input device carrying `uniqueId`, or `nil` when that UID is empty or its device is not
-    /// currently connected. Callers that want the "capture must keep running" behaviour use
-    /// `inputDevice(matching:)` instead.
+    /// The input device carrying `uniqueId`, or nil when that UID is empty or its device is gone.
+    /// Callers that must keep capture running use `inputDevice(matching:)` instead.
     static func inputDeviceIfPresent(matching uniqueId: String?) -> AudioDeviceID? {
         guard let uniqueId, !uniqueId.isEmpty else { return nil }
         return allInputDevices().first { uid(of: $0) == uniqueId }
     }
 
-    /// The input device carrying `uniqueId`, falling back to the system default input when that UID
-    /// is nil, empty or no longer present.
-    ///
-    /// The fallback is the whole point: a UID saved for a headset that was unplugged must leave
-    /// capture running on the default rather than failing to open a unit at all. The caller keeps the
-    /// saved UID so a re-plugged device returns to the user's choice.
+    /// The input device carrying `uniqueId`, or the system default input when that UID is nil, empty
+    /// or no longer present. The caller keeps the saved UID, so a replugged device returns to it.
     static func inputDevice(matching uniqueId: String?) -> AudioDeviceID {
         inputDeviceIfPresent(matching: uniqueId) ?? defaultInputDevice()
     }
 
-    /// Only devices with at least one input stream qualify, which is the same rule
-    /// `OPNStreamPreferences.loadMicrophoneDeviceOptions` applies — so a device the picker offers is
-    /// exactly a device this lookup can resolve.
+    /// Only devices with at least one input stream qualify — the same rule
+    /// `OPNStreamPreferences.loadMicrophoneDeviceOptions` applies to the picker's rows.
     static func allInputDevices() -> [AudioDeviceID] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,

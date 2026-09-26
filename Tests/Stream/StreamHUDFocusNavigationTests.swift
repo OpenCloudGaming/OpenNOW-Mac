@@ -106,9 +106,8 @@ struct StreamHUDFocusNavigationTests {
 
     // MARK: - Pad-driven dropdowns
 
-    /// A dropdown's entry is a full-width row of its own — the shape `StreamHUDFocusEntry` documents
-    /// for a slider, a dropdown or a participant row — so it sits between the grids rather than
-    /// inside one, and up/down step through it in the order the HUD draws it.
+    /// A dropdown's entry is a full-width row of its own, so it sits between the grids rather than
+    /// inside one and up/down step through it in the order the HUD draws it.
     @Test func aDropdownEntryIsAFullWidthRowBetweenTheGrids() {
         let entries = [
             entry("mic", group: "audio", columns: 4), entry("audio", group: "audio", columns: 4),
@@ -121,59 +120,67 @@ struct StreamHUDFocusNavigationTests {
         #expect(StreamHUDFocusEntry.focusID(from: "pointer", direction: .up, in: entries) == "microphone-device")
     }
 
-    /// The whole pad sequence on a real HUD model: confirm opens the list on the row in use, up/down
-    /// walk it and wrap, confirm runs that row and closes, and HUD focus is back on the trigger —
-    /// which it never left, because the panel is drawn from the same entry rather than as a new one.
-    @Test func aDropdownOpensWalksCommitsAndLeavesFocusOnItsTrigger() {
+    /// A HUD model whose picker offers three devices, with the built-in one in use and the pad
+    /// standing on the device row.
+    private func dropdownModel() -> NativeNVSTHostViewModel {
         let (_, model) = makeHUDSurface()
-        let id = NativeNVSTHostViewModel.microphoneDeviceDropdownID
+        let dropdownID = NativeNVSTHostViewModel.microphoneDeviceDropdownID
         model.microphoneDeviceOptions = [
             OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true),
             OPNStreamMicrophoneDeviceOption(label: "MacBook Microphone", uniqueId: "built-in"),
             OPNStreamMicrophoneDeviceOption(label: "USB Mic", uniqueId: "usb"),
         ]
-        model.microphoneDeviceID = "built-in"
-        model.hudFocusID = id
-
-        model.togglePadDropdown(id)
-        #expect(model.openHUDDropdownID == id)
-        #expect(model.hudDropdownHighlightedItemID == "built-in", "the list opens on the row in use")
-
-        model.moveHUDDropdownHighlight(step: 1)
-        #expect(model.hudDropdownHighlightedItemID == "usb")
-        model.moveHUDDropdownHighlight(step: 1)
-        #expect(model.hudDropdownHighlightedItemID == "", "the walk wraps")
-        model.moveHUDDropdownHighlight(step: -1)
-        #expect(model.hudDropdownHighlightedItemID == "usb")
-
-        model.commitHUDDropdownHighlight()
-        #expect(model.openHUDDropdownID == nil)
-        #expect(model.hudDropdownHighlightedItemID == nil)
-        #expect(model.hudFocusID == id, "the pad is back on the trigger, so the next press reopens the list")
-        // A device change with no session running is refused rather than saved: the preference only
-        // moves once the transport has taken it.
-        #expect(model.microphoneDeviceID == "built-in")
+        model.microphoneDeviceUID = "built-in"
+        model.hudFocusID = dropdownID
+        return model
     }
 
-    /// Cancel closes the panel and selects nothing, and the trigger is still where the pad stands.
-    @Test func cancellingADropdownSelectsNothingAndKeepsTheTriggerFocused() {
-        let (_, model) = makeHUDSurface()
-        let id = NativeNVSTHostViewModel.microphoneDeviceDropdownID
-        model.microphoneDeviceOptions = [
-            OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true),
-            OPNStreamMicrophoneDeviceOption(label: "USB Mic", uniqueId: "usb"),
-        ]
-        model.hudFocusID = id
-        model.togglePadDropdown(id)
+    @Test func aDropdownOpensOnTheRowInUse() {
+        let model = dropdownModel()
+        model.togglePadDropdown(NativeNVSTHostViewModel.microphoneDeviceDropdownID)
+        #expect(model.openHUDDropdownID == NativeNVSTHostViewModel.microphoneDeviceDropdownID)
+        #expect(model.hudDropdownHighlightedItemID == "built-in")
+    }
+
+    @Test func aDropdownWalkWrapsAtTheEndsOfTheList() {
+        let model = dropdownModel()
+        model.togglePadDropdown(NativeNVSTHostViewModel.microphoneDeviceDropdownID)
+        model.moveHUDDropdownHighlight(step: 1)
+        #expect(model.hudDropdownHighlightedItemID == "usb")
+        model.moveHUDDropdownHighlight(step: 1)
+        #expect(model.hudDropdownHighlightedItemID == "")
+        model.moveHUDDropdownHighlight(step: -1)
+        #expect(model.hudDropdownHighlightedItemID == "usb")
+    }
+
+    /// The panel is drawn from the trigger's own focus entry, so focus never moves and a confirmed
+    /// selection leaves the pad where it was.
+    @Test func aDropdownCommitReturnsFocusToTheTrigger() {
+        let model = dropdownModel()
+        let dropdownID = NativeNVSTHostViewModel.microphoneDeviceDropdownID
+        model.togglePadDropdown(dropdownID)
+        model.moveHUDDropdownHighlight(step: 1)
+        model.commitHUDDropdownHighlight()
+        #expect(!model.isHUDDropdownOpen)
+        #expect(model.hudDropdownHighlightedItemID == nil)
+        #expect(model.hudFocusID == dropdownID)
+        // No session is running, so the change is refused rather than saved.
+        #expect(model.microphoneDeviceUID == "built-in")
+    }
+
+    @Test func cancellingADropdownSelectsNothing() {
+        let model = dropdownModel()
+        let dropdownID = NativeNVSTHostViewModel.microphoneDeviceDropdownID
+        model.togglePadDropdown(dropdownID)
         model.moveHUDDropdownHighlight(step: 1)
         model.closeHUDDropdown()
         #expect(!model.isHUDDropdownOpen)
-        #expect(model.hudFocusID == id)
-        #expect(model.microphoneDeviceID == "", "a cancelled selection is not saved")
+        #expect(model.hudFocusID == dropdownID, "the trigger keeps the pad")
+        #expect(model.microphoneDeviceUID == "built-in")
     }
 
-    /// A dropdown the model does not own refuses to open rather than opening on an empty list, and an
-    /// unknown id cannot leave the HUD stuck in "a panel is open".
+    /// A dropdown the model does not own refuses to open, so an unknown id cannot leave the HUD stuck
+    /// reporting an open panel.
     @Test func anUnknownDropdownDoesNotOpen() {
         let (_, model) = makeHUDSurface()
         model.togglePadDropdown("not-a-dropdown")
@@ -192,12 +199,19 @@ struct StreamHUDFocusNavigationTests {
             let entries = model.hudFocusEntries.filter { $0.group == "coop-participant-\(participant.id.uuidString)" }
             #expect(entries.map(\.id) == [qualityID, "coop-remove-\(participant.id.uuidString)"])
             #expect(entries.allSatisfy { $0.columns == entries.count }, "one grid row, so up/down keeps the column")
-            // The approval row grows by the approve button, and every column count follows it.
+        }
+    }
+
+    /// The approval row grows by the approve button, and every column count follows it.
+    @Test func theParticipantQualityDropdownColumnsFollowTheApprovalButton() {
+        withPreservedHUDSettings {
+            let (_, model) = makeHUDSurface()
+            model.remoteCoOpPreferences.isEnabled = true
             let waiting = OPNRemoteCoOpParticipant(displayName: "Waiting", role: .guest, connectionState: .waitingForApproval)
             model.remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: model.remoteCoOpPreferences, invite: nil, participants: [waiting])
-            let waitingEntries = model.hudFocusEntries.filter { $0.group == "coop-participant-\(waiting.id.uuidString)" }
-            #expect(waitingEntries.count == 3)
-            #expect(waitingEntries.allSatisfy { $0.columns == 3 })
+            let entries = model.hudFocusEntries.filter { $0.group == "coop-participant-\(waiting.id.uuidString)" }
+            #expect(entries.count == 3)
+            #expect(entries.allSatisfy { $0.columns == 3 })
         }
     }
 

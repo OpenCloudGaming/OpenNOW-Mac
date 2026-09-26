@@ -360,12 +360,8 @@ public enum NativeNVSTDynamicStreamingMode: UInt32, Equatable, Sendable {
     case on = 3
 }
 
-/// Whether this session can carry microphone capture at all, and why not when it cannot.
-///
-/// The answer is only known once the bundle is up, because it depends on the seat's DESCRIBE offer:
-/// until then it is `pending` and nothing may be greyed out on the strength of it. The two failure
-/// cases are the same two shapes `setMicrophoneEnabled` refuses with, so the disabled dropdown and
-/// the refused toggle cannot describe the same seat differently.
+/// Whether this session can carry microphone capture at all, and why not when it cannot. The answer
+/// depends on the seat's DESCRIBE offer, so `pending` must not grey anything out.
 public enum NativeNVSTMicrophoneAvailability: Equatable, Sendable {
     case pending
     case available
@@ -388,9 +384,8 @@ public struct NativeNVSTMicrophoneConfiguration: Equatable, Sendable {
     public let voiceActivityEnabled: Bool
     public let captureRequested: Bool
     public let initiallyEnabled: Bool
-    /// The microphone picker's saved UID. Empty means "Default Device", which follows the system
-    /// default input; the value is carried to the capture device so the picker finally reaches the
-    /// stream instead of only the Settings mic test.
+    /// The microphone picker's saved UID; empty means "Default Device". Carried to the capture device,
+    /// which is how the picker reaches the stream instead of only the Settings mic test.
     public let deviceUniqueID: String
 
     public init(volume: Double, voiceActivityEnabled: Bool, captureRequested: Bool, initiallyEnabled: Bool, deviceUniqueID: String = "") {
