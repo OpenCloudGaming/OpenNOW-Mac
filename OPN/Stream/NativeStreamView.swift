@@ -182,6 +182,19 @@ public final class NativeStreamView: NSView {
     public var isFrontmostInputTarget: Bool {
         NSApplication.shared.isActive && window?.isKeyWindow == true
     }
+    /// PiP is a small, floating viewing surface. While it is on screen the stream must not take the
+    /// pointer - the cursor has to stay usable for the strip and for whatever else the user moved
+    /// to - and the controller has to keep working even though the window is deliberately never
+    /// frontmost. Set by `NativeNVSTHostViewModel` as the mode is entered and left.
+    public internal(set) var isPictureInPictureMode = false {
+        didSet {
+            guard oldValue != isPictureInPictureMode else { return }
+            // Entering the mode gives the pointer back - and absolute confinement with it, which
+            // `setPointerLocked(false)` also releases. Leaving it lets the ordinary rules retake.
+            if isPictureInPictureMode { setPointerLocked(false) }
+            updateControllerMappingFocus()
+        }
+    }
     public var locksPointerWhenRelativeModeSelected = false
     public var confinesCursorToWindowInAbsoluteMode = false {
         didSet {

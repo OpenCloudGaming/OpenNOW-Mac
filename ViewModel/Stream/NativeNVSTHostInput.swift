@@ -124,7 +124,8 @@ extension NativeNVSTHostViewModel {
             return
         }
         guard path != nil, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
-        if view.remoteInputEnabled && !NativeNVSTInputDispatcher.isNeutralizing(event) {
+        if view.remoteInputEnabled, !NativeNVSTInputDispatcher.isNeutralizing(event),
+           !Self.acceptsWhileNotFrontmost(event, isPictureInPictureMode: view.isPictureInPictureMode) {
             guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
         }
         lastAcceptedStreamInputAt = Date()
@@ -134,6 +135,19 @@ extension NativeNVSTHostViewModel {
             return
         }
         inputDispatcher?.enqueue(event)
+    }
+
+    /// Whether an event reaches the game without this window being frontmost.
+    ///
+    /// Only the gamepad, and only in PiP. PiP is a small floating surface that never activates the
+    /// app, so a game pad - a device the system delivers to the process rather than to a window -
+    /// has to keep working while the user is in another app; that is the mode's whole point. The
+    /// keyboard and mouse stay gated: typing or clicking in the app the user moved to must not reach
+    /// the game.
+    static func acceptsWhileNotFrontmost(_ event: UserInputEvent, isPictureInPictureMode: Bool) -> Bool {
+        guard isPictureInPictureMode else { return false }
+        if case .gamepad = event { return true }
+        return false
     }
 
     /// The launch profile this session was resolved from, so a mid-stream change reads one source.

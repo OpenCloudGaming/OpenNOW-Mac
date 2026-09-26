@@ -1,7 +1,7 @@
 //  The Picture-in-Picture control strip.
 //
-//  PiP suppresses the whole HUD - the dock is 268pt wide at its narrowest and the window is 320pt,
-//  so it would cover nearly all of the picture - and this replaces it: two actions, on the picture,
+//  PiP suppresses the whole HUD - the dock is 344pt wide at its narrowest and the window is 480pt,
+//  so it would cover most of the picture - and this replaces it: two actions, on the picture,
 //  in the smallest form the design system has. Restore is the way back to the windowed stream;
 //  End Session is the same call the in-stream quit menu's third button makes, so a menu bar action
 //  and this strip tear down identically.

@@ -24,8 +24,9 @@ import AppKit
 @MainActor
 enum OPNStreamPictureInPicture {
     /// The box a PiP picture fits inside, before the stream's own aspect ratio decides the height.
-    /// 320pt is small enough to sit out of the way and still legible.
-    static let box = CGSize(width: 320, height: 320)
+    /// 480pt is half the stream window's default width: big enough to read a HUD or subtitles in a
+    /// 16:9 picture (480x270), small enough to sit out of the way. 320pt read as a thumbnail.
+    static let box = CGSize(width: 480, height: 480)
     static let margin: CGFloat = 20
 
     /// The aspect-preserving content size of the PiP picture, from the same pure geometry the

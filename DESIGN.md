@@ -823,19 +823,29 @@ lives in the window's content.
 `.fullScreenAuxiliary`, so it does not float over full-screen apps or into another Space's full
 screen. Its titlebar buttons are hidden and the whole window is draggable, so the small picture is
 nothing but picture; the style mask is never mutated.
-- **Size.** 320pt wide, height from the stream's aspect ratio through the same pure geometry the
+- **Size.** 480pt wide, height from the stream's aspect ratio through the same pure geometry the
 windowed stage fits its picture with (`OPNStreamStageGeometry`), placed in the bottom-trailing
 corner of the visible frame with a 20pt margin.
-- **Focus.** Entering the mode never activates the app and never orders the window front, so it
-cannot take focus from whatever the user moved to. It keeps ordinary key status, though: the
-picture is in the game, and a PiP window that refused key status silently stopped accepting the
-mouse and the keyboard. Clicking it focuses it, exactly as for the windowed stream.
+- **Focus and pointer.** Entering the mode never activates the app and never orders the window
+front, so it cannot take focus from whatever the user moved to. It keeps ordinary key status,
+though: the picture is in the game, and a PiP window that refused key status silently stopped
+accepting the mouse and the keyboard. Clicking it focuses it, exactly as for the windowed stream.
+It never *captures* the pointer, though, and releases one already held on entry: a cursor-sized
+picture has nothing to aim with, and a captured cursor is the one thing that cannot reach the
+strip. Relative mouse input therefore pauses in PiP; the keyboard (while focused) and the
+controller keep working.
+- **Controller while unfocused.** The mode is never frontmost by design, so the gamepad is exempt
+from the frontmost input gate - a controller is a global device, and playing the game from another
+app is what the mode is for. Keyboard and mouse are still gated on focus: typing or clicking
+elsewhere must not reach the game. Controller *mappings* stay on the ordinary focus policy, because
+a Steam binding can inject keyboard and mouse events and those must not land in the app the user
+moved to; the raw gamepad state is what keeps flowing.
 - **Carrier child window.** The borderless NVST carrier is a child of the stream window, and AppKit
 rewrites a child's `collectionBehavior` to `.ignoresCycle` on attach — dropping
 `.canJoinAllSpaces`. The parent's behaviour is therefore re-applied to every child window on the
 way in and on the way out.
-- **HUD.** Suppressed entirely, not scaled: the dock alone is 268pt wide at its narrowest, in a
-320pt window. Floating stats go with it.
+- **HUD.** Suppressed entirely, not scaled: the dock alone is 344pt wide at its narrowest, in a
+480pt window. Floating stats go with it.
 - **Control strip.** Two `StreamQuitMenuButton`s — **Restore** and **End Session** — sized to their
 content and centred along the bottom edge, not a bar across the window, over a Panel background @
 0.82 with a 1px Divider stroke. Spacing follows the Spacing scale: `xSmall` inside the panel and

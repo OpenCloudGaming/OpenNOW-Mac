@@ -226,3 +226,38 @@ import Testing
         isApplicationActive: true,
         isWindowKey: true))
 }
+
+/// PiP is a cursor-sized floating picture. Entering the mode hands the pointer back, and nothing
+/// takes it again while it is on: not the seat asking for mouselook, not the ordinary restore path,
+/// not a click on the picture. That is what leaves the cursor usable for the strip and for whatever
+/// app the user moved to.
+@Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
+@MainActor func pictureInPictureNeverHoldsThePointer() {
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 270), styleMask: .borderless, backing: .buffered, defer: false)
+    let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.cursorAssociationHandler = { _ in .success }
+    view.hidesCursorWhilePointerLocked = false
+    view.mouseInputMode = .relative
+    window.contentView = view
+    defer { view.setPointerLocked(false) }
+
+    // The game is in mouselook, so the client is holding the pointer.
+    view.setRemoteCursorVisible(false)
+    #expect(view.isPointerLocked)
+
+    view.isPictureInPictureMode = true
+    #expect(!view.isPointerLocked)
+    #expect(!view.isAbsoluteCursorConfined)
+
+    // Mouselook again, a restore, and a click on the picture all refuse to retake it.
+    view.setRemoteCursorVisible(false)
+    #expect(!view.isPointerLocked)
+    view.restoreInputFocus()
+    #expect(!view.isPointerLocked)
+    #expect(!view.capturePointerForMouseDown())
+
+    // Leaving the mode hands the ordinary rules back: the seat's mouselook takes it again.
+    view.isPictureInPictureMode = false
+    view.setRemoteCursorVisible(false)
+    #expect(view.isPointerLocked)
+}

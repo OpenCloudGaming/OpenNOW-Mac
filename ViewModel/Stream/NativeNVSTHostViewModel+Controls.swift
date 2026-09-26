@@ -355,7 +355,7 @@ extension NativeNVSTHostViewModel {
     }
 
     func setUnifiedHUDVisible(_ visible: Bool) {
-        // Never in PiP: the dock is 268pt wide at its narrowest and the whole window is 320pt.
+        // Never in PiP: the dock is 344pt wide at its narrowest and the whole window is 480pt.
         guard isConnected, !streamControlsVisible, !isPictureInPicture else { return }
         hudGamepadTracker.reset()
         closeHUDDropdown()
@@ -454,7 +454,7 @@ extension NativeNVSTHostViewModel {
     }
 
     /// The window is small and floating from here on, so every surface anchored to the window's top
-    /// corners has to go. The dock alone is 268pt wide in a 320pt window.
+    /// corners has to go. The dock alone is 344pt wide in a 480pt window.
     private func enterPictureInPicture(_ window: OPNStreamWindow) {
         unifiedHUDVisible = false
         isShortcutsHelpVisible = false
@@ -467,6 +467,12 @@ extension NativeNVSTHostViewModel {
         // reaching it while the window is small - the same gate the HUD uses on its way out, which
         // is `networkPathAvailable` rather than an unconditional `true`: the network monitor blocks
         // input while the path is down and `isConnected` stays true through a drop.
+        //
+        // The mode itself, though, must not hold the pointer: PiP is a cursor-sized picture, there
+        // is nothing to aim with, and a captured cursor is the one thing the user cannot use to
+        // reach the strip or whatever else they moved to. Setting the mode releases it, and keeps
+        // the controller alive while the window is not frontmost.
+        nativeView?.isPictureInPictureMode = true
         nativeView?.remoteInputEnabled = networkPathAvailable
         nativeView?.restoreInputFocus()
         let aspectRatio = CGFloat(OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).aspectRatio)
@@ -479,6 +485,7 @@ extension NativeNVSTHostViewModel {
     private func leavePictureInPicture(_ window: OPNStreamWindow) {
         OPNStreamPictureInPicture.exit(window)
         isPictureInPicture = false
+        nativeView?.isPictureInPictureMode = false
         nativeView?.remoteInputEnabled = networkPathAvailable
         nativeView?.restoreInputFocus()
         OPNStreamTelemetry.capture("nvst.ui.pip.exit", level: .info, message: "Native NVST stream left Picture in Picture.", attributes: ["applicationID": configuration.applicationID])

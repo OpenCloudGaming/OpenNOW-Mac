@@ -78,12 +78,17 @@ extension NativeStreamView {
         // mouselook as well as by choosing it, and coming back from the HUD or the on-screen
         // keyboard without retaking the pointer would leave the game aiming with a free cursor
         // that walks straight out of the window.
-        if locksPointerWhenRelativeModeSelected, mouseInputMode == .relative { setPointerLocked(true) }
+        //
+        // PiP is the exception: the mode exists so the cursor stays free, so it never retakes it.
+        if locksPointerWhenRelativeModeSelected, mouseInputMode == .relative, !isPictureInPictureMode {
+            setPointerLocked(true)
+        }
     }
 
     func captureAbsoluteCursorIfNeeded() {
         guard remoteInputEnabled, directMouseInputEnabled, confinesCursorToWindowInAbsoluteMode,
-              mouseInputMode == .absolute, !isPointerLocked, !isAbsoluteCursorConfined, window != nil else { return }
+              mouseInputMode == .absolute, !isPointerLocked, !isAbsoluteCursorConfined,
+              !isPictureInPictureMode, window != nil else { return }
         guard Self.confinedCursorPoint(cursorLocationProvider(), to: window?.frame ?? .zero) != nil else { return }
         isAbsoluteCursorConfined = true
         window?.acceptsMouseMovedEvents = true
@@ -152,7 +157,7 @@ extension NativeStreamView {
         let mode: NativeStreamMouseInputMode = isVisible ? .absolute : .relative
         mouseInputMode = mode
         if mode == .relative {
-            if remoteInputEnabled { setPointerLocked(true) }
+            if remoteInputEnabled, !isPictureInPictureMode { setPointerLocked(true) }
         } else if isPointerLocked {
             // Guarded because `setPointerLocked(false)` also drops held buttons and absolute
             // confinement; still reachable, as the on-screen keyboard restores a lock without
