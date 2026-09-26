@@ -215,16 +215,19 @@ public enum OPNCaptureLocations {
         return path == parent || path.hasPrefix(parent + "/")
     }
 
-    /// Tests must never write into the reader's real media folders. SwiftPM runs the suite inside an
-    /// `.xctest` bundle, so the roots resolve under one process-wide temporary directory there.
+    /// Tests must never write into the reader's real media folders. `swift test` runs the suite as
+    /// `swiftpm-testing-helper`, so the roots resolve under one process-wide temporary directory there.
     static let testRootDirectory: URL? = {
         let environment = ProcessInfo.processInfo.environment
-        let isTestProcess = Bundle.main.bundlePath.hasSuffix(".xctest")
+        // `swift test` launches the suite through `swiftpm-testing-helper`, which carries no
+        // `.xctest` main path and sets no environment, so several signals are checked.
+        let processName = ProcessInfo.processInfo.processName
+        let isTestProcess = processName == "swiftpm-testing-helper"
+            || processName == "xctest"
+            || Bundle.main.bundlePath.hasSuffix(".xctest")
+            || Bundle.allBundles.contains { $0.bundlePath.hasSuffix(".xctest") }
             || environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestBundlePath"] != nil
-            // `swift test` runs Swift Testing through `swiftpm-testing-helper`, whose bundle path and
-            // environment reveal nothing. The linked XCTest class is the dependable tell.
-            || NSClassFromString("XCTestCase") != nil
         guard isTestProcess else { return nil }
         return FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenNOWTests-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
