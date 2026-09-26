@@ -104,6 +104,103 @@ struct StreamHUDFocusNavigationTests {
         #expect(StreamHUDFocusEntry.focusID(from: OPNStreamHUDSection.audio.focusID, direction: .down, in: collapsed) == OPNStreamHUDSection.capture.focusID)
     }
 
+    // MARK: - Pad-driven dropdowns
+
+    /// A dropdown's entry is a full-width row of its own — the shape `StreamHUDFocusEntry` documents
+    /// for a slider, a dropdown or a participant row — so it sits between the grids rather than
+    /// inside one, and up/down step through it in the order the HUD draws it.
+    @Test func aDropdownEntryIsAFullWidthRowBetweenTheGrids() {
+        let entries = [
+            entry("mic", group: "audio", columns: 4), entry("audio", group: "audio", columns: 4),
+            entry("microphone-device"),
+            entry("pointer", group: "input", columns: 4), entry("afk", group: "input", columns: 4),
+        ]
+        #expect(StreamHUDFocusEntry.rows(of: entries) == [[0, 1], [2], [3, 4]])
+        #expect(StreamHUDFocusEntry.focusID(from: "mic", direction: .down, in: entries) == "microphone-device")
+        #expect(StreamHUDFocusEntry.focusID(from: "microphone-device", direction: .down, in: entries) == "pointer")
+        #expect(StreamHUDFocusEntry.focusID(from: "pointer", direction: .up, in: entries) == "microphone-device")
+    }
+
+    /// The whole pad sequence on a real HUD model: confirm opens the list on the row in use, up/down
+    /// walk it and wrap, confirm runs that row and closes, and HUD focus is back on the trigger —
+    /// which it never left, because the panel is drawn from the same entry rather than as a new one.
+    @Test func aDropdownOpensWalksCommitsAndLeavesFocusOnItsTrigger() {
+        let (_, model) = makeHUDSurface()
+        let id = NativeNVSTHostViewModel.microphoneDeviceDropdownID
+        model.microphoneDeviceOptions = [
+            OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true),
+            OPNStreamMicrophoneDeviceOption(label: "MacBook Microphone", uniqueId: "built-in"),
+            OPNStreamMicrophoneDeviceOption(label: "USB Mic", uniqueId: "usb"),
+        ]
+        model.microphoneDeviceID = "built-in"
+        model.hudFocusID = id
+
+        model.togglePadDropdown(id)
+        #expect(model.openHUDDropdownID == id)
+        #expect(model.hudDropdownHighlightedItemID == "built-in", "the list opens on the row in use")
+
+        model.moveHUDDropdownHighlight(step: 1)
+        #expect(model.hudDropdownHighlightedItemID == "usb")
+        model.moveHUDDropdownHighlight(step: 1)
+        #expect(model.hudDropdownHighlightedItemID == "", "the walk wraps")
+        model.moveHUDDropdownHighlight(step: -1)
+        #expect(model.hudDropdownHighlightedItemID == "usb")
+
+        model.commitHUDDropdownHighlight()
+        #expect(model.openHUDDropdownID == nil)
+        #expect(model.hudDropdownHighlightedItemID == nil)
+        #expect(model.hudFocusID == id, "the pad is back on the trigger, so the next press reopens the list")
+        // A device change with no session running is refused rather than saved: the preference only
+        // moves once the transport has taken it.
+        #expect(model.microphoneDeviceID == "built-in")
+    }
+
+    /// Cancel closes the panel and selects nothing, and the trigger is still where the pad stands.
+    @Test func cancellingADropdownSelectsNothingAndKeepsTheTriggerFocused() {
+        let (_, model) = makeHUDSurface()
+        let id = NativeNVSTHostViewModel.microphoneDeviceDropdownID
+        model.microphoneDeviceOptions = [
+            OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true),
+            OPNStreamMicrophoneDeviceOption(label: "USB Mic", uniqueId: "usb"),
+        ]
+        model.hudFocusID = id
+        model.togglePadDropdown(id)
+        model.moveHUDDropdownHighlight(step: 1)
+        model.closeHUDDropdown()
+        #expect(!model.isHUDDropdownOpen)
+        #expect(model.hudFocusID == id)
+        #expect(model.microphoneDeviceID == "", "a cancelled selection is not saved")
+    }
+
+    /// A dropdown the model does not own refuses to open rather than opening on an empty list, and an
+    /// unknown id cannot leave the HUD stuck in "a panel is open".
+    @Test func anUnknownDropdownDoesNotOpen() {
+        let (_, model) = makeHUDSurface()
+        model.togglePadDropdown("not-a-dropdown")
+        #expect(!model.isHUDDropdownOpen)
+    }
+
+    /// The Remote Co-Op quality dropdown's entry sits on the participant's own focus row, ahead of
+    /// approve and remove, exactly as the row draws them.
+    @Test func theParticipantQualityDropdownLeadsItsRow() {
+        withPreservedHUDSettings {
+            let (_, model) = makeHUDSurface()
+            model.remoteCoOpPreferences.isEnabled = true
+            let participant = OPNRemoteCoOpParticipant(displayName: "Guest", role: .guest, connectionState: .connected)
+            model.remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: model.remoteCoOpPreferences, invite: nil, participants: [participant])
+            let qualityID = NativeNVSTHostViewModel.remoteCoOpQualityDropdownPrefix + participant.id.uuidString
+            let entries = model.hudFocusEntries.filter { $0.group == "coop-participant-\(participant.id.uuidString)" }
+            #expect(entries.map(\.id) == [qualityID, "coop-remove-\(participant.id.uuidString)"])
+            #expect(entries.allSatisfy { $0.columns == entries.count }, "one grid row, so up/down keeps the column")
+            // The approval row grows by the approve button, and every column count follows it.
+            let waiting = OPNRemoteCoOpParticipant(displayName: "Waiting", role: .guest, connectionState: .waitingForApproval)
+            model.remoteCoOpSnapshot = OPNRemoteCoOpHostSnapshot(preferences: model.remoteCoOpPreferences, invite: nil, participants: [waiting])
+            let waitingEntries = model.hudFocusEntries.filter { $0.group == "coop-participant-\(waiting.id.uuidString)" }
+            #expect(waitingEntries.count == 3)
+            #expect(waitingEntries.allSatisfy { $0.columns == 3 })
+        }
+    }
+
     @Test func trackerMapsDpadAndStickToDirections() {
         let tracker = StreamHUDGamepadTracker()
         let device = InputDeviceID("pad")
