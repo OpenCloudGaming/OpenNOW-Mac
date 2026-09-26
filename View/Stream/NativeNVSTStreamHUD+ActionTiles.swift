@@ -72,8 +72,20 @@ extension NativeNVSTMediaStreamSurface {
                           subtitle: model.streamWindowIsFullScreen ? "Full screen" : "Windowed",
                           systemName: model.streamWindowIsFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
                           isActive: model.streamWindowIsFullScreen,
-                          isDisabled: model.nativeView?.window == nil,
+                          isDisabled: model.isFullScreenTileDisabled,
                           action: model.toggleNativeFullScreen),
+            // `pip` is the canonical macOS PiP glyph - the shape Apple uses in Safari, QuickTime and
+            // TV. One symbol for both states, with the state carried by `isActive`, matching
+            // `floating-stats` beside it. SF Symbols 2 / macOS 11+, below the 15.6 deployment
+            // target; a missing symbol renders a blank tile rather than failing to compile, so the
+            // availability is asserted in `StreamSidebarFeaturesTests`.
+            NativeHUDTile(id: "picture-in-picture",
+                          title: model.isPictureInPicture ? "Leave Picture in Picture" : "Picture in Picture",
+                          subtitle: model.isPictureInPicture ? "Floating" : "Small floating window",
+                          systemName: "pip",
+                          isActive: model.isPictureInPicture,
+                          isDisabled: !model.sidebarCapabilities.supports(.pictureInPicture),
+                          action: model.togglePictureInPicture),
         ]
     }
 

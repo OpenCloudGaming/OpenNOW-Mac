@@ -38,19 +38,11 @@ struct StreamStageLayout<Content: View>: View {
 
     /// The largest box of `aspectRatio` that fits the viewport once the titlebar strip is taken
     /// off it. Falls back to the whole viewport when there is no inset or no usable aspect.
+    ///
+    /// The arithmetic itself is `OPNStreamStageGeometry`, so the Picture-in-Picture resize - which
+    /// is AppKit and never SwiftUI - measures the picture with the same function this does.
     static func contentSize(viewport: CGSize, topInset: CGFloat, aspectRatio: CGFloat) -> CGSize {
-        let availableHeight = max(viewport.height - topInset, 0)
-        guard topInset > 0, viewport.width > 0, availableHeight > 0 else {
-            return CGSize(width: viewport.width, height: availableHeight)
-        }
-        guard aspectRatio.isFinite, aspectRatio > 0 else {
-            return CGSize(width: viewport.width, height: availableHeight)
-        }
-        let heightForFullWidth = viewport.width / aspectRatio
-        if heightForFullWidth <= availableHeight {
-            return CGSize(width: viewport.width, height: heightForFullWidth)
-        }
-        return CGSize(width: availableHeight * aspectRatio, height: availableHeight)
+        OPNStreamStageGeometry.contentSize(viewport: viewport, topInset: topInset, aspectRatio: aspectRatio)
     }
 
     var body: some View {

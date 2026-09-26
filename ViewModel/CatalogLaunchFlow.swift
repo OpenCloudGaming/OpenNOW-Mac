@@ -104,6 +104,25 @@ extension CatalogViewModel {
         return isActiveStreamLaunchOverlayVisible
     }
 
+    /// A stream is live in its own window right now.
+    ///
+    /// The catalog stays mounted behind that window for the whole session, so this is what tells the
+    /// page a game is running: it drives the running-session banner and the artwork backdrop, which
+    /// are the only things on the page that know. Distinct from `isActiveHomeSessionVisible`, which
+    /// is a *suspended* seat - there is no stream, just a session waiting to be resumed.
+    var isStreamRunning: Bool { activeStreamConfiguration != nil }
+
+    /// The running stream's title, as the banner shows it. Falls back the same way the stream
+    /// window's own title does, so the two never disagree.
+    var runningStreamTitle: String {
+        guard let configuration = activeStreamConfiguration else { return "" }
+        let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "GeForce NOW" : title
+    }
+
+    /// The running stream's artwork, for the page backdrop.
+    var runningStreamArtworkURL: URL? { activeStreamConfiguration?.loadingArtworkURL }
+
     var canResumeActiveLaunchSession: Bool {
         activeSessionResumeConfiguration?.resumesExistingSession == true
     }
