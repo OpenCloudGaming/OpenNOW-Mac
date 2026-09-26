@@ -58,7 +58,8 @@ extension NativeStreamView {
     }
 
     func capturePointerForMouseDown() -> Bool {
-        guard remoteInputEnabled, allowsRelativeCapture, mouseInputMode == .relative, !isPointerLocked else { return false }
+        guard remoteInputEnabled, allowsRelativeCapture, mouseInputMode == .relative,
+              !isPointerLocked, !isPictureInPictureMode else { return false }
         setPointerLocked(true)
         return isPointerLocked
     }

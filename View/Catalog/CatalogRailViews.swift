@@ -471,7 +471,9 @@ struct VendorActiveSessionHomeBanner: View {
     }
 }
 
-private struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
+/// Shared with `VendorRunningStreamHomeBanner` so a running stream and a suspended seat are drawn by
+/// the same control.
+struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
     let primary: Bool
 
     func makeBody(configuration: Configuration) -> some View {

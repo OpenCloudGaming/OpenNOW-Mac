@@ -42,6 +42,18 @@ extension NativeNVSTHostViewModel {
         configurePushToTalkMonitor(for: view, mode: profile.microphoneMode)
         configureInput(for: view)
         installNativeFullScreenObservers(for: view)
+        attachStreamWindow(view.window)
+    }
+
+    /// Points the window hosting this session at it, so the window's close button can ask the
+    /// session instead of guessing at it. The window owns the decision - see
+    /// `OPNStreamWindowPresenter.handleCloseRequest` - this only makes the session reachable.
+    ///
+    /// Called from the surface whenever it lands in a window, and again when the native view
+    /// resolves, so a missing reference cannot outlive the moment the window is there.
+    func attachStreamWindow(_ window: NSWindow?) {
+        guard let window = window as? OPNStreamWindow, !didEnd else { return }
+        window.sessionSurface = self
     }
 
     /// The HUD's full-screen tile reads `streamWindowIsFullScreen` rather than the style mask, so it
@@ -112,7 +124,8 @@ extension NativeNVSTHostViewModel {
             return
         }
         guard path != nil, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
-        if view.remoteInputEnabled && !NativeNVSTInputDispatcher.isNeutralizing(event) {
+        if view.remoteInputEnabled, !NativeNVSTInputDispatcher.isNeutralizing(event),
+           !Self.acceptsWhileNotFrontmost(event, isPictureInPictureMode: view.isPictureInPictureMode) {
             guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
         }
         lastAcceptedStreamInputAt = Date()
@@ -122,6 +135,19 @@ extension NativeNVSTHostViewModel {
             return
         }
         inputDispatcher?.enqueue(event)
+    }
+
+    /// Whether an event reaches the game without this window being frontmost.
+    ///
+    /// Only the gamepad, and only in PiP. PiP is a small floating surface that never activates the
+    /// app, so a game pad - a device the system delivers to the process rather than to a window -
+    /// has to keep working while the user is in another app; that is the mode's whole point. The
+    /// keyboard and mouse stay gated: typing or clicking in the app the user moved to must not reach
+    /// the game.
+    static func acceptsWhileNotFrontmost(_ event: UserInputEvent, isPictureInPictureMode: Bool) -> Bool {
+        guard isPictureInPictureMode else { return false }
+        if case .gamepad = event { return true }
+        return false
     }
 
     /// The launch profile this session was resolved from, so a mid-stream change reads one source.

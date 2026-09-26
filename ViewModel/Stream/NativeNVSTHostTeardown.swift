@@ -87,6 +87,10 @@ extension NativeNVSTHostViewModel {
         isConnected = false
         pointerLocked = false
         streamWindowIsFullScreen = false
+        // The window is thrown away with the session, so this only stops a stale mode from
+        // disabling the full-screen tile while the teardown still runs.
+        isPictureInPicture = false
+        nativeView?.isPictureInPictureMode = false
         unifiedHUDVisible = false
         streamControlsVisible = false
         nativeStatsVisible = false

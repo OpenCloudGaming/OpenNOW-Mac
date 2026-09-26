@@ -197,6 +197,21 @@ struct CatalogContentView: View {
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
                     }
                 }
+                // Sticky, not scrolled: the banner is the one fact that stays true for the whole
+                // session, and a page scrolled down to the rails is exactly when it is needed.
+                // A `safeAreaInset` keeps it pinned above the content - a pinned `Section` header
+                // would mean a `LazyVStack`, and the eager `VStack` above exists because a lazy one
+                // re-measures every rail on every scroll frame.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if viewModel.isStreamRunning {
+                        VendorRunningStreamHomeBanner(
+                            title: viewModel.runningStreamTitle,
+                            availableWidth: viewport.size.width,
+                            onFocus: { OPNStreamWindowPresenter.shared.focus() },
+                            onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
+                        )
+                    }
+                }
                 .background(OPNDesign.Surface.app)
                 .task {
                     prefetchUpcomingHeroArtwork(from: heroIndex)

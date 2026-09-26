@@ -792,6 +792,105 @@ Section Fill background, 1px Divider stroke, 10 padding, min height 58, equal wi
 Label 9pt bold @ 0.46 white (tracking 0.7); value 12pt bold. Positive state tints the
 value toward accent.
 
+### Dedicated Stream Window (`OPNStreamWindow`, `OPNStreamWindowPresenter`)
+
+A live stream is presented in its own AppKit-owned `NSWindow`, not in the catalog window. The
+catalog stays mounted behind it for the whole session.
+
+- **Chrome.** Titled, closable, miniaturizable, resizable, `fullSizeContentView`, transparent
+titlebar with the title hidden — the same full-bleed arrangement as the catalog window, and the
+reason `StreamStageLayout` still reserves the top strip. PiP windows reserve nothing.
+- **Size.** 1280×720 content on creation, minimum 480×270, locked to the stream's aspect ratio
+while the session runs. Opening placement is remembered per mode (`OPNStreamWindowFrameStore`):
+the last windowed frame is restored, clamped onto a screen that still exists, and centred on the
+first run. AppKit's own frame autosave would not do here, because one window holds two placements
+and a single autosave name would let PiP's position overwrite the windowed one.
+- **Full screen.** `collectionBehavior` includes `.fullScreenPrimary` *before* the window is first
+ordered in. A stream window is created mid-session, so it cannot be granted the way the main
+window is (`WindowFitting.installEarlyFitting`), which is the whole reason this window is AppKit's.
+- **Close.** The close button always raises the existing stream controls panel — the same 440-wide
+Stream Modal Dialog — and the window goes wherever the user's choice puts it. Resume leaves it
+open, Pause leaves a resumable seat and closes it, End tears the session down and closes it.
+There is no preference for this and no fourth dialog option. Closing while full screen leaves full
+screen first and tears down once it has: a full-screen window lives in a Space of its own, and
+ordering it out while it is still full screen leaves that Space showing black forever.
+- **Dock.** Titled on purpose: `OPNDockIconController` counts a window towards the Dock icon
+exactly when its style mask contains `.titled`, so a stream window alone on screen keeps the Dock
+alive the way the catalog window used to.
+
+### Picture-in-Picture (`OPNStreamPictureInPicture`)
+
+PiP is **a mode of the stream window**, not a second window: the one window shrinks, floats and
+stays on top. Nothing is re-parented and no second video surface is created, because the session
+lives in the window's content.
+
+- **Window.** `level = .floating`, `collectionBehavior = .canJoinAllSpaces`. Windowed only — never
+`.fullScreenAuxiliary`, so it does not float over full-screen apps or into another Space's full
+screen. Its titlebar buttons are hidden and the whole window is draggable, so the small picture is
+nothing but picture; the style mask is never mutated.
+- **Size.** 640pt wide — half the stream window's default width, so a 16:9 picture is 640×360 —
+height from the stream's aspect ratio through the same pure geometry the windowed stage fits its
+picture with (`OPNStreamStageGeometry`). It opens at the position it was last left at, clamped onto
+a screen that still exists; centred on the first run. Only the position is remembered, not the
+size: a size saved from a different game's aspect ratio would be the wrong shape.
+- **Focus and pointer.** Entering the mode never activates the app and never orders the window
+front, so it cannot take focus from whatever the user moved to. It keeps ordinary key status,
+though: the picture is in the game, and a PiP window that refused key status silently stopped
+accepting the mouse and the keyboard. Clicking it focuses it, exactly as for the windowed stream.
+It never *captures* the pointer, though, and releases one already held on entry: a cursor-sized
+picture has nothing to aim with, and a captured cursor is the one thing that cannot reach the
+strip. Relative mouse input therefore pauses in PiP; the keyboard (while focused) and the
+controller keep working.
+- **Controller while unfocused.** The mode is never frontmost by design, so the gamepad is exempt
+from the frontmost input gate - a controller is a global device, and playing the game from another
+app is what the mode is for. Keyboard and mouse are still gated on focus: typing or clicking
+elsewhere must not reach the game. Controller *mappings* stay on the ordinary focus policy, because
+a Steam binding can inject keyboard and mouse events and those must not land in the app the user
+moved to; the raw gamepad state is what keeps flowing.
+- **Carrier child window.** The borderless NVST carrier is a child of the stream window, and AppKit
+rewrites a child's `collectionBehavior` to `.ignoresCycle` on attach — dropping
+`.canJoinAllSpaces`. The parent's behaviour is therefore re-applied to every child window on the
+way in and on the way out.
+- **HUD.** Suppressed entirely, not scaled: the dock alone is 344pt wide at its narrowest, in a
+640pt window. Floating stats go with it.
+- **Control strip.** Two `StreamQuitMenuButton`s — **Restore** and **End Session** — sized to their
+content and centred along the bottom edge, not a bar across the window, over a Panel background @
+0.82 with a 1px Divider stroke. Spacing follows the Spacing scale: `xSmall` inside the panel and
+between the buttons (the HUD's action-row gap), `small` from the window edge. It reveals on any pointer movement over the picture and fades out after
+3 idle seconds, the same bargain the Remote Co-Op guest window makes for its overlay controls; it
+starts visible and only ever hides after a movement has been seen, so a window that never reports
+one leaves Restore reachable. End Session is the same call the in-stream quit menu makes. The strip
+is suppressed while the stream controls panel is up.
+- **Entry.** One tile in the unified HUD's Display section, `pip` glyph, state carried by
+`isActive` like its `floating-stats` sibling. The full-screen tile's inverse is disabled while in
+PiP; pressing the PiP tile while full screen leaves full screen first, then enters PiP.
+
+### Running-Stream Banner and Backdrop (`VendorRunningStreamHomeBanner`, `VendorRunningStreamBackdrop`)
+
+What the catalog shows while a stream runs in its own window. The catalog window stays mounted for
+the whole session, so without this the app has a live game and a page that looks idle.
+
+- **Banner.** Pinned with a top `safeAreaInset` on the page's scroll view, so it stays visible
+while the page scrolls — the one fact that holds for the whole session, needed most when the user
+has scrolled down to the rails. A pinned `Section` header would require a `LazyVStack`, which the
+home page deliberately avoids. Chrome and control are the active-session banner's
+(`VendorActiveSessionBannerButtonStyle`):
+`OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline along the bottom,
+`CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a 10pt bold accent
+eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold with the stream's own
+status message under it at 11pt Text Secondary. Actions: **FOCUS** (accent fill, the one action the
+session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular). END routes
+through `StreamSessionLifecycle`, so the menu bar, the PiP strip and this button tear down the same
+thing.
+- **Backdrop.** The running stream's artwork, artwork fill, 18pt blur, then `OPNDesign.Surface.scrim`
+and the same top/bottom black gradient the store picker uses. Behind the page, never hit-testable,
+hidden from accessibility. Games page only — Settings and Recordings share the stack and have
+nothing to do with the stream. Measured by a `GeometryReader` and framed to that size: a
+full-window backdrop left free to report its own ideal size can resize the page it sits behind.
+
+Both appear only for a *running* stream. A suspended seat keeps `VendorActiveSessionHomeBanner`:
+no stream is playing there, and the action that matters is RESUME rather than FOCUS.
+
 ### HUD Dock (unified stream HUD)
 
 Full-height leading dock, width `min(344, max(268, streamWidth * 0.72))`. Panel

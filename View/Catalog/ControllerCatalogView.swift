@@ -554,6 +554,17 @@ private struct ControllerGamesPage: View {
                     }
                     .padding(.bottom, 46 * uiScale)
                 }
+                // Sticky, not scrolled - same as the mouse catalog's banner.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if viewModel.isStreamRunning {
+                        VendorRunningStreamHomeBanner(
+                            title: viewModel.runningStreamTitle,
+                            availableWidth: layout.contentWidth,
+                            onFocus: { OPNStreamWindowPresenter.shared.focus() },
+                            onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
+                        )
+                    }
+                }
                 .onChange(of: selectedRailIndex) { _, index in
                     guard sections.indices.contains(index) else { return }
                     withAnimation(.easeOut(duration: 0.18)) {

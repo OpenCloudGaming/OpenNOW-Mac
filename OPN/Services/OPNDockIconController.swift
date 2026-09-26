@@ -90,8 +90,15 @@ enum OPNDockIconController {
     /// item's popover and the status bar window are borderless, so they never keep a Dock icon alive.
     private static func hasVisibleAppWindow() -> Bool {
         NSApp.windows.contains { window in
-            (window.isVisible || window.isMiniaturized) && window.styleMask.contains(.titled)
+            (window.isVisible || window.isMiniaturized) && countsAsAppWindow(styleMask: window.styleMask)
         }
+    }
+
+    /// Whether a window's style mask keeps a Dock icon alive. Named so the arithmetic can be asserted
+    /// against a style mask alone - in particular the dedicated stream window's, which has to keep
+    /// counting now that it can be the only window on screen.
+    static func countsAsAppWindow(styleMask: NSWindow.StyleMask) -> Bool {
+        styleMask.contains(.titled)
     }
 
     private static func observe(_ name: Notification.Name, _ action: @escaping @MainActor @Sendable () -> Void) -> NSObjectProtocol {

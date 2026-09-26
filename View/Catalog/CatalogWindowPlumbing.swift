@@ -96,6 +96,10 @@ struct WindowTopInsetReader: NSViewRepresentable {
         private func calculatedInset() -> CGFloat {
             guard let window, let contentView = window.contentView else { return 0 }
             guard !window.styleMask.contains(.fullScreen) else { return 0 }
+            // A Picture-in-Picture stream window has no titlebar strip to reserve: its traffic
+            // lights are hidden and the picture is the whole window, so the inset the windowed
+            // stream reserves for them collapses to zero in that mode.
+            guard (window as? OPNStreamWindow)?.isPictureInPicture != true else { return 0 }
 
             let safeTopInset = contentView.safeAreaInsets.top
             let layoutTopInset = contentLayoutTopInset(window: window, contentView: contentView)
