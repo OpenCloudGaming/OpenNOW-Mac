@@ -23,6 +23,10 @@ struct ControllerMappingView: View {
 
     private static let sidebarWidth: CGFloat = 168
     private static let bindingPanelWidth: CGFloat = 320
+    /// A dropdown panel is an overlay, so it obeys sibling paint order. The type picker must clear
+    /// every row below it; every other row only has to clear the configurator underneath.
+    private static let dropdownRowZIndex: Double = 2
+    private static let contentRowZIndex: Double = 1
 
     private var sheetSize: CGSize {
         SteamControllerSheetMetrics.size(width: 1120, height: 720, uiScale: uiScale)
@@ -75,19 +79,19 @@ struct ControllerMappingView: View {
                 familyPicker
                     .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                     .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
-                    .zIndex(2)
+                    .zIndex(Self.dropdownRowZIndex)
                 if store.isCurrentGameKnown {
                     SteamControllerModalRule()
                     gameOverrideBar
                         .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                         .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
-                        .zIndex(2)
+                        .zIndex(Self.contentRowZIndex)
                 }
                 SteamControllerModalRule()
                 profileBar
                     .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
                     .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
-                    .zIndex(1)
+                    .zIndex(Self.contentRowZIndex)
                 SteamControllerModalRule()
                 if draft != nil {
                     configuratorLayout
