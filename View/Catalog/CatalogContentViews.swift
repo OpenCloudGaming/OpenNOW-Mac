@@ -65,6 +65,15 @@ struct CatalogContentView: View {
                                 )
                             }
 
+                            if viewModel.isStreamRunning {
+                                VendorRunningStreamHomeBanner(
+                                    title: viewModel.runningStreamTitle,
+                                    availableWidth: viewport.size.width,
+                                    onFocus: { OPNStreamWindowPresenter.shared.focus() },
+                                    onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
+                                )
+                            }
+
                             if !isGridDestination {
                                 if hero != nil {
                                     CatalogHeroView(

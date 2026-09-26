@@ -826,8 +826,10 @@ nothing but picture; the style mask is never mutated.
 - **Size.** 320pt wide, height from the stream's aspect ratio through the same pure geometry the
 windowed stage fits its picture with (`OPNStreamStageGeometry`), placed in the bottom-trailing
 corner of the visible frame with a 20pt margin.
-- **Non-activating.** `canBecomeKey`/`canBecomeMain` answer `false` in this mode, so clicking it
-neither activates the app nor takes focus from whatever the user moved to. It is a viewing surface.
+- **Focus.** Entering the mode never activates the app and never orders the window front, so it
+cannot take focus from whatever the user moved to. It keeps ordinary key status, though: the
+picture is in the game, and a PiP window that refused key status silently stopped accepting the
+mouse and the keyboard. Clicking it focuses it, exactly as for the windowed stream.
 - **Carrier child window.** The borderless NVST carrier is a child of the stream window, and AppKit
 rewrites a child's `collectionBehavior` to `.ignoresCycle` on attach — dropping
 `.canJoinAllSpaces`. The parent's behaviour is therefore re-applied to every child window on the
@@ -840,6 +842,27 @@ call the in-stream quit menu makes.
 - **Entry.** One tile in the unified HUD's Display section, `pip` glyph, state carried by
 `isActive` like its `floating-stats` sibling. The full-screen tile's inverse is disabled while in
 PiP; pressing the PiP tile while full screen leaves full screen first, then enters PiP.
+
+### Running-Stream Banner and Backdrop (`VendorRunningStreamHomeBanner`, `VendorRunningStreamBackdrop`)
+
+What the catalog shows while a stream runs in its own window. The catalog window stays mounted for
+the whole session, so without this the app has a live game and a page that looks idle.
+
+- **Banner.** The active-session banner's slot, chrome and control (`VendorActiveSessionBannerButtonStyle`):
+`OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline along the bottom,
+`CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a 10pt bold accent
+eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold with the stream's own
+status message under it at 11pt Text Secondary. Actions: **FOCUS** (accent fill, the one action the
+session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular). END routes
+through `StreamSessionLifecycle`, so the menu bar, the PiP strip and this button tear down the same
+thing.
+- **Backdrop.** The running stream's artwork, artwork fill, 18pt blur, then `OPNDesign.Surface.scrim`
+and the same top/bottom black gradient the store picker uses. Behind the page, never hit-testable,
+hidden from accessibility. Games page only — Settings and Recordings share the stack and have
+nothing to do with the stream.
+
+Both appear only for a *running* stream. A suspended seat keeps `VendorActiveSessionHomeBanner`:
+no stream is playing there, and the action that matters is RESUME rather than FOCUS.
 
 ### HUD Dock (unified stream HUD)
 

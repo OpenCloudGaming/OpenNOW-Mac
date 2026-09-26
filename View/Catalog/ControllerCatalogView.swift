@@ -525,6 +525,15 @@ private struct ControllerGamesPage: View {
                             )
                         }
 
+                        if viewModel.isStreamRunning {
+                            VendorRunningStreamHomeBanner(
+                                title: viewModel.runningStreamTitle,
+                                availableWidth: layout.contentWidth,
+                                onFocus: { OPNStreamWindowPresenter.shared.focus() },
+                                onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
+                            )
+                        }
+
                         ControllerHeroBillboard(viewModel: viewModel, game: heroGame(sections: sections), height: layout.heroHeight)
                             .frame(width: layout.contentWidth)
                             .padding(.top, (layout.compactHeight ? 10 : 14) * uiScale)
