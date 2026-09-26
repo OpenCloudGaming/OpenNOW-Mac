@@ -14,7 +14,7 @@ extension NativeGamepadMonitor {
                                                        timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds))))
             return
         }
-        let profile = mappingProvider.profile(for: deviceID, family: .steam) ?? ControllerMappingProfile(name: "Default")
+        let profile = mappingProvider.profile(for: .steam) ?? ControllerMappingProfile(name: "Default")
         let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
         var engine = bindingEngines[deviceID] ?? ControllerBindingEngine()
         var result = engine.applyDiscreteControls(profile: profile, snapshot: snapshot, deviceID: deviceID, playerIndex: playerIndex, now: bindingClock.now, timestamp: timestamp, includePointerMotion: includePointerMotion)
@@ -71,7 +71,7 @@ extension NativeGamepadMonitor {
             guard let id = registry.id(for: controller),
                   let device = registry.devices.first(where: { $0.id == id }),
                   let slot = pollState.controllerSlots[ObjectIdentifier(controller)] else { continue }
-            let profile = mappingsEnabled ? mappingProvider.profile(for: id, family: device.family) : nil
+            let profile = mappingsEnabled ? mappingProvider.profile(for: device.family) : nil
             configuration[ObjectIdentifier(controller)] = NativeControllerMappingConfiguration(deviceID: id, playerIndex: slot, profile: profile)
         }
         let releases = pollingQueue.sync {

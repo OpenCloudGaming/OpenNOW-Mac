@@ -145,7 +145,7 @@ final class SteamControllerTestModel: ObservableObject {
     }
 
     private func stepGyroReadout() {
-        guard let selectedDeviceID else {
+        guard selectedDeviceID != nil else {
             gyroReadout = .notConfigured
             gyroActivationHint = ""
             gyroActivation.reset()
@@ -163,7 +163,7 @@ final class SteamControllerTestModel: ObservableObject {
         }
         lastGyroStep = now
 
-        guard let settings = ControllerMappingStore.shared.profile(for: selectedDeviceID, family: .steam)?.gyro,
+        guard let settings = ControllerMappingStore.shared.profile(for: .steam)?.gyro,
               settings.mode != .off else {
             gyroReadout = .notConfigured
             gyroActivationHint = ""

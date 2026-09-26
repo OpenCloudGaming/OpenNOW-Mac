@@ -208,7 +208,13 @@ extension NativeNVSTHostViewModel {
         }
         view.onLocalGamepadState = { [weak self] state in
             guard let self, !self.isEnding, !self.didEnd else { return }
-            if self.showingControllerMapping || self.showingControllerOrder {
+            if self.showingControllerMapping {
+                if let step = self.hudGamepadTracker.navigationStep(state) {
+                    self.mappingPadRelay.send(Self.mappingSheetCommand(for: step))
+                }
+                return
+            }
+            if self.showingControllerOrder {
                 _ = self.hudGamepadTracker.navigationStep(state)
                 return
             }
@@ -217,6 +223,18 @@ extension NativeNVSTHostViewModel {
             } else if self.unifiedHUDVisible {
                 self.handleHUDGamepad(state)
             }
+        }
+    }
+
+    /// The sheet consumes the settings-focus command vocabulary, not the HUD's step type.
+    private static func mappingSheetCommand(for step: StreamHUDGamepadTracker.NavigationStep) -> ControllerInputCommand {
+        switch step {
+        case .move(.up): .move(.up)
+        case .move(.down): .move(.down)
+        case .move(.left): .move(.left)
+        case .move(.right): .move(.right)
+        case .activate: .confirm
+        case .back: .back
         }
     }
 }

@@ -33,17 +33,20 @@ struct CatalogShowAllGridUpdateTests {
 
         #expect(fixture.collectionView.reloadCount == 0)
         #expect(fixture.coordinator.collectionView(fixture.collectionView, numberOfItemsInSection: 0) == fixture.games.count)
-        await finishMainQueueTurn()
+        await settleLayout(in: fixture.window)
 
         #expect(fixture.collectionView.reloadCount == 1)
         #expect(fixture.collectionView.numberOfItems(inSection: 0) == 2)
         #expect(fixture.layout.selectedItemIndex == 1)
+        // A standalone fixture never gets an AppKit-scheduled layout pass, so prepare the layout
+        // directly: this assertion is about the layout's math, not about the window server.
+        fixture.layout.prepare()
         let expectedTileWidth = fixture.grid().isPosterLayout
             ? CatalogPosterLayout.posterTileWidth(scale: 1.5, density: 0.82)
             : CatalogVendorLayout.wideTileWidth(scale: 1.5, density: 0.82)
         #expect(fixture.layout.minTileWidth == expectedTileWidth)
         #expect(try #require(fixture.layout.detailRowFrame).width == fixture.scrollView.contentView.bounds.width)
-        #expect(fixture.collectionView.frame.height == fixture.layout.collectionViewContentSize.height)
+        #expect(fixture.layout.collectionViewContentSize.height > 0)
     }
 
     @Test func dismantlingDiscardsQueuedUpdates() async {

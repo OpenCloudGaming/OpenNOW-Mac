@@ -16,6 +16,13 @@ import Testing
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Interface.Appearance"))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Stream.Fps"))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Input.ControllerMappingProfiles"))
+        // Per-game controller mapping keys are machine-independent, so they must travel with the
+        // settings; pinned by name so a later prefix change cannot silently drop them.
+        for key in [ControllerMappingStore.gameOverridesKey,
+                    ControllerMappingStore.familyDefaultsKey,
+                    ControllerMappingStore.appIdIdentityIndexKey] {
+            #expect(OPNCloudSyncSettingsRegistry.isSyncable(key), "\(key) must travel with the settings")
+        }
         // A keybinding's stored key is its prefix plus the action, not the bare raw value.
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("\(OPNKeybindings.storageKeyPrefix)\(KeybindingAction.takeScreenshot.rawValue)"))
         #expect(!OPNCloudSyncSettingsRegistry.isSyncable(KeybindingAction.takeScreenshot.rawValue))

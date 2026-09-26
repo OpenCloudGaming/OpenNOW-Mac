@@ -107,7 +107,11 @@ struct NativeNVSTMediaStreamSurface: View {
         .task { await model.pollControllerBatteries() }
         .onDisappear { model.stopStream() }
         .sheet(isPresented: $model.showingControllerMapping) {
-            ControllerMappingView()
+            ControllerMappingView(
+                isRemoteCoOpActive: model.remoteCoOpSnapshot.invite != nil || model.remoteCoOpSnapshot.connectedParticipantCount > 0,
+                padCommands: model.mappingPadRelay.commands,
+                onAnnounce: { message in model.showNativeTransientStreamMessage(message) }
+            )
         }
         .sheet(isPresented: $model.showingControllerOrder) {
             ControllerOrderView()

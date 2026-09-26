@@ -364,7 +364,11 @@ struct StreamHUDDropdown<Value: Hashable>: View {
                             buttonMaxY = proxy.frame(in: .global).maxY
                             // The window, not the screen: the HUD lives in a stream window that is
                             // often, but not always, fullscreen.
-                            windowHeight = NSApp.keyWindow?.frame.height ?? NSApp.mainWindow?.frame.height ?? NSScreen.main?.frame.height ?? 0
+                            let application = NSApplication.shared
+                            windowHeight = application.keyWindow?.frame.height
+                                ?? application.mainWindow?.frame.height
+                                ?? NSScreen.main?.frame.height
+                                ?? 0
                         }
                         .onChange(of: proxy.frame(in: .global).maxY) { _, value in buttonMaxY = value }
                 }

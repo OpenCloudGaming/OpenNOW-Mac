@@ -93,9 +93,11 @@ extension NativeNVSTMediaStreamSurface {
         [
             NativeHUDTile(id: "controller-mapping",
                           title: "Controller Mapping",
-                          subtitle: "Per-controller custom bindings",
+                          subtitle: hasPerGameControllerMappingOverride
+                              ? "Custom for this game"
+                              : "Per-controller custom bindings",
                           systemName: "gamecontroller",
-                          isActive: false,
+                          isActive: hasPerGameControllerMappingOverride,
                           isDisabled: false,
                           action: { model.showingControllerMapping = true }),
             NativeHUDTile(id: "controller-order",
@@ -106,6 +108,14 @@ extension NativeNVSTMediaStreamSurface {
                           isDisabled: false,
                           action: { model.showingControllerOrder = true }),
         ]
+    }
+
+    /// True while the running game overrides at least one controller type, so the HUD shows the
+    /// mapping in effect rather than every tile reading inactive.
+    private var hasPerGameControllerMappingOverride: Bool {
+        let mappingStore = ControllerMappingStore.shared
+        guard mappingStore.isCurrentGameKnown else { return false }
+        return ControllerFamily.allCases.contains { mappingStore.activeOverride(for: $0) != nil }
     }
 
     var nativeHUDInputTiles: [NativeHUDTile] {

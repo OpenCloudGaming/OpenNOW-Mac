@@ -7,6 +7,7 @@ struct InputSettingsPage: View {
     let uiScale: CGFloat
     @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @StateObject private var model = InterfaceSettingsViewModel()
+    @ObservedObject private var mappingStore = ControllerMappingStore.shared
     @State private var inputMonitoringGranted = InputSettingsPage.isInputMonitoringGranted
     @State private var showingControllerTest = false
     @State private var showingControllerMapping = false
@@ -22,6 +23,7 @@ struct InputSettingsPage: View {
             modeCard
             controlsCard
             controllerToolsCard
+            perGameMappingsCard
         }
         .onAppear {
             model.steamNavigator.start()
@@ -152,7 +154,7 @@ struct InputSettingsPage: View {
                 Text("Controller Mapping")
                     .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.Text.primary)
-                Text("Opt-in mappings for Steam, DualShock 4, and generic controllers. Unassigned native controllers pass through unchanged.")
+                Text("Opt-in mappings for Steam, DualShock 4, and generic controllers. Each type keeps its own default, and a game can override it. Unassigned native controllers pass through unchanged.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -169,7 +171,7 @@ struct InputSettingsPage: View {
         HStack(spacing: 12 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 SettingsRowTitle(title: "Controller Order", isNew: OPNNewSettings.isNew(.controllerOrder), uiScale: uiScale)
-                Text("Choose which connected controllers are Player 1–4. Mapping profiles stay with each controller.")
+                Text("Choose which connected controllers are Player 1–4. Mappings follow the controller type, so reordering does not change which profile applies.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -207,6 +209,61 @@ struct InputSettingsPage: View {
         }
         .settingsSection("controller-tools")
     }
+
+    /// The games whose controller mapping diverges from their type's default, and for which type.
+    /// Without this list an override is written in-stream and named nowhere a reader can find it.
+    private var perGameMappingsCard: some View {
+        let overrides = viewModel.controllerMappingOverrideGames(from: mappingStore)
+        return SettingsCard(title: "Per-Game Controller Mapping", uiScale: uiScale) {
+            Text("A game can use its own profile for each controller type, leaving every other game on the type default. Disabling an override keeps it but stops it applying; removing it is permanent.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            perGameMappingRows(overrides)
+        }
+        .settingsSection("per-game-mappings")
+    }
+
+    /// A disabled override stays listed because disabling keeps it; removing it is permanent.
+    @ViewBuilder
+    private func perGameMappingRows(_ overrides: [SettingsControllerMappingOverride]) -> some View {
+        if overrides.isEmpty {
+            SettingsDivider(uiScale: uiScale)
+            Text("No per-game overrides. Open Controller Mapping during a stream to apply one.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        ForEach(overrides) { gameOverride in
+            SettingsDivider(uiScale: uiScale)
+            perGameMappingRow(gameOverride)
+        }
+    }
+
+    private func perGameMappingRow(_ gameOverride: SettingsControllerMappingOverride) -> some View {
+        HStack(spacing: 12 * uiScale) {
+            VStack(alignment: .leading, spacing: 3 * uiScale) {
+                Text(gameOverride.title)
+                    .font(.settingsFont(size: 13 * uiScale, weight: .bold))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                    .lineLimit(1)
+                Text(gameOverride.subtitle)
+                    .font(.settingsFont(size: 11 * uiScale, weight: .medium))
+                    .foregroundStyle(gameOverride.isEnabled && !gameOverride.isProfileMissing ? OPNDesign.Text.tertiary : OPNDesign.Text.muted)
+            }
+            Spacer(minLength: 8 * uiScale)
+            SettingsActionButton(title: gameOverride.isEnabled ? "DISABLE" : "ENABLE", minimumWidth: 84 * uiScale, uiScale: uiScale) {
+                viewModel.setControllerMappingOverrideEnabled(!gameOverride.isEnabled, catalogIdentity: gameOverride.catalogIdentity, family: gameOverride.family)
+            }
+            SettingsActionButton(title: "REMOVE", minimumWidth: 84 * uiScale, uiScale: uiScale) {
+                viewModel.removeControllerMappingOverride(catalogIdentity: gameOverride.catalogIdentity, family: gameOverride.family)
+            }
+        }
+        .padding(.horizontal, 12 * uiScale)
+        .padding(.vertical, 10 * uiScale)
+        .background(SettingsVendorLayout.row)
+        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+    }
 }
 
 extension InputSettingsPage {
@@ -226,6 +283,7 @@ extension InputSettingsPage {
         SettingsSection("mouse", "Mouse & Keyboard"),
         SettingsSection("mode", "Controller Mode"),
         SettingsSection("controls", "Controls"),
-        SettingsSection("controller-tools", "Controller Tools")
+        SettingsSection("controller-tools", "Controller Tools"),
+        SettingsSection("per-game-mappings", "Per-Game Controller Mapping")
     ]
 }

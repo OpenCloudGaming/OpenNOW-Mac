@@ -249,6 +249,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// The live capture meter, 0...1, mirrored from the device at 20 Hz for the HUD's AUDIO panel.
     @Published var microphoneLevel: Double = 0
     var hudGamepadTracker = StreamHUDGamepadTracker()
+    /// Feeds the controller-mapping sheet while it is open over the stream; see `StreamMappingPadRelay`.
+    let mappingPadRelay = StreamMappingPadRelay()
     @Published var recordingStatus = StreamRecordingStatus.idle
     /// The rolling instant-replay window's state, mirrored from the transport.
     @Published var replayBufferState = StreamReplayBufferState()

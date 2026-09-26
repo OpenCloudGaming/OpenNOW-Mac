@@ -65,18 +65,18 @@ import Testing
         monitor.stop()
     }
 
-    @Test func orderingDoesNotReassignProfiles() throws {
+    @Test func orderingDoesNotChangeWhichTypeProfileApplies() throws {
         let suite = "ControllerOrderProfileTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = ControllerMappingStore(defaults: defaults)
-        let profile = store.createProfile(named: "Only first pad", family: .generic)
-        store.assignProfile(profile.id, to: "first", family: .generic)
+        let profile = store.createProfile(named: "Generic pads", family: .generic)
         var order = ControllerPlayerOrder()
         order.update(connectedIDs: ["first", "second"])
         order.move("second", direction: .earlier)
-        #expect(store.profile(for: "first", family: .generic)?.id == profile.id)
-        #expect(store.profile(for: "second", family: .generic) == nil)
+        // Resolution is keyed on the controller type, so player order never changes it.
+        #expect(store.profile(for: .generic)?.id == profile.id)
+        #expect(store.profile(for: .steam)?.id != profile.id)
     }
 
     @Test func bothUnmappedControllersAreNeutralizedBeforeSwappedState() throws {
