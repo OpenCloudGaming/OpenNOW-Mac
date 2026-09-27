@@ -42,6 +42,44 @@ struct StreamTextCaptureFilterTests {
         #expect(StreamTextCaptureFilter.readingOrder([lower, upper]) == [upper, lower])
     }
 
+    private func line(_ text: String, _ rect: CGRect) -> StreamRecognizedLine {
+        StreamRecognizedLine(text: text, confidence: 0.9, bounds: rect)
+    }
+
+    /// A highlight hugs its line: a little taller, a little wider.
+    @Test func aHighlightHuggingItsLineIsASelection() {
+        let block = CGRect(x: 0.1, y: 0.5, width: 0.4, height: 0.06)
+        #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("selected", CGRect(x: 0.12, y: 0.51, width: 0.36, height: 0.05))]))
+    }
+
+    /// A multi-line selection is one block over all of the lines it covers.
+    @Test func aMultiLineHighlightIsASelection() {
+        let block = CGRect(x: 0.1, y: 0.3, width: 0.5, height: 0.15)
+        let lines = [
+            line("first", CGRect(x: 0.12, y: 0.31, width: 0.45, height: 0.04)),
+            line("second", CGRect(x: 0.12, y: 0.41, width: 0.45, height: 0.04)),
+        ]
+        #expect(StreamTextCaptureFilter.isTextSelection(block, lines: lines))
+    }
+
+    /// A button is a big filled rectangle with a small label centred in it, which is not a selection.
+    @Test func aButtonIsNotASelection() {
+        let block = CGRect(x: 0.6, y: 0.8, width: 0.35, height: 0.09)
+        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("Add to your wishlist", CGRect(x: 0.7, y: 0.82, width: 0.15, height: 0.028))]))
+    }
+
+    /// A run of coloured text has no block around it: the "block" is the glyphs, so it is no wider
+    /// than Vision's line box.
+    @Test func aRunOfColouredTextIsNotASelection() {
+        let block = CGRect(x: 0.2, y: 0.4, width: 0.1, height: 0.03)
+        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("heading", CGRect(x: 0.2, y: 0.4, width: 0.105, height: 0.03))]))
+    }
+
+    @Test func aBlockWithNoTextInItIsNotASelection() {
+        let block = CGRect(x: 0.1, y: 0.5, width: 0.4, height: 0.06)
+        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: []))
+    }
+
     /// A highlight is expanded before it is read: Vision wants a margin around the glyphs, and the
     /// margin is proportional so it works for a small chat line and a large subtitle alike.
     @Test func aHighlightIsExpandedForReading() {

@@ -52,6 +52,32 @@ enum StreamTextCaptureFilter {
     static func readingOrder(_ rects: [CGRect]) -> [CGRect] {
         rects.sorted { $0.maxY > $1.maxY }
     }
+
+    /// Whether a detected block is a highlight *behind* text rather than a coloured panel with a
+    /// label on it or a run of coloured text that happens to look solid.
+    ///
+    /// Colour and shape alone cannot tell them apart: a blue banner and a blue text selection are the
+    /// same rectangle to the eye of a pixel scanner. The relation to the recognized text can. A
+    /// selection hugs its line — roughly as tall as the line box, and wide enough to have padding
+    /// each side. A button or banner is several times its label's size, and a run of coloured text has
+    /// no block around it at all, so its "block" is narrower than Vision's line box.
+    static func isTextSelection(_ block: CGRect, lines: [StreamRecognizedLine]) -> Bool {
+        let inside = lines.filter { coverage(of: $0.bounds, by: block) >= 0.3 }
+        var union: CGRect?
+        for line in inside { union = union?.union(line.bounds) ?? line.bounds }
+        guard let union, union.width > 0, union.height > 0 else { return false }
+        let ratioH = block.height / union.height
+        let ratioW = block.width / union.width
+        return ratioH >= 0.9 && ratioH <= 1.8 && ratioW >= 1.0
+    }
+
+    /// The share of `bounds` that falls inside `rect`.
+    static func coverage(of bounds: CGRect, by rect: CGRect) -> CGFloat {
+        guard bounds.width > 0, bounds.height > 0 else { return 0 }
+        let intersection = rect.intersection(bounds)
+        guard !intersection.isNull, !intersection.isEmpty else { return 0 }
+        return (intersection.width * intersection.height) / (bounds.width * bounds.height)
+    }
 }
 
 /// Turns a captured frame into text. The Vision work runs off the main thread, so a capture never
@@ -79,14 +105,17 @@ struct StreamTextRecognizer: Sendable {
     /// itself is what makes the result the selection.
     nonisolated static func recognize(cgImage: CGImage, minimumConfidence: Float) -> StreamTextRecognition {
         let highlights = StreamTextSelectionDetector.selectionRects(in: cgImage)
-        guard !highlights.isEmpty else {
-            let lines = recognizeLines(cgImage: cgImage, region: nil)
+        let wholeFrameLines = recognizeLines(cgImage: cgImage, region: nil)
+        // A block only counts as a selection when the text it holds fits inside it like a highlight.
+        // Without this the blue bars and buttons a page is full of read as selections.
+        let selection = highlights.filter { StreamTextCaptureFilter.isTextSelection($0, lines: wholeFrameLines) }
+        guard !selection.isEmpty else {
             return StreamTextRecognition(
-                text: StreamTextCaptureFilter.acceptedText(from: lines),
+                text: StreamTextCaptureFilter.acceptedText(from: wholeFrameLines),
                 usedSelection: false
             )
         }
-        let pieces = StreamTextCaptureFilter.readingOrder(highlights).compactMap { rect -> String? in
+        let pieces = StreamTextCaptureFilter.readingOrder(selection).compactMap { rect -> String? in
             let lines = recognizeLines(cgImage: cgImage, region: inflatedSelection(rect))
             let text = StreamTextCaptureFilter.acceptedText(from: lines)
             return text.isEmpty ? nil : text

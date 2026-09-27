@@ -73,7 +73,10 @@ enum StreamTextSelectionDetector {
         let low = min(r, min(g, b))
         guard high >= 48 else { return false }
         let spread = high - low
-        guard spread >= 26 else { return false }
+        // A muted blue page theme (Steam's dark navy, a game's sky panel) clears a low bar and then
+        // every panel on it reads as a selection. The bar is set where a genuinely coloured highlight
+        // sits, not where tinted chrome does.
+        guard spread >= 60 else { return false }
         return Double(spread) / Double(high) >= 0.16
     }
 
