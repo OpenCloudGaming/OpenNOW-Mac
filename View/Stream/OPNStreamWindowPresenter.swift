@@ -21,9 +21,48 @@ final class OPNStreamWindowPresenter {
     private(set) var window: OPNStreamWindow?
     private var presentedConfigurationID: UUID?
     private var hostingView: NSHostingView<OPNStreamWindowRootView>?
-    /// Windows that are leaving full screen before they can be torn down. Held strongly: the whole
-    /// point is that the window outlives the dismissal until its exit lands.
-    private var windowsLeavingFullScreen: [ObjectIdentifier: OPNStreamWindow] = [:]
+
+    /// Per-window full-screen bookkeeping, tracked from `present` so a dismissal that lands
+    /// mid-enter is recognised before AppKit sets `.fullScreen`.
+    @MainActor
+    private final class WindowPresentation {
+        let window: OPNStreamWindow
+        var transition: FullScreenTransition = .none
+        var observerTokens: [NSObjectProtocol] = []
+        var isDismissalPending = false
+        var isFullScreenExitRequested = false
+        var backstopTask: Task<Void, Never>?
+
+        var dismissalStep: DismissalStep {
+            OPNStreamWindowPresenter.dismissalStep(
+                transition: transition,
+                styleMask: window.styleMask,
+                isFullScreenExitRequested: isFullScreenExitRequested
+            )
+        }
+
+        init(window: OPNStreamWindow) {
+            self.window = window
+        }
+    }
+
+    /// Which full-screen transition a window is in the middle of, if any.
+    enum FullScreenTransition: Equatable {
+        case none
+        case entering
+        case exiting
+    }
+
+    /// What a pending dismissal does next. Pure, so the race is assertable without a window server.
+    enum DismissalStep: Equatable {
+        case tearDownNow
+        case waitForTransitionEnd
+        case requestFullScreenExit
+        case waitForExitToLand
+    }
+
+    /// Held strongly: a window must outlive its dismissal until the exit lands.
+    private var presentations: [ObjectIdentifier: WindowPresentation] = [:]
 
     /// Whether a stream window is on screen. Read by the catalog so a surface that belongs to the
     /// session (the iCloud conflict prompt) keeps out of the way.
@@ -58,6 +97,8 @@ final class OPNStreamWindowPresenter {
         self.window = window
         self.hostingView = hostingView
         presentedConfigurationID = configuration.id
+        // Tracked for the window's whole life so a mid-enter dismissal sees the transition.
+        track(window)
         // A launch is not a "show me" action. `OPNMainWindow.present(activating:)` sets the rule the
         // whole app follows - a session launch leaves the app where it is, and the Session Ready
         // preference keeps the only say over whether OpenNOW comes forward - and an unconditional
@@ -81,15 +122,70 @@ final class OPNStreamWindowPresenter {
         OPNStreamWindowCloseGuard.uninstall(from: window)
         window.closeRequestHandler = nil
         window.sessionSurface = nil
-        // A full-screen window cannot be ordered out directly. It lives in a Space of its own, and
-        // ordering it out while it is still full screen leaves that Space behind showing black,
-        // forever - there is no window left to close it. The exit has to land first; see
-        // `exitFullScreenBeforeDismissing`.
-        guard Self.needsFullScreenExitBeforeDismissing(styleMask: window.styleMask) else {
-            tearDownWindow(window)
+        dismissWindow(window)
+    }
+
+    /// Decides whether this window can go out now or has to wait for a full-screen transition.
+    private func dismissWindow(_ window: OPNStreamWindow) {
+        let presentation = presentations[ObjectIdentifier(window)] ?? track(window)
+        guard presentation.dismissalStep != .tearDownNow else {
+            finishDismissing(window)
             return
         }
-        exitFullScreenBeforeDismissing(window)
+        presentation.isDismissalPending = true
+        if presentation.backstopTask == nil {
+            startBackstopTask(for: presentation)
+        }
+        advanceDismissal(presentation)
+    }
+
+    /// Carries a pending dismissal one step further, from the dismissal itself and from every
+    /// full-screen transition notification.
+    private func advanceDismissal(_ presentation: WindowPresentation) {
+        guard presentation.isDismissalPending else { return }
+        switch presentation.dismissalStep {
+        case .tearDownNow:
+            finishDismissing(presentation.window)
+        case .requestFullScreenExit:
+            presentation.isFullScreenExitRequested = true
+            presentation.window.toggleFullScreen(nil)
+        case .waitForExitToLand, .waitForTransitionEnd:
+            break
+        }
+    }
+
+    /// Backstop for a `did…` notification that never arrives; the cap is the exit's worst case.
+    private func startBackstopTask(for presentation: WindowPresentation) {
+        presentation.backstopTask = Task { @MainActor [weak self] in
+            for _ in 0..<200 {
+                guard !Task.isCancelled else { return }
+                guard presentation.dismissalStep != .tearDownNow else {
+                    self?.finishDismissing(presentation.window)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            self?.finishDismissing(presentation.window)
+        }
+    }
+
+    /// The landing gate: an exit has landed only once the transition is over **and** `.fullScreen`
+    /// is clear. Waiting on the mask alone tears the window down mid-animation.
+    static func dismissalStep(
+        transition: FullScreenTransition,
+        styleMask: NSWindow.StyleMask,
+        isFullScreenExitRequested: Bool
+    ) -> DismissalStep {
+        switch transition {
+        case .entering:
+            return .waitForTransitionEnd
+        case .exiting:
+            return .waitForExitToLand
+        case .none:
+            break
+        }
+        guard needsFullScreenExitBeforeDismissing(styleMask: styleMask) else { return .tearDownNow }
+        return isFullScreenExitRequested ? .waitForExitToLand : .requestFullScreenExit
     }
 
     /// Whether a window has to leave full screen before it can be ordered out.
@@ -101,42 +197,69 @@ final class OPNStreamWindowPresenter {
         styleMask.contains(.fullScreen)
     }
 
-    /// Leaves full screen, then tears down once the exit has landed.
-    ///
-    /// The window is kept alive until the exit lands - releasing it on the way out would leave the
-    /// Space it is animating out of just as stuck. A cancelled launch and a rebind both land here
-    /// for the same window, so the second call is a no-op rather than a second toggle.
-    private func exitFullScreenBeforeDismissing(_ window: OPNStreamWindow) {
+    /// Observers live on the `WindowPresentation`, never on the presenter, so two windows at once
+    /// route to the right one.
+    @discardableResult
+    private func track(_ window: OPNStreamWindow) -> WindowPresentation {
+        let presentation = WindowPresentation(window: window)
+        let center = NotificationCenter.default
         let id = ObjectIdentifier(window)
-        guard windowsLeavingFullScreen[id] == nil else { return }
-        windowsLeavingFullScreen[id] = window
-        window.toggleFullScreen(nil)
-        // Polled rather than observed, the same way `StreamWindowGeometryGate` waits out a nested
-        // run loop: the exit is animated and AppKit has no single notification that means "the
-        // Space is back", and a missed one would leave the teardown hanging with a window nobody
-        // can close. The cap is the exit's own worst case; a window that refuses to leave is
-        // ordered out anyway rather than kept forever.
-        Task { @MainActor [weak self] in
-            var remainingAttempts = 200
-            while window.styleMask.contains(.fullScreen), remainingAttempts > 0 {
-                remainingAttempts -= 1
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            self?.finishDismissing(window)
+        let willEnter = center.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setTransition(.entering, for: id) }
         }
+        let didEnter = center.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.endTransition(.entering, for: id) }
+        }
+        let willExit = center.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setTransition(.exiting, for: id) }
+        }
+        let didExit = center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+            // Deferred one turn so the Space collapse's re-presentation lands before teardown.
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                self?.endTransition(.exiting, for: id)
+            }
+        }
+        presentation.observerTokens = [willEnter, didEnter, willExit, didExit]
+        presentations[id] = presentation
+        return presentation
+    }
+
+    private func setTransition(_ transition: FullScreenTransition, for id: ObjectIdentifier) {
+        presentations[id]?.transition = transition
+    }
+
+    private func endTransition(_ transition: FullScreenTransition, for id: ObjectIdentifier) {
+        guard let presentation = presentations[id] else { return }
+        guard presentation.transition == transition else { return }
+        presentation.transition = .none
+        advanceDismissal(presentation)
+    }
+
+    private func removeTransitionObservers(from presentation: WindowPresentation) {
+        let center = NotificationCenter.default
+        for token in presentation.observerTokens { center.removeObserver(token) }
+        presentation.observerTokens = []
     }
 
     private func finishDismissing(_ window: OPNStreamWindow) {
-        windowsLeavingFullScreen.removeValue(forKey: ObjectIdentifier(window))
+        if let presentation = presentations.removeValue(forKey: ObjectIdentifier(window)) {
+            presentation.backstopTask?.cancel()
+            removeTransitionObservers(from: presentation)
+        }
         tearDownWindow(window)
     }
 
-    /// Clearing the content is what runs the stream surface's `.onDisappear` teardown; ordering out
-    /// alone would leave a session behind a window nobody can see.
+    /// Clearing the content is what runs the stream surface's `.onDisappear` teardown.
     private func tearDownWindow(_ window: OPNStreamWindow) {
         window.stopPersistingFrame()
         window.orderOut(nil)
         window.contentView = nil
+        // A late re-presentation must not leave the contentless window on screen.
+        Task { @MainActor [weak window] in
+            guard let window, window.isVisible else { return }
+            window.orderOut(nil)
+        }
     }
 
     /// The stream window's close button.

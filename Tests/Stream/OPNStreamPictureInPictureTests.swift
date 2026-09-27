@@ -113,6 +113,25 @@ struct OPNStreamPictureInPictureTests {
         #expect(!OPNStreamWindowPresenter.needsFullScreenExitBeforeDismissing(styleMask: [.borderless]))
     }
 
+    /// The race the leftover window shipped from: a dismissal may only tear the window down once the
+    /// tracked transition is over and `.fullScreen` is clear.
+    @Test func aDismissalWaitsForTheFullScreenTransitionToLand() {
+        let windowed = OPNStreamWindowFactory.styleMask
+        let fullScreen = windowed.union(.fullScreen)
+        let settled: OPNStreamWindowPresenter.FullScreenTransition = .none
+
+        #expect(OPNStreamWindowPresenter.dismissalStep(
+            transition: settled, styleMask: windowed, isFullScreenExitRequested: false) == .tearDownNow)
+        #expect(OPNStreamWindowPresenter.dismissalStep(
+            transition: settled, styleMask: fullScreen, isFullScreenExitRequested: false) == .requestFullScreenExit)
+        #expect(OPNStreamWindowPresenter.dismissalStep(
+            transition: settled, styleMask: fullScreen, isFullScreenExitRequested: true) == .waitForExitToLand)
+        #expect(OPNStreamWindowPresenter.dismissalStep(
+            transition: .entering, styleMask: windowed, isFullScreenExitRequested: false) == .waitForTransitionEnd)
+        #expect(OPNStreamWindowPresenter.dismissalStep(
+            transition: .exiting, styleMask: windowed, isFullScreenExitRequested: false) == .waitForExitToLand)
+    }
+
     // MARK: - Capability gate
 
     /// The gate exists so PiP can be switched off if one render path cannot survive the mode change;
