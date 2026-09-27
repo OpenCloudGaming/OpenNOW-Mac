@@ -61,7 +61,11 @@ struct StartupMetrics {
     let size: CGSize
     let uiScale: CGFloat
 
-    var compact: Bool { min(size.width, size.height) < 620 }
+    /// The threshold is a scaled point value, not a raw pixel count: at a larger interface scale the
+    /// same window holds less content, so the band has to fall back to the compact metrics sooner.
+    /// Left unscaled, the scaled-up logo band reached down into the telemetry block and its tagline
+    /// overlapped the station labels.
+    var compact: Bool { min(size.width, size.height) < 620 * uiScale }
 
     var bandWidth: CGFloat { (compact ? 208 : 296) * uiScale }
     /// logo-isolated.svg ships at 680x410.
