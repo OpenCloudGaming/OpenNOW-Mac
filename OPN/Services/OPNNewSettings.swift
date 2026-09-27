@@ -30,6 +30,7 @@ enum OPNNewSettings {
         case startupPresentation
         case instantReplay
         case sessionInsights
+        case captureLocations
 
         /// The marketing version the row shipped in.
         nonisolated var introducedIn: String {
@@ -39,6 +40,7 @@ enum OPNNewSettings {
             case .vsyncMode, .reflex, .controllerOrder, .homeLayout, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn, .inGameSettingsPersistence: "0.9.0"
             case .keybindings, .menuBar, .launchAtLogin, .startupPresentation, .homeCategories: "0.10.0"
             case .instantReplay, .sessionInsights: "0.11.0"
+            case .captureLocations: "0.14.0"
             }
         }
     }

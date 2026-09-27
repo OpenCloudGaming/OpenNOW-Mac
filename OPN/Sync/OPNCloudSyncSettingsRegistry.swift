@@ -29,6 +29,10 @@ enum OPNCloudSyncSettingsRegistry {
         "OpenNOW.Launch.AtLogin",
         "OpenNOW.Stream.ActiveSessionId",
         "OpenNOW.Stream.SessionLimitStartedAtEpochSeconds",
+        // Filesystem paths are bound to this Mac. A path synced to a Mac where it does not exist
+        // yields a broken library, which is the opposite of a convenience.
+        OPNCaptureLibrary.screenshots.preferenceKey,
+        OPNCaptureLibrary.recordings.preferenceKey,
     ]
 
     /// Whole namespaces that never travel, so a proxy key added later cannot slip through by not

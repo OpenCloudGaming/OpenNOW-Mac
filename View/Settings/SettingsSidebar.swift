@@ -105,7 +105,8 @@ enum SettingsNewBadges {
         case .homeLayout, .homeCategories, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme
         case .keybindings: .keybindings
         case .menuBar, .launchAtLogin, .startupPresentation, .sessionInsights: .general
-        case .instantReplay: .recording
+        case .instantReplay: .capture
+        case .captureLocations: .capture
         }
     }
 
