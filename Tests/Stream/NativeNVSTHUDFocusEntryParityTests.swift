@@ -75,6 +75,7 @@ struct NativeNVSTHUDFocusEntryParityTests {
     /// Every clipboard row and the clear action are full-width entries, so the pad reaches the whole
     /// panel even though none of it is a tile.
     @Test func clipboardRowsAndClearAreReachableFromAPad() {
+        OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
         let (_, model) = makeHUDSurface()
         let entry = StreamClipboardEntry(text: "captured text", applicationID: "100", gameTitle: "Game")
         model.clipboard.entries = [entry]

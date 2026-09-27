@@ -25,6 +25,8 @@ struct StreamHUDClipboardPanel: View {
         StreamHUDSection(
             label: OPNStreamHUDSection.clipboard.title,
             spacing: 8,
+            // On trial, so the panel says so. The section only exists while its Labs flag is on.
+            showsBetaTag: true,
             isCollapsed: model.isHUDSectionCollapsed(.clipboard),
             isFocused: model.isHUDSectionHeaderFocused(.clipboard),
             reorderPayload: OPNStreamHUDSection.clipboard.rawValue,

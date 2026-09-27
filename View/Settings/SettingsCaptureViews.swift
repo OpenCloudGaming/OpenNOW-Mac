@@ -185,7 +185,7 @@ struct StreamClipboardSettingsCard: View {
     @State private var entryCount = 0
 
     var body: some View {
-        SettingsCard(title: "Clipboard", uiScale: uiScale) {
+        SettingsCard(title: "Clipboard", badge: .experimental, uiScale: uiScale) {
             SettingsToggleRow(
                 title: "Capture text when I press copy",
                 subtitle: "Command-C or Control-C in a stream reads the current frame's text on this Mac and files it in the clipboard history. The game still receives the copy.",
@@ -361,14 +361,19 @@ struct RecordingLibraryCard: View {
 struct CaptureSettingsGroup: View {
     let viewModel: CatalogViewModel
     @Environment(\.opnUIScale) private var uiScale
+    /// The Labs flag that offers the clipboard history at all. Read here, not from `OPNLabs`, so the
+    /// card appears and disappears as the switch is toggled.
+    @AppStorage(OPNLabs.clipboardCapture.storageKey) private var clipboardCaptureOn = false
 
     static let sections: [SettingsSection] = CaptureSettingsPage.sections
 
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             CaptureSettingsPage(viewModel: viewModel, uiScale: uiScale)
-            StreamClipboardSettingsCard(uiScale: uiScale)
-                .settingsSection("clipboard")
+            if clipboardCaptureOn {
+                StreamClipboardSettingsCard(uiScale: uiScale)
+                    .settingsSection("clipboard")
+            }
             CaptureStorageCard(viewModel: viewModel, uiScale: uiScale)
                 .settingsSection("storage")
             RecordingLibraryCard(viewModel: viewModel, uiScale: uiScale)

@@ -30,6 +30,9 @@ struct StreamTextCaptureRoutingTests {
     }
 
     private func makeView() -> (view: NativeStreamView, commands: () -> [StreamCommand], input: () -> [UserInputEvent]) {
+        // The feature is behind an off-by-default Labs flag; enable it and leave it on, since it is a
+        // preference no test asserts is off.
+        OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
         // The shared store may have been customized in this process; the chords under test are the
         // shipped ones, so the binding goes back to its default first.
         OPNKeybindings.standard.reset(.captureStreamText)

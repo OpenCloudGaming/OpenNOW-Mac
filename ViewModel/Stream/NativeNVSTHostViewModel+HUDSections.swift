@@ -172,6 +172,10 @@ extension NativeNVSTHostViewModel {
         switch section {
         case .controllers: return !controllerBatteries.isEmpty
         case .coop: return remoteCoOpPreferences.isEnabled
+        // The history survives the feature being switched off, so the panel is gated on the flag
+        // that offers the feature, not on the trigger toggle: a reader who turned capture off can
+        // still get at what was already filed.
+        case .clipboard: return OPNLabs.isClipboardCaptureEnabled
         default: return true
         }
     }

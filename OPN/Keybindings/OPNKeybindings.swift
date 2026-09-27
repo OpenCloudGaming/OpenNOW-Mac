@@ -49,6 +49,16 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         allCases.filter { $0.section == .stream }
     }
 
+    /// Whether the action's feature is offered at all. A feature on trial behind a Labs flag is
+    /// absent — from the keybindings list, the controller targets and key resolution alike — until
+    /// the flag is on, so nothing reaches it by a chord the reader cannot see the meaning of.
+    var isAvailable: Bool {
+        switch self {
+        case .captureStreamText: return OPNLabs.isClipboardCaptureEnabled
+        default: return true
+        }
+    }
+
     var section: KeybindingSection {
         switch self {
         case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .saveReplay, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu, .showShortcutsHelp, .captureStreamText:
@@ -220,7 +230,7 @@ struct OPNKeybindings: Sendable {
     /// action answers to nothing, which is how a trigger that keeps firing at the wrong moment is
     /// turned off without losing its chord.
     func combos(for action: KeybindingAction) -> [OPNKeyCombo] {
-        guard isEnabled(action) else { return [] }
+        guard action.isAvailable, isEnabled(action) else { return [] }
         guard !hasCustomBinding(for: action) else { return [combo(for: action)] }
         return [action.defaultCombo] + action.alternateDefaultCombos
     }

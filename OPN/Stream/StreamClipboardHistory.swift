@@ -94,12 +94,21 @@ public struct StreamClipboardHistoryStore: Sendable {
 }
 
 /// Whether in-stream copy captures frame text. Read by the capture path and written by Settings.
+/// Two switches gate it: the Labs flag that offers the feature at all, and this page's toggle that
+/// turns the trigger off while keeping whatever history is already filed.
 public enum StreamTextCaptureSettings {
     public static let enabledKey = "OpenNOW.Stream.ClipboardCaptureEnabled"
-    /// On by default; `object(forKey:)` rather than `bool(forKey:)` so an untouched preference is
-    /// not mistaken for the `false` an absent value would otherwise give.
-    public static var isEnabled: Bool {
+    /// The trigger is on by default once the feature is on trial; `object(forKey:)` rather than
+    /// `bool(forKey:)` so an untouched preference is not mistaken for the `false` an absent value
+    /// would otherwise give.
+    public static var isTriggerEnabled: Bool {
         get { OPNAppPreferenceStorage.standard.object(forKey: enabledKey) as? Bool ?? true }
         set { OPNAppPreferenceStorage.standard.set(newValue, forKey: enabledKey) }
+    }
+
+    /// Both switches, because "inert" has to mean inert: a feature that its Labs flag has not
+    /// offered yet must not fire even if a previous run left the toggle on.
+    public static var isEnabled: Bool {
+        OPNLabs.isClipboardCaptureEnabled && isTriggerEnabled
     }
 }

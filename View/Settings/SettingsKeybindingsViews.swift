@@ -75,7 +75,7 @@ struct KeybindingsSettingsPage: View {
     }
 
     private func sectionCard(_ section: KeybindingSection) -> some View {
-        let actions = KeybindingAction.allCases.filter { $0.section == section }
+        let actions = KeybindingAction.allCases.filter { $0.section == section && $0.isAvailable }
         return SettingsCard(title: section.title, uiScale: uiScale) {
             HStack(spacing: 8 * uiScale) {
                 Image(systemName: section == .stream ? "play.tv.fill" : "square.grid.2x2.fill")

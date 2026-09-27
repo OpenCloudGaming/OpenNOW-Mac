@@ -49,6 +49,13 @@ struct StreamTextCaptureCooldownTests {
     }
 }
 
+/// The feature is behind a Labs flag that is off by default, so a test of anything it offers has to
+/// turn it on. The flag is process-global and left on: it is a preference, not a fixture, and no
+/// test asserts it is off.
+private func enableClipboardCaptureLabsFlag() {
+    OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
+}
+
 /// The rebindable chords behind the capture. A private defaults suite keeps this parallel-safe.
 private func makeCaptureKeybindings() -> OPNKeybindings {
     let suiteName = "OpenNOWTests.ClipboardKeys.\(UUID().uuidString)"
@@ -61,12 +68,14 @@ private func makeCaptureKeybindings() -> OPNKeybindings {
 
 struct StreamTextCaptureShortcutTests {
     @Test func itShipsOnBothCopyChords() {
+        enableClipboardCaptureLabsFlag()
         let bindings = makeCaptureKeybindings()
         #expect(bindings.resolvedAction(keyCode: 8, modifierFlags: .command, in: .stream) == .captureStreamText)
         #expect(bindings.resolvedAction(keyCode: 8, modifierFlags: .control, in: .stream) == .captureStreamText)
     }
 
     @Test func rebindingReplacesBothDefaultChords() {
+        enableClipboardCaptureLabsFlag()
         let bindings = makeCaptureKeybindings()
         bindings.assign(OPNKeyCombo(keyCode: 9, modifiers: [.command, .shift]), to: .captureStreamText)
         #expect(bindings.resolvedAction(keyCode: 9, modifierFlags: [.command, .shift], in: .stream) == .captureStreamText)
@@ -75,6 +84,7 @@ struct StreamTextCaptureShortcutTests {
     }
 
     @Test func disablingRemovesEveryChordAndResetRestoresThem() {
+        enableClipboardCaptureLabsFlag()
         let bindings = makeCaptureKeybindings()
         bindings.setEnabled(false, for: .captureStreamText)
         #expect(!bindings.isEnabled(.captureStreamText))
@@ -86,6 +96,7 @@ struct StreamTextCaptureShortcutTests {
     }
 
     @Test func nothingElseInTheStreamSharesTheCopyChords() {
+        enableClipboardCaptureLabsFlag()
         let bindings = makeCaptureKeybindings()
         #expect(bindings.conflictingActions(for: .captureStreamText).isEmpty)
     }

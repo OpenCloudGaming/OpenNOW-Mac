@@ -90,7 +90,7 @@ extension ControllerMappingView {
             return nil
         }()
         return VStack(alignment: .leading, spacing: 6 * uiScale) {
-            ForEach(KeybindingAction.controllerBindingActions) { action in
+            ForEach(KeybindingAction.controllerBindingActions.filter(\.isAvailable)) { action in
                 SteamControllerChip(
                     label: action.title,
                     isSelected: current == action,
