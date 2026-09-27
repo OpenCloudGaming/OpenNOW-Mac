@@ -139,9 +139,10 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Audio Bitrate", .capture, "recording", keywords: ["record", "capture", "sound"]),
         SettingsSearchEntry("Record Enhanced Video", .capture, "recording", keywords: ["record", "capture", "upscaled", "metalfx"]),
         SettingsSearchEntry("Recording Mode", .capture, "recording", keywords: ["replay", "clip", "buffer", "rolling", "last minutes", "shadowplay", "highlights", "instant replay", "manual", "off", "length", "window", "duration", "2 hours", "clip length", "last seconds", "save"]),
-        SettingsSearchEntry("Your recordings", .capture, "library", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
-        SettingsSearchEntry("Screenshots folder", .capture, "storage", keywords: ["screenshots", "pictures", "folder", "location", "path", "change", "storage"]),
-        SettingsSearchEntry("Recordings folder", .capture, "storage", keywords: ["recordings", "videos", "movies", "folder", "location", "path", "change", "storage"]),
+        SettingsSearchEntry("Your recordings", .capture, "recordings", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
+        SettingsSearchEntry("Your screenshots", .capture, "screenshots", keywords: ["library", "stills", "crop", "album", "albums", "export", "browse", "view"]),
+        SettingsSearchEntry("Screenshots folder", .capture, "screenshots", keywords: ["screenshots", "pictures", "folder", "location", "path", "change", "storage"]),
+        SettingsSearchEntry("Recordings folder", .capture, "recordings", keywords: ["recordings", "videos", "movies", "folder", "location", "path", "change", "storage"]),
     ]
 
     private static let remoteCoOpEntries: [SettingsSearchEntry] = [

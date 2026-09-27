@@ -170,37 +170,35 @@ struct InstantReplayCard: View {
 extension CaptureSettingsPage {
     static let sections: [SettingsSection] = [
         SettingsSection("recording", "Recording"),
-        SettingsSection("storage", "Storage"),
-        SettingsSection("library", "Library"),
+        SettingsSection("recordings", "Recordings"),
+        SettingsSection("screenshots", "Screenshots"),
     ]
 }
 
-/// Where the captures are written: one row per library, each naming the folder in use and offering
-/// the three things a reader wants from it — change it, put it back, or go there.
-struct CaptureStorageCard: View {
+/// Storage-level notices that concern both libraries at once: a one-time migration banner, and the
+/// warning that the two libraries currently resolve to the same folder. Drawn only when it has
+/// something to say, above the per-library cards rather than folded into one of them.
+struct CaptureStorageNoticesCard: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
 
     var body: some View {
-        SettingsCard(title: "Storage", isNew: OPNNewSettings.isNew(.captureLocations), uiScale: uiScale) {
+        SettingsCard(title: "Storage", uiScale: uiScale) {
             if let notice = viewModel.captureLocations.migrationNotice {
                 CaptureNoticeBanner(message: notice, uiScale: uiScale) {
                     viewModel.acknowledgeCaptureMigrationNotice()
                 }
-                SettingsDivider(uiScale: uiScale)
+                if viewModel.captureLocations.isSharingOneFolder {
+                    SettingsDivider(uiScale: uiScale)
+                }
             }
-            CaptureFolderRow(library: .screenshots, viewModel: viewModel, uiScale: uiScale)
-            SettingsDivider(uiScale: uiScale)
-            CaptureFolderRow(library: .recordings, viewModel: viewModel, uiScale: uiScale)
             if viewModel.captureLocations.isSharingOneFolder {
-                SettingsDivider(uiScale: uiScale)
                 Text("Both libraries point at one folder. That works, but the two sets of files sit together in Finder.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Semantic.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .onAppear { viewModel.refreshCaptureLocations() }
     }
 }
 
@@ -220,12 +218,9 @@ private struct CaptureFolderRow: View {
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 4 * uiScale) {
-            Text(library.displayName)
-                .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                .foregroundStyle(OPNDesign.Text.primary)
             Text(displayPath)
-                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OPNDesign.Text.tertiary)
+                .font(.settingsFont(size: 13 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(displayPath)
@@ -287,29 +282,63 @@ private struct CaptureNoticeBanner: View {
     }
 }
 
-/// The way from the settings to what they produced. A destination named for a feature should be
-/// able to open it, rather than describing a library the reader then has to go and find.
-struct RecordingLibraryCard: View {
+/// One media library's own card: where it is written, and the way to what it produced. Recordings
+/// and screenshots each get one, so the Capture page reads as two blocks rather than mixing the two
+/// libraries across a shared folder card and a shared library card.
+struct CaptureLibraryCard: View {
+    let library: OPNCaptureLibrary
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
 
     var body: some View {
-        SettingsCard(title: "Library", uiScale: uiScale) {
-            HStack(alignment: .center, spacing: 16 * uiScale) {
-                VStack(alignment: .leading, spacing: 5 * uiScale) {
-                    Text("Your recordings")
-                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OPNDesign.Text.primary)
-                    Text("Command-R starts and stops a capture during a stream. Finished recordings are browsable, and can be trimmed, cropped and exported.")
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 12 * uiScale)
-                SettingsActionButton(title: "OPEN LIBRARY", minimumWidth: 150 * uiScale, uiScale: uiScale) {
-                    viewModel.showRecordings()
-                }
+        SettingsCard(title: library.displayName, isNew: library == .recordings && OPNNewSettings.isNew(.captureLocations), uiScale: uiScale) {
+            VStack(alignment: .leading, spacing: 10 * uiScale) {
+                SettingsSubheading(title: "Folder", uiScale: uiScale)
+                CaptureFolderRow(library: library, viewModel: viewModel, uiScale: uiScale)
             }
+            SettingsDivider(uiScale: uiScale)
+            libraryLink
+        }
+    }
+
+    private var libraryLink: some View {
+        HStack(alignment: .center, spacing: 16 * uiScale) {
+            VStack(alignment: .leading, spacing: 5 * uiScale) {
+                Text(libraryLinkTitle)
+                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                Text(libraryLinkSubtitle)
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12 * uiScale)
+            SettingsActionButton(title: "OPEN LIBRARY", minimumWidth: 150 * uiScale, uiScale: uiScale) {
+                openLibrary()
+            }
+        }
+    }
+
+    private var libraryLinkTitle: String {
+        switch library {
+        case .recordings: return "Your recordings"
+        case .screenshots: return "Your screenshots"
+        }
+    }
+
+    private var libraryLinkSubtitle: String {
+        switch library {
+        case .recordings:
+            return "\(OPNKeybindings.standard.combo(for: .toggleRecording).spokenLabel) starts and stops a capture during a stream. Finished recordings are browsable, and can be trimmed, cropped and exported."
+        case .screenshots:
+            return "\(OPNKeybindings.standard.combo(for: .takeScreenshot).spokenLabel) saves a still during a stream. Captured screenshots are browsable, and can be cropped, filed into albums and exported."
+        }
+    }
+
+    private func openLibrary() {
+        switch library {
+        case .recordings: viewModel.showRecordings()
+        case .screenshots: viewModel.showScreenshots()
         }
     }
 }
@@ -323,10 +352,18 @@ struct CaptureSettingsGroup: View {
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             CaptureSettingsPage(viewModel: viewModel, uiScale: uiScale)
-            CaptureStorageCard(viewModel: viewModel, uiScale: uiScale)
-                .settingsSection("storage")
-            RecordingLibraryCard(viewModel: viewModel, uiScale: uiScale)
-                .settingsSection("library")
+            if hasStorageNotices {
+                CaptureStorageNoticesCard(viewModel: viewModel, uiScale: uiScale)
+            }
+            CaptureLibraryCard(library: .recordings, viewModel: viewModel, uiScale: uiScale)
+                .settingsSection("recordings")
+            CaptureLibraryCard(library: .screenshots, viewModel: viewModel, uiScale: uiScale)
+                .settingsSection("screenshots")
         }
+        .onAppear { viewModel.refreshCaptureLocations() }
+    }
+
+    private var hasStorageNotices: Bool {
+        viewModel.captureLocations.migrationNotice != nil || viewModel.captureLocations.isSharingOneFolder
     }
 }

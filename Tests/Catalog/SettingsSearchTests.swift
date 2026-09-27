@@ -84,9 +84,9 @@ import Testing
         let rendered = Set(try Self.renderedRowTitles().keys)
         // Components the source scan cannot see because they are not built from the scanned
         // `Settings…Row` family: the microphone test meter, the server-location picker, the
-        // recordings library link, and the Controller Tools card's two button rows.
+        // recordings and screenshots library links, and the Controller Tools card's two button rows.
         let unscannable: Set<String> = [
-            "Microphone Test", "Cloudmatch Region", "Your recordings", "Test Controller", "Controller Mapping",
+            "Microphone Test", "Cloudmatch Region", "Your recordings", "Your screenshots", "Test Controller", "Controller Mapping",
             "Controller Order",
             // The Report an Issue card is a SettingsCard + SettingsActionButton, which the row source
             // scan does not read; the card and its section are rendered all the same.
