@@ -252,9 +252,11 @@ struct NvstInputActivationTests {
         // A non-zero predefined id is a real cursor shape.
         let arrow = NvstControlCommand(code: 0x010f, payload: bytes("02000000"))
         #expect(NvstRemoteCursor.from(arrow)?.isVisible == true)
-        // An explicit visibility byte wins over the id.
-        let explicitlyHidden = NvstControlCommand(code: 0x010f, payload: bytes("020000000a00140000"))
-        #expect(NvstRemoteCursor.from(explicitlyHidden)?.isVisible == false)
+        // A longer payload is not scanned for a visibility byte: the leading id alone decides, so a
+        // non-zero id stays visible whatever sits at offset 8. NvstRemoteCursorBitmapTests pins the
+        // same rule in both directions.
+        let longPayloadWithNonZeroID = NvstControlCommand(code: 0x010f, payload: bytes("020000000a00140000"))
+        #expect(NvstRemoteCursor.from(longPayloadWithNonZeroID)?.isVisible == true)
         // Both come back as cursor notifications, and only the system one may move visibility;
         // NvstRemoteCursorBitmapTests holds that rule against the bitmap form.
         #expect(NvstRemoteCursor.from(hidden)?.source == .systemCursor)
