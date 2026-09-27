@@ -39,6 +39,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
     case showQuitMenu
     case showShortcutsHelp
     case openSearch
+    case captureStreamText
 
     public var id: String { rawValue }
 
@@ -50,7 +51,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
 
     var section: KeybindingSection {
         switch self {
-        case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .saveReplay, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu, .showShortcutsHelp:
+        case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .saveReplay, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu, .showShortcutsHelp, .captureStreamText:
             return .stream
         case .openSearch:
             return .catalog
@@ -70,6 +71,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showQuitMenu: return "Open Quit Menu"
         case .showShortcutsHelp: return "Show Shortcuts"
         case .openSearch: return "Search Games"
+        case .captureStreamText: return "Capture Frame Text"
         }
     }
 
@@ -86,6 +88,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showQuitMenu: return "Open the in-stream quit menu."
         case .showShortcutsHelp: return "Show the list of in-stream shortcuts."
         case .openSearch: return "Focus the search field in the games catalog."
+        case .captureStreamText: return "File the frame's text into the clipboard history, and pass the copy on to the game."
         }
     }
 
@@ -102,6 +105,17 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showQuitMenu: return OPNKeyCombo(keyCode: 12, modifiers: .command)
         case .showShortcutsHelp: return OPNKeyCombo(keyCode: 44, modifiers: .command)
         case .openSearch: return OPNKeyCombo(keyCode: 40, modifiers: .command)
+        case .captureStreamText: return OPNKeyCombo(keyCode: 8, modifiers: .command)
+        }
+    }
+
+    /// Extra default chords the action also answers to while it is not customized. The capture action
+    /// listens on both Command-C and Control-C: the first is the Mac copy a game never receives, the
+    /// second is the copy the game already handles itself.
+    var alternateDefaultCombos: [OPNKeyCombo] {
+        switch self {
+        case .captureStreamText: return [OPNKeyCombo(keyCode: 8, modifiers: .control)]
+        default: return []
         }
     }
 
@@ -118,6 +132,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showQuitMenu: return .showQuitMenu
         case .showShortcutsHelp: return .showShortcutsHelp
         case .openSearch: return nil
+        case .captureStreamText: return .captureStreamText
         }
     }
 }
@@ -200,6 +215,29 @@ struct OPNKeybindings: Sendable {
         storage.object(forKey: Self.key(for: action)) != nil
     }
 
+    /// Every chord the action answers to. A customized binding replaces the whole set — the default
+    /// and any alternate alike — so rebinding never leaves a second, forgotten chord live. A disabled
+    /// action answers to nothing, which is how a trigger that keeps firing at the wrong moment is
+    /// turned off without losing its chord.
+    func combos(for action: KeybindingAction) -> [OPNKeyCombo] {
+        guard isEnabled(action) else { return [] }
+        guard !hasCustomBinding(for: action) else { return [combo(for: action)] }
+        return [action.defaultCombo] + action.alternateDefaultCombos
+    }
+
+    func isEnabled(_ action: KeybindingAction) -> Bool {
+        storage.object(forKey: Self.disabledKey(for: action)) as? Bool != true
+    }
+
+    func setEnabled(_ enabled: Bool, for action: KeybindingAction) {
+        if enabled {
+            storage.removeObject(forKey: Self.disabledKey(for: action))
+        } else {
+            storage.set(true, forKey: Self.disabledKey(for: action))
+        }
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+    }
+
     var hasCustomBindings: Bool {
         KeybindingAction.allCases.contains(where: hasCustomBinding(for:))
     }
@@ -211,12 +249,14 @@ struct OPNKeybindings: Sendable {
 
     func reset(_ action: KeybindingAction) {
         storage.removeObject(forKey: Self.key(for: action))
+        storage.removeObject(forKey: Self.disabledKey(for: action))
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     func resetAll() {
         for action in KeybindingAction.allCases {
             storage.removeObject(forKey: Self.key(for: action))
+            storage.removeObject(forKey: Self.disabledKey(for: action))
         }
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
@@ -224,16 +264,19 @@ struct OPNKeybindings: Sendable {
     /// Actions in the same section that resolve to the same chord, so the page can say which one
     /// loses before the reader wonders why a key does nothing.
     func conflictingActions(for action: KeybindingAction) -> [KeybindingAction] {
-        let binding = combo(for: action)
+        let bindings = combos(for: action)
+        guard !bindings.isEmpty else { return [] }
         return KeybindingAction.allCases.filter { candidate in
-            candidate != action && candidate.section == action.section && combo(for: candidate) == binding
+            guard candidate != action, candidate.section == action.section else { return false }
+            let candidateBindings = combos(for: candidate)
+            return bindings.contains { binding in candidateBindings.contains(binding) }
         }
     }
 
     func resolvedAction(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, in section: KeybindingSection) -> KeybindingAction? {
         let modifiers = Self.normalizedModifiers(modifierFlags)
         return KeybindingAction.allCases.first { action in
-            action.section == section && combo(for: action).matches(keyCode: keyCode, modifiers: modifiers)
+            action.section == section && combos(for: action).contains { $0.matches(keyCode: keyCode, modifiers: modifiers) }
         }
     }
 
@@ -249,6 +292,10 @@ struct OPNKeybindings: Sendable {
 
     private static func key(for action: KeybindingAction) -> String {
         storageKeyPrefix + action.rawValue
+    }
+
+    private static func disabledKey(for action: KeybindingAction) -> String {
+        storageKeyPrefix + action.rawValue + ".disabled"
     }
 }
 
@@ -277,6 +324,14 @@ final class OPNKeybindingsObserver: ObservableObject, @unchecked Sendable {
 
     func conflictingActions(for action: KeybindingAction) -> [KeybindingAction] {
         OPNKeybindings.standard.conflictingActions(for: action)
+    }
+
+    func isEnabled(_ action: KeybindingAction) -> Bool {
+        OPNKeybindings.standard.isEnabled(action)
+    }
+
+    func setEnabled(_ enabled: Bool, for action: KeybindingAction) {
+        OPNKeybindings.standard.setEnabled(enabled, for: action)
     }
 
     private var token: NSObjectProtocol?

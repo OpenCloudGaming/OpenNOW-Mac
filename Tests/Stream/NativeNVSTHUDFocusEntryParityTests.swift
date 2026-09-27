@@ -72,6 +72,17 @@ struct NativeNVSTHUDFocusEntryParityTests {
         #expect(Set(ids).count == ids.count)
     }
 
+    /// Every clipboard row and the clear action are full-width entries, so the pad reaches the whole
+    /// panel even though none of it is a tile.
+    @Test func clipboardRowsAndClearAreReachableFromAPad() {
+        let (_, model) = makeHUDSurface()
+        let entry = StreamClipboardEntry(text: "captured text", applicationID: "100", gameTitle: "Game")
+        model.clipboard.entries = [entry]
+        let ids = model.hudFocusEntries.map(\.id)
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardEntryFocusPrefix + entry.id.uuidString))
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardClearFocusID))
+    }
+
     /// The STATS panel's two selectors are full-width rows, not tiles, so nothing but this contract
     /// keeps them reachable from a pad.
     @Test func statsShapeControlsAreReachableFromAPad() {

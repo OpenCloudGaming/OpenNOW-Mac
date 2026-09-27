@@ -18,6 +18,7 @@ extension NativeNVSTHostViewModel {
             .session: [],
             .audio: audioFocusEntries,
             .capture: captureFocusEntries,
+            .clipboard: clipboardFocusEntries,
             .display: displayFocusEntries,
             .input: inputFocusEntries,
             .controllers: controllersFocusEntries,
@@ -83,6 +84,23 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "screenshot", isDisabled: !sidebarCapabilities.supports(.screenshot) || !isConnected || screenshotTask != nil, group: "capture", columns: 4, action: takeNativeScreenshot),
         ]
     }
+
+    /// One entry per history row, newest first, then the clear action. Rows are full-width rows of
+    /// their own so the pad walks the list in the order it is drawn.
+    var clipboardFocusEntries: [StreamHUDFocusEntry] {
+        var entries = clipboard.entries.map { entry in
+            StreamHUDFocusEntry(id: Self.clipboardEntryFocusPrefix + entry.id.uuidString, isDisabled: false) { [weak self] in
+                self?.copyClipboardEntry(entry)
+            }
+        }
+        entries.append(StreamHUDFocusEntry(id: Self.clipboardClearFocusID, isDisabled: clipboard.entries.isEmpty) { [weak self] in
+            self?.requestClearClipboardHistory()
+        })
+        return entries
+    }
+
+    static let clipboardEntryFocusPrefix = "clipboard-entry-"
+    static let clipboardClearFocusID = "clipboard-clear"
 
     private var displayFocusEntries: [StreamHUDFocusEntry] {
         [

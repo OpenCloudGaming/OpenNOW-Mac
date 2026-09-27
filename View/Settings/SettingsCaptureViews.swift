@@ -170,9 +170,53 @@ struct InstantReplayCard: View {
 extension CaptureSettingsPage {
     static let sections: [SettingsSection] = [
         SettingsSection("recording", "Recording"),
+        SettingsSection("clipboard", "Clipboard"),
         SettingsSection("storage", "Storage"),
         SettingsSection("library", "Library"),
     ]
+}
+
+/// The in-stream clipboard history's own settings: whether the copy chords capture frame text, how
+/// many entries are held, and — because OCR touches what the reader types elsewhere — one honest
+/// line about where the text lives.
+struct StreamClipboardSettingsCard: View {
+    let uiScale: CGFloat
+    @AppStorage(StreamTextCaptureSettings.enabledKey) private var captureEnabled = true
+    @State private var entryCount = 0
+
+    var body: some View {
+        SettingsCard(title: "Clipboard", uiScale: uiScale) {
+            SettingsToggleRow(
+                title: "Capture text when I press copy",
+                subtitle: "Command-C or Control-C in a stream reads the current frame's text on this Mac and files it in the clipboard history. The game still receives the copy.",
+                isOn: captureEnabled,
+                uiScale: uiScale,
+                action: { captureEnabled = $0 }
+            )
+            SettingsDivider(uiScale: uiScale)
+            HStack(spacing: 12 * uiScale) {
+                Text(entryCount == 1 ? "1 entry saved" : "\(entryCount) entries saved")
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                Spacer(minLength: 0)
+                SettingsActionButton(title: "CLEAR HISTORY", tone: .secondary, uiScale: uiScale) {
+                    StreamClipboardHistoryStore.shared.clear()
+                    refreshCount()
+                }
+                .disabled(entryCount == 0)
+            }
+            SettingsDivider(uiScale: uiScale)
+            Text("Text recognition runs entirely on this Mac and the history is kept on this Mac. Nothing is uploaded, and the history holds the newest \(StreamClipboardHistoryStore.entryLimit) entries.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { refreshCount() }
+    }
+
+    private func refreshCount() {
+        entryCount = StreamClipboardHistoryStore.shared.load().count
+    }
 }
 
 /// Where the captures are written: one row per library, each naming the folder in use and offering
@@ -323,6 +367,8 @@ struct CaptureSettingsGroup: View {
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             CaptureSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            StreamClipboardSettingsCard(uiScale: uiScale)
+                .settingsSection("clipboard")
             CaptureStorageCard(viewModel: viewModel, uiScale: uiScale)
                 .settingsSection("storage")
             RecordingLibraryCard(viewModel: viewModel, uiScale: uiScale)
