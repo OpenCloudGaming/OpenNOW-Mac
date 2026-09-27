@@ -19,6 +19,23 @@ public struct StreamScreenshot: Codable, Equatable, Identifiable, Sendable {
     public var albumIDs: [UUID]
     public let storageDirectoryPath: String?
 
+    /// A copy of this shot pointing at where it was actually found, used when a stored path has gone
+    /// stale and the sidecar's own directory is the truth.
+    func replacingStorageDirectoryPath(_ path: String) -> StreamScreenshot {
+        StreamScreenshot(
+            id: id,
+            title: title,
+            applicationID: applicationID,
+            createdAt: createdAt,
+            width: width,
+            height: height,
+            fileName: fileName,
+            fileSizeBytes: fileSizeBytes,
+            albumIDs: albumIDs,
+            storageDirectoryPath: path
+        )
+    }
+
     public var imageURL: URL { storageDirectory.appendingPathComponent(fileName) }
     public var metadataURL: URL { storageDirectory.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
 
@@ -60,12 +77,11 @@ public enum StreamScreenshotLibrary {
     /// an iCloud download or an out-of-band capture leaves it showing what it scanned at launch.
     public static let didChangeNotification = Notification.Name("OPNStreamScreenshotLibraryDidChange")
 
-    /// Beside the recordings, under the vendor's own folder, so both live in one place a reader can
-    /// find from Finder and OpenNOW owns the screen capture directory.
+    /// Where the reader's screenshots live. A thin forwarder: `OPNCaptureLocations` owns the default,
+    /// the reader's override, and its validation, so every consumer here follows a folder change
+    /// without knowing about it.
     public static var screenshotsDirectory: URL {
-        let base = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures", isDirectory: true)
-        return base.appendingPathComponent("NVIDIA", isDirectory: true).appendingPathComponent("GeForce NOW", isDirectory: true)
+        OPNCaptureLocations.screenshotsDirectory
     }
 
     static let albumsFileName = "albums.json"
@@ -80,11 +96,28 @@ public enum StreamScreenshotLibrary {
         screenshotMetadataURLs()
             .compactMap { url in
                 guard let data = try? Data(contentsOf: url) else { return nil }
-                guard let screenshot = try? JSONDecoder.recordingDecoder.decode(StreamScreenshot.self, from: data) else { return nil }
+                guard let decoded = try? JSONDecoder.recordingDecoder.decode(StreamScreenshot.self, from: data) else { return nil }
+                // A stored path that no longer exists — the folder moved, in Finder or by us — falls
+                // back to the sidecar's own directory. Out-of-root items keep their path.
+                let screenshot = decoded.replacingStorageDirectoryPath(healedStoragePath(
+                    stored: decoded.storageDirectoryPath,
+                    sidecarDirectory: url.deletingLastPathComponent()
+                ))
                 guard FileManager.default.fileExists(atPath: screenshot.imageURL.path) else { return nil }
                 return screenshot
             }
             .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// The rule behind folder moves being non-destructive: honour a stored path while it exists,
+    /// otherwise resolve beside the sidecar that named the item.
+    static func healedStoragePath(stored: String?,
+                                  sidecarDirectory: URL,
+                                  fileManager: FileManager = .default) -> String {
+        guard let stored, !stored.isEmpty, fileManager.fileExists(atPath: stored) else {
+            return sidecarDirectory.path
+        }
+        return stored
     }
 
     public static func loadAlbums() -> [ScreenshotAlbum] {
@@ -189,9 +222,6 @@ public enum StreamScreenshotLibrary {
     }
 
     private static func ensureWritableDirectory(at directory: URL) throws {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let probe = directory.appendingPathComponent(".opennow-write-test", isDirectory: false)
-        try Data().write(to: probe, options: .atomic)
-        try? FileManager.default.removeItem(at: probe)
+        try OPNCaptureLocations.ensureWritableDirectory(at: directory)
     }
 }

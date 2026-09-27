@@ -561,7 +561,7 @@ struct SettingsContent: View {
         case .audio: AudioSettingsPage.sections
         case .input: InputSettingsGroup.sections
         case .keybindings: KeybindingsSettingsPage.sections
-        case .recording: RecordingSettingsGroup.sections
+        case .capture: CaptureSettingsGroup.sections
         case .network: NetworkSettingsGroup.sections
         case .remoteCoOp: []
         case .theme: ThemeSettingsPage.sections
@@ -584,8 +584,8 @@ struct SettingsContent: View {
             InputSettingsGroup(viewModel: viewModel)
         case .keybindings:
             KeybindingsSettingsPage(uiScale: uiScale)
-        case .recording:
-            RecordingSettingsGroup(viewModel: viewModel)
+        case .capture:
+            CaptureSettingsGroup(viewModel: viewModel)
         case .network:
             NetworkSettingsGroup(viewModel: viewModel)
         case .remoteCoOp:

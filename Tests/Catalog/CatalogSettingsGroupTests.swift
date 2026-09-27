@@ -36,7 +36,7 @@ import Foundation
 @Test func theTabsAreOneDestinationPerConcernInAFixedOrder() {
     // One destination per concern, and the case order is the order the sidebar and pad walk. Pages
     // of one concern sit together so the rail can caption each run once: App, Stream, Connection.
-    #expect(CatalogSettingsGroup.allCases == [.account, .general, .theme, .iCloud, .system, .labs, .video, .audio, .input, .keybindings, .recording, .network, .remoteCoOp])
+    #expect(CatalogSettingsGroup.allCases == [.account, .general, .theme, .iCloud, .system, .labs, .video, .audio, .input, .keybindings, .capture, .network, .remoteCoOp])
 }
 
 /// The rail derives its captions by walking the page list, so a section that stopped being
@@ -78,7 +78,7 @@ import Foundation
         (.audio, AudioSettingsPage.sections),
         (.input, InputSettingsGroup.sections),
         (.keybindings, KeybindingsSettingsPage.sections),
-        (.recording, RecordingSettingsGroup.sections),
+        (.capture, CaptureSettingsGroup.sections),
         (.network, NetworkSettingsGroup.sections),
         (.theme, ThemeSettingsPage.sections),
         (.general, GeneralSettingsGroup.sections),

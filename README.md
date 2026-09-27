@@ -172,6 +172,8 @@ Struct layouts for all three formats are documented in SDL's [`controller_struct
 
 ⌘R starts and stops a local capture on either transport - frames come straight off the decode path and game audio off the stream, so nothing is re-encoded from the screen and no Screen Recording permission is involved. Recordings land in a browsable library with search, sort, and resolution filters.
 
+Captures are written into OpenNOW's own folders, not NVIDIA's: screenshots go to `~/Pictures/OpenNOW` and recordings to `~/Movies/OpenNOW/<Game Title>`. Both locations are changeable in **Settings → Capture → Storage**, where each library has **Change…**, **Reset to Default**, and **Reveal in Finder**. A folder change takes effect immediately for the next capture and for the next library scan; the folders cannot be changed while a stream is running. Upgrading from an older build moves anything already under `~/Pictures/NVIDIA/GeForce NOW` or `~/Movies/NVIDIA/GeForce NOW` into the new folders on first launch, and says so on the Capture page.
+
 ![Recordings library beside the Quick Edit timeline: a saved Streets of Rage 4 capture, its 5120x2160 thumbnail and size, and a filmstrip timeline with trim, split, and set in/out controls](docs/screenshots/recordings.png)
 
 **Quick Edit** is opt-in and non-destructive - trim the ends, split and cut a middle section, join what is left, then save as a new video. The advanced pass adds crop, rotate, flip, speed, and audio. The original file is never rewritten.
