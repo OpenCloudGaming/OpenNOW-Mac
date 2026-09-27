@@ -57,4 +57,17 @@ import Testing
         #expect(shown.visibility(following: false) == true)
         #expect(shown.summary == "system visible")
     }
+
+    /// A longer `0x010f` payload used to be scanned for a visibility byte at an offset that was
+    /// never recovered, so an unrelated field landing there flipped the pointer mid-game. Only the
+    /// leading cursor id may decide, whichever way an unverified byte at offset 8 points.
+    @Test func aLongSystemCursorPayloadDecidesFromTheLeadingIDAlone() throws {
+        let shownWithZeroAtOffsetEight = Data([0, 0, 0, 2, 0, 0, 0, 0, 0])
+        let visible = try #require(NvstRemoteCursor.from(NvstControlCommand(code: 0x010f, payload: shownWithZeroAtOffsetEight)))
+        #expect(visible.visibility(following: false) == true)
+
+        let hiddenWithOneAtOffsetEight = Data([0, 0, 0, 0, 0, 0, 0, 0, 1])
+        let notVisible = try #require(NvstRemoteCursor.from(NvstControlCommand(code: 0x010f, payload: hiddenWithOneAtOffsetEight)))
+        #expect(notVisible.visibility(following: true) == false)
+    }
 }

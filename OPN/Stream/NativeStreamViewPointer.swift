@@ -45,6 +45,9 @@ extension NativeStreamView {
         if pointerLockCursorHidden {
             NSCursor.unhide()
             pointerLockCursorHidden = false
+            OPNStreamTelemetry.capture("nvst.view.pointer_lock_cursor", level: .info,
+                                       message: "Pointer-lock pointer restored on release.",
+                                       attributes: ["hidden": "false"])
         }
         // Every route that ends a capture comes through here — the toggle, a click outside, focus
         // loss, the HUD, an in-place reconnect dropping remote input, teardown — so this is the one
@@ -55,7 +58,7 @@ extension NativeStreamView {
         // where `routeInputEvent` drops every mouse event and the mouse is simply dead until the
         // seat next changes its mind. Only that direction is replayed — following the seat back
         // into mouselook here would retake the pointer the player just asked to get back.
-        if remoteCursorWantsPointer == true, mouseInputMode != .absolute { mouseInputMode = .absolute }
+        if !capturesSeatCompositedCursor, remoteCursorWantsPointer == true, mouseInputMode != .absolute { mouseInputMode = .absolute }
         applyLocalCursorPolicy()
         notifyPointerLockChanged(false)
     }
@@ -154,6 +157,9 @@ extension NativeStreamView {
     public func setRemoteCursorVisible(_ isVisible: Bool) {
         remoteCursorWantsPointer = isVisible
         guard !manualPointerCaptureOverride else { return }
+        // `stream` owns its own capture: the seat is compositing the pointer, so a visibility report
+        // must not put the client back into absolute mode and release the mouse mid-game.
+        guard !capturesSeatCompositedCursor else { return }
         let mode: NativeStreamMouseInputMode = isVisible ? .absolute : .relative
         mouseInputMode = mode
         if mode == .relative {
@@ -166,15 +172,45 @@ extension NativeStreamView {
         }
     }
 
+    /// Takes the Mac pointer for the `stream` policy. The seat composites the pointer the player
+    /// sees, so the client's own is hidden and captured rather than drawn; relative input is what
+    /// moves the seat's pointer, and a capture is what turns the mouse into relative input. The
+    /// relative mode is set here and the lock itself comes from `restoreInputFocus`, which is the
+    /// one gate that knows whether this window is the frontmost target.
+    func applySeatCompositedCursorCapture() {
+        guard capturesSeatCompositedCursor, remoteInputEnabled, !localOverlayCapturesInput,
+              !isPictureInPictureMode else { return }
+        mouseInputMode = .relative
+        restoreInputFocus()
+    }
+
+    /// Hands the pointer back when the policy stops leaning on the seat's composited cursor. A held
+    /// capture releases through `disablePointerLock`, which replays the mode; without one, the mode
+    /// still has to leave `.relative` or the client would keep dropping ordinary mouse events.
+    func releaseSeatCompositedCursorCapture() {
+        guard !isPointerLocked else {
+            setPointerLocked(false)
+            return
+        }
+        guard mouseInputMode == .relative else { return }
+        mouseInputMode = remoteCursorWantsPointer == false ? .relative : .absolute
+    }
+
     func updatePointerLockCursorVisibility() {
         if hidesCursorWhilePointerLocked {
             if !pointerLockCursorHidden {
                 NSCursor.hide()
                 pointerLockCursorHidden = true
+                OPNStreamTelemetry.capture("nvst.view.pointer_lock_cursor", level: .info,
+                                           message: "Pointer-locked pointer hidden.",
+                                           attributes: ["hidden": "true"])
             }
         } else if pointerLockCursorHidden {
             NSCursor.unhide()
             pointerLockCursorHidden = false
+            OPNStreamTelemetry.capture("nvst.view.pointer_lock_cursor", level: .info,
+                                       message: "Pointer-locked pointer restored.",
+                                       attributes: ["hidden": "false"])
         }
     }
 }

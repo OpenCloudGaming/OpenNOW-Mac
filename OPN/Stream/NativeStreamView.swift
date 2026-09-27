@@ -191,7 +191,7 @@ public final class NativeStreamView: NSView {
             guard oldValue != isPictureInPictureMode else { return }
             // Entering the mode gives the pointer back - and absolute confinement with it, which
             // `setPointerLocked(false)` also releases. Leaving it lets the ordinary rules retake.
-            if isPictureInPictureMode { setPointerLocked(false) }
+            if isPictureInPictureMode { setPointerLocked(false) } else { applySeatCompositedCursorCapture() }
             updateControllerMappingFocus()
         }
     }
@@ -236,6 +236,7 @@ public final class NativeStreamView: NSView {
                 updateControllerMappingFocus()
                 gamepadMonitor.refreshInputState()
                 restoreInputFocus()
+                applySeatCompositedCursorCapture()
             }
             applyLocalCursorPolicy()
         }
@@ -277,8 +278,19 @@ public final class NativeStreamView: NSView {
         didSet {
             guard oldValue != cursorPolicy else { return }
             applyLocalCursorPolicy()
+            guard cursorPolicy == .stream else {
+                releaseSeatCompositedCursorCapture()
+                return
+            }
+            applySeatCompositedCursorCapture()
         }
     }
+    /// `stream` shows the seat's own composited pointer, so the client captures the Mac's instead of
+    /// drawing a second: relative input is what moves the seat's pointer, and the captured cursor
+    /// cannot leave the picture. Engaged whenever remote input is live and this window is the
+    /// frontmost target; every ordinary route out of a capture (overlay, PiP, focus loss) releases
+    /// it through `setPointerLocked(false)`.
+    var capturesSeatCompositedCursor: Bool { cursorPolicy == .stream }
     /// A capture the player asked for by hand through `setManualPointerCapture`. Seat cursor
     /// notifications must not undo it: the games it exists for never hide their cursor, so every
     /// notification would otherwise hand the pointer back mid-fight.
@@ -300,13 +312,14 @@ public final class NativeStreamView: NSView {
             applyLocalCursorPolicy()
         }
     }
-    /// Whether the seat is still compositing a pointer of its own into the video. True until the
-    /// transport says otherwise, because that is what the activation chain asks for: capture is on
-    /// from the first frame and only switched off later. The seat can stop compositing without ever
-    /// publishing a visibility — a bitmap-only notification, or the watchdog firing on a seat that
-    /// publishes nothing — so this, not `remoteCursorWantsPointer`, is what says whether hiding the
-    /// local pointer still leaves one on screen.
-    public internal(set) var seatCompositesCursor = true {
+    /// Whether the seat is still compositing a pointer of its own into the video. False until the
+    /// activation chain switches capture on and says so — the client only suppresses its own pointer
+    /// once the seat has actually been asked to draw one, so a view that has not reached activation
+    /// yet (or has been detached) never hides a pointer it cannot explain. The seat can stop
+    /// compositing without ever publishing a visibility — a bitmap-only notification, or the
+    /// watchdog firing on a seat that publishes nothing — so this, not `remoteCursorWantsPointer`,
+    /// is what says whether hiding the local pointer still leaves one on screen.
+    public internal(set) var seatCompositesCursor = false {
         didSet {
             guard oldValue != seatCompositesCursor else { return }
             applyLocalCursorPolicy()
@@ -323,6 +336,8 @@ public final class NativeStreamView: NSView {
             guard oldValue != localOverlayCapturesInput else { return }
             updateControllerMappingFocus()
             applyLocalCursorPolicy()
+            guard !localOverlayCapturesInput else { return }
+            applySeatCompositedCursorCapture()
         }
     }
     /// Passthrough to the gamepad monitor: while this returns true for a Steam
@@ -467,7 +482,12 @@ public final class NativeStreamView: NSView {
         guard unhidesCursor || stopsRawMouseCapture else { return }
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
-                if unhidesCursor { NSCursor.unhide() }
+                if unhidesCursor {
+                    NSCursor.unhide()
+                    OPNStreamTelemetry.capture("nvst.view.pointer_lock_cursor.leak", level: .warning,
+                                               message: "Stream view released with the pointer still hidden; restored it.",
+                                               attributes: ["hidden": "true", "pointerLocked": String(stopsRawMouseCapture)])
+                }
                 if stopsRawMouseCapture { OPNRawMouseHIDMonitor.shared.stop() }
             }
         }
@@ -495,6 +515,7 @@ public final class NativeStreamView: NSView {
         installNativeNVSTDisplayNotifications()
         updateControllerMappingFocus()
         restoreInputFocus()
+        applySeatCompositedCursorCapture()
         window?.acceptsMouseMovedEvents = true
         // The window is a policy input (cursor rects only apply to the key window of the active
         // app) and moving between windows produces no crossing to notice it by.
@@ -591,8 +612,13 @@ public final class NativeStreamView: NSView {
         // The seat's cursor state is per-session: it stops publishing notifications between
         // sessions and starts the next one compositing a cursor of its own again, so a stale
         // "the game shows a pointer" from the last game would draw a second one over this one.
+        //
+        // Reset to the safe default rather than pre-claiming composite: capture is only switched on
+        // when the activation chain asks for it, and that same step announces itself through
+        // `notifySeatCompositesCursor(true)`. Claiming it here hid the local pointer from attach
+        // time, before the seat had been asked to draw anything to hide it behind.
         remoteCursorWantsPointer = nil
-        seatCompositesCursor = true
+        seatCompositesCursor = false
         let renderer = NvstBifrostFreeVideoRenderer(parentView: videoSurface, targetFps: targetFps)
         renderer.onDecodedSizeChanged = { [weak self] width, height in
             self?.setStreamContentSize(width: width, height: height)
@@ -605,6 +631,10 @@ public final class NativeStreamView: NSView {
     public func detachNvstBifrostFreeRenderer() {
         nvstBifrostFreeRenderer?.detach()
         nvstBifrostFreeRenderer = nil
+        // The seat is no longer compositing into anything, so the view must not keep suppressing
+        // its own pointer on the strength of a session that has ended.
+        remoteCursorWantsPointer = nil
+        seatCompositesCursor = false
     }
 
     public func nativeNVSTVideoWindow() -> NSWindow? {

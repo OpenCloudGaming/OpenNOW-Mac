@@ -35,7 +35,7 @@ extension NativeNVSTHostViewModel {
         switch policy {
         case .auto: return "\(policy.label) · follows the stream"
         case .local: return "\(policy.label) · Mac pointer always drawn"
-        case .stream: return "\(policy.label) · Mac pointer hidden"
+        case .stream: return "\(policy.label) · seat cursor, Mac captured"
         }
     }
 
@@ -55,6 +55,12 @@ extension NativeNVSTHostViewModel {
         cursorPolicyIndex = policy.rawValue
         OPNStreamPreferences.saveCursorPolicyIndex(policy.rawValue)
         nativeView?.cursorPolicy = policy
+        // `stream` leans on the seat's composited pointer, so it needs capture kept on; every other
+        // policy draws the Mac pointer itself and must stop the seat compositing.
+        let keepsSeatCompositedCursor = policy == .stream
+        Task { [weak self] in
+            await self?.path?.setSeatCompositedCursorPreferred(keepsSeatCompositedCursor)
+        }
         OPNStreamTelemetry.capture("nvst.ui.cursor.policy", level: .info, message: "Native NVST cursor policy changed.", attributes: ["applicationID": configuration.applicationID, "policy": policy.label])
     }
 

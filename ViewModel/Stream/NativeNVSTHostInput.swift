@@ -32,7 +32,9 @@ extension NativeNVSTHostViewModel {
             self?.mouseInputIsRelative = view?.effectiveMouseMode == .relative
         }
         view.onMouseInputModeChanged = { [weak self] mode in self?.mouseInputIsRelative = mode == .relative }
-        if path == nil { view.mouseInputMode = .absolute }
+        // `stream` leans on the seat's composited pointer, so it has to travel in relative mode for
+        // the capture to be worth anything; every other policy starts in absolute.
+        if path == nil { view.mouseInputMode = view.cursorPolicy == .stream ? .relative : .absolute }
         // A bootstrap so the surface has an aspect before any frame arrives. The requested profile is
         // only a request — the first decoded frame reports what the seat actually sent and corrects
         // this, which matters most on a cross-device resume, where the geometry stays the origin
@@ -130,7 +132,19 @@ extension NativeNVSTHostViewModel {
         }
         lastAcceptedStreamInputAt = Date()
         if case .mouse = event {
-            if view.mouseInputMode == .relative, !view.isPointerLocked { return }
+            if view.mouseInputMode == .relative, !view.isPointerLocked {
+                // The seat asked for mouselook but the capture is not held — an association macOS
+                // refused, or a focus change that released it. Dropping the event here is a mouse
+                // that does nothing at all, so a real user event retries the capture: a transient
+                // failure heals itself instead of stranding the session until the seat changes its
+                // mind. A neutralizing release, background input, or the HUD must never retake it.
+                let canRetakeCapture = view.remoteInputEnabled
+                    && view.isFrontmostInputTarget
+                    && !NativeNVSTInputDispatcher.isNeutralizing(event)
+                guard canRetakeCapture else { return }
+                view.setPointerLocked(true)
+                guard view.isPointerLocked else { return }
+            }
             inputDispatcher?.enqueue(event)
             return
         }

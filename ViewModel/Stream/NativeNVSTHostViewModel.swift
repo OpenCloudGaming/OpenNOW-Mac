@@ -430,7 +430,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
                 diagnosticLog.append(sanitized)
             },
             remoteCoOpNativeBroadcaster: remoteCoOpNativeBroadcaster,
-            remoteCoOpBrowserEgress: remoteCoOpBrowserEgress
+            remoteCoOpBrowserEgress: remoteCoOpBrowserEgress,
+            keepsSeatCompositedCursor: nativeView.cursorPolicy == .stream
         )
         if let bifrostFree = transport as? NvstBifrostFreeTransport {
             attachSeatNotificationHandlers(bifrostFree, nativeView: nativeView)

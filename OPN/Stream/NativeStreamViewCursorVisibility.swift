@@ -38,6 +38,11 @@ extension NativeStreamView {
     /// an unknown seat visibility: capture also stops on a bitmap-only notification and on the
     /// watchdog's deadline for a seat that publishes nothing, and in both of those the seat's
     /// visibility never arrives. Hiding on `nil` there left the session with no pointer at all.
+    ///
+    /// `stream` hides unconditionally: the seat keeps compositing the pointer for this policy, so the
+    /// Mac's is always the second one. Its capture (which is what actually moves the seat's pointer)
+    /// is owned by the pointer-lock code, never by this rect; the rect only matters for the brief
+    /// window before the capture is taken.
     static func hidesLocalCursorOverVideo(policy: OPNCursorPolicy,
                                           mode: NativeStreamMouseInputMode,
                                           isPointerLocked: Bool,
@@ -73,6 +78,18 @@ extension NativeStreamView {
         guard hides != hidesLocalCursorOverVideo else { return }
         hidesLocalCursorOverVideo = hides
         window?.invalidateCursorRects(for: self)
+        OPNStreamTelemetry.capture(
+            "nvst.view.local_cursor_policy",
+            level: .info,
+            message: hides ? "Local pointer hidden over the video." : "Local pointer shown over the video.",
+            attributes: [
+                "hidden": String(hides),
+                "policy": cursorPolicy.label,
+                "mode": mouseInputMode == .absolute ? "absolute" : "relative",
+                "seatComposites": String(seatCompositesCursor),
+                "seatWantsPointer": remoteCursorWantsPointer.map { String($0) } ?? "unknown",
+            ]
+        )
     }
 
     /// The rect covers the picture, not the whole view: over the pillarbox bars there is nothing

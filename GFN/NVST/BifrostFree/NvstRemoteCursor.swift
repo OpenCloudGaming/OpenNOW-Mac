@@ -108,15 +108,17 @@ public struct NvstRemoteCursor: Equatable, Sendable {
 
     private static func systemCursor(payload: Data) -> NvstRemoteCursor? {
         guard payload.count >= 4 else { return nil }
-        // An explicit visibility byte wins when the seat sends one.
-        if payload.count >= 9 {
-            return NvstRemoteCursor(isVisible: payload[payload.startIndex + 8] != 0)
-        }
         var reader = NvstByteReader(payload)
         let cursorID = (try? reader.u32BE()) ?? 0
         // Predefined cursor 0 is the "no cursor" shape. Only a *system* cursor id of 0 means
         // hidden — a bitmap cursor with id 0 is still a visible image, which is why the two
         // commands are kept apart above.
+        //
+        // The leading id is the only field recovered from `0x010f`. An earlier revision scanned a
+        // longer payload for an explicit visibility byte at offset 8, but that offset was never
+        // verified and any other field landing there flipped the state on unrelated data — the
+        // pointer vanished mid-game. A wrongly shown pointer is a cosmetic double cursor; a
+        // wrongly hidden one is a session with no pointer, so this decides from the id it can prove.
         return NvstRemoteCursor(isVisible: cursorID != 0)
     }
 }

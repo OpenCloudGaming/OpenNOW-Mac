@@ -32,6 +32,10 @@ public protocol NativeNVSTTransport: Sendable {
     /// half was fixed at ANNOUNCE; see `NvstVsyncMode`. Throws `notRunning` without a session.
     func setVsyncMode(_ mode: NvstVsyncMode) async throws
     func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws
+    /// Keeps the seat compositing the pointer into the encoded frames instead of handing cursor
+    /// drawing to the client. Set for the `stream` cursor policy, where the seat's composited pointer
+    /// is the one the player wants to see.
+    func setSeatCompositedCursorPreferred(_ preferred: Bool) async
     func startRecording(configuration: StreamRecordingConfiguration) async
     func stopRecording() async
     func setRecordingStatusHandler(_ handler: (@MainActor @Sendable (StreamRecordingStatus) -> Void)?) async
@@ -65,6 +69,7 @@ public extension NativeNVSTTransport {
     func setL4SEnabled(_ enabled: Bool) async throws { throw NativeNVSTError.notRunning }
     func setVsyncMode(_ mode: NvstVsyncMode) async throws { throw NativeNVSTError.notRunning }
     func updateGamepadTopology(_ topology: StreamGamepadTopology) async throws { throw NativeNVSTError.notRunning }
+    func setSeatCompositedCursorPreferred(_ preferred: Bool) async {}
     func setMicrophoneConfiguration(_ configuration: NativeNVSTMicrophoneConfiguration) async throws {}
     func setMicrophoneDevice(_ uid: String) async throws { throw NativeNVSTError.notRunning }
     func microphoneAvailability() async -> NativeNVSTMicrophoneAvailability { .available }

@@ -100,6 +100,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// Fires once, if the seat's first cursor notification never arrives; see
     /// `NvstBifrostFreeCursorWatchdog`.
     var cursorCaptureWatchdogTask: Task<Void, Never>?
+    /// When true the seat keeps compositing the pointer into the frames and the client never takes
+    /// cursor drawing over. Set from the `stream` cursor policy, where the seat's composited pointer
+    /// is the one the player wants to see. See `setSeatCompositedCursorPreferred`.
+    var keepsSeatCompositedCursor = false
     var qosSequence: UInt32 = 0
     var lastQosBytesReceived: UInt64 = 0
     var lastQosDelayMicroseconds: UInt32 = 0
@@ -291,9 +295,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 logger: (@Sendable (String) -> Void)? = nil,
                 controlTimeout: Duration = .seconds(20),
                 remoteCoOpNativeBroadcaster: RemoteCoOpNativeMediaBroadcaster = RemoteCoOpNativeMediaBroadcaster(),
-                remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress? = nil) {
+                remoteCoOpBrowserEgress: RemoteCoOpBrowserEgress? = nil,
+                keepsSeatCompositedCursor: Bool = false) {
         self.remoteCoOpNativeBroadcaster = remoteCoOpNativeBroadcaster
         self.remoteCoOpBrowserEgress = remoteCoOpBrowserEgress
+        self.keepsSeatCompositedCursor = keepsSeatCompositedCursor
         self.pixelBufferSink = pixelBufferSink
         self.configuredFps = configuredFps
         self.configuredMaxBitrateKbps = configuredMaxBitrateKbps

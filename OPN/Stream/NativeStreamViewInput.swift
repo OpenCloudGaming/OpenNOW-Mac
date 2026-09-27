@@ -309,6 +309,7 @@ extension NativeStreamView {
         // restoreInputFocus() early-returns with remote input off, an overlay capturing input, or a
         // non-key window, and the cursor policy still needs to reflect that unchanged state.
         applyLocalCursorPolicy()
+        applySeatCompositedCursorCapture()
     }
 
     func receiveGamepadState(_ state: GamepadState) {

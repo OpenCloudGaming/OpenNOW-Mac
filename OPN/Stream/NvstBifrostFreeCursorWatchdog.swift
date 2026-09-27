@@ -38,7 +38,9 @@ extension NvstBifrostFreeTransport {
         // Fired from the watchdog's own body, so cancelling here only tidies the reference away —
         // the deadline has already passed and nothing after this point suspends.
         cancelCursorCaptureWatchdog()
-        guard !isTornDown, !didDisableCursorCapture else { return }
+        // A session that keeps the seat compositing has nothing to hand over: leaving capture on is
+        // the point, so the deadline must not turn it off even though no notification ever arrived.
+        guard !isTornDown, !didDisableCursorCapture, !keepsSeatCompositedCursor else { return }
         didDisableCursorCapture = true
         // The bundle is present whenever this is armed — the activation chain sent through it — and
         // can only go away with a teardown that cancels the watchdog first. Recording the decision

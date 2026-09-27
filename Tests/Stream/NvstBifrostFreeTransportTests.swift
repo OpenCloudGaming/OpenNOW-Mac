@@ -239,6 +239,33 @@ import Testing
         #expect(recorder.values == [false, false])
     }
 
+    /// The `stream` cursor policy shows the seat's composited pointer, so the first notification,
+    /// which normally hands drawing to the client, must leave capture on — and the deadline for a
+    /// silent seat must not turn it off either.
+    @Test @MainActor func aStreamSessionNeverHandsThePointerToTheClient() async {
+        let transport = NvstBifrostFreeTransport(keepsSeatCompositedCursor: true)
+        let recorder = SeatCursorCaptureRecorder()
+        await transport.setRemoteCursorCaptureHandler { isCompositing in recorder.record(isCompositing) }
+
+        await transport.handleRemoteCursor(NvstRemoteCursor(isVisible: false))
+        await transport.disableCursorCaptureAfterSilentSeat()
+        await Task.yield()
+
+        #expect(await transport.didDisableCursorCapture == false)
+        #expect(recorder.values.isEmpty)
+    }
+
+    /// Selecting `stream` mid-session takes effect without a reconnect: the flag alone stops the
+    /// hand-over, which is what the next notification would otherwise perform.
+    @Test @MainActor func preferringSeatCompositedCursorStopsTheHandOverMidSession() async {
+        let transport = NvstBifrostFreeTransport()
+        await transport.setSeatCompositedCursorPreferred(true)
+
+        await transport.handleRemoteCursor(NvstRemoteCursor(isVisible: false))
+
+        #expect(await transport.didDisableCursorCapture == false)
+    }
+
     @Test func twoSocketsAreReservedWithOfficialLengthIceCredentials() async throws {
         let reserver = NvstLocalBundleReserver()
         let reservation = try await reserver.reserveBundle()

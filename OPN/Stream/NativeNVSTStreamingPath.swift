@@ -316,6 +316,13 @@ public actor NativeNVSTStreamingPath {
         try await transport.setMaximumBitrateKbps(bitrateKbps)
     }
 
+    /// Applies a live Cursor policy change to the running transport. Not gated on an active session:
+    /// the preferred flag has to be recorded even during a reconnect, so the next activation
+    /// composes it into the cursor capture it sends.
+    public func setSeatCompositedCursorPreferred(_ preferred: Bool) async {
+        await transport.setSeatCompositedCursorPreferred(preferred)
+    }
+
     public func setDynamicStreamingMode(_ mode: NativeNVSTDynamicStreamingMode) async throws {
         guard activeSession != nil else { throw NativeNVSTError.notRunning }
         try await transport.setDynamicStreamingMode(mode)

@@ -64,6 +64,7 @@ extension CatalogViewModel {
             "Membership: \(account.membershipTier)",
             "User ID: \(SettingsFormat.maskedIdentifier(account.userId))",
             "Streaming: NVST",
+            "Cursor: \(streamProfile.cursorPolicy.label)",
             "Cloudmatch: \(route.summary)",
             "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
         ]

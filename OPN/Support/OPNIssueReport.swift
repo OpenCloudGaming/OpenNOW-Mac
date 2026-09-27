@@ -50,6 +50,9 @@ struct OPNIssueReportContext: Equatable, Sendable {
     var membershipTier: String
     var region: String
     var gameTitle: String
+    /// The Cursor policy the report was raised under — which pointer the player expected to see.
+    /// The cursor is the subject of more than one report, and the answer is invisible without it.
+    var cursorPolicy: String
     var diagnosticsLogURL: URL?
     /// The identity the NVIDIA feedback survey carries. Nil when the presenting surface has no
     /// session to read it from, such as the Help menu.
@@ -63,6 +66,7 @@ struct OPNIssueReportContext: Equatable, Sendable {
         membershipTier: String = "",
         region: String = "",
         gameTitle: String = "",
+        cursorPolicy: String = "",
         diagnosticsLogURL: URL? = nil,
         survey: GxSurveyClientContext? = nil
     ) {
@@ -73,6 +77,7 @@ struct OPNIssueReportContext: Equatable, Sendable {
         self.membershipTier = membershipTier
         self.region = region
         self.gameTitle = gameTitle
+        self.cursorPolicy = cursorPolicy
         self.diagnosticsLogURL = diagnosticsLogURL
         self.survey = survey
     }
@@ -218,6 +223,7 @@ enum OPNIssueReportComposer {
         append(&lines, "Membership", context.membershipTier)
         append(&lines, "Region", context.region)
         append(&lines, "Game", context.gameTitle)
+        append(&lines, "Cursor", context.cursorPolicy)
         return lines
     }
 

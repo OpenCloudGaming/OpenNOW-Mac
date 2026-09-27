@@ -46,6 +46,8 @@ import Testing
         #expect(!hidesLocalCursor(policy: .local, seatWantsPointer: false, seatCompositesCursor: compositing))
         #expect(!hidesLocalCursor(policy: .local, seatWantsPointer: true, seatCompositesCursor: compositing))
 
+        // `stream` always hides: the seat keeps compositing the pointer for this policy, so the Mac's
+        // is always the second one. Its capture, not this boolean, is what moves the seat's pointer.
         #expect(hidesLocalCursor(policy: .stream, seatWantsPointer: nil, seatCompositesCursor: compositing))
         #expect(hidesLocalCursor(policy: .stream, seatWantsPointer: false, seatCompositesCursor: compositing))
         #expect(hidesLocalCursor(policy: .stream, seatWantsPointer: true, seatCompositesCursor: compositing))
@@ -207,6 +209,10 @@ import Testing
     view.cursorPolicy = .auto
     view.mouseInputMode = .absolute
 
+    // Capture is switched on by the activation chain, which says so; the seat is compositing until
+    // a notification or the watchdog says it stopped.
+    view.seatCompositesCursor = true
+
     #expect(view.seatCompositesCursor)
     #expect(view.remoteCursorWantsPointer == nil)
 
@@ -225,6 +231,46 @@ import Testing
         remoteCursorWantsPointer: view.remoteCursorWantsPointer,
         isApplicationActive: true,
         isWindowKey: true))
+}
+
+/// `stream` leans on the seat's composited pointer, so it travels in relative mode rather than
+/// waiting for a manual Cmd+P capture; leaving it hands the mode back to the seat's last report.
+@Test @MainActor func selectingTheStreamPolicyTravelsInRelativeMode() {
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
+    view.mouseInputMode = .absolute
+
+    view.cursorPolicy = .stream
+
+    #expect(view.mouseInputMode == .relative)
+
+    view.cursorPolicy = .auto
+
+    #expect(view.mouseInputMode == .absolute)
+}
+
+/// Until the activation chain switches capture on and announces it, the seat has not been asked to
+/// draw a pointer, so a fresh view must not hide the local one.
+@Test @MainActor func aFreshStreamViewDoesNotHideItsPointerBeforeActivation() {
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+    view.cursorPolicy = .auto
+    view.mouseInputMode = .absolute
+
+    #expect(!view.seatCompositesCursor)
+    #expect(view.remoteCursorWantsPointer == nil)
+}
+
+/// A view detached from its renderer must not keep suppressing its pointer on the strength of a
+/// session that has ended.
+@Test @MainActor func detachingTheRendererShowsTheLocalPointerAgain() {
+    let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720))
+    view.cursorPolicy = .auto
+    view.mouseInputMode = .absolute
+    view.seatCompositesCursor = true
+
+    view.detachNvstBifrostFreeRenderer()
+
+    #expect(!view.seatCompositesCursor)
+    #expect(view.remoteCursorWantsPointer == nil)
 }
 
 /// PiP is a cursor-sized floating picture. Entering the mode hands the pointer back, and nothing

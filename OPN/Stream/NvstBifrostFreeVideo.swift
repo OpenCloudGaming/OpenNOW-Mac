@@ -468,7 +468,9 @@ extension NvstBifrostFreeTransport {
         // Any cursor notification proves the seat is publishing, which is the whole condition the
         // watchdog was waiting on — a bitmap shape push counts as much as a mode change.
         cancelCursorCaptureWatchdog()
-        if !didDisableCursorCapture {
+        // `stream` keeps capture on, so the seat goes on drawing the pointer the player sees; the
+        // client never takes it over. The visibility below still reports the game's cursor state.
+        if !keepsSeatCompositedCursor, !didDisableCursorCapture {
             didDisableCursorCapture = true
             // A notification proves the bundle carried it here, so this is the same shape the
             // watchdog uses: the decision is recorded whether or not the write lands, rather than
@@ -513,6 +515,21 @@ extension NvstBifrostFreeTransport {
     func notifySeatCompositesCursor(_ isCompositing: Bool) {
         guard let notify = onRemoteCursorCaptureChanged else { return }
         Task { @MainActor in notify(isCompositing) }
+    }
+
+    /// Keeps (or stops keeping) the seat compositing the pointer. Live, because the Cursor policy is
+    /// cycled mid-game from the HUD: turning it on asks the seat to composite again after the
+    /// hand-over turned it off, turning it off releases the seat's pointer and hands the session
+    /// back to the client's own cursor. Silently does nothing without a bundle, which is the state
+    /// before activation and after teardown.
+    public func setSeatCompositedCursorPreferred(_ preferred: Bool) async {
+        keepsSeatCompositedCursor = preferred
+        guard let bundle else { return }
+        cancelCursorCaptureWatchdog()
+        didDisableCursorCapture = !preferred
+        let sent = bundle.sendControl(NvstInputActivation.mouseCursorCapture(isEnabled: preferred))
+        notifySeatCompositesCursor(preferred)
+        logger?("NVST seat-composited cursor preferred=\(preferred) sent=\(sent)")
     }
 
     public func setHapticEventHandler(_ handler: (@MainActor @Sendable ([NvstHapticEvent]) -> Void)?) {
