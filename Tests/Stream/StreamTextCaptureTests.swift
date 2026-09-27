@@ -32,6 +32,34 @@ struct StreamTextCaptureFilterTests {
         #expect(StreamTextCaptureFilter.acceptedText(from: []).isEmpty)
         #expect(StreamTextCaptureFilter.acceptedText(from: [StreamRecognizedLine(text: "x", confidence: 1)]).isEmpty)
     }
+
+    // MARK: - Selection scope
+
+    /// Highlights are read top-of-frame first, the order whole-frame lines come back in.
+    @Test func highlightsAreReadTopToBottom() {
+        let lower = CGRect(x: 0.1, y: 0.1, width: 0.3, height: 0.05)
+        let upper = CGRect(x: 0.1, y: 0.7, width: 0.3, height: 0.05)
+        #expect(StreamTextCaptureFilter.readingOrder([lower, upper]) == [upper, lower])
+    }
+
+    /// A highlight is expanded before it is read: Vision wants a margin around the glyphs, and the
+    /// margin is proportional so it works for a small chat line and a large subtitle alike.
+    @Test func aHighlightIsExpandedForReading() {
+        let rect = CGRect(x: 0.2, y: 0.4, width: 0.3, height: 0.04)
+        let inflated = StreamTextRecognizer.inflatedSelection(rect)
+        #expect(inflated.minX < rect.minX)
+        #expect(inflated.maxX > rect.maxX)
+        #expect(inflated.minY < rect.minY)
+        #expect(inflated.maxY > rect.maxY)
+        #expect(inflated.width <= 1 && inflated.height <= 1)
+    }
+
+    @Test func aHighlightAtTheEdgeStaysInsideTheFrame() {
+        let rect = CGRect(x: 0, y: 0, width: 0.1, height: 0.03)
+        let inflated = StreamTextRecognizer.inflatedSelection(rect)
+        #expect(inflated.minX >= 0 && inflated.minY >= 0)
+        #expect(inflated.maxX <= 1 && inflated.maxY <= 1)
+    }
 }
 
 struct StreamTextCaptureCooldownTests {

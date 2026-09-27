@@ -38,9 +38,10 @@ extension NativeNVSTHostViewModel {
                 self.showEmptyCaptureMessage(reason: "no-frame")
                 return
             }
-            let text = await self.clipboard.recognizer.recognizeText(in: image)
+            let recognition = await self.clipboard.recognizer.recognizeText(in: image)
+            let text = recognition.text
             guard !text.isEmpty else {
-                self.showEmptyCaptureMessage(reason: "no-text")
+                self.showEmptyCaptureMessage(reason: recognition.usedSelection ? "no-selection-text" : "no-text")
                 return
             }
             let stored = self.clipboard.store.append(
@@ -56,6 +57,7 @@ extension NativeNVSTHostViewModel {
                 "applicationID": self.configuration.applicationID,
                 "characters": String(text.count),
                 "duplicate": String(stored == nil),
+                "scope": recognition.usedSelection ? "selection" : "frame",
             ])
         }
     }
