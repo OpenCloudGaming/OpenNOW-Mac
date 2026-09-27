@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.14.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.13.0...v0.14.0) (2026-09-27)
+
+
+### Features
+
+* add game controller mapping profile ([#47](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/47)) ([a4bfb6e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a4bfb6ee3fbdf1667195a2b26274b8bfa7f29611))
+* add independent stream window ([#48](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/48)) ([69b553f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/69b553f8f850877aeafe7c3aa24df5c30d4958a8))
+* add microphone device selector in stream ([#46](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/46)) ([122cdb5](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/122cdb5954e722de26f4478b3aae1ef6e6bd04df))
+* add screenshots and recordings path configuration ([#49](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/49)) ([1b092b2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1b092b2334902393ca1a906e1b2e1c53b489d2cc))
+* controller mappings hud actions ([#50](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/50)) ([33d8bd8](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/33d8bd823af15a761ce03ac5834962ec552d3ff6))
+
+
+### Bug Fixes
+
+* stream cursor invisible ([b2305b1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b2305b17008f4c21228bb9d75f219522e92470f0))
+* stream window full-screen leftover ([#52](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/52)) ([5f1396e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5f1396e103fe6e4b9984a48f657dcfae6c5c9dce))
+
 ## [0.13.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.12.0...v0.13.0) (2026-09-25)
 
 
