@@ -51,13 +51,14 @@ struct ControllerMappingView: View {
     }
 
     enum BindingKind: String, CaseIterable, Identifiable {
-        case gamepad, keyboard, mouse, off
+        case gamepad, keyboard, mouse, actions, off
         var id: String { rawValue }
         var label: String {
             switch self {
             case .gamepad: "Gamepad"
             case .keyboard: "Keyboard"
             case .mouse: "Mouse"
+            case .actions: "HUD & Actions"
             case .off: "Off"
             }
         }
@@ -108,7 +109,11 @@ struct ControllerMappingView: View {
         )
         .background(OPNDesign.Surface.deep)
         .foregroundStyle(OPNDesign.Text.primary)
-        .onExitCommand { requestDismiss() }
+        .onExitCommand {
+            // A confirmation owns Escape while it is up; the modal itself dismisses on exit.
+            guard !isDeleteConfirmationPresented, !isDiscardConfirmationPresented else { return }
+            requestDismiss()
+        }
         .onAppear {
             liveModel.start()
             selection = resolvedSelection
@@ -135,26 +140,9 @@ struct ControllerMappingView: View {
             applyPadCommand(command.command)
         }
         .onDisappear { padFocus.setActive(false) }
-        .opnConfirmation(
-            isPresented: $isDeleteConfirmationPresented,
-            eyebrow: "DELETE PROFILE",
-            title: deleteConfirmationTitle,
-            message: deleteConfirmationMessage,
-            actions: [
-                OPNConfirmationAction("CANCEL", role: .cancel) { },
-                OPNConfirmationAction("DELETE", role: .destructive) { performProfileDelete() },
-            ]
-        )
-        .opnConfirmation(
-            isPresented: $isDiscardConfirmationPresented,
-            eyebrow: "UNSAVED CHANGES",
-            title: "Discard changes?",
-            message: "Edits to \"\(draft?.name ?? "this profile")\" will be lost.",
-            actions: [
-                OPNConfirmationAction("KEEP EDITING", role: .cancel) { pendingDiscardAction = nil },
-                OPNConfirmationAction("DISCARD", role: .destructive) { confirmDiscard() },
-            ]
-        )
+        // Confirmed inside the sheet, not through the window-root presenter: a SwiftUI sheet is its
+        // own window, so a root-hosted modal renders behind it and is invisible.
+        .overlay { confirmationOverlay }
         // The calibration passes read the live pad on the same cadence the snapshots arrive on, in
         // their own loop rather than off snapshot changes: a capture held perfectly still would
         // otherwise stop receiving samples at the exact moment it needs them.
@@ -166,6 +154,36 @@ struct ControllerMappingView: View {
                                    deltaTime: ControllerMappingLiveModel.sampleInterval)
                 try? await Task.sleep(for: ControllerMappingLiveModel.pollInterval)
             }
+        }
+    }
+
+    @ViewBuilder var confirmationOverlay: some View {
+        if isDeleteConfirmationPresented {
+            OPNConfirmationPanel(
+                eyebrow: "DELETE PROFILE",
+                title: deleteConfirmationTitle,
+                message: deleteConfirmationMessage,
+                actions: [
+                    OPNConfirmationAction("CANCEL", role: .cancel) { isDeleteConfirmationPresented = false },
+                    OPNConfirmationAction("DELETE", role: .destructive) {
+                        isDeleteConfirmationPresented = false
+                        performProfileDelete()
+                    },
+                ],
+                dismiss: { isDeleteConfirmationPresented = false }
+            )
+        }
+        if isDiscardConfirmationPresented {
+            OPNConfirmationPanel(
+                eyebrow: "UNSAVED CHANGES",
+                title: "Discard changes?",
+                message: "Edits to \"\(draft?.name ?? "this profile")\" will be lost.",
+                actions: [
+                    OPNConfirmationAction("KEEP EDITING", role: .cancel) { dismissDiscardConfirmation() },
+                    OPNConfirmationAction("DISCARD", role: .destructive) { confirmDiscard() },
+                ],
+                dismiss: { dismissDiscardConfirmation() }
+            )
         }
     }
 
@@ -385,6 +403,8 @@ struct ControllerMappingView: View {
                             draft?.bindings[control] = .disabled
                         case .gamepad:
                             if committedKind != .gamepad { draft?.bindings[control] = .passthroughButton }
+                        case .actions:
+                            if committedKind != .actions { draft?.bindings[control] = ControllerMappingProfile.guideDefault }
                         case .keyboard, .mouse:
                             break // wait for the recorder / chip picker below to commit a concrete value
                         }
@@ -397,6 +417,8 @@ struct ControllerMappingView: View {
                         keyboardEditor(control: control, target: target)
                     case .mouse:
                         mouseEditor(control: control, target: target)
+                    case .actions:
+                        actionsEditor(control: control, target: target)
                     case .off:
                         EmptyView()
                     }
@@ -431,6 +453,7 @@ struct ControllerMappingView: View {
         case .passthroughButton, .gamepadChord: .gamepad
         case .keyboardKey: .keyboard
         case .mouseButton, .mouseScroll: .mouse
+        case .streamCommand: .actions
         case .disabled: .off
         }
     }

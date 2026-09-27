@@ -12,6 +12,9 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
     case dpadUp, dpadDown, dpadLeft, dpadRight
     case leftGrip, leftGrip2, rightGrip, rightGrip2
     case select, start
+    /// The Steam / Xbox / PlayStation logo button (`mode` on the wire). On a Steam Controller it is
+    /// also a chord partner and the local-cursor modifier; see `SteamGuideTapTracker`.
+    case guide
     case leftPadClick, rightPadClick, touchpadClick
     /// The 2026 controller's capacitive handle sensors. Distinct hardware from the four rear
     /// grip *buttons* (`leftGrip`…`rightGrip2`) — these sense contact, they do not click.
@@ -46,6 +49,7 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
         case .rightGrip2: "R5"
         case .select: "Select"
         case .start: "Start"
+        case .guide: "Guide"
         case .leftPadClick: "L. Pad Click"
         case .rightPadClick: "R. Pad Click"
         case .touchpadClick: "Touchpad"
@@ -60,7 +64,7 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
     public var category: ControllerMappingCategory {
         switch self {
         case .faceA, .faceB, .faceX, .faceY, .leftShoulder, .rightShoulder,
-             .leftGrip, .leftGrip2, .rightGrip, .rightGrip2, .select, .start:
+             .leftGrip, .leftGrip2, .rightGrip, .rightGrip2, .select, .start, .guide:
             .buttons
         case .dpadUp, .dpadDown, .dpadLeft, .dpadRight:
             .dpad
@@ -98,6 +102,7 @@ public enum ControllerControl: String, Codable, CaseIterable, Identifiable, Send
         case .rightGrip2: .rightGrip2
         case .select: .select
         case .start: .start
+        case .guide: .mode
         case .leftTrigger, .rightTrigger, .leftPadClick, .rightPadClick, .touchpadClick,
              .leftGripSense, .rightGripSense, .leftStickTouch, .rightStickTouch, .gyro:
             nil
@@ -142,16 +147,19 @@ public enum ControllerBindingTarget: Equatable, Sendable {
     case keyboardKey(keyCode: UInt16, modifiers: KeyboardModifiers)
     case mouseButton(MouseButton)
     case mouseScroll(Int16)
+    /// An action the app itself performs. The editor offers the stream section of
+    /// `KeybindingAction`, which cannot name a session-ending or catalog-only action.
+    case streamCommand(KeybindingAction)
     case disabled
 }
 
 extension ControllerBindingTarget: Codable {
     private enum Kind: String, Codable {
-        case passthroughButton, gamepadChord, keyboardKey, mouseButton, mouseScroll, disabled
+        case passthroughButton, gamepadChord, keyboardKey, mouseButton, mouseScroll, streamCommand, disabled
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, combo, keyCode, modifiers, mouseButton, scrollDelta
+        case kind, combo, keyCode, modifiers, mouseButton, scrollDelta, streamCommand
     }
 
     public init(from decoder: Decoder) throws {
@@ -170,6 +178,13 @@ extension ControllerBindingTarget: Codable {
             self = .mouseButton(try container.decode(MouseButton.self, forKey: .mouseButton))
         case .mouseScroll:
             self = .mouseScroll(try container.decode(Int16.self, forKey: .scrollDelta))
+        case .streamCommand:
+            let rawValue = try container.decode(String.self, forKey: .streamCommand)
+            guard let action = KeybindingAction(rawValue: rawValue) else {
+                throw DecodingError.dataCorruptedError(forKey: .streamCommand, in: container,
+                                                       debugDescription: "Unknown stream command \"\(rawValue)\".")
+            }
+            self = .streamCommand(action)
         case .disabled:
             self = .disabled
         }
@@ -193,6 +208,9 @@ extension ControllerBindingTarget: Codable {
         case .mouseScroll(let delta):
             try container.encode(Kind.mouseScroll, forKey: .kind)
             try container.encode(delta, forKey: .scrollDelta)
+        case .streamCommand(let action):
+            try container.encode(Kind.streamCommand, forKey: .kind)
+            try container.encode(action.rawValue, forKey: .streamCommand)
         case .disabled:
             try container.encode(Kind.disabled, forKey: .kind)
         }
@@ -272,8 +290,13 @@ public struct ControllerMappingProfile: Equatable, Identifiable, Sendable {
         self.gyro = gyro
     }
 
+    /// The guide button ships bound to the unified HUD even for a profile that predates it, so a
+    /// controller always has a route to the overlay without the reader configuring anything.
+    public static let guideDefault: ControllerBindingTarget = .streamCommand(.toggleUnifiedHUD)
+
     public func binding(for control: ControllerControl) -> ControllerBindingTarget {
-        bindings[control] ?? .passthroughButton
+        if control == .guide, bindings[control] == nil { return Self.guideDefault }
+        return bindings[control] ?? .passthroughButton
     }
 
     /// Whether either trackpad needs raw touch reports right now — the HID monitor uses

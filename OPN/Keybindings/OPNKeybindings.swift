@@ -25,8 +25,9 @@ enum KeybindingSection: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// Every shortcut the app owns and lets the reader rebind. The raw value is the UserDefaults key,
-/// so renaming a case would silently reset that binding.
-enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
+/// so renaming a case would silently reset that binding. Public so a controller binding can carry
+/// one as its target (`ControllerBindingTarget.streamCommand`) — not as new API surface.
+public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
     case toggleUnifiedHUD
     case toggleStatsHUD
     case toggleMicrophone
@@ -39,7 +40,13 @@ enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
     case showShortcutsHelp
     case openSearch
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
+
+    /// The actions a controller control may be bound to: the stream section, a safe allowlist that
+    /// excludes `openSearch` and never names `endSession`/`pauseSession`.
+    static var controllerBindingActions: [KeybindingAction] {
+        allCases.filter { $0.section == .stream }
+    }
 
     var section: KeybindingSection {
         switch self {

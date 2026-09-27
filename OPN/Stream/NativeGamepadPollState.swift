@@ -5,6 +5,7 @@ struct NativeControllerMappingConfiguration: Sendable {
     let deviceID: InputDeviceID
     let playerIndex: Int
     let profile: ControllerMappingProfile?
+    var guideBinding: ControllerBindingTarget = ControllerMappingProfile.guideDefault
 }
 
 final class NativeGamepadPollState {
@@ -12,6 +13,7 @@ final class NativeGamepadPollState {
     var steamControllerSlots: [InputDeviceID: Int] = [:]
     var cachedControllers: [GCController] = []
     var pendingEvents: [UserInputEvent] = []
+    private var pendingCommands: [KeybindingAction] = []
     private var mappingSessions: [ObjectIdentifier: ControllerMappingSession] = [:]
     var lastBatteryLevels: [ObjectIdentifier: Int] = [:]
     private var timer: DispatchSourceTimer?
@@ -19,6 +21,11 @@ final class NativeGamepadPollState {
     func takePendingEvents() -> [UserInputEvent] {
         defer { pendingEvents.removeAll(keepingCapacity: true) }
         return pendingEvents
+    }
+
+    func takePendingCommands() -> [KeybindingAction] {
+        defer { pendingCommands.removeAll(keepingCapacity: true) }
+        return pendingCommands
     }
 
     func configureMappings(_ configurations: [ObjectIdentifier: NativeControllerMappingConfiguration]) -> [UserInputEvent] {
@@ -32,11 +39,13 @@ final class NativeGamepadPollState {
                 }
                 continue
             }
-            events.append(contentsOf: mappingSessions[key]?.configure(profile: configuration.profile, timestamp: timestamp) ?? [])
+            events.append(contentsOf: mappingSessions[key]?.configure(profile: configuration.profile,
+                                                                      guideBinding: configuration.guideBinding,
+                                                                      timestamp: timestamp) ?? [])
         }
         for (key, configuration) in configurations where mappingSessions[key] == nil {
             mappingSessions[key] = ControllerMappingSession(deviceID: configuration.deviceID, playerIndex: configuration.playerIndex,
-                                                            profile: configuration.profile)
+                                                            profile: configuration.profile, guideBinding: configuration.guideBinding)
         }
         return events
     }
@@ -44,6 +53,7 @@ final class NativeGamepadPollState {
     func prepareForSlotChange() -> [UserInputEvent] {
         stopPolling()
         lastBatteryLevels.removeAll()
+        pendingCommands.removeAll()
         return takePendingEvents() + configureMappings([:])
     }
 
@@ -79,8 +89,10 @@ final class NativeGamepadPollState {
             let identifier = ObjectIdentifier(controller)
             guard var session = mappingSessions[identifier] else { continue }
             let snapshot = ControllerInputSnapshot(gamepad: gamepad)
-            events.append(contentsOf: session.process(snapshot, now: .now,
-                                                      timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)))
+            let result = session.process(snapshot, now: .now,
+                                         timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds))
+            events.append(contentsOf: result.events)
+            pendingCommands.append(contentsOf: result.commands)
             mappingSessions[identifier] = session
             if let battery = controller.battery {
                 let percent = ControllerBatteryInfo.percentage(level: battery.batteryLevel, state: battery.batteryState) ?? -1

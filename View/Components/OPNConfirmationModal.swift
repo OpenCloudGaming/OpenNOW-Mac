@@ -60,6 +60,40 @@ final class OPNConfirmationPresentation: ObservableObject {
     }
 }
 
+/// The scrim and centered panel a confirmation draws, independent of who hosts it. A SwiftUI sheet
+/// is a separate window, so a sheet hosts its own panel rather than the window-root overlay.
+struct OPNConfirmationPanel: View {
+    let eyebrow: String
+    let title: String
+    let message: String
+    let actions: [OPNConfirmationAction]
+    let dismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            OPNDesign.Surface.scrim
+                .ignoresSafeArea()
+                .onTapGesture(perform: dismiss)
+                .opnTransition(.opacity)
+
+            GeometryReader { proxy in
+                ZStack {
+                    OPNConfirmationModal(
+                        eyebrow: eyebrow,
+                        title: title,
+                        message: message,
+                        actions: actions,
+                        availableSize: proxy.size,
+                        dismiss: dismiss
+                    )
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+            .opnTransition(.scale(scale: 0.96).combined(with: .opacity))
+        }
+    }
+}
+
 /// Hosts the shared confirmation modal at the app root. The full-cover scrim sits behind the
 /// centered panel; the scrim, close control, Escape, and `.cancel` all dismiss.
 struct OPNConfirmationOverlay: View {
@@ -68,25 +102,13 @@ struct OPNConfirmationOverlay: View {
     var body: some View {
         ZStack {
             if let request = presentation.request {
-                OPNDesign.Surface.scrim
-                    .ignoresSafeArea()
-                    .onTapGesture { presentation.dismiss() }
-                    .opnTransition(.opacity)
-
-                GeometryReader { proxy in
-                    ZStack {
-                        OPNConfirmationModal(
-                            eyebrow: request.eyebrow,
-                            title: request.title,
-                            message: request.message,
-                            actions: request.actions,
-                            availableSize: proxy.size,
-                            dismiss: { presentation.dismiss() }
-                        )
-                    }
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                }
-                .opnTransition(.scale(scale: 0.96).combined(with: .opacity))
+                OPNConfirmationPanel(
+                    eyebrow: request.eyebrow,
+                    title: request.title,
+                    message: request.message,
+                    actions: request.actions,
+                    dismiss: { presentation.dismiss() }
+                )
             }
         }
         .opnMotion(OPNDesign.Motion.panel, value: presentation.request != nil)

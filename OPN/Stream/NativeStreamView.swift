@@ -413,6 +413,10 @@ public final class NativeStreamView: NSView {
             case .toggleOnScreenKeyboard: self.onCommand?(.toggleOnScreenKeyboard)
             }
         }
+        gamepadMonitor.onStreamCommand = { [weak self] action in
+            guard let command = action.streamCommand else { return }
+            self?.onCommand?(command)
+        }
         gamepadMonitor.onTopologyChanged = { [weak self] topology in
             guard let self else { return }
             self.activeGamepadStates = self.activeGamepadStates.filter { topology.playerIndices.contains($0.key) }

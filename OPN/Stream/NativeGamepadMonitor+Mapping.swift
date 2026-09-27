@@ -22,6 +22,9 @@ extension NativeGamepadMonitor {
             result.events.append(contentsOf: engine.applyPointerMotion(profile: profile, snapshot: snapshot, deviceID: deviceID, timestamp: timestamp))
         }
         bindingEngines[deviceID] = engine
+        for command in result.commands {
+            onStreamCommand?(command)
+        }
         for event in result.events {
             emitInputEvent(event)
         }
@@ -71,8 +74,13 @@ extension NativeGamepadMonitor {
             guard let id = registry.id(for: controller),
                   let device = registry.devices.first(where: { $0.id == id }),
                   let slot = pollState.controllerSlots[ObjectIdentifier(controller)] else { continue }
-            let profile = mappingsEnabled ? mappingProvider.profile(for: device.family) : nil
-            configuration[ObjectIdentifier(controller)] = NativeControllerMappingConfiguration(deviceID: id, playerIndex: slot, profile: profile)
+            let resolvedProfile = mappingProvider.profile(for: device.family)
+            configuration[ObjectIdentifier(controller)] = NativeControllerMappingConfiguration(
+                deviceID: id,
+                playerIndex: slot,
+                profile: mappingsEnabled ? resolvedProfile : nil,
+                guideBinding: resolvedProfile?.binding(for: .guide) ?? ControllerMappingProfile.guideDefault
+            )
         }
         let releases = pollingQueue.sync {
             pollState.takePendingEvents() + pollState.configureMappings(configuration)

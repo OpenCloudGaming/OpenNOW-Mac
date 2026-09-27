@@ -118,7 +118,7 @@ struct SteamControllerDiagramView: View {
             selectable(.start) { centerButton(icon: "line.3.horizontal", pressed: snapshot.buttons.contains(.start)) }
                 .position(x: art(307), y: art(43))
 
-            steamButtonView(pressed: snapshot.buttons.contains(.mode))
+            selectable(.guide) { steamButtonView(pressed: snapshot.buttons.contains(.mode)) }
                 .position(x: art(227.5), y: art(76))
 
             selectable(.leftStickClick) {

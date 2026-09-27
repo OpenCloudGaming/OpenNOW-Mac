@@ -131,6 +131,11 @@ extension ControllerMappingView {
         requestDiscardableAction { dismiss() }
     }
 
+    func dismissDiscardConfirmation() {
+        isDiscardConfirmationPresented = false
+        pendingDiscardAction = nil
+    }
+
     /// Runs `action` now unless the draft has unsaved edits, in which case it asks first.
     func requestDiscardableAction(_ action: @escaping () -> Void) {
         guard hasUnsavedChanges else {
@@ -143,7 +148,7 @@ extension ControllerMappingView {
 
     func confirmDiscard() {
         let action = pendingDiscardAction
-        pendingDiscardAction = nil
+        dismissDiscardConfirmation()
         action?()
     }
 
