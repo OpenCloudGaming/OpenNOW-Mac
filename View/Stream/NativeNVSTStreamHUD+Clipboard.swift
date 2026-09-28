@@ -132,7 +132,6 @@ struct StreamHUDClipboardRow: View {
                 isFocused: isCopyFocused,
                 action: onCopy
             )
-            shareButton
             StreamHUDParticipantIconButton(
                 systemName: "trash",
                 label: "Remove this entry",
@@ -149,23 +148,11 @@ struct StreamHUDClipboardRow: View {
             Rectangle().stroke(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
         }
         .contentShape(Rectangle())
-        // The share menu only lists apps that register a share service; dragging the text reaches the
-        // apps that do not, which is most chat clients.
+        // Dragging reaches the apps a share menu cannot, Discord among them.
         .draggable(entry.text)
         .onHover { isHovering = $0 }
         .accessibilityElement(children: .contain)
         .help(helpText)
-    }
-
-    /// The system share menu, listing whatever apps and services take text on this Mac — the Mac's
-    /// equivalent of the iOS share sheet, anchored by macOS to this control.
-    private var shareButton: some View {
-        ShareLink(item: entry.text) {
-            StreamHUDIconButtonLabel(systemName: "square.and.arrow.up", color: StreamHUDTheme.accent)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Share this entry")
-        .help("Share \u{2014} send this text to another app")
     }
 
     private var isFocused: Bool { isCopyFocused || isRemoveFocused }

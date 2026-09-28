@@ -107,8 +107,7 @@ extension NativeNVSTHostViewModel {
     }
 
     /// An entry's actions share one row, so up/down walks entries and left/right picks the action —
-    /// the same shape the Co-Op participant rows use. Share has no pad action: the system share menu
-    /// is pointer-driven, so the entry stays reachable only from the controller's own row.
+    /// the same shape the Co-Op participant rows use.
     private func entryFocusEntries(for entry: StreamClipboardEntry) -> [StreamHUDFocusEntry] {
         let group = "clipboard-\(entry.id.uuidString)"
         return [
@@ -122,7 +121,6 @@ extension NativeNVSTHostViewModel {
     }
 
     static let clipboardEntryFocusPrefix = "clipboard-entry-"
-    static let clipboardShareFocusPrefix = "clipboard-share-"
     static let clipboardRemoveFocusPrefix = "clipboard-remove-"
     static let clipboardClearFocusID = "clipboard-clear"
     static let clipboardCaptureModeFocusID = "clipboard-capture-mode"
