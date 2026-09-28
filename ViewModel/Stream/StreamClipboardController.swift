@@ -27,6 +27,9 @@ final class StreamClipboardController: ObservableObject {
     /// The clipped read kept aside so the next copy can complete it. Only a clipped read is held:
     /// a complete one has nothing to recover, and joining two unrelated copies would be a guess.
     var pendingMerge: PendingTextMerge?
+    /// Whether the copy chords file anything. Mirrors the Capture setting, so the HUD switch and the
+    /// Settings switch are one value in one place rather than two that can disagree.
+    @Published var isCaptureEnabled = StreamTextCaptureSettings.isTriggerEnabled
 
     init(
         store: StreamClipboardHistoryStore = .shared,
@@ -45,6 +48,17 @@ final class StreamClipboardController: ObservableObject {
     func cancelCapture() {
         task?.cancel()
         task = nil
+    }
+
+    /// Turns the copy trigger on or off. Persisted immediately, so it survives the session and is
+    /// the same value Settings shows.
+    func setCaptureEnabled(_ enabled: Bool) {
+        guard isCaptureEnabled != enabled else { return }
+        isCaptureEnabled = enabled
+        StreamTextCaptureSettings.isTriggerEnabled = enabled
+        // A read waiting to be joined belongs to the trigger being on; leaving it behind would let a
+        // re-enable minutes later splice a fragment the reader has stopped thinking about.
+        if !enabled { pendingMerge = nil }
     }
 }
 

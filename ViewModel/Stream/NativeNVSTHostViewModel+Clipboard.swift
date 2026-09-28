@@ -128,6 +128,18 @@ extension NativeNVSTHostViewModel {
         clearClipboardHistory()
     }
 
+    /// Turns the copy trigger on or off from the HUD. Persisted, so it survives the session and the
+    /// Capture page shows the same state.
+    func setClipboardCaptureEnabled(_ enabled: Bool) {
+        guard clipboard.isCaptureEnabled != enabled else { return }
+        clipboard.setCaptureEnabled(enabled)
+        OPNStreamTelemetry.capture("nvst.ui.clipboard.capture_toggle", level: .info, message: enabled ? "Clipboard capture enabled from the HUD." : "Clipboard capture disabled from the HUD.", attributes: ["applicationID": configuration.applicationID])
+    }
+
+    func toggleClipboardCapture() {
+        setClipboardCaptureEnabled(!clipboard.isCaptureEnabled)
+    }
+
     func clearClipboardHistory() {
         clipboard.pendingMerge = nil
         clipboard.store.clear()

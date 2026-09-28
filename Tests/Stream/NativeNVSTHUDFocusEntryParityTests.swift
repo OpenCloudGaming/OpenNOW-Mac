@@ -80,8 +80,20 @@ struct NativeNVSTHUDFocusEntryParityTests {
         let entry = StreamClipboardEntry(text: "captured text", applicationID: "100", gameTitle: "Game")
         model.clipboard.entries = [entry]
         let ids = model.hudFocusEntries.map(\.id)
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardCaptureToggleFocusID))
         #expect(ids.contains(NativeNVSTHostViewModel.clipboardEntryFocusPrefix + entry.id.uuidString))
         #expect(ids.contains(NativeNVSTHostViewModel.clipboardClearFocusID))
+    }
+
+    /// The switch leads the panel, so it stays reachable however long the history grows.
+    @Test func theClipboardSwitchLeadsThePanel() {
+        OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
+        let (_, model) = makeHUDSurface()
+        let ids = model.hudFocusEntries.map(\.id)
+        let toggleIndex = ids.firstIndex(of: NativeNVSTHostViewModel.clipboardCaptureToggleFocusID)
+        let firstEntryIndex = ids.firstIndex { $0.hasPrefix(NativeNVSTHostViewModel.clipboardEntryFocusPrefix) }
+        #expect(toggleIndex != nil)
+        if let toggleIndex, let firstEntryIndex { #expect(toggleIndex < firstEntryIndex) }
     }
 
     /// The STATS panel's two selectors are full-width rows, not tiles, so nothing but this contract

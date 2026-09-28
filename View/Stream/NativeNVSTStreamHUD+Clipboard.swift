@@ -32,26 +32,46 @@ struct StreamHUDClipboardPanel: View {
             reorderPayload: OPNStreamHUDSection.clipboard.rawValue,
             onToggle: { model.toggleHUDSection(.clipboard) }
         ) {
-            if clipboard.entries.isEmpty {
-                Text("Select text in a stream and press copy to file it here.")
-                    .font(.streamFont(size: 11, weight: .medium))
-                    .foregroundStyle(StreamHUDTheme.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(clipboard.entries) { entry in
-                        StreamHUDClipboardRow(
-                            entry: entry,
-                            isFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry)
-                        ) {
-                            model.copyClipboardEntry(entry)
+            VStack(alignment: .leading, spacing: 8) {
+                captureToggle
+                if clipboard.entries.isEmpty {
+                    Text(clipboard.isCaptureEnabled
+                         ? "Select text in a stream and press copy to file it here."
+                         : "Capture is off. Your history is kept.")
+                        .font(.streamFont(size: 11, weight: .medium))
+                        .foregroundStyle(StreamHUDTheme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(clipboard.entries) { entry in
+                            StreamHUDClipboardRow(
+                                entry: entry,
+                                isFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry)
+                            ) {
+                                model.copyClipboardEntry(entry)
+                            }
                         }
                     }
-                }
-                StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
-                    model.requestClearClipboardHistory()
+                    StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
+                        model.requestClearClipboardHistory()
+                    }
                 }
             }
+        }
+    }
+
+    /// The switch the reader reaches for when the copy starts bothering them. It is the same value
+    /// the Capture page shows, so turning it off here turns it off everywhere, and it stays off next
+    /// time the HUD opens.
+    private var captureToggle: some View {
+        StreamHUDSegmentedRow(
+            label: "Capture on Copy",
+            options: [(true, "On"), (false, "Off")],
+            selection: clipboard.isCaptureEnabled,
+            isDisabled: false,
+            isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardCaptureToggleFocusID
+        ) { enabled in
+            model.setClipboardCaptureEnabled(enabled)
         }
     }
 }

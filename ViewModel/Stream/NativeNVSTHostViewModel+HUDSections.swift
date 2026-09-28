@@ -88,7 +88,12 @@ extension NativeNVSTHostViewModel {
     /// One entry per history row, newest first, then the clear action. Rows are full-width rows of
     /// their own so the pad walks the list in the order it is drawn.
     var clipboardFocusEntries: [StreamHUDFocusEntry] {
-        var entries = clipboard.entries.map { entry in
+        // The switch leads the panel: it is what a reader reaches for when the copy starts annoying
+        // them, and it must stay reachable however long the history below it is.
+        var entries = [StreamHUDFocusEntry(id: Self.clipboardCaptureToggleFocusID, isDisabled: false) { [weak self] in
+            self?.toggleClipboardCapture()
+        }]
+        entries += clipboard.entries.map { entry in
             StreamHUDFocusEntry(id: Self.clipboardEntryFocusPrefix + entry.id.uuidString, isDisabled: false) { [weak self] in
                 self?.copyClipboardEntry(entry)
             }
@@ -101,6 +106,7 @@ extension NativeNVSTHostViewModel {
 
     static let clipboardEntryFocusPrefix = "clipboard-entry-"
     static let clipboardClearFocusID = "clipboard-clear"
+    static let clipboardCaptureToggleFocusID = "clipboard-capture-toggle"
 
     private var displayFocusEntries: [StreamHUDFocusEntry] {
         [
