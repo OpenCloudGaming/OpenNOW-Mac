@@ -407,14 +407,14 @@ struct CaptureSettingsGroup: View {
     @Environment(\.opnUIScale) private var uiScale
     /// The Labs flag that offers the clipboard history at all. Read here, not from `OPNLabs`, so the
     /// card appears and disappears as the switch is toggled.
-    @AppStorage(OPNLabs.clipboardCapture.storageKey) private var clipboardCaptureOn = false
+    @AppStorage(OPNLabs.clipboardCapture.storageKey) private var isClipboardCaptureOn = false
 
     static let sections: [SettingsSection] = CaptureSettingsPage.sections
 
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             CaptureSettingsPage(viewModel: viewModel, uiScale: uiScale)
-            if clipboardCaptureOn {
+            if isClipboardCaptureOn {
                 StreamClipboardSettingsCard(uiScale: uiScale)
                     .settingsSection("clipboard")
             }

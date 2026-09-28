@@ -1,5 +1,4 @@
-//  The unified HUD's CLIPBOARD panel: the text captured off stream frames, newest first. Reading is
-//  free and curation is deliberate — a row only reaches the Mac pasteboard when it is confirmed.
+//  The unified HUD's CLIPBOARD panel: the text captured off stream frames, newest first.
 //
 
 import Foundation
@@ -38,34 +37,14 @@ struct StreamHUDClipboardPanel: View {
         ) {
             VStack(alignment: .leading, spacing: 8) {
                 captureModeRow
-                if clipboard.entries.isEmpty {
-                    Text(emptyStateText)
-                        .font(.streamFont(size: 11, weight: .medium))
-                        .foregroundStyle(StreamHUDTheme.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(clipboard.entries) { entry in
-                            StreamHUDClipboardRow(
-                                entry: entry,
-                                isCopyFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry),
-                                isRemoveFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardRemoveFocusID(for: entry),
-                                onCopy: { model.copyClipboardEntry(entry) },
-                                onRemove: { model.removeClipboardEntry(entry) }
-                            )
-                        }
-                    }
-                    StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
-                        model.requestClearClipboardHistory()
-                    }
-                }
+                emptyState
+                historyList
             }
         }
     }
 
     /// What the reader reaches for when the copy starts bothering them, and the way into region mode.
-    /// It is the same value the Capture page shows, so a change here is a change everywhere and it
-    /// survives the next session.
+    /// The same value the Capture page shows, so a change here is a change everywhere.
     private var captureModeRow: some View {
         StreamHUDSegmentedRow(
             label: "Capture",
@@ -78,7 +57,35 @@ struct StreamHUDClipboardPanel: View {
         }
     }
 
-    private var emptyStateText: String {
+    @ViewBuilder private var emptyState: some View {
+        if clipboard.entries.isEmpty {
+            Text(emptyStateMessage)
+                .font(.streamFont(size: 11, weight: .medium))
+                .foregroundStyle(StreamHUDTheme.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder private var historyList: some View {
+        if !clipboard.entries.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(clipboard.entries) { entry in
+                    StreamHUDClipboardRow(
+                        entry: entry,
+                        isCopyFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry),
+                        isRemoveFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardRemoveFocusID(for: entry),
+                        onCopy: { model.copyClipboardEntry(entry) },
+                        onRemove: { model.removeClipboardEntry(entry) }
+                    )
+                }
+            }
+            StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
+                model.requestClearClipboardHistory()
+            }
+        }
+    }
+
+    private var emptyStateMessage: String {
         switch clipboard.captureMode {
         case .off: return "Capture is off. Your history is kept."
         case .selection: return "Select text in a stream and press copy to file it here."
@@ -87,12 +94,8 @@ struct StreamHUDClipboardPanel: View {
     }
 }
 
-/// One captured text. The recognized text is flattened to a single line so a multi-line OCR result
-/// does not turn one row into a paragraph; the time and title below say where it came from.
-///
-/// The row is not itself a button: reading an entry and acting on it are different intents, and a
-/// stray click while scrolling the dock used to copy something. Copy and remove are explicit, named
-/// controls at the trailing edge.
+/// One captured text, flattened to a single line, with the time and title beneath it. The row is not
+/// itself a button: copy and remove are explicit controls at the trailing edge.
 struct StreamHUDClipboardRow: View {
     let entry: StreamClipboardEntry
     var isCopyFocused = false
@@ -105,8 +108,8 @@ struct StreamHUDClipboardRow: View {
         entry.text.replacingOccurrences(of: "\n", with: " ")
     }
 
-    /// The row says so itself when the field cut the text off, so the reader can see that copying the
-    /// rest of it will join the two rather than leave a second fragment.
+    /// The row says so itself when the field cut the text off, so the reader knows the rest can be
+    /// copied in to join it.
     private var isClipped: Bool {
         StreamTextCaptureFilter.isClipped(entry.text)
     }
@@ -170,8 +173,7 @@ struct StreamHUDClipboardRow: View {
     }
 }
 
-/// The panel footer. Two presses: the first arms, the second clears, so a stray pad activate cannot
-/// wipe the history mid-game.
+/// The panel footer. Two presses: the first arms, the second clears.
 struct StreamHUDClipboardClearButton: View {
     let isArmed: Bool
     var isFocused = false

@@ -85,32 +85,39 @@ extension NativeNVSTHostViewModel {
         ]
     }
 
-    /// One entry per history row, newest first, then the clear action. Rows are full-width rows of
-    /// their own so the pad walks the list in the order it is drawn.
+    /// The mode selector, then one row of actions per entry, then the clear action. The selector leads
+    /// because it is what a reader reaches for when the copy starts bothering them.
     var clipboardFocusEntries: [StreamHUDFocusEntry] {
-        // The mode selector leads the panel: it is what a reader reaches for when the copy starts
-        // annoying them, and it must stay reachable however long the history below it is. Activate
-        // steps through the modes, which is how every other multi-state HUD row is driven by a pad.
-        var entries = [StreamHUDFocusEntry(id: Self.clipboardCaptureModeFocusID, isDisabled: false) { [weak self] in
-            self?.cycleClipboardCaptureMode()
-        }]
-        entries += clipboard.entries.flatMap { entry -> [StreamHUDFocusEntry] in
-            // Copy and remove sit on one row of their own, so up/down walks entries and left/right
-            // picks what to do with the one the pad is on — the same shape the Co-Op rows use.
-            let group = "clipboard-\(entry.id.uuidString)"
-            return [
-                StreamHUDFocusEntry(id: Self.clipboardEntryFocusPrefix + entry.id.uuidString, isDisabled: false, group: group, columns: 2) { [weak self] in
-                    self?.copyClipboardEntry(entry)
-                },
-                StreamHUDFocusEntry(id: Self.clipboardRemoveFocusPrefix + entry.id.uuidString, isDisabled: false, group: group, columns: 2) { [weak self] in
-                    self?.removeClipboardEntry(entry)
-                },
-            ]
-        }
-        entries.append(StreamHUDFocusEntry(id: Self.clipboardClearFocusID, isDisabled: clipboard.entries.isEmpty) { [weak self] in
-            self?.requestClearClipboardHistory()
-        })
+        var entries = [clipboardModeFocusEntry]
+        entries += clipboard.entries.flatMap(entryFocusEntries)
+        entries.append(clipboardClearFocusEntry)
         return entries
+    }
+
+    private var clipboardModeFocusEntry: StreamHUDFocusEntry {
+        StreamHUDFocusEntry(id: Self.clipboardCaptureModeFocusID, isDisabled: false) { [weak self] in
+            self?.cycleClipboardCaptureMode()
+        }
+    }
+
+    private var clipboardClearFocusEntry: StreamHUDFocusEntry {
+        StreamHUDFocusEntry(id: Self.clipboardClearFocusID, isDisabled: clipboard.entries.isEmpty) { [weak self] in
+            self?.requestClearClipboardHistory()
+        }
+    }
+
+    /// Copy and remove share one row per entry, so up/down walks entries and left/right picks the
+    /// action — the same shape the Co-Op participant rows use.
+    private func entryFocusEntries(for entry: StreamClipboardEntry) -> [StreamHUDFocusEntry] {
+        let group = "clipboard-\(entry.id.uuidString)"
+        return [
+            StreamHUDFocusEntry(id: Self.clipboardEntryFocusPrefix + entry.id.uuidString, isDisabled: false, group: group, columns: 2) { [weak self] in
+                self?.copyClipboardEntry(entry)
+            },
+            StreamHUDFocusEntry(id: Self.clipboardRemoveFocusPrefix + entry.id.uuidString, isDisabled: false, group: group, columns: 2) { [weak self] in
+                self?.removeClipboardEntry(entry)
+            },
+        ]
     }
 
     static let clipboardEntryFocusPrefix = "clipboard-entry-"

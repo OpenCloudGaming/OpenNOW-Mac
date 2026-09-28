@@ -34,7 +34,7 @@ struct StreamPointerSelectionTrackerTests {
         tracker.noteLeftButton(isPressed: true, at: start)
         tracker.notePointer(CGPoint(x: 0.5, y: 0.5))
         tracker.noteLeftButton(isPressed: false, at: start)
-        #expect(tracker.lastSelection == CGRect(x: 0.125, y: 0.5, width: 0.375, height: 0.25))
+        #expect(tracker.lastSelectionRect == CGRect(x: 0.125, y: 0.5, width: 0.375, height: 0.25))
     }
 
     @Test func aBackwardsDragNormalisesTheSameWay() {
@@ -44,7 +44,7 @@ struct StreamPointerSelectionTrackerTests {
         tracker.noteLeftButton(isPressed: true, at: start)
         tracker.notePointer(CGPoint(x: 0.125, y: 0.75))
         tracker.noteLeftButton(isPressed: false, at: start)
-        #expect(tracker.lastSelection == CGRect(x: 0.125, y: 0.5, width: 0.375, height: 0.25))
+        #expect(tracker.lastSelectionRect == CGRect(x: 0.125, y: 0.5, width: 0.375, height: 0.25))
     }
 
     /// A click is not a selection, and it also means the reader has moved on: whatever was selected
@@ -59,7 +59,7 @@ struct StreamPointerSelectionTrackerTests {
         tracker.notePointer(CGPoint(x: 0.2, y: 0.2))
         tracker.noteLeftButton(isPressed: true, at: start.addingTimeInterval(1))
         tracker.noteLeftButton(isPressed: false, at: start.addingTimeInterval(1))
-        #expect(tracker.lastSelection == nil)
+        #expect(tracker.lastSelectionRect == nil)
     }
 
     @Test func anOldSelectionIsNoLongerOffered() {

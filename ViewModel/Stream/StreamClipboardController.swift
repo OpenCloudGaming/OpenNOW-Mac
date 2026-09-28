@@ -1,7 +1,4 @@
-//  One session's clipboard history state: the persisted store, the recognizer, the cooldown, the
-//  in-flight capture, and the two pieces of HUD state the CLIPBOARD panel draws. Split out of
-//  `NativeNVSTHostViewModel` to keep that class inside its size budget; the capture and curation
-//  actions stay on the session's extension so they can read its connection state.
+//  One session's clipboard history state: the store, the recognizer, and the in-flight capture.
 //
 
 import Combine
@@ -11,27 +8,23 @@ import Foundation
 final class StreamClipboardController: ObservableObject {
     /// Newest first, exactly as the HUD lists it.
     @Published var entries: [StreamClipboardEntry] = []
-    /// The first press on "Clear history" arms it; the second clears. A pad's activate and a click
-    /// both run the same confirm step, so neither can wipe the history by accident.
+    /// The first press on "Clear history" arms it; the second clears.
     @Published var isClearArmed = false
+    /// What the copy chords do, mirroring the Capture setting so the two surfaces cannot disagree.
+    @Published var captureMode = StreamTextCaptureSettings.mode
+    /// The frozen frame the reader is dragging a region over, if region mode is mid-capture.
+    @Published var regionCapture: StreamRegionCapture?
 
     let store: StreamClipboardHistoryStore
     let recognizer: StreamTextRecognizer
     let systemIntegration: any SystemIntegrationServing
 
     var cooldown = StreamTextCaptureCooldown()
-    var task: Task<Void, Never>?
-    /// The rectangle the reader last dragged over the stream. Preferred over any detected highlight
-    /// when a capture fires, because it is the selection they actually made.
+    var captureTask: Task<Void, Never>?
+    /// The reader's last dragged rectangle, preferred over any highlight the scanner would guess at.
     var pointerSelection = StreamPointerSelectionTracker()
-    /// The clipped read kept aside so the next copy can complete it. Only a clipped read is held:
-    /// a complete one has nothing to recover, and joining two unrelated copies would be a guess.
+    /// The clipped read kept aside so the next copy completes it; only a clipped read is held.
     var pendingMerge: PendingTextMerge?
-    /// What the copy chords do. Mirrors the Capture setting, so the HUD selector and the Settings row
-    /// are one value in one place rather than two that can disagree.
-    @Published var captureMode = StreamTextCaptureSettings.mode
-    /// The frozen frame the reader is dragging a region over, if region mode is mid-capture.
-    @Published var regionCapture: StreamRegionCapture?
 
     init(
         store: StreamClipboardHistoryStore = .shared,
@@ -48,23 +41,17 @@ final class StreamClipboardController: ObservableObject {
     }
 
     func cancelCapture() {
-        task?.cancel()
-        task = nil
+        captureTask?.cancel()
+        captureTask = nil
     }
 
-    /// Switches what the copy chords do. Persisted immediately, so it survives the session and is the
-    /// same value Settings shows.
+    /// Switches what the copy chords do, persisted immediately.
     func setCaptureMode(_ mode: StreamTextCaptureMode) {
         if captureMode != mode {
             captureMode = mode
             StreamTextCaptureSettings.mode = mode
         }
-        // These clearances run whether or not the mode moved: the Capture page can write the same
-        // value directly, and a reader who switched away from region mode must not be left with a
-        // frozen frame over the stream.
-        //
-        // A read waiting to be joined belongs to capture being on; leaving it behind would let a
-        // switch back minutes later splice a fragment the reader has stopped thinking about.
+        // The Capture page can write the same value directly, so both clearances run unconditionally.
         if mode == .off { pendingMerge = nil }
         if mode != .region { regionCapture = nil }
     }

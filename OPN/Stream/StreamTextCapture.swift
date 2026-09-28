@@ -1,17 +1,11 @@
-//  Reading text off a captured stream frame, on device. Vision needs no entitlement, no usage key
-//  and no permission prompt, so the whole pipeline is local and a copy never leaves the Mac.
-//
-//  The filters live apart from the Vision call so they are testable without rendering a frame: the
-//  recognizer feeds candidates in, and `StreamTextCaptureFilter` decides what counts as text rather
-//  than game-HUD noise.
+//  Reading text off a captured stream frame, on device.
 //
 
 import CoreGraphics
 import Foundation
 import Vision
 
-/// One candidate line Vision recognized, before the filter decides whether it is worth keeping.
-/// `bounds` is Vision's normalized box so a line can be checked against a detected selection.
+/// One candidate line Vision recognized. `bounds` is Vision's normalized box.
 struct StreamRecognizedLine: Equatable, Sendable {
     let text: String
     let confidence: Float
@@ -24,21 +18,24 @@ struct StreamRecognizedLine: Equatable, Sendable {
     }
 }
 
-/// What a capture read: the text, and whether a selection narrowed it. The scope is reported rather
-/// than folded away because "the whole frame" and "your selection" are very different results for
-/// the same key.
+/// What a capture read, and whether a selection narrowed it.
 struct StreamTextRecognition: Equatable, Sendable {
     let text: String
-    let usedSelection: Bool
+    let isSelectionUsed: Bool
 }
 
-/// Drops game-HUD noise before it becomes a history entry. Confidence removes the confident-looking
-/// garbage the recognizer sometimes returns for stylized fonts; the length floor removes the health
-/// numbers, ammo counts and minimap labels a whole-frame OCR pass picks up.
+/// Drops game-HUD noise before it becomes an entry: low confidence, and runs too short to be text.
 enum StreamTextCaptureFilter {
     static let minimumConfidence: Float = 0.35
     static let minimumLength = 3
-    /// The text worth filing, joined top-to-bottom in the order Vision returned the lines.
+    /// How much of a block has to be text before it counts as a highlight rather than chrome.
+    static let minimumInkCoverage: CGFloat = 0.35
+    /// The shortest run two reads must share before they are treated as one string.
+    static let minimumMergeOverlap = 3
+    /// Longest-first overlap search; the cap only bounds the scan.
+    static let maximumMergeScan = 2_000
+
+    /// The text worth filing, joined in the order Vision returned the lines.
     static func acceptedText(from lines: [StreamRecognizedLine]) -> String {
         lines
             .filter { $0.confidence >= minimumConfidence }
@@ -47,90 +44,63 @@ enum StreamTextCaptureFilter {
             .joined(separator: "\n")
     }
 
-    /// Highlights in reading order. Vision hands whole-frame lines back top-to-bottom, and a selection
-    /// read region by region has to read the same way.
+    /// Blocks in reading order: top of the frame first.
     static func readingOrder(_ rects: [CGRect]) -> [CGRect] {
         rects.sorted { $0.maxY > $1.maxY }
     }
 
-    /// How much of a block has to be text before it counts as a highlight rather than chrome.
-    static let minimumInkCoverage: CGFloat = 0.35
-
-    /// Whether a detected block is a highlight *behind* text rather than a coloured panel with a
-    /// small label on it.
+    /// Whether a block is a highlight *behind* text rather than chrome with a small label on it.
     ///
-    /// Colour and shape alone cannot tell them apart: a blue banner and a blue text selection are the
-    /// same rectangle to the eye of a pixel scanner. The relation to the recognized text can — but
-    /// only if it is measured against the text *inside* the block, which is why the intersection is
-    /// taken rather than the whole line. Vision groups a line into one observation, so a reader who
-    /// selects part of a line highlights a block narrower than the box the line comes back in;
-    /// measured against that box, every partial selection looks like "a block far narrower than its
-    /// text" and gets thrown away. Against the intersection, the block is compared with what is
-    /// actually on it.
-    ///
-    /// What is left to reject is proportion: a button or a panel is several times its own label, so
-    /// its text covers only a corner of it.
+    /// The block is compared with the text inside it, not with the whole line Vision reported — a
+    /// partial selection is a narrow block on part of a long line. What is left to reject is
+    /// proportion: a button is several times its own label.
     static func isTextSelection(_ block: CGRect, lines: [StreamRecognizedLine]) -> Bool {
-        var ink: CGRect?
-        for line in lines {
-            let intersection = block.intersection(line.bounds)
-            guard !intersection.isNull, !intersection.isEmpty else { continue }
-            ink = ink?.union(intersection) ?? intersection
-        }
-        guard let ink, ink.width > 0, ink.height > 0 else { return false }
+        guard let inkBounds = inkBounds(inside: block, lines: lines) else { return false }
         let blockArea = block.width * block.height
         guard blockArea > 0 else { return false }
-        let inkCoverage = (ink.width * ink.height) / blockArea
+        let inkCoverage = (inkBounds.width * inkBounds.height) / blockArea
         guard inkCoverage >= minimumInkCoverage else { return false }
-        // Heights run closest — a field's highlight measured 1.93× its line on a real stream, and a
-        // panel with a large label starts at about 3×. Widths separate further, because a button
-        // label is a small word on a wide bar.
-        return block.height / ink.height <= 2.5 && block.width / ink.width <= 2.0
+        return block.height / inkBounds.height <= 2.5 && block.width / inkBounds.width <= 2.0
     }
 
-    /// Whether the text stops as if a field cut it off. A trailing ellipsis is the one clip signal a
-    /// reader can see and OCR can carry out: the characters past it were never rendered, so no
-    /// capture-side change can recover them and filing the fragment silently is the wrong answer.
+    /// Whether the text stops as if a field cut it off. Characters past an ellipsis were never
+    /// rendered, so no capture-side change can recover them.
     static func isClipped(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.hasSuffix("\u{2026}") || trimmed.hasSuffix("...")
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedText.hasSuffix("\u{2026}") || trimmedText.hasSuffix("...")
     }
 
-    /// The shortest run two reads must share before they are treated as two views of one string.
-    static let minimumMergeOverlap = 3
-    /// Overlap is searched longest-first, so a long shared run is preferred over a short one. The cap
-    /// keeps that search bounded; it is far longer than any string a text field renders.
-    static let maximumMergeScan = 2_000
-
-    /// Joins two reads of the same clipped text — the head the reader copied, then the tail they
-    /// copied after scrolling the field — when they demonstrably overlap.
-    ///
-    /// Returns nil when the two share too little to prove they are one string. That is deliberate:
-    /// a field that scrolls by a whole page can leave a gap between what was ever rendered, and
-    /// splicing two fragments with nothing in common would invent characters that were never on
-    /// screen. Two partial entries the reader can see beats one entry that quietly lies.
+    /// Joins two reads of one clipped string when they demonstrably overlap, and nil when they do
+    /// not: a page-scrolled field can leave a gap no two fragments can fill.
     static func mergedOverlap(_ first: String, _ second: String) -> String? {
         guard !first.isEmpty, !second.isEmpty else { return nil }
         if first == second { return first }
         if first.hasSuffix(second) { return first }
         if second.hasSuffix(first) { return second }
-        let maxOverlap = min(first.count, second.count, maximumMergeScan)
-        guard maxOverlap >= minimumMergeOverlap else { return nil }
-        for overlap in stride(from: maxOverlap, through: minimumMergeOverlap, by: -1) {
-            if first.suffix(overlap) == second.prefix(overlap) {
-                return first + String(second.dropFirst(overlap))
-            }
-            if second.suffix(overlap) == first.prefix(overlap) {
-                return second + String(first.dropFirst(overlap))
-            }
+        let maximumOverlap = min(first.count, second.count, maximumMergeScan)
+        guard maximumOverlap >= minimumMergeOverlap else { return nil }
+        for overlapLength in stride(from: maximumOverlap, through: minimumMergeOverlap, by: -1) {
+            let tailOfFirst = first.suffix(overlapLength)
+            let headOfSecond = second.prefix(overlapLength)
+            if tailOfFirst == headOfSecond { return first + String(second.dropFirst(overlapLength)) }
+            if second.suffix(overlapLength) == first.prefix(overlapLength) { return second + String(first.dropFirst(overlapLength)) }
         }
         return nil
     }
 
+    /// The union of the recognized text that falls inside `block`.
+    private static func inkBounds(inside block: CGRect, lines: [StreamRecognizedLine]) -> CGRect? {
+        var bounds: CGRect?
+        for line in lines {
+            let intersection = block.intersection(line.bounds)
+            guard !intersection.isNull, !intersection.isEmpty else { continue }
+            bounds = bounds?.union(intersection) ?? intersection
+        }
+        return bounds
+    }
 }
 
-/// Turns a captured frame into text. The Vision work runs off the main thread, so a capture never
-/// stalls video or input.
+/// Turns a captured frame into text, off the main thread so a capture never stalls video or input.
 struct StreamTextRecognizer: Sendable {
     let minimumConfidence: Float
 
@@ -138,11 +108,8 @@ struct StreamTextRecognizer: Sendable {
         self.minimumConfidence = minimumConfidence
     }
 
-    /// The recognized text, and whether a selection narrowed it.
-    ///
-    /// `preferredRegion` is the rectangle the reader dragged over: when it is present the capture is
-    /// read from exactly there and nothing else is consulted, because a selection the reader made by
-    /// hand is a better answer than any highlight the scanner would guess at.
+    /// The recognized text, and whether a selection narrowed it. `preferredRegion` is the rectangle
+    /// the reader dragged, which is read instead of anything the scanner would guess at.
     func recognizeText(in image: StreamScreenshotImage, preferredRegion: CGRect? = nil) async -> StreamTextRecognition {
         let minimumConfidence = minimumConfidence
         return await Task.detached(priority: .userInitiated) {
@@ -150,54 +117,43 @@ struct StreamTextRecognizer: Sendable {
         }.value
     }
 
-    /// Reads the dragged rectangle when there is one, then a detected selection, and the whole frame
-    /// when there is neither.
+    /// Reads the dragged rectangle when there is one, then a detected selection, and nothing else.
     ///
-    /// A selection is read as its own region rather than filtering whole-frame lines after the fact:
-    /// Vision groups a text line into one observation, so a reader who selects a single word would
-    /// otherwise be handed the entire line the word sits on. Reading the region itself is what makes
-    /// the result the selection.
+    /// A selection is read as its own region rather than filtered out of whole-frame lines, because
+    /// Vision groups a line into one observation and that would hand back the whole line.
     nonisolated static func recognize(
         cgImage: CGImage,
         preferredRegion: CGRect? = nil,
         minimumConfidence: Float
     ) -> StreamTextRecognition {
-        if let region = preferredRegion, isUsableRegion(region) {
-            let lines = recognizeLines(cgImage: cgImage, region: inflatedSelection(region))
-            return StreamTextRecognition(
-                text: StreamTextCaptureFilter.acceptedText(from: lines),
-                usedSelection: true
-            )
-        }
+        guard let region = preferredRegion, isUsableRegion(region) else { return recognizeDetectedSelection(cgImage: cgImage) }
+        let lines = recognizeLines(cgImage: cgImage, region: inflatedSelection(region))
+        return StreamTextRecognition(text: StreamTextCaptureFilter.acceptedText(from: lines), isSelectionUsed: true)
+    }
+
+    private nonisolated static func recognizeDetectedSelection(cgImage: CGImage) -> StreamTextRecognition {
         let highlights = StreamTextSelectionDetector.selectionRects(in: cgImage)
         let wholeFrameLines = recognizeLines(cgImage: cgImage, region: nil)
-        // A block only counts as a selection when the text it holds fits inside it like a highlight.
-        // Without this the blue bars and buttons a page is full of read as selections.
-        let selection = highlights.filter { StreamTextCaptureFilter.isTextSelection($0, lines: wholeFrameLines) }
-        guard !selection.isEmpty else {
-            // A copy is a copy of the selection. With no selection there is nothing to file — filing
-            // the whole frame instead is the behaviour this feature exists to avoid, and it reads as
-            // a wall of unrelated screen text.
-            return StreamTextRecognition(text: "", usedSelection: false)
-        }
-        let pieces = StreamTextCaptureFilter.readingOrder(selection).compactMap { rect -> String? in
-            let lines = recognizeLines(cgImage: cgImage, region: inflatedSelection(rect))
+        let selectedBlocks = highlights.filter { StreamTextCaptureFilter.isTextSelection($0, lines: wholeFrameLines) }
+        guard !selectedBlocks.isEmpty else { return StreamTextRecognition(text: "", isSelectionUsed: false) }
+        let regionTexts = StreamTextCaptureFilter.readingOrder(selectedBlocks).compactMap { block -> String? in
+            let lines = recognizeLines(cgImage: cgImage, region: inflatedSelection(block))
             let text = StreamTextCaptureFilter.acceptedText(from: lines)
             return text.isEmpty ? nil : text
         }
-        return StreamTextRecognition(text: pieces.joined(separator: "\n"), usedSelection: true)
+        return StreamTextRecognition(text: regionTexts.joined(separator: "\n"), isSelectionUsed: true)
     }
 
-    nonisolated static func isUsableRegion(_ rect: CGRect) -> Bool {
+    private nonisolated static func isUsableRegion(_ rect: CGRect) -> Bool {
         rect.width > 0 && rect.height > 0 && rect.width <= 1 && rect.height <= 1
     }
 
-    /// Vision's text detector wants a little context around a line, and a selection hugs its glyphs.
-    /// The margin is proportional so it survives both a small chat line and a large subtitle.
+    /// Vision wants context around a line, and a selection hugs its glyphs.
     nonisolated static func inflatedSelection(_ rect: CGRect) -> CGRect {
-        let dx = max(0.005, rect.width * 0.02)
-        let dy = max(0.004, rect.height * 0.25)
-        return rect.insetBy(dx: -dx, dy: -dy).intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let horizontalMargin = max(0.005, rect.width * 0.02)
+        let verticalMargin = max(0.004, rect.height * 0.25)
+        let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+        return rect.insetBy(dx: -horizontalMargin, dy: -verticalMargin).intersection(bounds)
     }
 
     nonisolated static func recognizeLines(cgImage: CGImage, region: CGRect?) -> [StreamRecognizedLine] {
@@ -220,8 +176,7 @@ struct StreamTextRecognizer: Sendable {
     }
 }
 
-/// The per-session gate on repeated captures. Ctrl+C is a common gameplay binding, so a held chord
-/// or a burst of presses must not run a recognizer pass per frame.
+/// The per-session gate on repeated captures: Ctrl+C is a common gameplay binding.
 struct StreamTextCaptureCooldown: Sendable {
     static let defaultInterval: TimeInterval = 2
 

@@ -1,89 +1,72 @@
-//  Finding the reader's text selection in a captured frame.
-//
-//  A copy should copy what is selected, not the whole screen. The client only sees the game as video
-//  and the seat's clipboard is not on the wire, so the one signal available is visual: a selected run
-//  of text sits on a highlight — a line-shaped block of near-uniform saturated colour that stands out
-//  from what surrounds it. This finds those blocks so the recognizer can read only them.
-//
-//  Deliberately heuristic, and deliberately generous about what it will not claim: a component that
-//  is not wide, not filled, or not locally contrasting is left alone, because a false positive hides
-//  every unselected line from the reader while a miss only falls back to the whole frame.
+//  Finding the reader's text selection in a captured frame, by colour and shape alone.
 //
 
 import CoreGraphics
 import Foundation
 
-/// A rectangle on a captured frame that looks like a selection highlight, in Vision's normalized
-/// coordinates (origin bottom-left), which is the space `VNRecognizedTextObservation.boundingBox`
-/// uses.
+/// Finds a selection highlight — a line-shaped block of saturated colour that stands out from what
+/// surrounds it — and returns it in Vision's normalized space (origin bottom-left).
 enum StreamTextSelectionDetector {
-    /// The frame is downscaled before it is scanned: a highlight is a large flat block, so it survives
-    /// the reduction, and the scan stays cheap enough to run inside a capture. The width is a balance,
-    /// though — a 5120-wide stream squashes a 32-pixel text highlight to two pixels at 480, where the
-    /// minimum-height filter then drops it on rounding alone. 640 keeps a plausible line at 3+ pixels
-    /// on the widest frames the client streams while costing a third more pixels to scan.
+    /// Scan width. A 5120-wide stream squashes a text line to two pixels at 480, where rounding alone
+    /// decides; 640 keeps a plausible line resolvable on the widest frames the client streams.
     static let maximumDownscaleWidth = 640
-    /// At most this many highlights are read, so a frame full of coloured panels cannot turn one copy
-    /// into a page of text.
+    /// At most this many highlights are read, so a frame full of coloured panels cannot flood a copy.
     static let maximumHighlights = 8
 
     static func selectionRects(in image: CGImage) -> [CGRect] {
         guard image.width > 0, image.height > 0 else { return [] }
-        let targetWidth = min(image.width, maximumDownscaleWidth)
-        let scale = Double(targetWidth) / Double(image.width)
-        let targetHeight = max(1, Int((Double(image.height) * scale).rounded()))
-        guard let context = CGContext(
+        let scanWidth = min(image.width, maximumDownscaleWidth)
+        let scale = Double(scanWidth) / Double(image.width)
+        let scanHeight = max(1, Int((Double(image.height) * scale).rounded()))
+        guard let context = makeScanContext(width: scanWidth, height: scanHeight) else { return [] }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: scanWidth, height: scanHeight))
+        guard let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return [] }
+
+        var highlightMask = [Bool](repeating: false, count: scanWidth * scanHeight)
+        for index in 0..<(scanWidth * scanHeight) {
+            highlightMask[index] = isHighlightTone(pixels, at: index * 4)
+        }
+
+        var visited = [Bool](repeating: false, count: scanWidth * scanHeight)
+        var highlightRects: [CGRect] = []
+        for index in 0..<(scanWidth * scanHeight) where highlightMask[index] && !visited[index] {
+            guard let block = collectBlock(pixels: pixels, mask: highlightMask, visited: &visited, start: index, width: scanWidth, height: scanHeight) else { continue }
+            guard isSelectionShaped(block, width: scanWidth, height: scanHeight) else { continue }
+            guard hasLocalContrast(pixels: pixels, block: block, width: scanWidth, height: scanHeight) else { continue }
+            highlightRects.append(normalizedRect(block, width: scanWidth, height: scanHeight))
+        }
+        return Array(highlightRects.sorted { $0.width * $0.height > $1.width * $1.height }.prefix(maximumHighlights))
+    }
+
+    private static func makeScanContext(width: Int, height: Int) -> CGContext? {
+        let context = CGContext(
             data: nil,
-            width: targetWidth,
-            height: targetHeight,
+            width: width,
+            height: height,
             bitsPerComponent: 8,
-            bytesPerRow: targetWidth * 4,
+            bytesPerRow: width * 4,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return [] }
-        context.interpolationQuality = .low
-        context.draw(image, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-        guard let data = context.data?.assumingMemoryBound(to: UInt8.self) else { return [] }
-
-        let width = targetWidth
-        let height = targetHeight
-        var mask = [Bool](repeating: false, count: width * height)
-        for index in 0..<(width * height) {
-            mask[index] = Self.isHighlightTone(data, at: index * 4)
-        }
-
-        var visited = [Bool](repeating: false, count: width * height)
-        var candidates: [CGRect] = []
-        for start in 0..<(width * height) where mask[start] && !visited[start] {
-            guard let component = flood(data: data, mask: mask, visited: &visited, start: start, width: width, height: height) else { continue }
-            guard isSelectionShaped(component, width: width, height: height) else { continue }
-            guard hasLocalContrast(data: data, component: component, width: width, height: height) else { continue }
-            candidates.append(normalizedRect(component, width: width, height: height))
-        }
-        return candidates
-            .sorted { $0.width * $0.height > $1.width * $1.height }
-            .prefix(maximumHighlights)
-            .map { $0 }
+        )
+        context?.interpolationQuality = .low
+        return context
     }
 
-    /// A pixel worth grouping: bright enough not to be a shadow, and carrying enough colour that a
-    /// grey page cannot be mistaken for a highlight.
-    private static func isHighlightTone(_ data: UnsafePointer<UInt8>, at offset: Int) -> Bool {
-        let r = Int(data[offset])
-        let g = Int(data[offset + 1])
-        let b = Int(data[offset + 2])
-        let high = max(r, max(g, b))
-        let low = min(r, min(g, b))
-        guard high >= 48 else { return false }
-        let spread = high - low
-        // A muted blue page theme (Steam's dark navy, a game's sky panel) clears a low bar and then
-        // every panel on it reads as a selection. The bar is set where a genuinely coloured highlight
-        // sits, not where tinted chrome does.
+    /// A pixel worth grouping: bright enough not to be shadow, and coloured enough not to be grey.
+    private static func isHighlightTone(_ pixels: UnsafePointer<UInt8>, at offset: Int) -> Bool {
+        let red = Int(pixels[offset])
+        let green = Int(pixels[offset + 1])
+        let blue = Int(pixels[offset + 2])
+        let brightest = max(red, max(green, blue))
+        let darkest = min(red, min(green, blue))
+        guard brightest >= 48 else { return false }
+        let spread = brightest - darkest
+        // A muted themed page clears a low bar and then every panel on it reads as a selection.
         guard spread >= 60 else { return false }
-        return Double(spread) / Double(high) >= 0.16
+        return Double(spread) / Double(brightest) >= 0.16
     }
 
-    private struct Component {
+    private struct HighlightBlock {
         let minX: Int
         let maxX: Int
         let minY: Int
@@ -94,97 +77,107 @@ enum StreamTextSelectionDetector {
         let meanBlue: Int
     }
 
-    private static func flood(
-        data: UnsafePointer<UInt8>,
+    /// Walks one connected run of highlight-coloured pixels and measures it.
+    private static func collectBlock(
+        pixels: UnsafePointer<UInt8>,
         mask: [Bool],
         visited: inout [Bool],
         start: Int,
         width: Int,
         height: Int
-    ) -> Component? {
-        var stack = [start]
+    ) -> HighlightBlock? {
+        var pendingIndices = [start]
         visited[start] = true
-        var count = 0
+        var pixelCount = 0
         var minX = width, maxX = -1, minY = height, maxY = -1
-        var sumR = 0, sumG = 0, sumB = 0
-        while let index = stack.popLast() {
+        var sumRed = 0, sumGreen = 0, sumBlue = 0
+        while let index = pendingIndices.popLast() {
             let x = index % width
             let y = index / width
-            count += 1
+            pixelCount += 1
             minX = min(minX, x); maxX = max(maxX, x)
             minY = min(minY, y); maxY = max(maxY, y)
             let offset = index * 4
-            sumR += Int(data[offset]); sumG += Int(data[offset + 1]); sumB += Int(data[offset + 2])
-            if x > 0, mask[index - 1], !visited[index - 1] { visited[index - 1] = true; stack.append(index - 1) }
-            if x + 1 < width, mask[index + 1], !visited[index + 1] { visited[index + 1] = true; stack.append(index + 1) }
-            if y > 0, mask[index - width], !visited[index - width] { visited[index - width] = true; stack.append(index - width) }
-            if y + 1 < height, mask[index + width], !visited[index + width] { visited[index + width] = true; stack.append(index + width) }
+            sumRed += Int(pixels[offset]); sumGreen += Int(pixels[offset + 1]); sumBlue += Int(pixels[offset + 2])
+            appendNeighbours(of: index, mask: mask, visited: &visited, pendingIndices: &pendingIndices, width: width, height: height)
         }
-        guard count > 0 else { return nil }
-        return Component(
+        guard pixelCount > 0 else { return nil }
+        return HighlightBlock(
             minX: minX, maxX: maxX, minY: minY, maxY: maxY,
-            pixelCount: count,
-            meanRed: sumR / count, meanGreen: sumG / count, meanBlue: sumB / count
+            pixelCount: pixelCount,
+            meanRed: sumRed / pixelCount, meanGreen: sumGreen / pixelCount, meanBlue: sumBlue / pixelCount
         )
     }
 
-    /// A text selection is a wide, shallow, mostly filled block. A filled panel that happens to be
-    /// coloured is normally taller or squarer than a line of text, and coloured artwork is not filled
-    /// enough to pass.
-    private static func isSelectionShaped(_ component: Component, width: Int, height: Int) -> Bool {
-        let boxWidth = component.maxX - component.minX + 1
-        let boxHeight = component.maxY - component.minY + 1
-        // A short word selection is a small share of a wide frame — a five-percent floor threw away a
-        // selected name in a text field on a 16:9 stream. The floor only exists to drop specks; the
-        // text-hug gate is what decides whether a block is a selection.
-        guard boxWidth >= max(4, Int(0.012 * Double(width))), boxHeight >= 3 else { return false }
-        guard Double(boxWidth) / Double(boxHeight) >= 2.5 else { return false }
-        let heightFraction = Double(boxHeight) / Double(height)
-        guard heightFraction >= 0.012, heightFraction <= 0.45 else { return false }
-        let fill = Double(component.pixelCount) / Double(boxWidth * boxHeight)
-        return fill >= 0.45
+    private static func appendNeighbours(
+        of index: Int,
+        mask: [Bool],
+        visited: inout [Bool],
+        pendingIndices: inout [Int],
+        width: Int,
+        height: Int
+    ) {
+        let x = index % width
+        let y = index / width
+        if x > 0, mask[index - 1], !visited[index - 1] { visited[index - 1] = true; pendingIndices.append(index - 1) }
+        if x + 1 < width, mask[index + 1], !visited[index + 1] { visited[index + 1] = true; pendingIndices.append(index + 1) }
+        if y > 0, mask[index - width], !visited[index - width] { visited[index - width] = true; pendingIndices.append(index - width) }
+        if y + 1 < height, mask[index + width], !visited[index + width] { visited[index + width] = true; pendingIndices.append(index + width) }
     }
 
-    /// A selection stands out from the page it sits on. Without this, a game whose whole frame is one
-    /// saturated colour — a loading screen, a flat menu background — would read as an endless
-    /// selection. The neighbouring strip is sampled just outside the block, and only a block that
-    /// differs from it is claimed.
+    /// A selection is a wide, shallow, mostly filled block; artwork is not filled enough to pass.
+    private static func isSelectionShaped(_ block: HighlightBlock, width: Int, height: Int) -> Bool {
+        let blockWidth = block.maxX - block.minX + 1
+        let blockHeight = block.maxY - block.minY + 1
+        // The floor only drops specks: a short word is a small share of a wide frame.
+        guard blockWidth >= max(4, Int(0.012 * Double(width))), blockHeight >= 3 else { return false }
+        guard Double(blockWidth) / Double(blockHeight) >= 2.5 else { return false }
+        let heightFraction = Double(blockHeight) / Double(height)
+        guard heightFraction >= 0.012, heightFraction <= 0.45 else { return false }
+        return Double(block.pixelCount) / Double(blockWidth * blockHeight) >= 0.45
+    }
+
+    /// Only a block that differs from the strip just outside it is claimed, so a frame painted one
+    /// saturated colour does not read as one endless selection.
     private static func hasLocalContrast(
-        data: UnsafePointer<UInt8>,
-        component: Component,
+        pixels: UnsafePointer<UInt8>,
+        block: HighlightBlock,
         width: Int,
         height: Int
     ) -> Bool {
         let ring = 2
-        let minX = max(0, component.minX - ring)
-        let maxX = min(width - 1, component.maxX + ring)
-        let minY = max(0, component.minY - ring)
-        let maxY = min(height - 1, component.maxY + ring)
-        var count = 0
-        var sumR = 0, sumG = 0, sumB = 0
-        for y in minY...maxY {
-            for x in minX...maxX {
-                let inside = x >= component.minX && x <= component.maxX && y >= component.minY && y <= component.maxY
-                guard !inside else { continue }
+        let ringMinX = max(0, block.minX - ring)
+        let ringMaxX = min(width - 1, block.maxX + ring)
+        let ringMinY = max(0, block.minY - ring)
+        let ringMaxY = min(height - 1, block.maxY + ring)
+        var ringPixelCount = 0
+        var sumRed = 0, sumGreen = 0, sumBlue = 0
+        for y in ringMinY...ringMaxY {
+            for x in ringMinX...ringMaxX {
+                guard isOutside(x: x, y: y, block: block) else { continue }
                 let offset = (y * width + x) * 4
-                sumR += Int(data[offset]); sumG += Int(data[offset + 1]); sumB += Int(data[offset + 2])
-                count += 1
+                sumRed += Int(pixels[offset]); sumGreen += Int(pixels[offset + 1]); sumBlue += Int(pixels[offset + 2])
+                ringPixelCount += 1
             }
         }
-        guard count > 0 else { return true }
-        let deltaR = component.meanRed - sumR / count
-        let deltaG = component.meanGreen - sumG / count
-        let deltaB = component.meanBlue - sumB / count
-        let distance = (Double(deltaR * deltaR + deltaG * deltaG + deltaB * deltaB)).squareRoot()
-        return distance >= 40
+        guard ringPixelCount > 0 else { return true }
+        let deltaRed = block.meanRed - sumRed / ringPixelCount
+        let deltaGreen = block.meanGreen - sumGreen / ringPixelCount
+        let deltaBlue = block.meanBlue - sumBlue / ringPixelCount
+        let colourDistance = Double(deltaRed * deltaRed + deltaGreen * deltaGreen + deltaBlue * deltaBlue).squareRoot()
+        return colourDistance >= 40
     }
 
-    private static func normalizedRect(_ component: Component, width: Int, height: Int) -> CGRect {
+    private static func isOutside(x: Int, y: Int, block: HighlightBlock) -> Bool {
+        x < block.minX || x > block.maxX || y < block.minY || y > block.maxY
+    }
+
+    private static func normalizedRect(_ block: HighlightBlock, width: Int, height: Int) -> CGRect {
         CGRect(
-            x: Double(component.minX) / Double(width),
-            y: 1 - Double(component.maxY + 1) / Double(height),
-            width: Double(component.maxX - component.minX + 1) / Double(width),
-            height: Double(component.maxY - component.minY + 1) / Double(height)
+            x: Double(block.minX) / Double(width),
+            y: 1 - Double(block.maxY + 1) / Double(height),
+            width: Double(block.maxX - block.minX + 1) / Double(width),
+            height: Double(block.maxY - block.minY + 1) / Double(height)
         )
     }
 }

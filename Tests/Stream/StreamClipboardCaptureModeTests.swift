@@ -14,8 +14,8 @@ struct StreamClipboardCaptureModeTests {
         )
     }
 
-    private func onePixelImage() -> StreamScreenshotImage {
-        let context = CGContext(
+    private func onePixelImage() throws -> StreamScreenshotImage {
+        let context = try #require(CGContext(
             data: nil,
             width: 1,
             height: 1,
@@ -23,8 +23,8 @@ struct StreamClipboardCaptureModeTests {
             bytesPerRow: 4,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
-        )!
-        return StreamScreenshotImage(cgImage: context.makeImage()!)
+        ))
+        return StreamScreenshotImage(cgImage: try #require(context.makeImage()))
     }
 
     @Test func theHudSelectorWritesTheSameSettingTheCapturePathReads() {
@@ -49,10 +49,10 @@ struct StreamClipboardCaptureModeTests {
     }
 
     /// Leaving region mode while a frame is frozen must not strand the overlay over the stream.
-    @Test func leavingRegionModeDropsTheFrozenFrame() {
+    @Test func leavingRegionModeDropsTheFrozenFrame() throws {
         defer { StreamTextCaptureSettings.mode = .selection }
         let controller = makeController()
-        controller.regionCapture = StreamRegionCapture(image: onePixelImage())
+        controller.regionCapture = StreamRegionCapture(image: try onePixelImage())
         controller.setCaptureMode(.selection)
         #expect(controller.regionCapture == nil)
     }

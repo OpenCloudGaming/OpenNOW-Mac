@@ -1,16 +1,12 @@
-//  The in-stream clipboard history: text recognized off a captured frame, filed locally and capped.
-//  A single JSON file in Application Support, following the screenshot metadata precedent, so the
-//  store is a document the reader can find rather than a database, and nothing leaves the device.
+//  The in-stream clipboard history: text read off a captured frame, filed locally and capped.
 //
 
 import Foundation
 
-/// One recognized frame's text. `id` is what a HUD row and a pad focus entry key off, so the row and
-/// its focus entry cannot drift while the list re-sorts.
+/// One recognized frame's text. `id` keys both the HUD row and its pad focus entry.
 public struct StreamClipboardEntry: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
-    /// Mutable so a clipped read can be completed in place when the reader copies the rest of it,
-    /// rather than leaving two fragments in the history.
+    /// Mutable so a clipped read is completed in place rather than leaving two fragments behind.
     public var text: String
     public let capturedAt: Date
     public let applicationID: String
@@ -25,13 +21,11 @@ public struct StreamClipboardEntry: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// The persisted history. An instance owns one file, so a test can point it at a temporary
-/// directory and the app reads the shared one under Application Support.
+/// The persisted history, as one JSON file in Application Support.
 public struct StreamClipboardHistoryStore: Sendable {
-    /// FIFO cap. The oldest entry past this falls off the end of the list.
+    /// FIFO cap; the oldest entry past this falls off the end.
     public static let entryLimit = 100
-    /// Identical text captured again inside this window is the same copy, not a second one — a
-    /// double press or a held chord must not file the frame twice.
+    /// Identical text inside this window is the same copy, not a second one.
     public static let dedupeWindow: TimeInterval = 5 * 60
 
     public static let didChangeNotification = Notification.Name("OPNStreamClipboardHistoryDidChange")
@@ -46,13 +40,12 @@ public struct StreamClipboardHistoryStore: Sendable {
 
     /// Newest first, which is the order the HUD lists entries in.
     public func load() -> [StreamClipboardEntry] {
-        guard let data = try? Data(contentsOf: fileURL) else { return [] }
-        guard let entries = try? JSONDecoder.recordingDecoder.decode([StreamClipboardEntry].self, from: data) else { return [] }
+        guard let storedData = try? Data(contentsOf: fileURL) else { return [] }
+        guard let entries = try? JSONDecoder.recordingDecoder.decode([StreamClipboardEntry].self, from: storedData) else { return [] }
         return entries.sorted { $0.capturedAt > $1.capturedAt }
     }
 
-    /// Files `text`, unless the same text was captured inside `dedupeWindow`. Returns the stored
-    /// entry, or nil when it was a duplicate.
+    /// Files `text`, unless the same text was captured inside `dedupeWindow`.
     @discardableResult
     public func append(
         text: String,
@@ -61,15 +54,13 @@ public struct StreamClipboardHistoryStore: Sendable {
         capturedAt: Date = Date(),
         dedupeWindow: TimeInterval = StreamClipboardHistoryStore.dedupeWindow
     ) -> StreamClipboardEntry? {
-        let existing = load()
-        guard !existing.contains(where: { $0.text == text && capturedAt.timeIntervalSince($0.capturedAt) < dedupeWindow }) else { return nil }
+        guard !isDuplicate(text, capturedAt: capturedAt, dedupeWindow: dedupeWindow) else { return nil }
         let entry = StreamClipboardEntry(text: text, capturedAt: capturedAt, applicationID: applicationID, gameTitle: gameTitle)
-        store([entry] + existing)
+        store([entry] + load())
         return entry
     }
 
-    /// Replaces one entry's text, keeping its place and its capture time. Used when a clipped read
-    /// is joined with the rest of the same text: the reader gets one entry, not two fragments.
+    /// Replaces one entry's text, keeping its place and its capture time.
     @discardableResult
     public func replace(id: UUID, text: String) -> StreamClipboardEntry? {
         var entries = load()
@@ -79,7 +70,7 @@ public struct StreamClipboardHistoryStore: Sendable {
         return entries[index]
     }
 
-    /// Drops one entry. Returns false when it was already gone, so a double press is not an error.
+    /// Drops one entry, answering false when it was already gone.
     @discardableResult
     public func remove(id: UUID) -> Bool {
         let entries = load()
@@ -88,18 +79,21 @@ public struct StreamClipboardHistoryStore: Sendable {
         return true
     }
 
-    /// Empties the history. The file stays in place, written as an empty list, so a reader who
-    /// clears history does not then wonder whether the store was deleted.
+    /// Empties the history, leaving the file in place as an empty list.
     public func clear() {
         store([])
     }
 
+    private func isDuplicate(_ text: String, capturedAt: Date, dedupeWindow: TimeInterval) -> Bool {
+        load().contains { $0.text == text && capturedAt.timeIntervalSince($0.capturedAt) < dedupeWindow }
+    }
+
     private func store(_ entries: [StreamClipboardEntry]) {
-        let capped = Array(entries.sorted { $0.capturedAt > $1.capturedAt }.prefix(Self.entryLimit))
+        let cappedEntries = Array(entries.sorted { $0.capturedAt > $1.capturedAt }.prefix(Self.entryLimit))
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let data = try JSONEncoder.recordingEncoder.encode(capped)
-            try data.write(to: fileURL, options: .atomic)
+            let encodedEntries = try JSONEncoder.recordingEncoder.encode(cappedEntries)
+            try encodedEntries.write(to: fileURL, options: .atomic)
         } catch {
             OPNLog.error(.stream, "Clipboard history write failed: \(error.localizedDescription)")
         }
@@ -107,9 +101,9 @@ public struct StreamClipboardHistoryStore: Sendable {
     }
 
     private static var defaultFileURL: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let supportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser
-        return base
+        return supportDirectory
             .appendingPathComponent(OPNProductIdentity.releaseBundleIdentifier, isDirectory: true)
             .appendingPathComponent("ClipboardHistory.json")
     }
@@ -119,10 +113,9 @@ public struct StreamClipboardHistoryStore: Sendable {
 public enum StreamTextCaptureMode: String, CaseIterable, Identifiable, Sendable {
     /// Inert: the copy is left entirely to the game.
     case off
-    /// Read the text the reader has highlighted — the selection highlight, or the rectangle they
-    /// dragged over it.
+    /// Read the text the reader has highlighted.
     case selection
-    /// Freeze the frame and read the area the reader drags over it, the way ⌘⇧4 works for the screen.
+    /// Freeze the frame and read the area the reader drags over it.
     case region
 
     public var id: String { rawValue }
@@ -145,32 +138,30 @@ public enum StreamTextCaptureMode: String, CaseIterable, Identifiable, Sendable 
     }
 }
 
-/// How in-stream copy reads text. Read by the capture path and written by Settings and the HUD.
-/// Two switches gate it: the Labs flag that offers the feature at all, and this mode — which also
-/// covers off, so "inert" is one answer in one place rather than a flag and a toggle to reconcile.
+/// How in-stream copy reads text: the Labs flag offers the feature, the mode says what it reads.
 public enum StreamTextCaptureSettings {
     public static let modeKey = "OpenNOW.Stream.ClipboardCaptureMode"
-    /// The on/off preference this replaced. Still read once so a reader who turned capture off before
-    /// the mode existed lands on Off rather than back on.
+    /// The on/off preference the mode replaced, read once so an old choice still decides.
     public static let enabledKey = "OpenNOW.Stream.ClipboardCaptureEnabled"
 
     public static var mode: StreamTextCaptureMode {
-        get {
-            if let raw = OPNAppPreferenceStorage.standard.string(forKey: modeKey),
-               let mode = StreamTextCaptureMode(rawValue: raw) {
-                return mode
-            }
-            // No mode stored yet: the old boolean decides, defaulting to the selection read that was
-            // the only capture there was.
-            let wasOn = OPNAppPreferenceStorage.standard.object(forKey: enabledKey) as? Bool ?? true
-            return wasOn ? .selection : .off
-        }
+        get { storedMode ?? legacyMode }
         set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: modeKey) }
     }
 
-    /// Whether the capture path runs at all: the Labs flag has to offer the feature before any mode,
-    /// including Region, means anything.
+    /// Whether the capture path runs at all.
     public static var isEnabled: Bool {
         OPNLabs.isClipboardCaptureEnabled && mode != .off
+    }
+
+    private static var storedMode: StreamTextCaptureMode? {
+        guard let rawMode = OPNAppPreferenceStorage.standard.string(forKey: modeKey) else { return nil }
+        return StreamTextCaptureMode(rawValue: rawMode)
+    }
+
+    /// A reader who had turned capture off keeps Off; everyone else lands on the selection read.
+    private static var legacyMode: StreamTextCaptureMode {
+        let wasEnabled = OPNAppPreferenceStorage.standard.object(forKey: enabledKey) as? Bool ?? true
+        return wasEnabled ? .selection : .off
     }
 }
