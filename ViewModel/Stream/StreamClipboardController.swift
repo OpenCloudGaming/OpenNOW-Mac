@@ -21,6 +21,9 @@ final class StreamClipboardController: ObservableObject {
 
     var cooldown = StreamTextCaptureCooldown()
     var task: Task<Void, Never>?
+    /// The rectangle the reader last dragged over the stream. Preferred over any detected highlight
+    /// when a capture fires, because it is the selection they actually made.
+    var pointerSelection = StreamPointerSelectionTracker()
 
     init(
         store: StreamClipboardHistoryStore = .shared,

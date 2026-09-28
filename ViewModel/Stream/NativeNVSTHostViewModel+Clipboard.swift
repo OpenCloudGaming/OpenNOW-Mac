@@ -8,13 +8,18 @@ import Foundation
 @MainActor
 extension NativeNVSTHostViewModel {
 
-    /// The three outcomes the reader can see. A capture never fails silently: an empty frame says so
-    /// as plainly as a save does.
+    /// What the reader can see. A capture never fails silently: an empty frame says so as plainly as
+    /// a save does, and a fragment cut off by a field says that too rather than passing as complete.
     enum StreamTextCaptureMessage {
         static let saved = "Saved into the clipboard history"
+        static let clipped = "Saved \u{2014} text looks cut off"
         static let copied = "Copied to clipboard"
         static let empty = "No text found in frame"
     }
+
+    /// How long a dragged selection stays usable. Long enough to select and then reach for the copy
+    /// chord; short enough that a drag from another moment is not read as this copy's selection.
+    static let pointerSelectionMaximumAge: TimeInterval = 20
 
     /// Reads the persisted history. Newest first, exactly as the HUD lists it.
     func reloadClipboardHistory() {
@@ -31,6 +36,8 @@ extension NativeNVSTHostViewModel {
         let now = Date()
         guard clipboard.cooldown.allowsCapture(at: now) else { return }
         clipboard.cooldown.recordCapture(at: now)
+        // Read before the screenshot so a drag that lands between the two is not half-applied.
+        let selection = clipboard.pointerSelection.recentSelection(at: now, maximumAge: Self.pointerSelectionMaximumAge)
         clipboard.task = Task { @MainActor [weak self] in
             defer { self?.clipboard.task = nil }
             guard let self else { return }
@@ -38,12 +45,13 @@ extension NativeNVSTHostViewModel {
                 self.showEmptyCaptureMessage(reason: "no-frame")
                 return
             }
-            let recognition = await self.clipboard.recognizer.recognizeText(in: image)
+            let recognition = await self.clipboard.recognizer.recognizeText(in: image, preferredRegion: selection)
             let text = recognition.text
             guard !text.isEmpty else {
                 self.showEmptyCaptureMessage(reason: recognition.usedSelection ? "no-selection-text" : "no-text")
                 return
             }
+            let isClipped = StreamTextCaptureFilter.isClipped(text)
             let stored = self.clipboard.store.append(
                 text: text,
                 applicationID: self.configuration.applicationID,
@@ -51,13 +59,15 @@ extension NativeNVSTHostViewModel {
             )
             self.reloadClipboardHistory()
             // A duplicate inside the dedupe window files nothing new, but the text is already in
-            // history and the reader did ask for it, so the same confirmation is the honest one.
-            self.showNativeTransientStreamMessage(Self.StreamTextCaptureMessage.saved)
+            // history and the reader did ask for it, so the same confirmation is the honest one. A
+            // clipped fragment is filed too — it is still useful — but it never passes as complete.
+            self.showNativeTransientStreamMessage(isClipped ? Self.StreamTextCaptureMessage.clipped : Self.StreamTextCaptureMessage.saved)
             OPNStreamTelemetry.capture("nvst.ui.clipboard.saved", level: .info, message: "Frame text filed into the clipboard history.", attributes: [
                 "applicationID": self.configuration.applicationID,
                 "characters": String(text.count),
                 "duplicate": String(stored == nil),
                 "scope": recognition.usedSelection ? "selection" : "frame",
+                "clipped": String(isClipped),
             ])
         }
     }

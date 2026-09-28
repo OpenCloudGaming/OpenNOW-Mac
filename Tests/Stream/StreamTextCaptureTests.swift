@@ -33,6 +33,20 @@ struct StreamTextCaptureFilterTests {
         #expect(StreamTextCaptureFilter.acceptedText(from: [StreamRecognizedLine(text: "x", confidence: 1)]).isEmpty)
     }
 
+    // MARK: - Clipped text
+
+    @Test func aTrailingEllipsisReadsAsClipped() {
+        #expect(StreamTextCaptureFilter.isClipped("Check out the entire collection on\u{2026}"))
+        #expect(StreamTextCaptureFilter.isClipped("Check out the entire collection on..."))
+        #expect(StreamTextCaptureFilter.isClipped("  trailing space after the clip\u{2026}  "))
+    }
+
+    @Test func completeTextIsNotClipped() {
+        #expect(!StreamTextCaptureFilter.isClipped("Check out the entire collection on Steam"))
+        #expect(!StreamTextCaptureFilter.isClipped("Ends with a full stop."))
+        #expect(!StreamTextCaptureFilter.isClipped(""))
+    }
+
     // MARK: - Selection scope
 
     /// Highlights are read top-of-frame first, the order whole-frame lines come back in.

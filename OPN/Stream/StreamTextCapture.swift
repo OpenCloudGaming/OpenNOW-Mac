@@ -71,6 +71,14 @@ enum StreamTextCaptureFilter {
         return ratioH >= 0.9 && ratioH <= 1.8 && ratioW >= 1.0
     }
 
+    /// Whether the text stops as if a field cut it off. A trailing ellipsis is the one clip signal a
+    /// reader can see and OCR can carry out: the characters past it were never rendered, so no
+    /// capture-side change can recover them and filing the fragment silently is the wrong answer.
+    static func isClipped(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasSuffix("\u{2026}") || trimmed.hasSuffix("...")
+    }
+
     /// The share of `bounds` that falls inside `rect`.
     static func coverage(of bounds: CGRect, by rect: CGRect) -> CGFloat {
         guard bounds.width > 0, bounds.height > 0 else { return 0 }
@@ -90,20 +98,36 @@ struct StreamTextRecognizer: Sendable {
     }
 
     /// The recognized text, and whether a selection narrowed it.
-    func recognizeText(in image: StreamScreenshotImage) async -> StreamTextRecognition {
+    ///
+    /// `preferredRegion` is the rectangle the reader dragged over: when it is present the capture is
+    /// read from exactly there and nothing else is consulted, because a selection the reader made by
+    /// hand is a better answer than any highlight the scanner would guess at.
+    func recognizeText(in image: StreamScreenshotImage, preferredRegion: CGRect? = nil) async -> StreamTextRecognition {
         let minimumConfidence = minimumConfidence
         return await Task.detached(priority: .userInitiated) {
-            Self.recognize(cgImage: image.cgImage, minimumConfidence: minimumConfidence)
+            Self.recognize(cgImage: image.cgImage, preferredRegion: preferredRegion, minimumConfidence: minimumConfidence)
         }.value
     }
 
-    /// Reads the selection when there is one, and the whole frame when there is not.
+    /// Reads the dragged rectangle when there is one, then a detected selection, and the whole frame
+    /// when there is neither.
     ///
-    /// Each highlight is read as its own region rather than filtering whole-frame lines after the
-    /// fact: Vision groups a text line into one observation, so a reader who selects a single word
-    /// would otherwise be handed the entire line the word sits on. Reading the highlighted rect
-    /// itself is what makes the result the selection.
-    nonisolated static func recognize(cgImage: CGImage, minimumConfidence: Float) -> StreamTextRecognition {
+    /// A selection is read as its own region rather than filtering whole-frame lines after the fact:
+    /// Vision groups a text line into one observation, so a reader who selects a single word would
+    /// otherwise be handed the entire line the word sits on. Reading the region itself is what makes
+    /// the result the selection.
+    nonisolated static func recognize(
+        cgImage: CGImage,
+        preferredRegion: CGRect? = nil,
+        minimumConfidence: Float
+    ) -> StreamTextRecognition {
+        if let region = preferredRegion, isUsableRegion(region) {
+            let lines = recognizeLines(cgImage: cgImage, region: inflatedSelection(region))
+            return StreamTextRecognition(
+                text: StreamTextCaptureFilter.acceptedText(from: lines),
+                usedSelection: true
+            )
+        }
         let highlights = StreamTextSelectionDetector.selectionRects(in: cgImage)
         let wholeFrameLines = recognizeLines(cgImage: cgImage, region: nil)
         // A block only counts as a selection when the text it holds fits inside it like a highlight.
@@ -123,7 +147,11 @@ struct StreamTextRecognizer: Sendable {
         return StreamTextRecognition(text: pieces.joined(separator: "\n"), usedSelection: true)
     }
 
-    /// Vision's text detector wants a little context around a line, and a highlight hugs its glyphs.
+    nonisolated static func isUsableRegion(_ rect: CGRect) -> Bool {
+        rect.width > 0 && rect.height > 0 && rect.width <= 1 && rect.height <= 1
+    }
+
+    /// Vision's text detector wants a little context around a line, and a selection hugs its glyphs.
     /// The margin is proportional so it survives both a small chat line and a large subtitle.
     nonisolated static func inflatedSelection(_ rect: CGRect) -> CGRect {
         let dx = max(0.005, rect.width * 0.02)
