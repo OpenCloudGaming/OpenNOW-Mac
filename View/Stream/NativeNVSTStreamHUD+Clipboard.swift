@@ -149,9 +149,12 @@ struct StreamHUDClipboardRow: View {
             Rectangle().stroke(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
         }
         .contentShape(Rectangle())
+        // The share menu only lists apps that register a share service; dragging the text reaches the
+        // apps that do not, which is most chat clients.
+        .draggable(entry.text)
         .onHover { isHovering = $0 }
         .accessibilityElement(children: .contain)
-        .help(isClipped ? "Cut off \u{2014} scroll the field and copy the rest to join it" : entry.text)
+        .help(helpText)
     }
 
     /// The system share menu, listing whatever apps and services take text on this Mac — the Mac's
@@ -166,6 +169,11 @@ struct StreamHUDClipboardRow: View {
     }
 
     private var isFocused: Bool { isCopyFocused || isRemoveFocused }
+
+    private var helpText: String {
+        guard isClipped else { return "\(entry.text) \u{2014} drag to another app, or use its buttons" }
+        return "Cut off \u{2014} scroll the field and copy the rest to join it"
+    }
 
     private var metadata: some View {
         HStack(spacing: 8) {
