@@ -122,6 +122,7 @@ struct StreamTextCaptureFilterTests {
     }
 
     /// A field with generous highlight padding runs taller than its line, and is still a selection.
+    /// Measured at 1.93 on a real code field, which is why the height ceiling is 2.5.
     @Test func aRoomierFieldHighlightIsStillASelection() {
         let block = CGRect(x: 0.2, y: 0.5, width: 0.5, height: 0.05)
         #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("0b4b75c0681540df", CGRect(x: 0.21, y: 0.512, width: 0.45, height: 0.026))]))
@@ -135,11 +136,18 @@ struct StreamTextCaptureFilterTests {
         #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("R525aa", CGRect(x: 0.5378, y: 0.7457, width: 0.0262, height: 0.0206))]))
     }
 
-    /// A run of coloured text has no block around it: the "block" is the glyphs, so it comes out
-    /// clearly narrower than the line box Vision reports.
-    @Test func aRunOfColouredTextIsNotASelection() {
-        let block = CGRect(x: 0.2, y: 0.4, width: 0.08, height: 0.03)
-        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("heading", CGRect(x: 0.2, y: 0.4, width: 0.12, height: 0.03))]))
+    /// A block whose label covers only a corner of it is a panel, not a selection.
+    @Test func aPanelWithASmallLabelIsNotASelection() {
+        let block = CGRect(x: 0.2, y: 0.4, width: 0.5, height: 0.09)
+        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("heading", CGRect(x: 0.25, y: 0.42, width: 0.1, height: 0.03))]))
+    }
+
+    /// The case that used to fail: a reader selects part of a long line, so the highlight is narrower
+    /// than the box Vision returns the whole line in. Measured against the line that reads as "a block
+    /// far narrower than its text"; measured against the intersection, it is a selection.
+    @Test func aPartialSelectionOfALongLineIsASelection() {
+        let block = CGRect(x: 0.509, y: 0.785, width: 0.080, height: 0.019)
+        #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("Foxxxxxxxcdqwdwdqdwqwc", CGRect(x: 0.470, y: 0.780, width: 0.200, height: 0.024))]))
     }
 
     /// A field's highlight is drawn tight, so it can come out a hair narrower than the line box —

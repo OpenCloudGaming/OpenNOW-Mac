@@ -53,31 +53,39 @@ enum StreamTextCaptureFilter {
         rects.sorted { $0.maxY > $1.maxY }
     }
 
+    /// How much of a block has to be text before it counts as a highlight rather than chrome.
+    static let minimumInkCoverage: CGFloat = 0.35
+
     /// Whether a detected block is a highlight *behind* text rather than a coloured panel with a
-    /// label on it or a run of coloured text that happens to look solid.
+    /// small label on it.
     ///
     /// Colour and shape alone cannot tell them apart: a blue banner and a blue text selection are the
-    /// same rectangle to the eye of a pixel scanner. The relation to the recognized text can. A
-    /// selection hugs its line — roughly as tall as the line box, and wide enough to have padding
-    /// each side. A button or banner is several times its label's size, and a run of coloured text has
-    /// no block around it at all, so its "block" is narrower than Vision's line box.
+    /// same rectangle to the eye of a pixel scanner. The relation to the recognized text can — but
+    /// only if it is measured against the text *inside* the block, which is why the intersection is
+    /// taken rather than the whole line. Vision groups a line into one observation, so a reader who
+    /// selects part of a line highlights a block narrower than the box the line comes back in;
+    /// measured against that box, every partial selection looks like "a block far narrower than its
+    /// text" and gets thrown away. Against the intersection, the block is compared with what is
+    /// actually on it.
+    ///
+    /// What is left to reject is proportion: a button or a panel is several times its own label, so
+    /// its text covers only a corner of it.
     static func isTextSelection(_ block: CGRect, lines: [StreamRecognizedLine]) -> Bool {
-        let inside = lines.filter { coverage(of: $0.bounds, by: block) >= 0.3 }
-        var union: CGRect?
-        for line in inside { union = union?.union(line.bounds) ?? line.bounds }
-        guard let union, union.width > 0, union.height > 0 else { return false }
-        let ratioH = block.height / union.height
-        let ratioW = block.width / union.width
-        // The lower bounds are generous because a selection is drawn tight: a field's highlight can
-        // be a hair narrower than the line box Vision reports (measured at 0.97 on a real text
-        // field), and it can be shorter than that box, because the box carries ascenders and
-        // descenders the highlight does not — a selected password measured 0.72 of its own line and
-        // was thrown away by a 0.85 floor. A field with generous padding runs taller (measured 1.86).
-        //
-        // The upper bounds do the real rejecting. A label button is short and wide — "Copy" on a
-        // full-width button measured 5.5× its own word — so a block much wider than the text inside
-        // it is chrome, not a selection.
-        return ratioH >= 0.65 && ratioH <= 2.0 && ratioW >= 0.9 && ratioW <= 2.0
+        var ink: CGRect?
+        for line in lines {
+            let intersection = block.intersection(line.bounds)
+            guard !intersection.isNull, !intersection.isEmpty else { continue }
+            ink = ink?.union(intersection) ?? intersection
+        }
+        guard let ink, ink.width > 0, ink.height > 0 else { return false }
+        let blockArea = block.width * block.height
+        guard blockArea > 0 else { return false }
+        let inkCoverage = (ink.width * ink.height) / blockArea
+        guard inkCoverage >= minimumInkCoverage else { return false }
+        // Heights run closest — a field's highlight measured 1.93× its line on a real stream, and a
+        // panel with a large label starts at about 3×. Widths separate further, because a button
+        // label is a small word on a wide bar.
+        return block.height / ink.height <= 2.5 && block.width / ink.width <= 2.0
     }
 
     /// Whether the text stops as if a field cut it off. A trailing ellipsis is the one clip signal a
@@ -119,13 +127,6 @@ enum StreamTextCaptureFilter {
         return nil
     }
 
-    /// The share of `bounds` that falls inside `rect`.
-    static func coverage(of bounds: CGRect, by rect: CGRect) -> CGFloat {
-        guard bounds.width > 0, bounds.height > 0 else { return 0 }
-        let intersection = rect.intersection(bounds)
-        guard !intersection.isNull, !intersection.isEmpty else { return 0 }
-        return (intersection.width * intersection.height) / (bounds.width * bounds.height)
-    }
 }
 
 /// Turns a captured frame into text. The Vision work runs off the main thread, so a capture never
