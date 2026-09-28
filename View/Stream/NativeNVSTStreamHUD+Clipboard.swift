@@ -13,6 +13,10 @@ extension NativeNVSTMediaStreamSurface {
     static func clipboardFocusID(for entry: StreamClipboardEntry) -> String {
         NativeNVSTHostViewModel.clipboardEntryFocusPrefix + entry.id.uuidString
     }
+
+    static func clipboardRemoveFocusID(for entry: StreamClipboardEntry) -> String {
+        NativeNVSTHostViewModel.clipboardRemoveFocusPrefix + entry.id.uuidString
+    }
 }
 
 /// Observes the clipboard controller directly: entries are filed off the copy shortcut while the HUD
@@ -44,10 +48,11 @@ struct StreamHUDClipboardPanel: View {
                         ForEach(clipboard.entries) { entry in
                             StreamHUDClipboardRow(
                                 entry: entry,
-                                isFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry)
-                            ) {
-                                model.copyClipboardEntry(entry)
-                            }
+                                isCopyFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry),
+                                isRemoveFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardRemoveFocusID(for: entry),
+                                onCopy: { model.copyClipboardEntry(entry) },
+                                onRemove: { model.removeClipboardEntry(entry) }
+                            )
                         }
                     }
                     StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
@@ -84,10 +89,16 @@ struct StreamHUDClipboardPanel: View {
 
 /// One captured text. The recognized text is flattened to a single line so a multi-line OCR result
 /// does not turn one row into a paragraph; the time and title below say where it came from.
+///
+/// The row is not itself a button: reading an entry and acting on it are different intents, and a
+/// stray click while scrolling the dock used to copy something. Copy and remove are explicit, named
+/// controls at the trailing edge.
 struct StreamHUDClipboardRow: View {
     let entry: StreamClipboardEntry
-    var isFocused = false
-    let action: () -> Void
+    var isCopyFocused = false
+    var isRemoveFocused = false
+    let onCopy: () -> Void
+    let onRemove: () -> Void
     @State private var isHovering = false
 
     private var oneLineText: String {
@@ -101,41 +112,61 @@ struct StreamHUDClipboardRow: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(oneLineText)
                     .font(.streamFont(size: 11, weight: .semibold))
                     .foregroundStyle(StreamHUDTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                HStack(spacing: 8) {
-                    Text(entry.capturedAt, style: .relative)
-                    if isClipped {
-                        Text("CUT OFF")
-                            .foregroundStyle(StreamHUDTheme.warning)
-                    }
-                    if !entry.gameTitle.isEmpty {
-                        Text(entry.gameTitle)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                }
-                .font(.streamFont(size: 9, weight: .medium))
-                .foregroundStyle(StreamHUDTheme.textTertiary)
+                metadata
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(isHovering ? 0.14 : 0.055))
-            .overlay {
-                Rectangle().stroke(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
-            }
-            .contentShape(Rectangle())
+            Spacer(minLength: 6)
+            StreamHUDParticipantIconButton(
+                systemName: "doc.on.doc",
+                label: "Copy to clipboard",
+                color: StreamHUDTheme.accent,
+                isFocused: isCopyFocused,
+                action: onCopy
+            )
+            StreamHUDParticipantIconButton(
+                systemName: "trash",
+                label: "Remove this entry",
+                color: StreamHUDTheme.danger,
+                isFocused: isRemoveFocused,
+                action: onRemove
+            )
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(isHovering ? 0.14 : 0.055))
+        .overlay {
+            Rectangle().stroke(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
+        }
+        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .accessibilityLabel("Copy captured text from \(entry.gameTitle.isEmpty ? "the stream" : entry.gameTitle)\(isClipped ? ", cut off" : "")")
-        .help(isClipped ? "Cut off \u{2014} scroll the field and copy the rest to join it" : "Copy to clipboard")
+        .accessibilityElement(children: .contain)
+        .help(isClipped ? "Cut off \u{2014} scroll the field and copy the rest to join it" : entry.text)
+    }
+
+    private var isFocused: Bool { isCopyFocused || isRemoveFocused }
+
+    private var metadata: some View {
+        HStack(spacing: 8) {
+            Text(entry.capturedAt, style: .relative)
+            if isClipped {
+                Text("CUT OFF")
+                    .foregroundStyle(StreamHUDTheme.warning)
+            }
+            if !entry.gameTitle.isEmpty {
+                Text(entry.gameTitle)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+        .font(.streamFont(size: 9, weight: .medium))
+        .foregroundStyle(StreamHUDTheme.textTertiary)
     }
 }
 

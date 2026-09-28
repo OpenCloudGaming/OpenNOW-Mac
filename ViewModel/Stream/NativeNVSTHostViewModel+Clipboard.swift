@@ -16,7 +16,9 @@ extension NativeNVSTHostViewModel {
         static let merged = "Joined the two reads"
         static let copied = "Copied to clipboard"
         static let empty = "No text found in frame"
-        static let noSelection = "No selected text in frame"
+        /// A selection read that found nothing is usually a selection the detector could not see. The
+        /// way out is the other mode, so the flash names it rather than leaving the reader to guess.
+        static let regionAdvice = "No text found \u{2014} try Region mode to drag a box"
     }
 
     /// How long a dragged selection stays usable. Long enough to select and then reach for the copy
@@ -218,6 +220,14 @@ extension NativeNVSTHostViewModel {
         setClipboardCaptureMode(modes[next])
     }
 
+    /// Drops one entry from the history.
+    func removeClipboardEntry(_ entry: StreamClipboardEntry) {
+        guard clipboard.store.remove(id: entry.id) else { return }
+        if clipboard.pendingMerge?.entryID == entry.id { clipboard.pendingMerge = nil }
+        reloadClipboardHistory()
+        OPNStreamTelemetry.capture("nvst.ui.clipboard.removed", level: .info, message: "Clipboard history entry removed from the HUD.", attributes: ["applicationID": configuration.applicationID])
+    }
+
     func clearClipboardHistory() {
         clipboard.pendingMerge = nil
         clipboard.store.clear()
@@ -226,11 +236,15 @@ extension NativeNVSTHostViewModel {
     }
 
     private func showEmptyCaptureMessage(reason: String) {
-        let message = reason == "no-selection" ? Self.StreamTextCaptureMessage.noSelection : Self.StreamTextCaptureMessage.empty
-        showNativeTransientStreamMessage(message)
+        // A selection read that comes back empty is usually a selection the detector could not see,
+        // and Region mode is the reader's way round that. A missing frame is a different problem, so
+        // it does not get the advice.
+        let advisesRegion = reason != "no-frame" && StreamTextCaptureSettings.mode == .selection
+        showNativeTransientStreamMessage(advisesRegion ? Self.StreamTextCaptureMessage.regionAdvice : Self.StreamTextCaptureMessage.empty)
         OPNStreamTelemetry.capture("nvst.ui.clipboard.empty", level: .info, message: "Frame text capture found nothing to file.", attributes: [
             "applicationID": configuration.applicationID,
             "reason": reason,
+            "advisedRegion": String(advisesRegion),
         ])
     }
 }

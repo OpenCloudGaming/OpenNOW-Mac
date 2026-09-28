@@ -79,6 +79,15 @@ public struct StreamClipboardHistoryStore: Sendable {
         return entries[index]
     }
 
+    /// Drops one entry. Returns false when it was already gone, so a double press is not an error.
+    @discardableResult
+    public func remove(id: UUID) -> Bool {
+        let entries = load()
+        guard entries.contains(where: { $0.id == id }) else { return false }
+        store(entries.filter { $0.id != id })
+        return true
+    }
+
     /// Empties the history. The file stays in place, written as an empty list, so a reader who
     /// clears history does not then wonder whether the store was deleted.
     public func clear() {

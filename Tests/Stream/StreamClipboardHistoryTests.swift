@@ -75,6 +75,24 @@ struct StreamClipboardHistoryTests {
         #expect(store.load().map(\.text) == ["kept"])
     }
 
+    @Test func removingOneEntryLeavesTheRest() {
+        let store = makeClipboardStore()
+        let now = Date()
+        store.append(text: "first", applicationID: "100", gameTitle: "Game", capturedAt: now)
+        store.append(text: "second", applicationID: "100", gameTitle: "Game", capturedAt: now.addingTimeInterval(10))
+        let oldest = store.load().first { $0.text == "first" }!
+        #expect(store.remove(id: oldest.id))
+        #expect(store.load().map(\.text) == ["second"])
+        #expect(StreamClipboardHistoryStore(fileURL: store.fileURL).load().map(\.text) == ["second"])
+    }
+
+    @Test func removingAnUnknownEntryChangesNothing() {
+        let store = makeClipboardStore()
+        store.append(text: "kept", applicationID: "100", gameTitle: "Game")
+        #expect(!store.remove(id: UUID()))
+        #expect(store.load().map(\.text) == ["kept"])
+    }
+
     @Test func clearEmptiesTheHistoryAndSurvivesAReopen() {
         let store = makeClipboardStore()
         store.append(text: "gone", applicationID: "100", gameTitle: "Game")

@@ -82,7 +82,29 @@ struct NativeNVSTHUDFocusEntryParityTests {
         let ids = model.hudFocusEntries.map(\.id)
         #expect(ids.contains(NativeNVSTHostViewModel.clipboardCaptureModeFocusID))
         #expect(ids.contains(NativeNVSTHostViewModel.clipboardEntryFocusPrefix + entry.id.uuidString))
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardRemoveFocusPrefix + entry.id.uuidString))
         #expect(ids.contains(NativeNVSTHostViewModel.clipboardClearFocusID))
+    }
+
+    /// Copy and remove share one row per entry, so left/right picks the action and up/down moves
+    /// between entries rather than between the two buttons of one entry.
+    @Test func copyAndRemoveShareAnEntrysRow() {
+        OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
+        let (_, model) = makeHUDSurface()
+        model.clipboard.entries = [
+            StreamClipboardEntry(text: "first", applicationID: "100", gameTitle: "Game"),
+            StreamClipboardEntry(text: "second", applicationID: "100", gameTitle: "Game"),
+        ]
+        let group = "clipboard-\(model.clipboard.entries[0].id.uuidString)"
+        let entries = model.hudFocusEntries.filter { $0.group == group }
+        #expect(entries.map(\.id) == [
+            NativeNVSTHostViewModel.clipboardEntryFocusPrefix + model.clipboard.entries[0].id.uuidString,
+            NativeNVSTHostViewModel.clipboardRemoveFocusPrefix + model.clipboard.entries[0].id.uuidString,
+        ])
+        #expect(entries.allSatisfy { $0.columns == 2 })
+        #expect(StreamHUDFocusEntry.rows(of: model.hudFocusEntries).contains { row in
+            row.map { model.hudFocusEntries[$0].group } == [group, group]
+        })
     }
 
     /// The mode selector leads the panel, so it stays reachable however long the history grows.
