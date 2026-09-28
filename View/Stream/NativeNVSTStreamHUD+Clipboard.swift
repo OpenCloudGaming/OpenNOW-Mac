@@ -132,6 +132,7 @@ struct StreamHUDClipboardRow: View {
                 isFocused: isCopyFocused,
                 action: onCopy
             )
+            shareButton
             StreamHUDParticipantIconButton(
                 systemName: "trash",
                 label: "Remove this entry",
@@ -151,6 +152,17 @@ struct StreamHUDClipboardRow: View {
         .onHover { isHovering = $0 }
         .accessibilityElement(children: .contain)
         .help(isClipped ? "Cut off \u{2014} scroll the field and copy the rest to join it" : entry.text)
+    }
+
+    /// The system share menu, listing whatever apps and services take text on this Mac — the Mac's
+    /// equivalent of the iOS share sheet, anchored by macOS to this control.
+    private var shareButton: some View {
+        ShareLink(item: entry.text) {
+            StreamHUDIconButtonLabel(systemName: "square.and.arrow.up", color: StreamHUDTheme.accent)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Share this entry")
+        .help("Share \u{2014} send this text to another app")
     }
 
     private var isFocused: Bool { isCopyFocused || isRemoveFocused }

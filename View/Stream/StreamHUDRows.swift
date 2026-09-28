@@ -229,29 +229,37 @@ private struct StreamHUDSegmentedChip: View {
     }
 }
 
-/// The approve / remove control on a Remote Co-Op participant row.
-///
-/// Shared when both stream HUDs hosted Remote Co-Op; only the native HUD does now and the row has to look identical in each:
-/// it was a private helper on the WebRTC HUD until the native NVST transport grew the same panel.
+/// The square chrome a small HUD icon control wears, shared by the plain buttons and any control
+/// that is not a `Button` — a share link, whose own label would otherwise be system chrome.
+struct StreamHUDIconButtonLabel: View {
+    let systemName: String
+    let color: Color
+    /// Drawn with the same ring the rest of the HUD uses, so a controller can find these rows.
+    var isFocused = false
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.streamFont(size: 10, weight: .bold))
+            .foregroundStyle(color)
+            .frame(width: 22, height: 22)
+            .background(Color.white.opacity(isFocused ? 0.16 : 0.07))
+            .overlay {
+                Rectangle().stroke(isFocused ? color : color.opacity(0.32), lineWidth: isFocused ? 2 : 1)
+            }
+    }
+}
+
+/// A small icon button on a HUD row, such as approving or removing a Remote Co-Op participant.
 struct StreamHUDParticipantIconButton: View {
     let systemName: String
     let label: String
     let color: Color
-    /// Drawn with the same ring the rest of the HUD uses, so a controller can find these rows.
-    /// Approving a guest happens mid-game, when reaching for the trackpad is worst.
     var isFocused = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.streamFont(size: 10, weight: .bold))
-                .foregroundStyle(color)
-                .frame(width: 22, height: 22)
-                .background(Color.white.opacity(isFocused ? 0.16 : 0.07))
-                .overlay {
-                    Rectangle().stroke(isFocused ? color : color.opacity(0.32), lineWidth: isFocused ? 2 : 1)
-                }
+            StreamHUDIconButtonLabel(systemName: systemName, color: color, isFocused: isFocused)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
