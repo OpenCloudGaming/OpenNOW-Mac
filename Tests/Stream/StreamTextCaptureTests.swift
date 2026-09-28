@@ -127,6 +127,14 @@ struct StreamTextCaptureFilterTests {
         #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("0b4b75c0681540df", CGRect(x: 0.21, y: 0.512, width: 0.45, height: 0.026))]))
     }
 
+    /// The other direction: a highlight can be shorter than Vision's line box, because that box
+    /// carries ascenders and descenders the field does not paint. A selected password measured 0.72
+    /// of its own line on a real stream and was dropped by the old 0.85 floor.
+    @Test func aHighlightShorterThanItsLineBoxIsStillASelection() {
+        let block = CGRect(x: 0.5375, y: 0.7481, width: 0.0250, height: 0.0148)
+        #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("R525aa", CGRect(x: 0.5378, y: 0.7457, width: 0.0262, height: 0.0206))]))
+    }
+
     /// A run of coloured text has no block around it: the "block" is the glyphs, so it comes out
     /// clearly narrower than the line box Vision reports.
     @Test func aRunOfColouredTextIsNotASelection() {

@@ -17,9 +17,12 @@ import Foundation
 /// coordinates (origin bottom-left), which is the space `VNRecognizedTextObservation.boundingBox`
 /// uses.
 enum StreamTextSelectionDetector {
-    /// The frame is downscaled before it is scanned. A highlight is a large flat block, so it survives
-    /// the reduction, and the scan stays cheap enough to run inside a capture.
-    static let maximumDownscaleWidth = 480
+    /// The frame is downscaled before it is scanned: a highlight is a large flat block, so it survives
+    /// the reduction, and the scan stays cheap enough to run inside a capture. The width is a balance,
+    /// though — a 5120-wide stream squashes a 32-pixel text highlight to two pixels at 480, where the
+    /// minimum-height filter then drops it on rounding alone. 640 keeps a plausible line at 3+ pixels
+    /// on the widest frames the client streams while costing a third more pixels to scan.
+    static let maximumDownscaleWidth = 640
     /// At most this many highlights are read, so a frame full of coloured panels cannot turn one copy
     /// into a page of text.
     static let maximumHighlights = 8

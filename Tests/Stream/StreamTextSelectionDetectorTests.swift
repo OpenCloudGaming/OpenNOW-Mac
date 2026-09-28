@@ -66,6 +66,17 @@ struct StreamTextSelectionDetectorTests {
         #expect(rects.first.map { close($0.minX, 0.4) } == true)
     }
 
+    /// A 5120-wide stream squashes a text highlight to a couple of pixels at a 480-pixel scan, where
+    /// rounding alone decided whether it survived. The scan width has to keep a real line resolvable.
+    @Test func aSmallHighlightSurvivesAWideFrame() {
+        let image = makeImage(width: 2560, height: 1080) { context in
+            fill(context, CGRect(x: 1350, y: 500, width: 130, height: 30), red: 0.16, green: 0.38, blue: 0.85)
+        }
+        let rects = StreamTextSelectionDetector.selectionRects(in: image)
+        #expect(rects.count == 1)
+        #expect(rects.first.map { close($0.minX, 1350.0 / 2560.0) } == true)
+    }
+
     @Test func aPlainFrameHasNoSelection() {
         let image = makeImage(width: 400, height: 200) { _ in }
         #expect(StreamTextSelectionDetector.selectionRects(in: image).isEmpty)
