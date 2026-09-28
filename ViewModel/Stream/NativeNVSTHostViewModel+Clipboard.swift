@@ -19,6 +19,17 @@ extension NativeNVSTHostViewModel {
         /// A selection read that found nothing is usually a selection the detector could not see. The
         /// way out is the other mode, so the flash names it rather than leaving the reader to guess.
         static let regionAdvice = "No text found \u{2014} try Region mode to drag a box"
+
+        /// What an empty read says, and how long it is worth leaving up. A missing frame is a
+        /// different failure — Region mode cannot help there — so only a read that had a frame and
+        /// found nothing in it points at the other mode.
+        static func emptyReadMessage(reason: String, mode: StreamTextCaptureMode) -> String {
+            reason != "no-frame" && mode == .selection ? regionAdvice : empty
+        }
+
+        static func emptyReadDuration(reason: String, mode: StreamTextCaptureMode) -> Duration {
+            emptyReadMessage(reason: reason, mode: mode) == regionAdvice ? .seconds(4) : .seconds(2)
+        }
     }
 
     /// How long a dragged selection stays usable. Long enough to select and then reach for the copy
@@ -237,10 +248,14 @@ extension NativeNVSTHostViewModel {
 
     private func showEmptyCaptureMessage(reason: String) {
         // A selection read that comes back empty is usually a selection the detector could not see,
-        // and Region mode is the reader's way round that. A missing frame is a different problem, so
-        // it does not get the advice.
-        let advisesRegion = reason != "no-frame" && StreamTextCaptureSettings.mode == .selection
-        showNativeTransientStreamMessage(advisesRegion ? Self.StreamTextCaptureMessage.regionAdvice : Self.StreamTextCaptureMessage.empty)
+        // and Region mode is the reader's way round that. The advice also stays up longer than a
+        // plain "nothing found": it is the only failure whose fix takes a second act.
+        let mode = StreamTextCaptureSettings.mode
+        let advisesRegion = Self.StreamTextCaptureMessage.emptyReadMessage(reason: reason, mode: mode) == Self.StreamTextCaptureMessage.regionAdvice
+        showNativeTransientStreamMessage(
+            Self.StreamTextCaptureMessage.emptyReadMessage(reason: reason, mode: mode),
+            duration: Self.StreamTextCaptureMessage.emptyReadDuration(reason: reason, mode: mode)
+        )
         OPNStreamTelemetry.capture("nvst.ui.clipboard.empty", level: .info, message: "Frame text capture found nothing to file.", attributes: [
             "applicationID": configuration.applicationID,
             "reason": reason,
