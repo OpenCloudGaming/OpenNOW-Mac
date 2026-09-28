@@ -176,22 +176,33 @@ extension CaptureSettingsPage {
     ]
 }
 
-/// The in-stream clipboard history's own settings: whether the copy chords file the selected text,
-/// how many entries are held, and — because OCR touches what the reader types elsewhere — one honest
-/// line about where the text lives.
+/// The in-stream clipboard history's own settings: what the copy chords read, how many entries are
+/// held, and — because OCR touches what the reader types elsewhere — one honest line about where the
+/// text lives. The mode row is the same value the HUD selector shows.
 struct StreamClipboardSettingsCard: View {
     let uiScale: CGFloat
-    @AppStorage(StreamTextCaptureSettings.enabledKey) private var captureEnabled = true
+    /// Observed raw value; empty when the reader has never chosen a mode, in which case the migrated
+    /// setting decides. Written on every change so the HUD and this row cannot drift.
+    @AppStorage(StreamTextCaptureSettings.modeKey) private var captureModeRawValue = ""
     @State private var entryCount = 0
+
+    private var mode: StreamTextCaptureMode {
+        StreamTextCaptureMode(rawValue: captureModeRawValue) ?? StreamTextCaptureSettings.mode
+    }
 
     var body: some View {
         SettingsCard(title: "Clipboard", badge: .experimental, uiScale: uiScale) {
-            SettingsToggleRow(
-                title: "Capture text when I press copy",
-                subtitle: "Command-C or Control-C in a stream reads the selected text on this Mac and files it in the clipboard history. The game still receives the copy.",
-                isOn: captureEnabled,
+            SettingsOptionRow(
+                title: "Capture on Copy",
+                subtitle: subtitle,
+                options: StreamTextCaptureMode.allCases.map(\.label),
+                selectedIndex: StreamTextCaptureMode.allCases.firstIndex(of: mode) ?? 0,
                 uiScale: uiScale,
-                action: { captureEnabled = $0 }
+                action: { index in
+                    let selected = StreamTextCaptureMode.allCases[index]
+                    StreamTextCaptureSettings.mode = selected
+                    captureModeRawValue = selected.rawValue
+                }
             )
             SettingsDivider(uiScale: uiScale)
             HStack(spacing: 12 * uiScale) {
@@ -212,6 +223,10 @@ struct StreamClipboardSettingsCard: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .onAppear { refreshCount() }
+    }
+
+    private var subtitle: String {
+        "\(mode.summary) Command-C or Control-C in a stream reads it on this Mac and files it in the clipboard history; the game still receives the copy."
     }
 
     private func refreshCount() {

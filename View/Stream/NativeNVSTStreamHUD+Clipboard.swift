@@ -33,11 +33,9 @@ struct StreamHUDClipboardPanel: View {
             onToggle: { model.toggleHUDSection(.clipboard) }
         ) {
             VStack(alignment: .leading, spacing: 8) {
-                captureToggle
+                captureModeRow
                 if clipboard.entries.isEmpty {
-                    Text(clipboard.isCaptureEnabled
-                         ? "Select text in a stream and press copy to file it here."
-                         : "Capture is off. Your history is kept.")
+                    Text(emptyStateText)
                         .font(.streamFont(size: 11, weight: .medium))
                         .foregroundStyle(StreamHUDTheme.textTertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -60,18 +58,26 @@ struct StreamHUDClipboardPanel: View {
         }
     }
 
-    /// The switch the reader reaches for when the copy starts bothering them. It is the same value
-    /// the Capture page shows, so turning it off here turns it off everywhere, and it stays off next
-    /// time the HUD opens.
-    private var captureToggle: some View {
+    /// What the reader reaches for when the copy starts bothering them, and the way into region mode.
+    /// It is the same value the Capture page shows, so a change here is a change everywhere and it
+    /// survives the next session.
+    private var captureModeRow: some View {
         StreamHUDSegmentedRow(
-            label: "Capture on Copy",
-            options: [(true, "On"), (false, "Off")],
-            selection: clipboard.isCaptureEnabled,
+            label: "Capture",
+            options: StreamTextCaptureMode.allCases.map { ($0, $0.label) },
+            selection: clipboard.captureMode,
             isDisabled: false,
-            isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardCaptureToggleFocusID
-        ) { enabled in
-            model.setClipboardCaptureEnabled(enabled)
+            isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardCaptureModeFocusID
+        ) { mode in
+            model.setClipboardCaptureMode(mode)
+        }
+    }
+
+    private var emptyStateText: String {
+        switch clipboard.captureMode {
+        case .off: return "Capture is off. Your history is kept."
+        case .selection: return "Select text in a stream and press copy to file it here."
+        case .region: return "Press copy to freeze the frame, then drag over the text to read."
         }
     }
 }

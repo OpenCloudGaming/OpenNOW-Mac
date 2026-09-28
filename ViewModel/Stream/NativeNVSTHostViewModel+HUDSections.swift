@@ -88,10 +88,11 @@ extension NativeNVSTHostViewModel {
     /// One entry per history row, newest first, then the clear action. Rows are full-width rows of
     /// their own so the pad walks the list in the order it is drawn.
     var clipboardFocusEntries: [StreamHUDFocusEntry] {
-        // The switch leads the panel: it is what a reader reaches for when the copy starts annoying
-        // them, and it must stay reachable however long the history below it is.
-        var entries = [StreamHUDFocusEntry(id: Self.clipboardCaptureToggleFocusID, isDisabled: false) { [weak self] in
-            self?.toggleClipboardCapture()
+        // The mode selector leads the panel: it is what a reader reaches for when the copy starts
+        // annoying them, and it must stay reachable however long the history below it is. Activate
+        // steps through the modes, which is how every other multi-state HUD row is driven by a pad.
+        var entries = [StreamHUDFocusEntry(id: Self.clipboardCaptureModeFocusID, isDisabled: false) { [weak self] in
+            self?.cycleClipboardCaptureMode()
         }]
         entries += clipboard.entries.map { entry in
             StreamHUDFocusEntry(id: Self.clipboardEntryFocusPrefix + entry.id.uuidString, isDisabled: false) { [weak self] in
@@ -106,7 +107,7 @@ extension NativeNVSTHostViewModel {
 
     static let clipboardEntryFocusPrefix = "clipboard-entry-"
     static let clipboardClearFocusID = "clipboard-clear"
-    static let clipboardCaptureToggleFocusID = "clipboard-capture-toggle"
+    static let clipboardCaptureModeFocusID = "clipboard-capture-mode"
 
     private var displayFocusEntries: [StreamHUDFocusEntry] {
         [

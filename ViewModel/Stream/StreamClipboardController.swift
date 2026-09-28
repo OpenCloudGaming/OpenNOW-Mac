@@ -27,9 +27,11 @@ final class StreamClipboardController: ObservableObject {
     /// The clipped read kept aside so the next copy can complete it. Only a clipped read is held:
     /// a complete one has nothing to recover, and joining two unrelated copies would be a guess.
     var pendingMerge: PendingTextMerge?
-    /// Whether the copy chords file anything. Mirrors the Capture setting, so the HUD switch and the
-    /// Settings switch are one value in one place rather than two that can disagree.
-    @Published var isCaptureEnabled = StreamTextCaptureSettings.isTriggerEnabled
+    /// What the copy chords do. Mirrors the Capture setting, so the HUD selector and the Settings row
+    /// are one value in one place rather than two that can disagree.
+    @Published var captureMode = StreamTextCaptureSettings.mode
+    /// The frozen frame the reader is dragging a region over, if region mode is mid-capture.
+    @Published var regionCapture: StreamRegionCapture?
 
     init(
         store: StreamClipboardHistoryStore = .shared,
@@ -50,15 +52,21 @@ final class StreamClipboardController: ObservableObject {
         task = nil
     }
 
-    /// Turns the copy trigger on or off. Persisted immediately, so it survives the session and is
-    /// the same value Settings shows.
-    func setCaptureEnabled(_ enabled: Bool) {
-        guard isCaptureEnabled != enabled else { return }
-        isCaptureEnabled = enabled
-        StreamTextCaptureSettings.isTriggerEnabled = enabled
-        // A read waiting to be joined belongs to the trigger being on; leaving it behind would let a
-        // re-enable minutes later splice a fragment the reader has stopped thinking about.
-        if !enabled { pendingMerge = nil }
+    /// Switches what the copy chords do. Persisted immediately, so it survives the session and is the
+    /// same value Settings shows.
+    func setCaptureMode(_ mode: StreamTextCaptureMode) {
+        if captureMode != mode {
+            captureMode = mode
+            StreamTextCaptureSettings.mode = mode
+        }
+        // These clearances run whether or not the mode moved: the Capture page can write the same
+        // value directly, and a reader who switched away from region mode must not be left with a
+        // frozen frame over the stream.
+        //
+        // A read waiting to be joined belongs to capture being on; leaving it behind would let a
+        // switch back minutes later splice a fragment the reader has stopped thinking about.
+        if mode == .off { pendingMerge = nil }
+        if mode != .region { regionCapture = nil }
     }
 }
 

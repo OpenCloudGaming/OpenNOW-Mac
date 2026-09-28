@@ -27,16 +27,33 @@ extension NativeNVSTHostViewModel {
     /// again; short enough that an unrelated copy much later is not joined to it.
     static let mergeWindow: TimeInterval = 120
 
-    /// Reads the persisted history. Newest first, exactly as the HUD lists it.
+    /// Reads the persisted history. Newest first, exactly as the HUD lists it. The mode is refreshed
+    /// alongside it: the Capture page can change it while the HUD is closed, and the selector has to
+    /// show what the next press will actually do.
     func reloadClipboardHistory() {
         clipboard.reload()
+        clipboard.captureMode = StreamTextCaptureSettings.mode
     }
 
-    /// Fires on either copy chord. Guarded so a held key or a burst of presses cannot start a second
-    /// capture, and cooldowned because Control-C is a common gameplay binding that would otherwise
-    /// run a recognizer pass on every press.
+    /// Fires on either copy chord, and does whatever the current mode says. The mode is read from the
+    /// setting rather than the HUD's published copy, so a change made on the Capture page mid-session
+    /// takes effect on the next press rather than the next HUD open.
     func captureStreamText() {
         guard StreamTextCaptureSettings.isEnabled else { return }
+        switch StreamTextCaptureSettings.mode {
+        case .off:
+            return
+        case .selection:
+            captureSelectionText()
+        case .region:
+            beginRegionCapture()
+        }
+    }
+
+    /// Reads the text the reader selected. Guarded so a held key or a burst of presses cannot start a
+    /// second capture, and cooldowned because Control-C is a common gameplay binding that would
+    /// otherwise run a recognizer pass on every press.
+    private func captureSelectionText() {
         guard isConnected, !isEnding, !didEnd, let path else { return }
         guard clipboard.task == nil else { return }
         let now = Date()
@@ -59,6 +76,60 @@ extension NativeNVSTHostViewModel {
             }
             self.fileCapturedText(text, usedSelection: recognition.usedSelection, at: Date())
         }
+    }
+
+    // MARK: - Region mode
+
+    /// Freezes the frame and waits for the reader to drag the area worth reading.
+    func beginRegionCapture() {
+        guard isConnected, !isEnding, !didEnd, let path else { return }
+        guard clipboard.regionCapture == nil, clipboard.task == nil else { return }
+        // A frozen frame belongs over the game, not over the app's own panels.
+        guard !unifiedHUDVisible, !streamControlsVisible, !isShortcutsHelpVisible, !isHUDCustomizeVisible, !isPictureInPicture else { return }
+        clipboard.task = Task { @MainActor [weak self] in
+            defer { self?.clipboard.task = nil }
+            guard let self else { return }
+            guard let image = await path.takeScreenshot() else {
+                self.showEmptyCaptureMessage(reason: "no-frame")
+                return
+            }
+            self.clipboard.regionCapture = StreamRegionCapture(image: image)
+            // The drag is the reader's, not the game's: the frozen overlay takes the pointer until the
+            // region is read or the capture is dismissed.
+            self.nativeView?.remoteInputEnabled = false
+            OPNStreamTelemetry.capture("nvst.ui.clipboard.region.opened", level: .info, message: "Region capture opened on a frozen frame.", attributes: ["applicationID": self.configuration.applicationID])
+        }
+    }
+
+    /// Reads the rectangle the reader dragged over the frozen frame.
+    func completeRegionCapture(_ visionRect: CGRect) {
+        guard let capture = clipboard.regionCapture else { return }
+        clipboard.regionCapture = nil
+        nativeView?.remoteInputEnabled = unifiedHUDVisible ? false : networkPathAvailable
+        nativeView?.restoreInputFocus()
+        // The frozen frame is from this session's own stream, so the cooldown that guards the copy
+        // chords has nothing to do with a drag the reader made deliberately.
+        clipboard.task = Task { @MainActor [weak self] in
+            defer { self?.clipboard.task = nil }
+            guard let self else { return }
+            let recognition = await self.clipboard.recognizer.recognizeText(in: capture.image, preferredRegion: visionRect)
+            guard !recognition.text.isEmpty else {
+                self.showEmptyCaptureMessage(reason: "no-selection-text")
+                return
+            }
+            self.fileCapturedText(recognition.text, usedSelection: true, at: Date())
+            OPNStreamTelemetry.capture("nvst.ui.clipboard.region.read", level: .info, message: "Region capture read text from the frozen frame.", attributes: [
+                "applicationID": self.configuration.applicationID,
+                "characters": String(recognition.text.count),
+            ])
+        }
+    }
+
+    func cancelRegionCapture() {
+        guard clipboard.regionCapture != nil else { return }
+        clipboard.regionCapture = nil
+        nativeView?.remoteInputEnabled = unifiedHUDVisible ? false : networkPathAvailable
+        nativeView?.restoreInputFocus()
     }
 
     /// Files a read, first trying to complete the last clipped one.
@@ -128,16 +199,23 @@ extension NativeNVSTHostViewModel {
         clearClipboardHistory()
     }
 
-    /// Turns the copy trigger on or off from the HUD. Persisted, so it survives the session and the
-    /// Capture page shows the same state.
-    func setClipboardCaptureEnabled(_ enabled: Bool) {
-        guard clipboard.isCaptureEnabled != enabled else { return }
-        clipboard.setCaptureEnabled(enabled)
-        OPNStreamTelemetry.capture("nvst.ui.clipboard.capture_toggle", level: .info, message: enabled ? "Clipboard capture enabled from the HUD." : "Clipboard capture disabled from the HUD.", attributes: ["applicationID": configuration.applicationID])
+    /// Switches the capture mode from the HUD. Persisted, so it survives the session and the Capture
+    /// page shows the same value.
+    func setClipboardCaptureMode(_ mode: StreamTextCaptureMode) {
+        guard clipboard.captureMode != mode else { return }
+        if clipboard.regionCapture != nil { cancelRegionCapture() }
+        clipboard.setCaptureMode(mode)
+        OPNStreamTelemetry.capture("nvst.ui.clipboard.capture_mode", level: .info, message: "Clipboard capture mode changed from the HUD.", attributes: [
+            "applicationID": configuration.applicationID,
+            "mode": mode.rawValue,
+        ])
     }
 
-    func toggleClipboardCapture() {
-        setClipboardCaptureEnabled(!clipboard.isCaptureEnabled)
+    /// The pad's activate: steps through the three modes in order, wrapping.
+    func cycleClipboardCaptureMode() {
+        let modes = StreamTextCaptureMode.allCases
+        let next = (modes.firstIndex(of: clipboard.captureMode).map { $0 + 1 } ?? 0) % modes.count
+        setClipboardCaptureMode(modes[next])
     }
 
     func clearClipboardHistory() {

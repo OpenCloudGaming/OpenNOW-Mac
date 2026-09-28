@@ -106,22 +106,62 @@ public struct StreamClipboardHistoryStore: Sendable {
     }
 }
 
-/// Whether in-stream copy files the selected text. Read by the capture path and written by Settings.
-/// Two switches gate it: the Labs flag that offers the feature at all, and this page's toggle that
-/// turns the trigger off while keeping whatever history is already filed.
-public enum StreamTextCaptureSettings {
-    public static let enabledKey = "OpenNOW.Stream.ClipboardCaptureEnabled"
-    /// The trigger is on by default once the feature is on trial; `object(forKey:)` rather than
-    /// `bool(forKey:)` so an untouched preference is not mistaken for the `false` an absent value
-    /// would otherwise give.
-    public static var isTriggerEnabled: Bool {
-        get { OPNAppPreferenceStorage.standard.object(forKey: enabledKey) as? Bool ?? true }
-        set { OPNAppPreferenceStorage.standard.set(newValue, forKey: enabledKey) }
+/// What pressing copy in a stream does.
+public enum StreamTextCaptureMode: String, CaseIterable, Identifiable, Sendable {
+    /// Inert: the copy is left entirely to the game.
+    case off
+    /// Read the text the reader has highlighted — the selection highlight, or the rectangle they
+    /// dragged over it.
+    case selection
+    /// Freeze the frame and read the area the reader drags over it, the way ⌘⇧4 works for the screen.
+    case region
+
+    public var id: String { rawValue }
+
+    public var label: String {
+        switch self {
+        case .off: "Off"
+        case .selection: "Selection"
+        case .region: "Region"
+        }
     }
 
-    /// Both switches, because "inert" has to mean inert: a feature that its Labs flag has not
-    /// offered yet must not fire even if a previous run left the toggle on.
+    /// What the mode reads, for the Settings row and the HUD caption.
+    public var summary: String {
+        switch self {
+        case .off: "Copy is left to the game."
+        case .selection: "Reads the text you have selected."
+        case .region: "Freezes the frame and reads the area you drag."
+        }
+    }
+}
+
+/// How in-stream copy reads text. Read by the capture path and written by Settings and the HUD.
+/// Two switches gate it: the Labs flag that offers the feature at all, and this mode — which also
+/// covers off, so "inert" is one answer in one place rather than a flag and a toggle to reconcile.
+public enum StreamTextCaptureSettings {
+    public static let modeKey = "OpenNOW.Stream.ClipboardCaptureMode"
+    /// The on/off preference this replaced. Still read once so a reader who turned capture off before
+    /// the mode existed lands on Off rather than back on.
+    public static let enabledKey = "OpenNOW.Stream.ClipboardCaptureEnabled"
+
+    public static var mode: StreamTextCaptureMode {
+        get {
+            if let raw = OPNAppPreferenceStorage.standard.string(forKey: modeKey),
+               let mode = StreamTextCaptureMode(rawValue: raw) {
+                return mode
+            }
+            // No mode stored yet: the old boolean decides, defaulting to the selection read that was
+            // the only capture there was.
+            let wasOn = OPNAppPreferenceStorage.standard.object(forKey: enabledKey) as? Bool ?? true
+            return wasOn ? .selection : .off
+        }
+        set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: modeKey) }
+    }
+
+    /// Whether the capture path runs at all: the Labs flag has to offer the feature before any mode,
+    /// including Region, means anything.
     public static var isEnabled: Bool {
-        OPNLabs.isClipboardCaptureEnabled && isTriggerEnabled
+        OPNLabs.isClipboardCaptureEnabled && mode != .off
     }
 }

@@ -138,7 +138,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Video Bitrate", .capture, "recording", keywords: ["record", "capture", "quality", "file size"]),
         SettingsSearchEntry("Audio Bitrate", .capture, "recording", keywords: ["record", "capture", "sound"]),
         SettingsSearchEntry("Record Enhanced Video", .capture, "recording", keywords: ["record", "capture", "upscaled", "metalfx"]),
-        SettingsSearchEntry("Capture text when I press copy", .capture, "clipboard", keywords: ["clipboard", "ocr", "text", "copy", "paste", "history", "frame"]),
+        SettingsSearchEntry("Capture on Copy", .capture, "clipboard", keywords: ["clipboard", "ocr", "text", "copy", "paste", "history", "frame", "selection", "region", "off"]),
         SettingsSearchEntry("Recording Mode", .capture, "recording", keywords: ["replay", "clip", "buffer", "rolling", "last minutes", "shadowplay", "highlights", "instant replay", "manual", "off", "length", "window", "duration", "2 hours", "clip length", "last seconds", "save"]),
         SettingsSearchEntry("Your recordings", .capture, "recordings", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
         SettingsSearchEntry("Your screenshots", .capture, "screenshots", keywords: ["library", "stills", "crop", "album", "albums", "export", "browse", "view"]),
@@ -187,7 +187,7 @@ enum SettingsSearchIndex {
         if entry.group == .keybindings, entry.title == KeybindingAction.captureStreamText.title {
             return KeybindingAction.captureStreamText.isAvailable
         }
-        if entry.group == .capture, entry.title == "Capture text when I press copy" {
+        if entry.group == .capture, entry.title == "Capture on Copy" {
             return OPNLabs.isClipboardCaptureEnabled
         }
         return true

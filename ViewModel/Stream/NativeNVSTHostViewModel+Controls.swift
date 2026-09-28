@@ -315,6 +315,7 @@ extension NativeNVSTHostViewModel {
         screenshotTask = nil
         clipboard.cancelCapture()
         clipboard.pendingMerge = nil
+        clipboard.regionCapture = nil
     }
 
     func showStreamControls(completion: StreamSessionQuitDecisionHandler? = nil) {
