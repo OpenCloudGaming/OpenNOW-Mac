@@ -1,3 +1,4 @@
+import CFNetwork
 import Foundation
 import Security
 
@@ -360,7 +361,12 @@ public final class OPNSessionProxySessionProvider: NSObject, URLSessionDelegate,
         lock.unlock()
     }
 
+    /// Transport failures after which a proxied request is retried directly. A proxy the session
+    /// cannot use fails in the CFNetwork domain, not as a `URLError`, so the code switch below never
+    /// sees it and an unreachable proxy blocks every control-plane request - including the login
+    /// that would let the user turn it off - instead of degrading to a direct connection.
     public static func shouldFallbackToDirect(after error: any Error) -> Bool {
+        if isProxyConnectionFailure(error) { return true }
         guard let urlError = error as? URLError else { return false }
         switch urlError.code {
         case .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet,
@@ -370,6 +376,23 @@ public final class OPNSessionProxySessionProvider: NSObject, URLSessionDelegate,
         default:
             return false
         }
+    }
+
+    /// Codes under `kCFErrorDomainCFNetwork` that mean the proxy itself could not be used. HTTP and
+    /// CONNECT proxy failures, a proxy that rejected the credentials, and an unexpected CONNECT
+    /// response all already fall back through `directFallbackStatuses` when the proxy answers with a
+    /// status; this covers the same conditions surfacing as a transport error instead.
+    private static let proxyConnectionFailureCodes: Set<CFNetworkErrors.RawValue> = [
+        CFNetworkErrors.cfErrorHTTPProxyConnectionFailure.rawValue,
+        CFNetworkErrors.cfErrorHTTPBadProxyCredentials.rawValue,
+        CFNetworkErrors.cfErrorHTTPSProxyConnectionFailure.rawValue,
+        CFNetworkErrors.cfStreamErrorHTTPSProxyFailureUnexpectedResponseToCONNECTMethod.rawValue,
+    ]
+
+    private static func isProxyConnectionFailure(_ error: any Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == (kCFErrorDomainCFNetwork as String) else { return false }
+        return proxyConnectionFailureCodes.contains(Int32(clamping: nsError.code))
     }
 
     func session(for configuration: OPNSessionProxyConfiguration) -> URLSession {
