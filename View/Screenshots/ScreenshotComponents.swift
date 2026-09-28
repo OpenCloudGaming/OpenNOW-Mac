@@ -136,6 +136,14 @@ struct ScreenshotRow: View {
     @State private var isHovering = false
 
     var body: some View {
+        if FileManager.default.fileExists(atPath: screenshot.imageURL.path) {
+            row.onDrag { OPNLibraryDragPayload.screenshot(for: screenshot) } preview: { dragPreview }
+        } else {
+            row
+        }
+    }
+
+    private var row: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 12 * uiScale) {
                 HStack(alignment: .top, spacing: 12 * uiScale) {
@@ -173,6 +181,20 @@ struct ScreenshotRow: View {
         .accessibilityLabel(screenshot.title)
         .accessibilityValue("\(RecordingFormat.relativeDateText(screenshot.createdAt)), \(screenshot.width)x\(screenshot.height), \(RecordingFormat.compactFileSizeText(screenshot.fileSizeBytes))")
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private var dragPreview: some View {
+        if let thumbnail = ScreenshotImageLoader.cachedImage(for: screenshot, longestEdge: 360) {
+            Image(nsImage: thumbnail)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 160 * uiScale)
+        } else {
+            Image(systemName: "camera.fill")
+                .font(.recordingsFont(size: 22, weight: .bold))
+                .foregroundStyle(OPNDesign.Text.secondary)
+        }
     }
 
     private var background: some ShapeStyle {
@@ -396,7 +418,7 @@ enum ScreenshotImageLoader {
     private static let cache = NSCache<NSString, NSImage>()
 
     static func image(for screenshot: StreamScreenshot, longestEdge: CGFloat) async -> NSImage? {
-        let key = "\(screenshot.id.uuidString)-\(Int(longestEdge))" as NSString
+        let key = key(for: screenshot, longestEdge: longestEdge)
         if let cached = cache.object(forKey: key) { return cached }
         let url = screenshot.imageURL
         let image = await Task.detached(priority: .utility) { () -> NSImage? in
@@ -411,5 +433,13 @@ enum ScreenshotImageLoader {
         }.value
         if let image { cache.setObject(image, forKey: key) }
         return image
+    }
+
+    static func cachedImage(for screenshot: StreamScreenshot, longestEdge: CGFloat) -> NSImage? {
+        cache.object(forKey: key(for: screenshot, longestEdge: longestEdge))
+    }
+
+    private static func key(for screenshot: StreamScreenshot, longestEdge: CGFloat) -> NSString {
+        "\(screenshot.id.uuidString)-\(Int(longestEdge))" as NSString
     }
 }

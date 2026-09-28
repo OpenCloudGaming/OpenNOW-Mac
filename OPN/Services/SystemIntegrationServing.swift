@@ -26,6 +26,19 @@ protocol SystemIntegrationServing {
     /// Replaces the general pasteboard's contents with `text`.
     func copyToPasteboard(_ text: String)
 
+    /// Puts `imageURL`'s PNG data and its own file URL on the general pasteboard, so a rich text
+    /// target pastes the picture and Finder pastes a copy of the file. False when the image could
+    /// not be read.
+    func copyImageToPasteboard(_ imageURL: URL) -> Bool
+
+    /// Puts `fileURL` on the general pasteboard as a file reference, so Finder pastes the file
+    /// rather than its path. False when the file is no longer on disk.
+    func copyFileURLToPasteboard(_ fileURL: URL) -> Bool
+
+    /// Hands `url` to the system share sheet, anchored on the key window. False when there is no
+    /// window to anchor it to.
+    func share(_ url: URL) -> Bool
+
     /// Brings Finder forward with `url` selected.
     func revealInFinder(_ url: URL)
 
@@ -36,6 +49,14 @@ protocol SystemIntegrationServing {
     /// Stamps the bundled app icon onto the file at `url`, so a generated shortcut looks like the
     /// app in Finder. Silently does nothing if the icon resource is missing.
     func applyAppIcon(toFileAt url: URL)
+}
+
+/// Holds the share picker for the life of the sheet it presents. It has to be created on the main
+/// actor and shown from an `NSView`, so it lives here rather than in a stored property of the
+/// value-type service.
+@MainActor
+private enum SharingPickerRetention {
+    static var picker: NSSharingServicePicker?
 }
 
 struct AppKitSystemIntegration: SystemIntegrationServing {
@@ -56,6 +77,40 @@ struct AppKitSystemIntegration: SystemIntegrationServing {
     func copyToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    func copyImageToPasteboard(_ imageURL: URL) -> Bool {
+        guard let data = try? Data(contentsOf: imageURL) else { return false }
+        let item = NSPasteboardItem()
+        item.setData(data, forType: .png)
+        item.setString(imageURL.absoluteString, forType: .fileURL)
+        write([item])
+        return true
+    }
+
+    func copyFileURLToPasteboard(_ fileURL: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
+        let item = NSPasteboardItem()
+        item.setString(fileURL.absoluteString, forType: .fileURL)
+        write([item])
+        return true
+    }
+
+    func share(_ url: URL) -> Bool {
+        guard let anchor = NSApp.keyWindow?.contentView
+            ?? NSApp.mainWindow?.contentView
+            ?? NSApp.windows.first?.contentView else { return false }
+        let picker = NSSharingServicePicker(items: [url])
+        // The picker is not retained by the menu it presents, so it has to outlive this call.
+        SharingPickerRetention.picker = picker
+        picker.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+        return true
+    }
+
+    private func write(_ objects: [NSPasteboardWriting]) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.writeObjects(objects)
     }
 
     func revealInFinder(_ url: URL) {

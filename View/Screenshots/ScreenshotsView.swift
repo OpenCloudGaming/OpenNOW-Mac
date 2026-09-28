@@ -16,6 +16,8 @@ struct ScreenshotsView: View {
     @State private var contextMenuScreenshot: StreamScreenshot?
     @State private var contextMenuAnchor: CGPoint = .zero
     @State private var contextSurface = OPNContextSurface()
+    @State private var quickLookRequest: OPNQuickLookRequest?
+    @FocusState private var isListFocused: Bool
 
     private var visibleScreenshots: [StreamScreenshot] { model.visibleScreenshots }
 
@@ -40,6 +42,7 @@ struct ScreenshotsView: View {
         // Opaque base, not the striped backdrop: the list is the page's content surface and the
         // stripes belong to the empty preview only.
         .background(RecordingsLayout.surface)
+        .background { OPNQuickLookHost(request: $quickLookRequest).allowsHitTesting(false) }
         .ignoresSafeArea(edges: .bottom)
         .overlay { albumEditorOverlay }
         .overlay { renameOverlay }
@@ -107,6 +110,7 @@ struct ScreenshotsView: View {
                     LazyVStack(spacing: 10 * uiScale) {
                         ForEach(visibleScreenshots) { screenshot in
                             ScreenshotRow(screenshot: screenshot, isSelected: model.selectedScreenshot?.id == screenshot.id, uiScale: uiScale) {
+                                isListFocused = true
                                 model.select(screenshot)
                             }
                             .background {
@@ -118,6 +122,11 @@ struct ScreenshotsView: View {
                     .padding(.horizontal, 14 * uiScale)
                     .padding(.vertical, 18 * uiScale)
                 }
+                .focusable()
+                .focusEffectDisabled()
+                .focused($isListFocused)
+                .opnTakingFocus($isListFocused, while: true)
+                .onKeyPress(.space, action: handleSpacebar)
             }
         }
         .background(RecordingsLayout.sidebar)
@@ -147,6 +156,17 @@ struct ScreenshotsView: View {
         }
     }
 
+    private func presentQuickLook(for screenshot: StreamScreenshot) {
+        guard let url = model.quickLookURL(for: screenshot) else { return }
+        quickLookRequest = OPNQuickLookRequest(url: url)
+    }
+
+    private func handleSpacebar() -> KeyPress.Result {
+        guard model.editorViewModel == nil, let screenshot = model.selectedScreenshot else { return .ignored }
+        presentQuickLook(for: screenshot)
+        return .handled
+    }
+
     private func contextMenuItems(for screenshot: StreamScreenshot) -> [OPNDropdownItem] {
         [
             OPNDropdownItem(id: "open", title: "Open Screenshot") { model.open(screenshot) },
@@ -156,7 +176,10 @@ struct ScreenshotsView: View {
                 screenshotNameDraft = screenshot.title
             },
             OPNDropdownItem(id: "reveal", title: "Reveal in Finder") { model.reveal(screenshot) },
-            OPNDropdownItem(id: "copy", title: "Copy File Path") { model.copyPath(screenshot) },
+            OPNDropdownItem(id: "share", title: "Share…") { model.share(screenshot) },
+            OPNDropdownItem(id: "copyImage", title: "Copy Image") { model.copyImage(screenshot) },
+            OPNDropdownItem(id: "quickLook", title: "Quick Look") { presentQuickLook(for: screenshot) },
+            OPNDropdownItem(id: "copyPath", title: "Copy File Path") { model.copyPath(screenshot) },
             OPNDropdownItem(id: "delete", title: "Delete", isDestructive: true, startsGroup: true) {
                 model.pendingDelete = screenshot
             }
