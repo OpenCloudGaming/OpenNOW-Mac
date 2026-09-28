@@ -77,10 +77,12 @@ import Testing
         #expect(device.captureDeviceState.isFallback)
 
         device.setPreferredInputDevice(uid: uid)
+        device.drainAudioQueue()
         #expect(!device.captureDeviceState.isFallback)
         #expect(device.captureDeviceState.uniqueID == uid)
 
         device.setPreferredInputDevice(uid: nil)
+        device.drainAudioQueue()
         #expect(!device.captureDeviceState.isFallback, "Default Device is a choice, not a fallback")
     }
 
@@ -94,6 +96,7 @@ import Testing
         let playoutBefore = (device.isPlayoutRunning, device.outputSampleRate, device.outputChannels)
 
         device.setPreferredInputDevice(uid: uid)
+        device.drainAudioQueue()
         #expect(device.captureDeviceState.uniqueID == uid)
         #expect(device.captureDeviceRebuildEvidence.rebuilds == before.rebuilds + 1)
 
