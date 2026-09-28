@@ -87,6 +87,10 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     /// Guards the capture unit, its format and its scratch buffer against the render thread: a rebuild
     /// mutates all three where `captureMicrophone` reads them.
     private let captureStateLock = NSLock()
+    /// Guards the resolved capture device for off-queue readers. The diagnostics heartbeat read this
+    /// through `audioQueue.sync`, so a wedged capture rebuild took every `NVST hud`/`counters` line down.
+    private let deviceStateLock = NSLock()
+    private var publishedCaptureDeviceState: (uniqueID: String?, isFallback: Bool) = (nil, false)
 
     /// The rate the callbacks exchange with the pipelines, always 48 kHz — the rate Opus, the RTP
     /// clock and the jitter buffer all assume. A device that runs at another rate is resampled by
@@ -130,25 +134,25 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         stopInputDeviceMonitoring()
         inputDeviceChangeWorkItem?.cancel()
         audioQueue.sync {
-            stopPlayoutLocked()
-            stopCaptureLocked()
-            disposePlayoutUnitLocked()
-            disposeCaptureUnitLocked()
+            stopPlayout()
+            stopCapture()
+            disposePlayoutUnit()
+            disposeCaptureUnit()
         }
     }
 
     public func start() {
         audioQueue.sync {
             updateDeviceParameters()
-            _ = startPlayoutLocked()
-            if capturesMicrophone { _ = startCaptureLocked() }
+            _ = startPlayout()
+            if capturesMicrophone { _ = startCapture() }
         }
     }
 
     public func stop() {
         audioQueue.sync {
-            stopPlayoutLocked()
-            stopCaptureLocked()
+            stopPlayout()
+            stopCapture()
         }
     }
 
@@ -222,10 +226,10 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         audioQueue.async { [weak self] in
             guard let self else { return }
             let wasPlaying = isPlayoutRunning
-            stopPlayoutLocked()
-            disposePlayoutUnitLocked()
-            rebuildCaptureLocked()
-            if wasPlaying { _ = startPlayoutLocked() }
+            stopPlayout()
+            disposePlayoutUnit()
+            rebuildCapture()
+            if wasPlaying { _ = startPlayout() }
         }
     }
 
@@ -239,21 +243,24 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
             let wasUsingFallbackDevice = isUsingFallbackInputDevice
             preferredInputDeviceUID = normalizedUID
             guard OPNCoreAudioDeviceLookup.inputDevice(matching: normalizedUID) == previousDevice else {
-                rebuildCaptureLocked()
+                rebuildCapture()
                 notifyCaptureDeviceChange()
                 return
             }
             // Same device: re-read the parameters the HUD's fallback label is drawn from, without
             // tearing down an AudioUnit for a no-op.
-            refreshCaptureDeviceParameters()
+            updateDeviceParameters()
             guard isUsingFallbackInputDevice != wasUsingFallbackDevice else { return }
             notifyCaptureDeviceChange()
         }
     }
 
     /// The UID capture is running on, and whether that is a fallback from a device that is gone.
+    /// Reads the published snapshot, never `audioQueue.sync`: a wedged rebuild must not take diagnostics down.
     public var captureDeviceState: (uniqueID: String?, isFallback: Bool) {
-        audioQueue.sync { (inputDeviceUniqueID, isUsingFallbackInputDevice) }
+        deviceStateLock.lock()
+        defer { deviceStateLock.unlock() }
+        return publishedCaptureDeviceState
     }
 
     /// A plug or unplug, or a change of the system default input. Debounced: one physical event fires
@@ -270,7 +277,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
                 // the one capture is on, so this is announced before the resolved-device check.
                 onInputDeviceListChange?()
                 guard OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID) != inputDevice else { return }
-                rebuildCaptureLocked()
+                rebuildCapture()
                 notifyCaptureDeviceChange()
             }
             inputDeviceChangeWorkItem = item
@@ -284,25 +291,20 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         audioQueue.sync { (inputDeviceEvaluationCount, captureRebuildCount) }
     }
 
-    /// Stops, disposes and re-initialises the capture unit only, restarting it when it was running.
-    /// Disposal is mandatory: `initializeCaptureLocked` early-returns while `captureUnit != nil`.
-    private func rebuildCaptureLocked() {
-        captureRebuildCount += 1
-        let wasCapturing = isCaptureRunning
-        captureStateLock.lock()
-        defer { captureStateLock.unlock() }
-        stopCaptureLocked()
-        disposeCaptureUnitLocked()
-        updateDeviceParameters()
-        if wasCapturing { _ = startCaptureLocked() }
+    /// Test seam: blocks until the work already queued on the audio queue has run, so a test that
+    /// dispatched a device change reads the published snapshot deterministically.
+    func drainAudioQueue() {
+        audioQueue.sync {}
     }
 
-    /// Re-reads the capture device parameters under the render thread's lock. The format fields it
-    /// rewrites are read on that thread even when the device itself did not move.
-    private func refreshCaptureDeviceParameters() {
-        captureStateLock.lock()
-        defer { captureStateLock.unlock() }
+    /// Stops, disposes and re-initialises the capture unit only, restarting it when it was running.
+    /// Disposal is mandatory; no `captureStateLock` across the stop or start — both wait on the render callback.
+    private func rebuildCapture() {
+        captureRebuildCount += 1
+        let wasCapturing = stopCapture()
+        disposeCaptureUnit()
         updateDeviceParameters()
+        if wasCapturing { _ = startCapture() }
     }
 
     private func notifyCaptureDeviceChange() {
@@ -313,34 +315,38 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
 
     // MARK: - Units
 
-    private func startPlayoutLocked() -> Bool {
-        guard initializePlayoutLocked(), let playoutUnit else { return false }
-        let status = AudioOutputUnitStart(playoutUnit)
-        isPlayoutRunning = status == noErr
+    private func startPlayout() -> Bool {
+        guard initializePlayoutUnit(), let playoutUnit else { return false }
+        isPlayoutRunning = AudioOutputUnitStart(playoutUnit) == noErr
         return isPlayoutRunning
     }
 
-    private func startCaptureLocked() -> Bool {
-        guard initializeCaptureLocked(), let captureUnit else { return false }
-        let status = AudioOutputUnitStart(captureUnit)
-        isCaptureRunning = status == noErr
+    /// Starts capture, creating the unit if necessary. The unit is published under
+    /// `captureStateLock` before IO starts, so the render callback never sees a half-built unit.
+    private func startCapture() -> Bool {
+        guard initializeCaptureUnit(), let captureUnit else { return false }
+        isCaptureRunning = AudioOutputUnitStart(captureUnit) == noErr
         return isCaptureRunning
     }
 
-    private func stopPlayoutLocked() {
+    private func stopPlayout() {
         if let playoutUnit, isPlayoutRunning { AudioOutputUnitStop(playoutUnit) }
         isPlayoutRunning = false
     }
 
-    private func stopCaptureLocked() {
-        if let captureUnit, isCaptureRunning { AudioOutputUnitStop(captureUnit) }
+    /// Stops capture and reports whether it had been running. Must not run under `captureStateLock`:
+    /// `AudioOutputUnitStop` waits for the render callback, which takes that lock, so holding it deadlocks.
+    @discardableResult
+    private func stopCapture() -> Bool {
+        let wasRunning = isCaptureRunning
+        if let captureUnit, wasRunning { AudioOutputUnitStop(captureUnit) }
         isCaptureRunning = false
+        return wasRunning
     }
 
-    private func initializePlayoutLocked() -> Bool {
+    private func initializePlayoutUnit() -> Bool {
         if playoutUnit != nil { return true }
         guard outputDevice != AudioDeviceID(kAudioObjectUnknown), let unit = makeHALUnit() else { return false }
-        playoutUnit = unit
         var enable: UInt32 = 1
         var disable: UInt32 = 0
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &enable, UInt32(MemoryLayout<UInt32>.size))
@@ -353,16 +359,16 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         var callback = AURenderCallbackStruct(inputProc: nvstPlayoutCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
         guard AudioUnitInitialize(unit) == noErr else {
-            disposePlayoutUnitLocked()
+            AudioComponentInstanceDispose(unit)
             return false
         }
+        playoutUnit = unit
         return true
     }
 
-    private func initializeCaptureLocked() -> Bool {
+    private func initializeCaptureUnit() -> Bool {
         if captureUnit != nil { return true }
         guard inputDevice != AudioDeviceID(kAudioObjectUnknown), let unit = makeHALUnit() else { return false }
-        captureUnit = unit
         var enable: UInt32 = 1
         var disable: UInt32 = 0
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Output, 0, &disable, UInt32(MemoryLayout<UInt32>.size))
@@ -374,24 +380,32 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         var callback = AURenderCallbackStruct(inputProc: nvstCaptureCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_SetInputCallback, kAudioUnitScope_Global, 0, &callback, UInt32(MemoryLayout<AURenderCallbackStruct>.size))
         guard AudioUnitInitialize(unit) == noErr else {
-            disposeCaptureUnitLocked()
+            AudioComponentInstanceDispose(unit)
             return false
         }
+        captureStateLock.lock()
+        captureUnit = unit
+        captureStateLock.unlock()
         return true
     }
 
-    private func disposePlayoutUnitLocked() {
+    private func disposePlayoutUnit() {
         guard let playoutUnit else { return }
         AudioUnitUninitialize(playoutUnit)
         AudioComponentInstanceDispose(playoutUnit)
         self.playoutUnit = nil
     }
 
-    private func disposeCaptureUnitLocked() {
-        guard let captureUnit else { return }
-        AudioUnitUninitialize(captureUnit)
-        AudioComponentInstanceDispose(captureUnit)
-        self.captureUnit = nil
+    /// Clears the capture unit under `captureStateLock` before the HAL disposes it, so the render
+    /// callback can only ever see the unit whole or absent.
+    private func disposeCaptureUnit() {
+        captureStateLock.lock()
+        let unit = captureUnit
+        captureUnit = nil
+        captureStateLock.unlock()
+        guard let unit else { return }
+        AudioUnitUninitialize(unit)
+        AudioComponentInstanceDispose(unit)
     }
 
 
@@ -405,6 +419,10 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     private func updateDeviceParameters() {
         // Resolution is shared with the Settings mic test, so a pre-flight cannot disagree with the
         // stream about a UID. A saved device that is gone resolves to the default, never a failure.
+        // The format fields it rewrites are read on the render thread, so they are published under
+        // `captureStateLock`; the resolved device goes out under `deviceStateLock` for off-queue reads.
+        captureStateLock.lock()
+        defer { captureStateLock.unlock() }
         inputDevice = OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID)
         inputDeviceUniqueID = OPNCoreAudioDeviceLookup.uid(of: inputDevice)
         isUsingFallbackInputDevice = preferredInputDeviceUID != nil
@@ -417,6 +435,9 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         outputChannels = NvstCoreAudioFormat.playoutChannelCount(requested: requestedPlayoutChannels, deviceChannels: channelCount(for: outputDevice, scope: kAudioDevicePropertyScopeOutput))
         inputChannels = NvstCoreAudioFormat.captureChannelCount(deviceChannels: channelCount(for: inputDevice, scope: kAudioDevicePropertyScopeInput))
         outputLatency = latency(for: outputDevice, scope: kAudioDevicePropertyScopeOutput, sampleRate: deviceOutputSampleRate)
+        deviceStateLock.lock()
+        publishedCaptureDeviceState = (uniqueID: inputDeviceUniqueID, isFallback: isUsingFallbackInputDevice)
+        deviceStateLock.unlock()
     }
 
 
