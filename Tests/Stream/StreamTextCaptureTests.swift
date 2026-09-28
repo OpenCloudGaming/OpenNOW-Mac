@@ -114,6 +114,19 @@ struct StreamTextCaptureFilterTests {
         #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("Add to your wishlist", CGRect(x: 0.7, y: 0.82, width: 0.15, height: 0.028))]))
     }
 
+    /// A short label on a full-width button is the shape that used to slip through: not tall enough
+    /// to fail the height bound, but many times wider than its own word.
+    @Test func aWideShortButtonIsNotASelection() {
+        let block = CGRect(x: 0.1, y: 0.3, width: 0.6, height: 0.09)
+        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("Copy", CGRect(x: 0.4, y: 0.32, width: 0.09, height: 0.07))]))
+    }
+
+    /// A field with generous highlight padding runs taller than its line, and is still a selection.
+    @Test func aRoomierFieldHighlightIsStillASelection() {
+        let block = CGRect(x: 0.2, y: 0.5, width: 0.5, height: 0.05)
+        #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("0b4b75c0681540df", CGRect(x: 0.21, y: 0.512, width: 0.45, height: 0.026))]))
+    }
+
     /// A run of coloured text has no block around it: the "block" is the glyphs, so it comes out
     /// clearly narrower than the line box Vision reports.
     @Test func aRunOfColouredTextIsNotASelection() {

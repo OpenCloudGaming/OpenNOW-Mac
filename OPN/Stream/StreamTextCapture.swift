@@ -68,11 +68,14 @@ enum StreamTextCaptureFilter {
         guard let union, union.width > 0, union.height > 0 else { return false }
         let ratioH = block.height / union.height
         let ratioW = block.width / union.width
-        // The bounds are generous because a selection is drawn tight: a field's highlight can be a
-        // hair narrower than the line box Vision reports (measured at 0.97 on a real text field), and
-        // a multilingual font can overshoot the other way. A button or banner is several times its
-        // label, so the upper bounds still do the rejecting that matters.
-        return ratioH >= 0.85 && ratioH <= 1.8 && ratioW >= 0.9
+        // The lower bounds are generous because a selection is drawn tight: a field's highlight can
+        // be a hair narrower than the line box Vision reports (measured at 0.97 on a real text
+        // field), and a field with generous padding can run taller than the line (measured at 1.86).
+        //
+        // The upper bounds do the real rejecting. A label button is short and wide — "Copy" on a
+        // full-width button measured 5.5× its own word — so a block much wider than the text inside
+        // it is chrome, not a selection.
+        return ratioH >= 0.85 && ratioH <= 2.0 && ratioW >= 0.9 && ratioW <= 2.0
     }
 
     /// Whether the text stops as if a field cut it off. A trailing ellipsis is the one clip signal a
