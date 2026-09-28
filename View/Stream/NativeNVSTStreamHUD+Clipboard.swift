@@ -68,6 +68,12 @@ struct StreamHUDClipboardRow: View {
         entry.text.replacingOccurrences(of: "\n", with: " ")
     }
 
+    /// The row says so itself when the field cut the text off, so the reader can see that copying the
+    /// rest of it will join the two rather than leave a second fragment.
+    private var isClipped: Bool {
+        StreamTextCaptureFilter.isClipped(entry.text)
+    }
+
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 3) {
@@ -78,6 +84,10 @@ struct StreamHUDClipboardRow: View {
                     .truncationMode(.tail)
                 HStack(spacing: 8) {
                     Text(entry.capturedAt, style: .relative)
+                    if isClipped {
+                        Text("CUT OFF")
+                            .foregroundStyle(StreamHUDTheme.warning)
+                    }
                     if !entry.gameTitle.isEmpty {
                         Text(entry.gameTitle)
                             .lineLimit(1)
@@ -98,8 +108,8 @@ struct StreamHUDClipboardRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .accessibilityLabel("Copy captured text from \(entry.gameTitle.isEmpty ? "the stream" : entry.gameTitle)")
-        .help("Copy to clipboard")
+        .accessibilityLabel("Copy captured text from \(entry.gameTitle.isEmpty ? "the stream" : entry.gameTitle)\(isClipped ? ", cut off" : "")")
+        .help(isClipped ? "Cut off \u{2014} scroll the field and copy the rest to join it" : "Copy to clipboard")
     }
 }
 

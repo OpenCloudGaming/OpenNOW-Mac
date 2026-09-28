@@ -9,7 +9,9 @@ import Foundation
 /// its focus entry cannot drift while the list re-sorts.
 public struct StreamClipboardEntry: Codable, Equatable, Identifiable, Sendable {
     public let id: UUID
-    public let text: String
+    /// Mutable so a clipped read can be completed in place when the reader copies the rest of it,
+    /// rather than leaving two fragments in the history.
+    public var text: String
     public let capturedAt: Date
     public let applicationID: String
     public let gameTitle: String
@@ -64,6 +66,17 @@ public struct StreamClipboardHistoryStore: Sendable {
         let entry = StreamClipboardEntry(text: text, capturedAt: capturedAt, applicationID: applicationID, gameTitle: gameTitle)
         store([entry] + existing)
         return entry
+    }
+
+    /// Replaces one entry's text, keeping its place and its capture time. Used when a clipped read
+    /// is joined with the rest of the same text: the reader gets one entry, not two fragments.
+    @discardableResult
+    public func replace(id: UUID, text: String) -> StreamClipboardEntry? {
+        var entries = load()
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return nil }
+        entries[index].text = text
+        store(entries)
+        return entries[index]
     }
 
     /// Empties the history. The file stays in place, written as an empty list, so a reader who

@@ -33,6 +33,38 @@ struct StreamTextCaptureFilterTests {
         #expect(StreamTextCaptureFilter.acceptedText(from: [StreamRecognizedLine(text: "x", confidence: 1)]).isEmpty)
     }
 
+    // MARK: - Joining a clipped read
+
+    @Test func anOverlappingTailCompletesTheHead() {
+        #expect(StreamTextCaptureFilter.mergedOverlap("Check out the entire collection on", "collection on Steam") == "Check out the entire collection on Steam")
+    }
+
+    @Test func theJoinWorksWhicheverHalfWasCopiedFirst() {
+        #expect(StreamTextCaptureFilter.mergedOverlap("collection on Steam", "Check out the entire collection on") == "Check out the entire collection on Steam")
+    }
+
+    @Test func oneReadContainingTheOtherWins() {
+        #expect(StreamTextCaptureFilter.mergedOverlap("Check out the entire collection on Steam", "collection on Steam") == "Check out the entire collection on Steam")
+        #expect(StreamTextCaptureFilter.mergedOverlap("same", "same") == "same")
+    }
+
+    /// A field can scroll by a whole page, leaving characters that were never rendered at all. Two
+    /// reads with nothing in common must stay two entries rather than be spliced into an invented one.
+    @Test func readsWithNothingInCommonAreNotJoined() {
+        #expect(StreamTextCaptureFilter.mergedOverlap("Check out the entire", "on Steam") == nil)
+        #expect(StreamTextCaptureFilter.mergedOverlap("abreaaca", "MY ACHIEVEMENTS") == nil)
+    }
+
+    @Test func aShortOverlapIsNotProofEnough() {
+        #expect(StreamTextCaptureFilter.mergedOverlap("abc", "cd") == nil)
+        #expect(StreamTextCaptureFilter.mergedOverlap("abcdef", "defghi") == "abcdefghi")
+    }
+
+    @Test func anEmptyHalfChangesNothing() {
+        #expect(StreamTextCaptureFilter.mergedOverlap("", "tail") == nil)
+        #expect(StreamTextCaptureFilter.mergedOverlap("head", "") == nil)
+    }
+
     // MARK: - Clipped text
 
     @Test func aTrailingEllipsisReadsAsClipped() {

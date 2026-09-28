@@ -54,6 +54,27 @@ struct StreamClipboardHistoryTests {
         #expect(entries.last?.text == "entry-5")
     }
 
+    @Test func replacingAnEntrysTextKeepsItsPlace() {
+        let store = makeClipboardStore()
+        let now = Date()
+        store.append(text: "head \u{2026}", applicationID: "100", gameTitle: "Game", capturedAt: now)
+        store.append(text: "newer", applicationID: "100", gameTitle: "Game", capturedAt: now.addingTimeInterval(10))
+        let clipped = store.load().first { $0.text.hasSuffix("\u{2026}") }!
+        #expect(store.replace(id: clipped.id, text: "head and tail") != nil)
+        let entries = store.load()
+        #expect(entries.count == 2)
+        #expect(entries.first?.text == "newer")
+        #expect(entries.last?.text == "head and tail")
+        #expect(StreamClipboardHistoryStore(fileURL: store.fileURL).load().last?.text == "head and tail")
+    }
+
+    @Test func replacingAnUnknownEntryChangesNothing() {
+        let store = makeClipboardStore()
+        store.append(text: "kept", applicationID: "100", gameTitle: "Game")
+        #expect(store.replace(id: UUID(), text: "ignored") == nil)
+        #expect(store.load().map(\.text) == ["kept"])
+    }
+
     @Test func clearEmptiesTheHistoryAndSurvivesAReopen() {
         let store = makeClipboardStore()
         store.append(text: "gone", applicationID: "100", gameTitle: "Game")

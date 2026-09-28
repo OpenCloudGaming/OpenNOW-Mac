@@ -83,6 +83,37 @@ enum StreamTextCaptureFilter {
         return trimmed.hasSuffix("\u{2026}") || trimmed.hasSuffix("...")
     }
 
+    /// The shortest run two reads must share before they are treated as two views of one string.
+    static let minimumMergeOverlap = 3
+    /// Overlap is searched longest-first, so a long shared run is preferred over a short one. The cap
+    /// keeps that search bounded; it is far longer than any string a text field renders.
+    static let maximumMergeScan = 2_000
+
+    /// Joins two reads of the same clipped text — the head the reader copied, then the tail they
+    /// copied after scrolling the field — when they demonstrably overlap.
+    ///
+    /// Returns nil when the two share too little to prove they are one string. That is deliberate:
+    /// a field that scrolls by a whole page can leave a gap between what was ever rendered, and
+    /// splicing two fragments with nothing in common would invent characters that were never on
+    /// screen. Two partial entries the reader can see beats one entry that quietly lies.
+    static func mergedOverlap(_ first: String, _ second: String) -> String? {
+        guard !first.isEmpty, !second.isEmpty else { return nil }
+        if first == second { return first }
+        if first.hasSuffix(second) { return first }
+        if second.hasSuffix(first) { return second }
+        let maxOverlap = min(first.count, second.count, maximumMergeScan)
+        guard maxOverlap >= minimumMergeOverlap else { return nil }
+        for overlap in stride(from: maxOverlap, through: minimumMergeOverlap, by: -1) {
+            if first.suffix(overlap) == second.prefix(overlap) {
+                return first + String(second.dropFirst(overlap))
+            }
+            if second.suffix(overlap) == first.prefix(overlap) {
+                return second + String(first.dropFirst(overlap))
+            }
+        }
+        return nil
+    }
+
     /// The share of `bounds` that falls inside `rect`.
     static func coverage(of bounds: CGRect, by rect: CGRect) -> CGFloat {
         guard bounds.width > 0, bounds.height > 0 else { return 0 }

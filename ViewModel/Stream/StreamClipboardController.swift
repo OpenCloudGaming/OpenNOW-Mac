@@ -24,6 +24,9 @@ final class StreamClipboardController: ObservableObject {
     /// The rectangle the reader last dragged over the stream. Preferred over any detected highlight
     /// when a capture fires, because it is the selection they actually made.
     var pointerSelection = StreamPointerSelectionTracker()
+    /// The clipped read kept aside so the next copy can complete it. Only a clipped read is held:
+    /// a complete one has nothing to recover, and joining two unrelated copies would be a guess.
+    var pendingMerge: PendingTextMerge?
 
     init(
         store: StreamClipboardHistoryStore = .shared,
@@ -43,4 +46,11 @@ final class StreamClipboardController: ObservableObject {
         task?.cancel()
         task = nil
     }
+}
+
+/// A clipped read waiting to be completed by a later copy of the same field.
+struct PendingTextMerge: Equatable {
+    let entryID: UUID
+    let text: String
+    let capturedAt: Date
 }

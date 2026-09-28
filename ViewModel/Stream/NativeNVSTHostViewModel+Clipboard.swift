@@ -12,7 +12,8 @@ extension NativeNVSTHostViewModel {
     /// a save does, and a fragment cut off by a field says that too rather than passing as complete.
     enum StreamTextCaptureMessage {
         static let saved = "Saved into the clipboard history"
-        static let clipped = "Saved \u{2014} text looks cut off"
+        static let clipped = "Saved \u{2014} text looks cut off, copy the rest to join"
+        static let merged = "Joined the two reads"
         static let copied = "Copied to clipboard"
         static let empty = "No text found in frame"
         static let noSelection = "No selected text in frame"
@@ -21,6 +22,10 @@ extension NativeNVSTHostViewModel {
     /// How long a dragged selection stays usable. Long enough to select and then reach for the copy
     /// chord; short enough that a drag from another moment is not read as this copy's selection.
     static let pointerSelectionMaximumAge: TimeInterval = 20
+
+    /// How long a clipped read waits for the rest of itself. Long enough to scroll the field and copy
+    /// again; short enough that an unrelated copy much later is not joined to it.
+    static let mergeWindow: TimeInterval = 120
 
     /// Reads the persisted history. Newest first, exactly as the HUD lists it.
     func reloadClipboardHistory() {
@@ -52,25 +57,54 @@ extension NativeNVSTHostViewModel {
                 self.showEmptyCaptureMessage(reason: recognition.usedSelection ? "no-selection-text" : "no-selection")
                 return
             }
-            let isClipped = StreamTextCaptureFilter.isClipped(text)
-            let stored = self.clipboard.store.append(
-                text: text,
-                applicationID: self.configuration.applicationID,
-                gameTitle: self.configuration.title
-            )
-            self.reloadClipboardHistory()
-            // A duplicate inside the dedupe window files nothing new, but the text is already in
-            // history and the reader did ask for it, so the same confirmation is the honest one. A
-            // clipped fragment is filed too — it is still useful — but it never passes as complete.
-            self.showNativeTransientStreamMessage(isClipped ? Self.StreamTextCaptureMessage.clipped : Self.StreamTextCaptureMessage.saved)
-            OPNStreamTelemetry.capture("nvst.ui.clipboard.saved", level: .info, message: "Frame text filed into the clipboard history.", attributes: [
-                "applicationID": self.configuration.applicationID,
-                "characters": String(text.count),
-                "duplicate": String(stored == nil),
-                "scope": recognition.usedSelection ? "selection" : "frame",
-                "clipped": String(isClipped),
-            ])
+            self.fileCapturedText(text, usedSelection: recognition.usedSelection, at: Date())
         }
+    }
+
+    /// Files a read, first trying to complete the last clipped one.
+    ///
+    /// A field that cuts text off shows a different slice of it at each scroll position, so a second
+    /// copy after scrolling is the rest of the same string. When the two reads provably overlap, the
+    /// clipped entry is completed in place rather than a second fragment being filed beside it.
+    private func fileCapturedText(_ text: String, usedSelection: Bool, at date: Date) {
+        if let pending = clipboard.pendingMerge,
+           date.timeIntervalSince(pending.capturedAt) <= Self.mergeWindow,
+           let joined = StreamTextCaptureFilter.mergedOverlap(pending.text, text),
+           clipboard.store.replace(id: pending.entryID, text: joined) != nil {
+            // Still cut off — the reader may scroll further, so it keeps waiting to be joined.
+            clipboard.pendingMerge = StreamTextCaptureFilter.isClipped(joined)
+                ? PendingTextMerge(entryID: pending.entryID, text: joined, capturedAt: date)
+                : nil
+            reloadClipboardHistory()
+            showNativeTransientStreamMessage(Self.StreamTextCaptureMessage.merged)
+            OPNStreamTelemetry.capture("nvst.ui.clipboard.merged", level: .info, message: "Two reads of one clipped text were joined.", attributes: [
+                "applicationID": configuration.applicationID,
+                "characters": String(joined.count),
+                "clipped": String(StreamTextCaptureFilter.isClipped(joined)),
+            ])
+            return
+        }
+
+        let isClipped = StreamTextCaptureFilter.isClipped(text)
+        let stored = clipboard.store.append(
+            text: text,
+            applicationID: configuration.applicationID,
+            gameTitle: configuration.title
+        )
+        // A duplicate inside the dedupe window files nothing new, but the text is already in history
+        // and the reader did ask for it, so the same confirmation is the honest one.
+        clipboard.pendingMerge = stored.flatMap { entry in
+            isClipped ? PendingTextMerge(entryID: entry.id, text: text, capturedAt: date) : nil
+        }
+        reloadClipboardHistory()
+        showNativeTransientStreamMessage(isClipped ? Self.StreamTextCaptureMessage.clipped : Self.StreamTextCaptureMessage.saved)
+        OPNStreamTelemetry.capture("nvst.ui.clipboard.saved", level: .info, message: "Frame text filed into the clipboard history.", attributes: [
+            "applicationID": configuration.applicationID,
+            "characters": String(text.count),
+            "duplicate": String(stored == nil),
+            "scope": usedSelection ? "selection" : "none",
+            "clipped": String(isClipped),
+        ])
     }
 
     func copyClipboardEntry(_ entry: StreamClipboardEntry) {
@@ -95,6 +129,7 @@ extension NativeNVSTHostViewModel {
     }
 
     func clearClipboardHistory() {
+        clipboard.pendingMerge = nil
         clipboard.store.clear()
         reloadClipboardHistory()
         OPNStreamTelemetry.capture("nvst.ui.clipboard.cleared", level: .info, message: "Clipboard history cleared from the HUD.", attributes: ["applicationID": configuration.applicationID])
