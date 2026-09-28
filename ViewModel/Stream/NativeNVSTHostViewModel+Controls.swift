@@ -512,25 +512,6 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    /// The window is only reachable once the view is in a hierarchy and the aspect coordinator has
-    /// settled the first frame, so the transition waits a beat and retries until both are true.
-    func enterNativeFullScreenWhenSessionReady() {
-        guard OPNSessionReadyAction.isFullScreenRequestedWhenReady else { return }
-        sessionReadyFullScreenTask?.cancel()
-        sessionReadyFullScreenTask = Task { @MainActor [weak self] in
-            for _ in 0..<Self.sessionReadyFullScreenAttemptLimit {
-                try? await Task.sleep(for: NativeNVSTHostViewModel.sessionReadyFullScreenRetryDelay)
-                guard !Task.isCancelled, let self, self.isConnected, !self.isEnding, !self.didEnd else { return }
-                guard let window = self.nativeView?.window, !self.isFullScreenTransitioning else { continue }
-                guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { continue }
-                guard !window.styleMask.contains(.fullScreen) else { return }
-                window.toggleFullScreen(nil)
-                OPNStreamTelemetry.capture("nvst.ui.fullscreen.sessionReady", level: .info, message: "Native NVST stream entered full screen because the session-ready action requests it.", attributes: ["applicationID": self.configuration.applicationID])
-                return
-            }
-        }
-    }
-
     func startNativeStatsPolling(path: NativeNVSTStreamingPath) {
         nativeStatsTask?.cancel()
         nativeStatsTask = Task {

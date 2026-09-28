@@ -273,10 +273,10 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// it only reports through delegate callbacks that post no notification.
     static let fullScreenTransitionTimeout = Duration.seconds(2)
     var sessionReadyFullScreenTask: Task<Void, Never>?
-    /// One beat after the first frame, so the aspect coordinator has settled the window geometry
-    /// before the style mask changes underneath it.
-    static let sessionReadyFullScreenRetryDelay = Duration.milliseconds(450)
-    static let sessionReadyFullScreenAttemptLimit = 6
+    /// Set when the session-ready entry issues the transition, cleared when it lands. The success
+    /// telemetry hangs off the landing notification rather than off the request, so it records the
+    /// window's real state - a requested transition can still be refused by AppKit.
+    var isSessionReadyFullScreenEntryRequested = false
     let onScreenKeyboard = StreamOnScreenKeyboardModel()
 
     func startIfNeeded() {
