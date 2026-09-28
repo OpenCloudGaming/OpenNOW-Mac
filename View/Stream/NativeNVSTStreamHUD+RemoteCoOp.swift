@@ -7,7 +7,7 @@ extension NativeNVSTMediaStreamSurface {
         StreamHUDSection(
             label: OPNStreamHUDSection.coop.title,
             spacing: 8,
-            showsBetaTag: true,
+            tag: .beta,
             isCollapsed: model.isHUDSectionCollapsed(.coop),
             isFocused: model.isHUDSectionHeaderFocused(.coop),
             reorderPayload: OPNStreamHUDSection.coop.rawValue,
