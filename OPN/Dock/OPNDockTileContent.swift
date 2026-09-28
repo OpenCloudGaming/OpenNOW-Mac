@@ -22,8 +22,10 @@ struct OPNDockTileContent: Equatable, Sendable {
     var pendingSessions: Int?
     /// The progress bar's state. Nil means no progress bar at all.
     var progress: OPNDockProgress?
+    /// Whether a stream is active right now, so the tile can mark itself as the session's home.
+    var isStreaming: Bool
 
-    static let none = OPNDockTileContent()
+    static let none = OPNDockTileContent(isStreaming: false)
 
     var badgeLabel: String? {
         guard let pendingSessions, pendingSessions > 0 else { return nil }
