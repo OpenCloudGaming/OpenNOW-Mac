@@ -515,9 +515,44 @@ it is drawn by the app except the one thing the system does not offer:
   that has been allocated but has not produced a frame: that state has no fraction to measure, so it
   draws a segment sweeping across the well instead of an empty bar that reads as a stalled wait.
   Reduce Motion parks the segment centered and stops the timer.
-- **The menu's wording.** `OPNDockMenu` supplies titles and actions only: a disabled *Continue Playing*
-  header, the three most recent games, then *New Session* and *Open Recordings*. The Dock renders it
-  in its own chrome, so no `NSMenu` styling belongs in the code either.
+- **The live badge.** A running stream is a state the bar cannot show: it has no fraction, and
+  `.streaming` publishes no progress at all. That state is carried by a badge drawn over the icon — a
+  white disc in the top trailing corner with `gamecontroller.fill` cut into it dark. The glyph is a
+  controller rather than a plain "live" dot because the fact worth naming is that a *game* is running,
+  which a dot cannot say; the name is one constant, `liveBadgeSymbolName`, so the badge can be
+  swapped without touching its geometry.
+- **The badge is a disc, not a bare glyph.** A glyph floating on the artwork reads as part of the
+  drawing it sits on. The filled disc is what says "this is a status, not a picture", and it keeps the
+  glyph legible whatever the icon beneath it is — which matters because the badge is composited over
+  artwork this view does not own. The glyph is bounded by the disc on whichever axis is tighter, so a
+  wide symbol cannot spill past it.
+- **The artwork is left alone.** Earlier drafts recoloured the icon (a duotone of the accent) and
+  framed it with an accent ring. Both are gone. A recoloured icon reads as a *theme*, not as a state,
+  and a ring around the whole tile is a heavy frame for a signal that only ever means "one session is
+  running". The badge says the same thing without repainting the logo.
+- **No text on the tile.** The game's name is deliberately not drawn: at the sizes the Dock actually
+  renders, a legible name needs a chip that covers the artwork it is labelling, and the name is one
+  right-click away in the menu. The tile says *a session is running*; the menu says *which*.
+- **The badge's geometry** is a fraction of the tile like the bar's, so it keeps its proportions at
+  every Dock size, and it sits in the corner clear of the bar along the bottom — the two can be on
+  screen together when a stream and an export overlap. A tile too small to hold a badge draws none.
+- **The menu's wording.** `OPNDockMenu` supplies titles and actions only: a disabled *Now Streaming*
+  header and the running game's name, then *Pause Stream* and *End Stream*; a disabled *Continue
+  Playing* header, the three most recent games; then *New Session* and *Open Recordings*. The Dock
+  renders it in its own chrome, so no `NSMenu` styling belongs in the code either. The menu is built
+  from a list of groups joined by separators rather than a flat run of `addItem` calls, so a block that
+  stops being shown takes its separator with it and cannot leave one stranded at the top.
+- **The games go while a session runs.** *Continue Playing* is a launch affordance, and the catalog
+  refuses a launch over a running session with a resume-or-end prompt — the last thing a right-click on
+  a running stream should trigger. The menu therefore hides the whole block, header and placeholder
+  included, for every non-idle phase, matching the gate the popover's rows use rather than inventing a
+  second one; `launchRecentGame` re-checks it too, because a session can start between the menu being
+  built and an item being chosen. Hiding beats disabling here: a disabled row still advertises an
+  action, and the popover already keeps the history one click away for anyone who wants to see it.
+- **The streaming block.** It appears only for `OPNMenuBarSessionPhase.streaming` — a queued or starting
+  session has no stream to stop, and its wait is already on the tile. Its two commands route through
+  `OPNMenuBarSessionModel`, as the popover's tiles do, and re-read the phase on the way. Neither brings
+  the stream window forward; the user asked to stop the stream, not to go to it.
 
 A badge is one system-drawn label — the count of sessions waiting on the user, capped at `99+` — and
 is cleared by the same rule that set it: nothing pending, no badge.
