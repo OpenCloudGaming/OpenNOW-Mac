@@ -125,8 +125,8 @@ enum OPNDockIconController {
     private static var queueProgress = OPNDockQueueProgress()
     /// The recording export in flight, while the user has one running.
     private static var exportFraction: Double?
-    /// The tile's content view while there is progress to draw. The Dock owns what it is installed
-    /// in; this holds the view so a new fraction does not build a new one.
+    /// The tile's content view while there is progress or a stream to draw. The Dock owns what it is
+    /// installed in; this holds the view so a new fraction does not build a new one.
     private static var progressView: OPNDockTileProgressView?
     /// One subscription per fact the tile depends on. `$phase` and `$resumableSessionTitle` carry
     /// different types, so they are watched separately; recomputing is cheap and writes are skipped
@@ -147,7 +147,7 @@ enum OPNDockIconController {
     }
 
     /// Watches the surface the menu bar reads — the same phase, the same resumable session — so the
-    /// badge cannot describe a session the rest of the app does not have.
+    /// badge and the streaming marker cannot describe a session the rest of the app does not have.
     private static func observeSessionSurface() {
         guard sessionObservers.isEmpty else { return }
         let session = OPNMenuBarSessionModel.shared
@@ -183,7 +183,8 @@ enum OPNDockIconController {
                 isQueued: phase.isQueued,
                 hasResumableSession: resumableSessionTitle != nil
             ),
-            progress: OPNDockTileContent.progress(queue: queueFraction, isStarting: phase == .starting, export: exportFraction)
+            progress: OPNDockTileContent.progress(queue: queueFraction, isStarting: phase == .starting, export: exportFraction),
+            isStreaming: phase == .streaming
         ))
     }
 
@@ -191,7 +192,7 @@ enum OPNDockIconController {
         guard content != appliedContent else { return }
         appliedContent = content
         applyBadge(content.badgeLabel)
-        applyProgress(content.progress)
+        applyProgress(content.progress, isStreaming: content.isStreaming)
     }
 
     private static func applyBadge(_ label: String?) {
@@ -200,9 +201,9 @@ enum OPNDockIconController {
         tile.display()
     }
 
-    private static func applyProgress(_ progress: OPNDockProgress?) {
+    private static func applyProgress(_ progress: OPNDockProgress?, isStreaming: Bool) {
         guard let tile = NSApp?.dockTile else { return }
-        guard let progress else {
+        guard progress != nil || isStreaming else {
             // Clearing hands the tile back its own icon. Left installed, a finished wait would sit on
             // the Dock icon until the app quit.
             guard progressView != nil else { return }
@@ -213,6 +214,7 @@ enum OPNDockIconController {
         }
         let view = progressView ?? installProgressView(on: tile)
         view.progress = progress
+        view.isStreaming = isStreaming
         tile.display()
     }
 
@@ -231,6 +233,6 @@ enum OPNDockIconController {
         NSApp?.dockTile.contentView = nil
         progressView = nil
         applyBadge(appliedContent.badgeLabel)
-        applyProgress(appliedContent.progress)
+        applyProgress(appliedContent.progress, isStreaming: appliedContent.isStreaming)
     }
 }

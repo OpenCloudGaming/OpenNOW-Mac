@@ -95,7 +95,12 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     /// hands the Dock away, and the menu, the badge, and the progress bar go with it. The menu bar is
     /// the surface that answers there.
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
-        OPNDockMenu.make(recentGames: OPNMenuBarSessionModel.shared.recentGames)
+        let session = OPNMenuBarSessionModel.shared
+        return OPNDockMenu.make(
+            recentGames: session.recentGames,
+            phase: session.phase,
+            gameTitle: session.gameTitle
+        )
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

@@ -14,8 +14,8 @@ import Testing
 
     @Test func nothingPendingDrawsNoBadge() {
         #expect(OPNDockTileContent.pendingSessionCount(isQueued: false, hasResumableSession: false) == nil)
-        #expect(OPNDockTileContent(pendingSessions: nil, progress: nil).badgeLabel == nil)
-        #expect(OPNDockTileContent(pendingSessions: 0, progress: nil).badgeLabel == nil)
+        #expect(OPNDockTileContent(pendingSessions: nil, progress: nil, isStreaming: false).badgeLabel == nil)
+        #expect(OPNDockTileContent(pendingSessions: 0, progress: nil, isStreaming: false).badgeLabel == nil)
     }
 
     @Test func aQueuedOrResumableSessionIsCounted() {
@@ -24,12 +24,12 @@ import Testing
         // A seat being acquired and a seat waiting to be rejoined are two separate things the user
         // has to act on, so they are counted rather than merged away.
         #expect(OPNDockTileContent.pendingSessionCount(isQueued: true, hasResumableSession: true) == 2)
-        #expect(OPNDockTileContent(pendingSessions: 1, progress: nil).badgeLabel == "1")
+        #expect(OPNDockTileContent(pendingSessions: 1, progress: nil, isStreaming: false).badgeLabel == "1")
     }
 
     @Test func aBadgeTooWideForTheTileIsCapped() {
-        #expect(OPNDockTileContent(pendingSessions: 99, progress: nil).badgeLabel == "99")
-        #expect(OPNDockTileContent(pendingSessions: 100, progress: nil).badgeLabel == "99+")
+        #expect(OPNDockTileContent(pendingSessions: 99, progress: nil, isStreaming: false).badgeLabel == "99")
+        #expect(OPNDockTileContent(pendingSessions: 100, progress: nil, isStreaming: false).badgeLabel == "99+")
     }
 
     // MARK: - Progress
@@ -208,7 +208,11 @@ import Testing
     }
 
     @Test func theMenuListsTheThreeMostRecentGamesThenTheTwoWindowActions() {
-        let menu = OPNDockMenu.make(recentGames: [game("A", appId: "1"), game("B", appId: "2"), game("C", appId: "3")])
+        let menu = OPNDockMenu.make(
+            recentGames: [game("A", appId: "1"), game("B", appId: "2"), game("C", appId: "3")],
+            phase: .idle,
+            gameTitle: ""
+        )
 
         #expect(rows(menu).map(\.title) == [
             OPNDockMenu.continuePlayingHeader,
@@ -230,12 +234,12 @@ import Testing
 
     @Test func theMenuNeverListsMoreThanThreeGames() {
         let games = (1...5).map { game("Game \($0)", appId: "\($0)") }
-        let menu = OPNDockMenu.make(recentGames: games)
+        let menu = OPNDockMenu.make(recentGames: games, phase: .idle, gameTitle: "")
         #expect(rows(menu).map(\.title).filter { $0.hasPrefix("Game ") } == ["Game 1", "Game 2", "Game 3"])
     }
 
     @Test func anEmptyHistorySaysSoInsteadOfShowingNothing() {
-        let menu = OPNDockMenu.make(recentGames: [])
+        let menu = OPNDockMenu.make(recentGames: [], phase: .idle, gameTitle: "")
         #expect(rows(menu).map(\.title) == [
             OPNDockMenu.continuePlayingHeader,
             OPNDockMenu.emptyListPlaceholder,
@@ -247,7 +251,7 @@ import Testing
 
     @Test func anItemNamesTheGameItsMenuListed() {
         let listed = [game("A", appId: "1"), game("B", appId: "2")]
-        let menu = OPNDockMenu.make(recentGames: listed)
+        let menu = OPNDockMenu.make(recentGames: listed, phase: .idle, gameTitle: "")
         let actions = OPNDockMenuActions.shared
 
         // An item carries its index in the list the menu was built from; that index has to survive
@@ -258,4 +262,178 @@ import Testing
         #expect(actions.listedGame(at: rows(menu)[2].tag) == listed[1])
         #expect(actions.listedGame(at: 7) == nil)
     }
+
+    // MARK: - Games hidden while a session runs
+
+    @Test func aGameRowCannotStartASessionOverARunningOne() {
+        // The catalog refuses a launch while a session runs and answers with a resume-or-end prompt,
+        // which is the last thing a right-click on a running stream should trigger.
+        #expect(OPNDockMenu.canLaunchGames(phase: .idle))
+        #expect(!OPNDockMenu.canLaunchGames(phase: .streaming))
+        // Every non-idle phase, not just `.streaming`: `.connecting` is the launch flow's own
+        // pre-overlay state and a launch asked for during it is refused the same way.
+        #expect(!OPNDockMenu.canLaunchGames(phase: .connecting))
+        #expect(!OPNDockMenu.canLaunchGames(phase: .queued(position: 1)))
+        #expect(!OPNDockMenu.canLaunchGames(phase: .starting))
+    }
+
+    @Test func theGamesAreGoneWhileAStreamIsRunning() {
+        let menu = OPNDockMenu.make(
+            recentGames: [game("A", appId: "1"), game("B", appId: "2")],
+            phase: .streaming,
+            gameTitle: "Portal"
+        )
+
+        #expect(rows(menu).map(\.title) == [
+            OPNDockMenu.nowStreamingHeader,
+            "Portal",
+            OPNDockMenu.pauseStreamTitle,
+            OPNDockMenu.endStreamTitle,
+            OPNDockMenu.newSessionTitle,
+            OPNDockMenu.openRecordingsTitle,
+        ])
+    }
+
+    @Test func aSessionThatIsOnlyStartingHidesTheGamesWithoutClaimingToStream() {
+        // Starting is a wait, so the streaming block is absent — but the games are still unlaunchable,
+        // which is why they go rather than staying on offer.
+        let menu = OPNDockMenu.make(recentGames: [game("A", appId: "1")], phase: .starting, gameTitle: "Portal")
+        #expect(rows(menu).map(\.title) == [
+            OPNDockMenu.newSessionTitle,
+            OPNDockMenu.openRecordingsTitle,
+        ])
+    }
+
+    @Test func aHiddenGamesBlockLeavesNoSeparatorBehind() {
+        // A menu with the games removed is two groups, so exactly one separator: a separator stranded at
+        // the top or doubled up between blocks is the kind of thing that reaches review as a broken menu.
+        let streaming = OPNDockMenu.make(recentGames: [game("A", appId: "1")], phase: .streaming, gameTitle: "Portal")
+        #expect(streaming.items.map(\.isSeparatorItem) == [false, false, false, false, true, false, false])
+
+        let starting = OPNDockMenu.make(recentGames: [game("A", appId: "1")], phase: .starting, gameTitle: "Portal")
+        #expect(starting.items.map(\.isSeparatorItem) == [false, false])
+
+        let idle = OPNDockMenu.make(recentGames: [game("A", appId: "1")], phase: .idle, gameTitle: "")
+        #expect(idle.items.map(\.isSeparatorItem) == [false, false, true, false, false])
+    }
+
+    @Test func aHiddenGamesBlockDoesNotLeaveTheEarlierOneLaunchable() {
+        let listed = [game("A", appId: "1"), game("B", appId: "2")]
+        let actions = OPNDockMenuActions.shared
+
+        // A menu built while idle keeps its indices…
+        let idle = OPNDockMenu.make(recentGames: listed, phase: .idle, gameTitle: "")
+        #expect(actions.listedGame(at: rows(idle)[1].tag) == listed[0])
+
+        // …and a later right-click during a stream clears them, so a click handed over by a menu that
+        // is already closed cannot start a game the session is no longer offering.
+        _ = OPNDockMenu.make(recentGames: listed, phase: .streaming, gameTitle: "Portal")
+        #expect(actions.listedGame(at: 0) == nil)
+        #expect(actions.listedGame(at: 1) == nil)
+    }
+
+    // MARK: - Streaming block
+
+    @Test func onlyARunningStreamOffersTheControlsToStopIt() {
+        // Queued and starting are waits, not streams: there is nothing to pause or end yet, and the
+        // tile already carries them.
+        #expect(OPNDockMenu.Streaming.active(phase: .streaming, gameTitle: "Portal") == OPNDockMenu.Streaming(gameTitle: "Portal"))
+        #expect(OPNDockMenu.Streaming.active(phase: .queued(position: 2), gameTitle: "Portal") == nil)
+        #expect(OPNDockMenu.Streaming.active(phase: .starting, gameTitle: "Portal") == nil)
+        #expect(OPNDockMenu.Streaming.active(phase: .connecting, gameTitle: "Portal") == nil)
+        #expect(OPNDockMenu.Streaming.active(phase: .idle, gameTitle: "Portal") == nil)
+    }
+
+    @Test func aStreamWithNoGameNamedFallsBackToTheAppName() {
+        // The status item cannot render an empty label, so the menu's row cannot either.
+        #expect(OPNDockMenu.Streaming(gameTitle: "  ").displayTitle == "OpenNOW")
+        #expect(OPNDockMenu.Streaming(gameTitle: "Portal").displayTitle == "Portal")
+    }
+
+    @Test func theMenuNamesTheStreamAndOffersToPauseOrEndIt() {
+        let menu = OPNDockMenu.make(
+            recentGames: [game("A", appId: "1")],
+            phase: .streaming,
+            gameTitle: "Portal"
+        )
+
+        #expect(rows(menu).map(\.title) == [
+            OPNDockMenu.nowStreamingHeader,
+            "Portal",
+            OPNDockMenu.pauseStreamTitle,
+            OPNDockMenu.endStreamTitle,
+            OPNDockMenu.newSessionTitle,
+            OPNDockMenu.openRecordingsTitle,
+        ])
+        // The header and the game name are labels; the two controls act on the session.
+        #expect(rows(menu)[0].isEnabled == false)
+        #expect(rows(menu)[1].isEnabled == false)
+        #expect(rows(menu)[2].action == #selector(OPNDockMenuActions.pauseStream(_:)))
+        #expect(rows(menu)[3].action == #selector(OPNDockMenuActions.endStream(_:)))
+        // The controls stop the stream, they do not bring the stream window forward.
+        #expect(rows(menu)[2].target === OPNDockMenuActions.shared)
+        #expect(rows(menu)[3].target === OPNDockMenuActions.shared)
+    }
+
+    @Test func theStreamingBlockSitsAboveWhatIsLeftOfTheMenu() {
+        let menu = OPNDockMenu.make(
+            recentGames: [game("A", appId: "1")],
+            phase: .streaming,
+            gameTitle: "Portal"
+        )
+
+        // Two groups, because the games are gone while a stream runs: the block first, then the two
+        // window actions. The stream block is separated from what follows it, so a user reading the list
+        // cannot mistake the items under it for things the menu would stop.
+        #expect(menu.items.map(\.isSeparatorItem) == [false, false, false, false, true, false, false])
+    }
+
+    // MARK: - Streaming tile
+
+    /// The marker is one flag, so a stream cannot be half-drawn: `OPNDockIconController` writes it or
+    /// does not, and the write is skipped only when the content is unchanged.
+    @Test func aRunningStreamMarksTheTile() {
+        let content = OPNDockTileContent(pendingSessions: nil, progress: nil, isStreaming: true)
+        #expect(content.isStreaming)
+    }
+
+    @Test func aStreamIsNotDrawnTheSameWayASessionThatIsMerelyWaiting() {
+        // The marker is a claim that frames are arriving, so a wait must not borrow it. A queued or
+        // starting session owns the bar and the badge instead.
+        let waiting = OPNDockTileContent(pendingSessions: 1, progress: .indeterminate, isStreaming: false)
+        #expect(!waiting.isStreaming)
+        #expect(waiting.progress == .indeterminate)
+    }
+
+    @Test func theLiveBadgeSitsInTheTopTrailingCornerAtEveryDockSize() {
+        // The badge is an overlay on the icon, so it has to stay inside the tile and clear of the
+        // leading edge at whatever size the Dock asks for. A degenerate tile draws nothing.
+        for size in [CGFloat(16), 32, 64, 128, 256] {
+            let bounds = NSRect(x: 0, y: 0, width: size, height: size)
+            let badge = OPNDockTileProgressView.liveBadgeRect(in: bounds)
+            #expect(badge.width > 0, "\(size)pt tile has no room for a badge")
+            #expect(badge.minX > bounds.minX, "\(size)pt badge reaches the leading edge")
+            #expect(badge.maxX < bounds.maxX, "\(size)pt badge touches the trailing edge")
+            #expect(badge.maxY < bounds.maxY, "\(size)pt badge touches the top edge")
+            // The badge belongs in the trailing half, not floating in the middle of the artwork.
+            #expect(badge.midX > bounds.midX, "\(size)pt badge is not in the trailing half")
+            #expect(badge.midY > bounds.midY, "\(size)pt badge is not in the upper half")
+        }
+        #expect(OPNDockTileProgressView.liveBadgeRect(in: .zero).isEmpty)
+    }
+
+    @Test func theLiveBadgeClearsTheProgressBar() {
+        // A stream that is also exporting shows both, so the two must not overlap: the badge is in the
+        // corner, the bar along the bottom.
+        let bounds = NSRect(x: 0, y: 0, width: 128, height: 128)
+        let badge = OPNDockTileProgressView.liveBadgeRect(in: bounds)
+        let track = OPNDockTileProgressView.trackRect(in: bounds)
+        #expect(!badge.intersects(track), "the live badge overlaps the progress bar")
+    }
+
+    @Test func theLiveBadgeNamesASymbolThatExists() {
+        // The badge is drawn from a symbol name, so a typo would silently draw nothing at runtime.
+        #expect(NSImage(systemSymbolName: OPNDockTileProgressView.liveBadgeSymbolName, accessibilityDescription: nil) != nil)
+    }
+
 }
