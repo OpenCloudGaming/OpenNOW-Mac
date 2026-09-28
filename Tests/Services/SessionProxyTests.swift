@@ -1,3 +1,4 @@
+import CFNetwork
 import Foundation
 import Testing
 @testable import OpenNOW
@@ -155,6 +156,26 @@ private final class MutableClock: @unchecked Sendable {
         #expect(!OPNSessionProxySessionProvider.shouldFallbackToDirect(after: URLError(.cancelled)))
         struct NonNetworkError: Error {}
         #expect(!OPNSessionProxySessionProvider.shouldFallbackToDirect(after: NonNetworkError()))
+    }
+
+    /// A dead proxy fails under `kCFErrorDomainCFNetwork`, which is not a `URLError`, so it needs its
+    /// own route to the direct fallback. Without it, a stale proxy configuration makes sign-in fail
+    /// with "kCFErrorDomainCFNetwork error 310" and the user cannot reach Settings to clear it.
+    @Test func fallsBackToDirectOnProxyConnectionFailures() {
+        let proxyFailures: [CFNetworkErrors] = [
+            .cfErrorHTTPProxyConnectionFailure,
+            .cfErrorHTTPBadProxyCredentials,
+            .cfErrorHTTPSProxyConnectionFailure,
+            .cfStreamErrorHTTPSProxyFailureUnexpectedResponseToCONNECTMethod,
+        ]
+        for code in proxyFailures {
+            let error = NSError(domain: kCFErrorDomainCFNetwork as String, code: Int(code.rawValue))
+            #expect(OPNSessionProxySessionProvider.shouldFallbackToDirect(after: error))
+        }
+        let unrelatedCFNetworkError = NSError(domain: kCFErrorDomainCFNetwork as String, code: Int(CFNetworkErrors.cfErrorHTTPBadURL.rawValue))
+        #expect(!OPNSessionProxySessionProvider.shouldFallbackToDirect(after: unrelatedCFNetworkError))
+        let foreignDomainError = NSError(domain: "com.example.not-a-proxy", code: Int(CFNetworkErrors.cfErrorHTTPSProxyConnectionFailure.rawValue))
+        #expect(!OPNSessionProxySessionProvider.shouldFallbackToDirect(after: foreignDomainError))
     }
 
     @Test func providerUsesDirectSessionWhenProxyDisabled() async {
