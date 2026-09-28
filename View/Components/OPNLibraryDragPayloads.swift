@@ -1,12 +1,8 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// The item providers the two capture libraries drag out with.
-///
-/// Each one carries a real file representation, so Finder, Mail and Messages receive the captured
-/// file. The recording provider also keeps its `RecordingEditorDragPayload` text representation, so
-/// a drop on the editor timeline behaves exactly as it did before the file representation existed.
-/// The screenshot provider adds inline PNG data, so Messages pastes the picture rather than a file.
+/// The item providers the two capture libraries drag out with: a real file representation for
+/// Finder, Mail and Messages, the editor payload for recordings, and inline PNG for screenshots.
 enum OPNLibraryDragPayload {
     static func recording(for recording: StreamRecording) -> NSItemProvider {
         let provider = fileProvider(at: recording.videoURL) ?? NSItemProvider()
@@ -20,9 +16,8 @@ enum OPNLibraryDragPayload {
         return provider
     }
 
-    /// The provider `NSItemProvider` builds for the file itself, which advertises the file's own type
-    /// beside `public.file-url`. Nil once the file is gone: an item provider that promises a missing
-    /// file hands the target an empty drop rather than failing where the reader can see it.
+    /// The provider `NSItemProvider` builds for the file itself. Nil once the file is gone, so a
+    /// missing capture never promises the drop target an empty file.
     private static func fileProvider(at url: URL) -> NSItemProvider? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         return NSItemProvider(contentsOf: url)

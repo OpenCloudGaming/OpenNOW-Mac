@@ -26,9 +26,8 @@ protocol SystemIntegrationServing {
     /// Replaces the general pasteboard's contents with `text`.
     func copyToPasteboard(_ text: String)
 
-    /// Puts `imageURL`'s PNG data and its own file URL on the general pasteboard, so a rich text
-    /// target pastes the picture and Finder pastes a copy of the file. False when the image could
-    /// not be read.
+    /// Puts `imageURL`'s PNG data and its file URL on the general pasteboard. False when the image
+    /// could not be read.
     func copyImageToPasteboard(_ imageURL: URL) -> Bool
 
     /// Puts `fileURL` on the general pasteboard as a file reference, so Finder pastes the file
@@ -51,9 +50,8 @@ protocol SystemIntegrationServing {
     func applyAppIcon(toFileAt url: URL)
 }
 
-/// Holds the share picker for the life of the sheet it presents. It has to be created on the main
-/// actor and shown from an `NSView`, so it lives here rather than in a stored property of the
-/// value-type service.
+/// Holds the share picker for the life of the sheet it presents. It must be created on the main
+/// actor and shown from an `NSView`, so it cannot be a stored property of the value-type service.
 @MainActor
 private enum SharingPickerRetention {
     static var picker: NSSharingServicePicker?

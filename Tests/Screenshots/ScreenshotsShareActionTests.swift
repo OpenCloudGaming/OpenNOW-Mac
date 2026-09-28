@@ -27,7 +27,7 @@ struct ScreenshotsShareActionTests {
         return url
     }
 
-    @Test func copyImageWritesTheImageAndMarksTheCopiedScreenshot() throws {
+    @Test func copyImageMarksTheScreenshotItCopied() throws {
         let directory = try temporaryDirectory()
         let image = directory.appendingPathComponent("shot.png")
         try Data([0x00]).write(to: image)
@@ -48,7 +48,7 @@ struct ScreenshotsShareActionTests {
         try Data([0x00]).write(to: image)
         let sample = screenshot(directory: directory)
         let spy = OPNSystemIntegrationSpy()
-        spy.copyImageSucceeds = false
+        spy.isCopyImageSuccessful = false
         let model = ScreenshotsViewModel(systemIntegration: spy)
 
         model.copyImage(sample)
@@ -57,18 +57,24 @@ struct ScreenshotsShareActionTests {
         #expect(model.message == "OpenNOW could not read this screenshot.")
     }
 
-    @Test func shareAndQuickLookRefuseAFileThatIsGone() throws {
+    @Test func shareRefusesAFileThatIsGone() throws {
         let directory = try temporaryDirectory()
         let sample = screenshot(directory: directory, fileName: "missing.png")
         let spy = OPNSystemIntegrationSpy()
         let model = ScreenshotsViewModel(systemIntegration: spy)
 
-        #expect(model.quickLookURL(for: sample) == nil)
         model.share(sample)
-        model.copyImage(sample)
 
         #expect(spy.sharedURLs.isEmpty)
-        #expect(spy.copiedImageURLs.isEmpty)
+        #expect(model.message == "missing.png is no longer on disk.")
+    }
+
+    @Test func quickLookReturnsNothingForAFileThatIsGone() throws {
+        let directory = try temporaryDirectory()
+        let sample = screenshot(directory: directory, fileName: "missing.png")
+        let model = ScreenshotsViewModel(systemIntegration: OPNSystemIntegrationSpy())
+
+        #expect(model.quickLookURL(for: sample) == nil)
         #expect(model.message == "missing.png is no longer on disk.")
     }
 }

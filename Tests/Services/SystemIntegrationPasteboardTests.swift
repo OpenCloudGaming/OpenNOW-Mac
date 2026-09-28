@@ -18,7 +18,7 @@ struct SystemIntegrationPasteboardTests {
         return url
     }
 
-    @Test func copyImageWritesPNGDataAndTheFileURL() throws {
+    @Test func copyImageWritesPNGDataWithTheFileURL() throws {
         let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x03, 0x04])
         let url = try temporaryPNG(bytes)
 
@@ -39,7 +39,7 @@ struct SystemIntegrationPasteboardTests {
         #expect(pasteboard.canReadItem(withDataConformingToTypes: [UTType.fileURL.identifier]))
     }
 
-    @Test func copyImageFailsHonestlyWhenTheFileIsGone() throws {
+    @Test func copiesFailWhenTheFileIsGone() throws {
         let url = try temporaryPNG(Data([0x00]))
         try FileManager.default.removeItem(at: url)
 

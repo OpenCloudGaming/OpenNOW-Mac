@@ -72,7 +72,7 @@ import UniformTypeIdentifiers
         }
     }
 
-    @Test func recordingProviderCarriesBothTheEditorPayloadAndTheVideoFile() async throws {
+    @Test func recordingDragDeliversTheVideoFileWithItsEditorPayload() async throws {
         let directory = try temporaryDirectory()
         let id = UUID()
         let video = directory.appendingPathComponent("clip.mp4")
@@ -92,7 +92,7 @@ import UniformTypeIdentifiers
         #expect(try Data(contentsOf: file) == Data([0x00, 0x01, 0x02]))
     }
 
-    @Test func recordingProviderKeepsTheEditorPayloadWhenTheVideoIsGone() throws {
+    @Test func recordingDragKeepsTheEditorPayloadWhenTheVideoIsGone() throws {
         let directory = try temporaryDirectory()
         let id = UUID()
         let provider = OPNLibraryDragPayload.recording(for: recording(id: id, directory: directory, fileName: "missing.mp4"))
@@ -101,7 +101,7 @@ import UniformTypeIdentifiers
         #expect(!provider.registeredTypeIdentifiers.contains(UTType.fileURL.identifier), "No file promise for a file that is gone")
     }
 
-    @Test func screenshotProviderCarriesPNGDataAndTheFile() async throws {
+    @Test func screenshotDragCarriesPNGDataAlongsideTheFile() async throws {
         let directory = try temporaryDirectory()
         let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01, 0x02])
         try bytes.write(to: directory.appendingPathComponent("shot.png"))
@@ -116,7 +116,7 @@ import UniformTypeIdentifiers
         #expect(try Data(contentsOf: file) == bytes)
     }
 
-    @Test func screenshotProviderIsEmptyWhenTheImageIsGone() throws {
+    @Test func screenshotDragIsEmptyWhenTheImageIsGone() throws {
         let directory = try temporaryDirectory()
         let provider = OPNLibraryDragPayload.screenshot(for: screenshot(id: UUID(), directory: directory, fileName: "missing.png"))
 

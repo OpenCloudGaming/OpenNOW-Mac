@@ -58,7 +58,7 @@ struct RecordingsShareActionTests {
         #expect(model.message == "Copied clip.mp4.")
     }
 
-    @Test func everyNewActionRefusesAHiddenFromTheLibraryFile() throws {
+    @Test func newActionsRefuseAFileThatIsNoLongerOnDisk() throws {
         let directory = try temporaryDirectory()
         let sample = recording(directory: directory, fileName: "missing.mp4")
         let spy = OPNSystemIntegrationSpy()
@@ -73,7 +73,7 @@ struct RecordingsShareActionTests {
         #expect(model.message == "missing.mp4 is no longer on disk.")
     }
 
-    @Test func quickLookURLIsTheVideoWhileItExists() throws {
+    @Test func quickLookReturnsTheVideoWhileItExists() throws {
         let directory = try temporaryDirectory()
         let video = directory.appendingPathComponent("clip.mp4")
         try Data([0x00]).write(to: video)

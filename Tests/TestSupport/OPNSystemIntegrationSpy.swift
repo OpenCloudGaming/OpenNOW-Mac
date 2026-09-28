@@ -11,9 +11,9 @@ final class OPNSystemIntegrationSpy: SystemIntegrationServing {
     private(set) var copiedImageURLs: [URL] = []
     private(set) var copiedFileURLs: [URL] = []
     private(set) var sharedURLs: [URL] = []
-    var copyImageSucceeds = true
-    var copyFileSucceeds = true
-    var shareSucceeds = true
+    var isCopyImageSuccessful = true
+    var isCopyFileSuccessful = true
+    var isShareSuccessful = true
 
     func open(_ url: URL) { openedURLs.append(url) }
 
@@ -25,17 +25,17 @@ final class OPNSystemIntegrationSpy: SystemIntegrationServing {
 
     func copyImageToPasteboard(_ imageURL: URL) -> Bool {
         copiedImageURLs.append(imageURL)
-        return copyImageSucceeds
+        return isCopyImageSuccessful
     }
 
     func copyFileURLToPasteboard(_ fileURL: URL) -> Bool {
         copiedFileURLs.append(fileURL)
-        return copyFileSucceeds
+        return isCopyFileSuccessful
     }
 
     func share(_ url: URL) -> Bool {
         sharedURLs.append(url)
-        return shareSucceeds
+        return isShareSuccessful
     }
 
     func revealInFinder(_ url: URL) { revealedURLs.append(url) }
