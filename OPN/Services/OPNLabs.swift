@@ -20,13 +20,13 @@ struct OPNLabsFlag: Identifiable, Equatable, Sendable {
 }
 
 enum OPNLabs {
-    /// The in-stream clipboard history: copy in a stream, read the frame's text on this Mac, and
-    /// copy it back out from the HUD. Off by default — whole-frame OCR picks up game-HUD clutter and
-    /// Control-C is a common gameplay binding, so the flag is the reader opting into that trade.
+    /// The in-stream clipboard history: select text in a stream, copy, and the selection is read on
+    /// this Mac and filed for copying back out from the HUD. Off by default — a selection is not
+    /// always what Control-C is for in a game, so the flag is the reader opting into that trade.
     static let clipboardCapture = OPNLabsFlag(
         id: "streamClipboardCapture",
         title: "In-Stream Clipboard History",
-        summary: "Command-C or Control-C in a stream reads the current frame's text on this Mac and files it in a clipboard history you can copy from the HUD.",
+        summary: "Command-C or Control-C in a stream reads the selected text on this Mac and files it in a clipboard history you can copy from the HUD.",
         since: "0.15"
     )
 

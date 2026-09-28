@@ -45,7 +45,7 @@ public enum StreamCommand: Equatable, Sendable {
     /// alive and resumable, the same action the in-stream controls offer.
     case pauseSession
     case toggleOnScreenKeyboard
-    /// Files the current frame's text into the clipboard history. Fired by the copy chords in-stream.
+    /// Files the selected text into the clipboard history. Fired by the copy chords in-stream.
     case captureStreamText
 
     static func shortcutCommand(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> StreamCommand? {

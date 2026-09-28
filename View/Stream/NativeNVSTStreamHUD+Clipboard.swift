@@ -33,7 +33,7 @@ struct StreamHUDClipboardPanel: View {
             onToggle: { model.toggleHUDSection(.clipboard) }
         ) {
             if clipboard.entries.isEmpty {
-                Text("Press copy in a stream to file the frame's text here.")
+                Text("Select text in a stream and press copy to file it here.")
                     .font(.streamFont(size: 11, weight: .medium))
                     .foregroundStyle(StreamHUDTheme.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)

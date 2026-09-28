@@ -98,7 +98,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showQuitMenu: return "Open the in-stream quit menu."
         case .showShortcutsHelp: return "Show the list of in-stream shortcuts."
         case .openSearch: return "Focus the search field in the games catalog."
-        case .captureStreamText: return "File the frame's text into the clipboard history, and pass the copy on to the game."
+        case .captureStreamText: return "File the selected text into the clipboard history, and pass the copy on to the game."
         }
     }
 

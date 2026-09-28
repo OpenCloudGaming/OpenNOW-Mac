@@ -93,7 +93,7 @@ public struct StreamClipboardHistoryStore: Sendable {
     }
 }
 
-/// Whether in-stream copy captures frame text. Read by the capture path and written by Settings.
+/// Whether in-stream copy files the selected text. Read by the capture path and written by Settings.
 /// Two switches gate it: the Labs flag that offers the feature at all, and this page's toggle that
 /// turns the trigger off while keeping whatever history is already filed.
 public enum StreamTextCaptureSettings {

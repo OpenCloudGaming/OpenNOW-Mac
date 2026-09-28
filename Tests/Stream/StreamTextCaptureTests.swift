@@ -82,11 +82,18 @@ struct StreamTextCaptureFilterTests {
         #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("Add to your wishlist", CGRect(x: 0.7, y: 0.82, width: 0.15, height: 0.028))]))
     }
 
-    /// A run of coloured text has no block around it: the "block" is the glyphs, so it is no wider
-    /// than Vision's line box.
+    /// A run of coloured text has no block around it: the "block" is the glyphs, so it comes out
+    /// clearly narrower than the line box Vision reports.
     @Test func aRunOfColouredTextIsNotASelection() {
-        let block = CGRect(x: 0.2, y: 0.4, width: 0.1, height: 0.03)
-        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("heading", CGRect(x: 0.2, y: 0.4, width: 0.105, height: 0.03))]))
+        let block = CGRect(x: 0.2, y: 0.4, width: 0.08, height: 0.03)
+        #expect(!StreamTextCaptureFilter.isTextSelection(block, lines: [line("heading", CGRect(x: 0.2, y: 0.4, width: 0.12, height: 0.03))]))
+    }
+
+    /// A field's highlight is drawn tight, so it can come out a hair narrower than the line box —
+    /// measured at 0.97 on a real selected word in a game's text field. That is still a selection.
+    @Test func aHighlightATouchNarrowerThanTheLineBoxIsStillASelection() {
+        let block = CGRect(x: 0.4, y: 0.7, width: 0.045, height: 0.03)
+        #expect(StreamTextCaptureFilter.isTextSelection(block, lines: [line("abreaaca", CGRect(x: 0.41, y: 0.705, width: 0.046, height: 0.024))]))
     }
 
     @Test func aBlockWithNoTextInItIsNotASelection() {

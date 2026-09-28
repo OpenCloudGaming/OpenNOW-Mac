@@ -55,6 +55,17 @@ struct StreamTextSelectionDetectorTests {
         #expect(rects.allSatisfy { $0.height > 0.1 })
     }
 
+    /// A short word is a small share of a wide frame. The detector used to demand five percent of
+    /// the width, which threw away a selected name in a text field on a real stream.
+    @Test func aShortWordIsStillFound() {
+        let image = makeImage(width: 1000, height: 500) { context in
+            fill(context, CGRect(x: 400, y: 240, width: 30, height: 10), red: 0.16, green: 0.38, blue: 0.85)
+        }
+        let rects = StreamTextSelectionDetector.selectionRects(in: image)
+        #expect(rects.count == 1)
+        #expect(rects.first.map { close($0.minX, 0.4) } == true)
+    }
+
     @Test func aPlainFrameHasNoSelection() {
         let image = makeImage(width: 400, height: 200) { _ in }
         #expect(StreamTextSelectionDetector.selectionRects(in: image).isEmpty)

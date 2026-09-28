@@ -176,8 +176,8 @@ extension CaptureSettingsPage {
     ]
 }
 
-/// The in-stream clipboard history's own settings: whether the copy chords capture frame text, how
-/// many entries are held, and — because OCR touches what the reader types elsewhere — one honest
+/// The in-stream clipboard history's own settings: whether the copy chords file the selected text,
+/// how many entries are held, and — because OCR touches what the reader types elsewhere — one honest
 /// line about where the text lives.
 struct StreamClipboardSettingsCard: View {
     let uiScale: CGFloat
@@ -188,7 +188,7 @@ struct StreamClipboardSettingsCard: View {
         SettingsCard(title: "Clipboard", badge: .experimental, uiScale: uiScale) {
             SettingsToggleRow(
                 title: "Capture text when I press copy",
-                subtitle: "Command-C or Control-C in a stream reads the current frame's text on this Mac and files it in the clipboard history. The game still receives the copy.",
+                subtitle: "Command-C or Control-C in a stream reads the selected text on this Mac and files it in the clipboard history. The game still receives the copy.",
                 isOn: captureEnabled,
                 uiScale: uiScale,
                 action: { captureEnabled = $0 }

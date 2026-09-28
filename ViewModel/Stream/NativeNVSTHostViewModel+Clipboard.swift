@@ -15,6 +15,7 @@ extension NativeNVSTHostViewModel {
         static let clipped = "Saved \u{2014} text looks cut off"
         static let copied = "Copied to clipboard"
         static let empty = "No text found in frame"
+        static let noSelection = "No selected text in frame"
     }
 
     /// How long a dragged selection stays usable. Long enough to select and then reach for the copy
@@ -48,7 +49,7 @@ extension NativeNVSTHostViewModel {
             let recognition = await self.clipboard.recognizer.recognizeText(in: image, preferredRegion: selection)
             let text = recognition.text
             guard !text.isEmpty else {
-                self.showEmptyCaptureMessage(reason: recognition.usedSelection ? "no-selection-text" : "no-text")
+                self.showEmptyCaptureMessage(reason: recognition.usedSelection ? "no-selection-text" : "no-selection")
                 return
             }
             let isClipped = StreamTextCaptureFilter.isClipped(text)
@@ -100,7 +101,8 @@ extension NativeNVSTHostViewModel {
     }
 
     private func showEmptyCaptureMessage(reason: String) {
-        showNativeTransientStreamMessage(Self.StreamTextCaptureMessage.empty)
+        let message = reason == "no-selection" ? Self.StreamTextCaptureMessage.noSelection : Self.StreamTextCaptureMessage.empty
+        showNativeTransientStreamMessage(message)
         OPNStreamTelemetry.capture("nvst.ui.clipboard.empty", level: .info, message: "Frame text capture found nothing to file.", attributes: [
             "applicationID": configuration.applicationID,
             "reason": reason,

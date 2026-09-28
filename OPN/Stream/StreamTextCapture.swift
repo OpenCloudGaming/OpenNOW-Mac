@@ -68,7 +68,11 @@ enum StreamTextCaptureFilter {
         guard let union, union.width > 0, union.height > 0 else { return false }
         let ratioH = block.height / union.height
         let ratioW = block.width / union.width
-        return ratioH >= 0.9 && ratioH <= 1.8 && ratioW >= 1.0
+        // The bounds are generous because a selection is drawn tight: a field's highlight can be a
+        // hair narrower than the line box Vision reports (measured at 0.97 on a real text field), and
+        // a multilingual font can overshoot the other way. A button or banner is several times its
+        // label, so the upper bounds still do the rejecting that matters.
+        return ratioH >= 0.85 && ratioH <= 1.8 && ratioW >= 0.9
     }
 
     /// Whether the text stops as if a field cut it off. A trailing ellipsis is the one clip signal a
@@ -134,10 +138,10 @@ struct StreamTextRecognizer: Sendable {
         // Without this the blue bars and buttons a page is full of read as selections.
         let selection = highlights.filter { StreamTextCaptureFilter.isTextSelection($0, lines: wholeFrameLines) }
         guard !selection.isEmpty else {
-            return StreamTextRecognition(
-                text: StreamTextCaptureFilter.acceptedText(from: wholeFrameLines),
-                usedSelection: false
-            )
+            // A copy is a copy of the selection. With no selection there is nothing to file — filing
+            // the whole frame instead is the behaviour this feature exists to avoid, and it reads as
+            // a wall of unrelated screen text.
+            return StreamTextRecognition(text: "", usedSelection: false)
         }
         let pieces = StreamTextCaptureFilter.readingOrder(selection).compactMap { rect -> String? in
             let lines = recognizeLines(cgImage: cgImage, region: inflatedSelection(rect))

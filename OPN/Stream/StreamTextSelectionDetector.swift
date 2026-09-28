@@ -131,7 +131,10 @@ enum StreamTextSelectionDetector {
     private static func isSelectionShaped(_ component: Component, width: Int, height: Int) -> Bool {
         let boxWidth = component.maxX - component.minX + 1
         let boxHeight = component.maxY - component.minY + 1
-        guard boxWidth >= max(4, Int(0.05 * Double(width))), boxHeight >= 3 else { return false }
+        // A short word selection is a small share of a wide frame — a five-percent floor threw away a
+        // selected name in a text field on a 16:9 stream. The floor only exists to drop specks; the
+        // text-hug gate is what decides whether a block is a selection.
+        guard boxWidth >= max(4, Int(0.012 * Double(width))), boxHeight >= 3 else { return false }
         guard Double(boxWidth) / Double(boxHeight) >= 2.5 else { return false }
         let heightFraction = Double(boxHeight) / Double(height)
         guard heightFraction >= 0.012, heightFraction <= 0.45 else { return false }
