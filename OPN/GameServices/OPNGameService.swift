@@ -24,6 +24,13 @@ public struct OPNAppPatchStatus: Equatable, Sendable {
     public var variantPatchingById: [String: Bool] = [:]
     public var primaryTextByVariantId: [String: String] = [:]
     public var secondaryTextByVariantId: [String: String] = [:]
+    /// The vendor availability the same poll classified, per variant. Additive to patching: a
+    /// maintenance-only title has no patching status but still carries its availability here, which
+    /// is what a maintenance watch reads to detect that a title came back.
+    public var availabilityById: [String: CatalogAvailability] = [:]
+    /// The title-level rollup of `availabilityById`, by the same rule the catalog object uses.
+    /// Nil when this poll said nothing about any variant of the app.
+    public var availability: CatalogAvailability?
 }
 
 final class OPNGameService: @unchecked Sendable {

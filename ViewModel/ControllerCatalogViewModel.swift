@@ -404,9 +404,13 @@ final class ControllerCatalogViewModel: ObservableObject {
         return rows
     }
 
-    /// The row itself: the action anybody came for, and a door to the rest.
+    /// The row itself: the action anybody came for, the watch control for a title the vendor has
+    /// taken down, and a door to the rest. The watch control joins the row rather than the More
+    /// menu because for a maintenance title it is the only thing the reader can actually do.
     func detailActions(for game: OPNCatalogGameObject) -> [ControllerDetailAction] {
         var actions: [ControllerDetailAction] = [.primary]
+        let availability = catalog?.selectedVariant(in: game)?.catalogAvailability ?? game.catalogAvailability
+        if GameDetailPresentation.showsWatchControl(availability) { actions.append(.watchAvailability) }
         if !detailMoreActions(for: game).isEmpty { actions.append(.more) }
         return actions
     }

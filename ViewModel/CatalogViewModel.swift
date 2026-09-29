@@ -409,6 +409,9 @@ final class CatalogViewModel {
     var selectedGameRevealSequence = 0
     var settingsPreferencesTask: Task<Void, Never>?
     var patchingPollInFlight = false
+    /// The maintenance watches this Mac is running. Local to this machine per the feature's design:
+    /// a watch is a promise only a running app can keep, so it never syncs.
+    var maintenanceWatches: [CatalogMaintenanceWatch] = []
     var queuedPatchingLaunchIdentity = ""
     var queuedPatchingLaunchVariantIndex = -1
     let gameService: any CatalogGameServing
@@ -454,6 +457,7 @@ final class CatalogViewModel {
         guard !hasStarted else { return }
         hasStarted = true
         loadAccountScopedState()
+        loadMaintenanceWatches()
         pruneOrphanedCollectionIcons()
         observeCollectionsStoreChanges()
         observeHomeArrangementChanges()
@@ -466,16 +470,6 @@ final class CatalogViewModel {
             guard !Task.isCancelled, let self else { return }
             self.browseCatalog()
         }
-    }
-
-    deinit {
-        if let observer = deinitHandle.collectionsStoreObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        if let observer = deinitHandle.homeArrangementObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        deinitHandle.patchingPollTask?.cancel()
     }
 
     // Derived catalog collections are rebuilt from the full catalog on every
@@ -747,8 +741,19 @@ extension OPNCatalogGameObject {
     }
 }
 
+/// Owns the view model's long-lived resources, so releasing the view model releases them here.
 final class CatalogViewModelDeinitHandle: @unchecked Sendable {
     var patchingPollTask: Task<Void, Never>?
     var collectionsStoreObserver: NSObjectProtocol?
     var homeArrangementObserver: NSObjectProtocol?
+
+    deinit {
+        if let collectionsStoreObserver {
+            NotificationCenter.default.removeObserver(collectionsStoreObserver)
+        }
+        if let homeArrangementObserver {
+            NotificationCenter.default.removeObserver(homeArrangementObserver)
+        }
+        patchingPollTask?.cancel()
+    }
 }

@@ -24,14 +24,28 @@ struct OPNDockTileContent: Equatable, Sendable {
     var progress: OPNDockProgress?
     /// Whether a stream is active right now, so the tile can mark itself as the session's home.
     var isStreaming: Bool
+    /// How many maintenance watches are running. Only reaches the badge when nothing is pending,
+    /// because a pending session is something the user can act on now and a watch is something the
+    /// app is doing for them.
+    var watchedTitles: Int = 0
+    /// A watch is announcing a returning title, so the icon must stay in the Dock until the reader
+    /// arrives even under menu-bar-only. Kept here, on the pure decision, rather than read off
+    /// `NSApplication` at the call site.
+    var isAnnouncingWatch: Bool = false
 
     static let none = OPNDockTileContent(isStreaming: false)
 
     var badgeLabel: String? {
-        guard let pendingSessions, pendingSessions > 0 else { return nil }
-        // Capped like every other badge on the system: past two digits the exact count is wider than
-        // the tile and is not a number anyone acts on.
-        return pendingSessions > 99 ? "99+" : String(pendingSessions)
+        guard let pendingSessions, pendingSessions > 0 else { return Self.cappedBadgeLabel(watchedTitles) }
+        return Self.cappedBadgeLabel(pendingSessions)
+    }
+
+    /// Capped like every other badge on the system: past two digits the exact count is wider than the
+    /// tile and is not a number anyone acts on. Zero means no badge at all.
+    private static func cappedBadgeLabel(_ count: Int) -> String? {
+        guard count > 0 else { return nil }
+        guard count <= 99 else { return "99+" }
+        return String(count)
     }
 
     /// The sessions the user has to act on: one being acquired, and one that exists but is not
