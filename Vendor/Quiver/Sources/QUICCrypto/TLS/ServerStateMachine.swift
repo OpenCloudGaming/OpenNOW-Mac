@@ -141,6 +141,11 @@ public final class ServerStateMachine: Sendable {
                 let clientHelloMessage = HandshakeCodec.encode(type: .clientHello, content: data)
                 let bindersSize = offeredPsks.bindersSize
                 let truncatedLength = clientHelloMessage.count - bindersSize
+                guard truncatedLength >= 0 else {
+                    throw TLSHandshakeError.internalError(
+                        "ClientHello binders exceed the encoded message length"
+                    )
+                }
                 let truncatedTranscript = clientHelloMessage.prefix(truncatedLength)
 
                 // Try each offered PSK identity
@@ -201,8 +206,10 @@ public final class ServerStateMachine: Sendable {
                 // Check if client offered early_data and session allows it
                 if clientHello.earlyData && session.maxEarlyDataSize > 0 {
                     // Check replay protection if configured (RFC 8446 Section 8)
-                    // 0-RTT data can be replayed, so servers should track ticket usage
-                    var acceptEarlyData = true
+                    // 0-RTT data can be replayed, so servers MUST track ticket usage. Refuse
+                    // early data unless replay protection is wired in, rather than accepting
+                    // unguarded by default.
+                    var acceptEarlyData = false
                     if let replayProtection = configuration.replayProtection {
                         // Create ticket identifier from ticket nonce (unique per ticket)
                         let ticketIdentifier = ReplayProtection.createIdentifier(from: session.ticketNonce)
@@ -244,8 +251,10 @@ public final class ServerStateMachine: Sendable {
             guard let clientALPN = clientHello.alpn else {
                 throw TLSHandshakeError.noALPNMatch
             }
-            if let common = configuration.alpnProtocols.isEmpty ? clientALPN.protocols.first :
-                ALPNExtension(protocols: configuration.alpnProtocols).negotiate(with: clientALPN) {
+            guard !configuration.alpnProtocols.isEmpty else {
+                throw TLSHandshakeError.noALPNMatch
+            }
+            if let common = ALPNExtension(protocols: configuration.alpnProtocols).negotiate(with: clientALPN) {
                 state.context.negotiatedALPN = common
             } else {
                 throw TLSHandshakeError.noALPNMatch
