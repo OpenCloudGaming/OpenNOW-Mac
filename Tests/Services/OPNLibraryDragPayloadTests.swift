@@ -64,10 +64,16 @@ import UniformTypeIdentifiers
         }
     }
 
-    private func loadedFile(_ provider: NSItemProvider, type: UTType) async -> URL? {
+    /// `loadFileRepresentation` vends a temporary copy that is deleted when the handler returns, so
+    /// the bytes have to be read inside it.
+    private func loadedFileData(_ provider: NSItemProvider, type: UTType) async -> Data? {
         await withCheckedContinuation { continuation in
             provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
-                continuation.resume(returning: url)
+                guard let url else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: try? Data(contentsOf: url))
             }
         }
     }
@@ -88,8 +94,8 @@ import UniformTypeIdentifiers
         let payload = try #require(await loadedEditorPayload(provider))
         #expect(RecordingEditorDragPayload(stringValue: payload) == .recording(id))
 
-        let file = try #require(await loadedFile(provider, type: .mpeg4Movie))
-        #expect(try Data(contentsOf: file) == Data([0x00, 0x01, 0x02]))
+        let fileData = try #require(await loadedFileData(provider, type: .mpeg4Movie))
+        #expect(fileData == Data([0x00, 0x01, 0x02]))
     }
 
     @Test func recordingDragKeepsTheEditorPayloadWhenTheVideoIsGone() throws {
@@ -112,8 +118,7 @@ import UniformTypeIdentifiers
         #expect(types.contains(UTType.fileURL.identifier), "Finder gets a file copy")
 
         #expect(try #require(await loadedData(provider, type: .png)) == bytes)
-        let file = try #require(await loadedFile(provider, type: .png))
-        #expect(try Data(contentsOf: file) == bytes)
+        #expect(try #require(await loadedFileData(provider, type: .png)) == bytes)
     }
 
     @Test func screenshotDragIsEmptyWhenTheImageIsGone() throws {
