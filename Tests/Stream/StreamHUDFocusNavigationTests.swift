@@ -104,6 +104,23 @@ struct StreamHUDFocusNavigationTests {
         #expect(StreamHUDFocusEntry.focusID(from: OPNStreamHUDSection.audio.focusID, direction: .down, in: collapsed) == OPNStreamHUDSection.capture.focusID)
     }
 
+    /// The CLIPBOARD list is a stack of full-width rows, not a grid: each entry is one row of its
+    /// own and the clear action follows them, so up/down walks the list as it is drawn.
+    @Test func clipboardRowsWalkAsFullWidthRows() {
+        let entries = [
+            entry("clip-1"), entry("clip-2"), entry("clip-clear"),
+            entry("pointer", group: "input", columns: 4),
+        ]
+        #expect(StreamHUDFocusEntry.rows(of: entries) == [[0], [1], [2], [3]])
+        #expect(StreamHUDFocusEntry.focusID(from: "clip-1", direction: .down, in: entries) == "clip-2")
+        #expect(StreamHUDFocusEntry.focusID(from: "clip-clear", direction: .down, in: entries) == "pointer")
+        #expect(StreamHUDFocusEntry.focusID(from: "pointer", direction: .up, in: entries) == "clip-clear")
+        // Open -> navigate -> select -> focus returns to where the pad stood.
+        #expect(StreamHUDFocusEntry.activatable("clip-2", in: entries)?.id == "clip-2")
+        #expect(StreamHUDFocusEntry.focusID(from: "clip-2", direction: .down, in: entries) == "clip-clear")
+        #expect(StreamHUDFocusEntry.focusID(from: "clip-clear", direction: .up, in: entries) == "clip-2")
+    }
+
     // MARK: - Pad-driven dropdowns
 
     /// A dropdown's entry is a full-width row of its own, so it sits between the grids rather than

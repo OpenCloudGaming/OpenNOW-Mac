@@ -81,7 +81,7 @@ extension NativeNVSTMediaStreamSurface {
 
     private var nativeShortcutHelpRows: [NativeShortcutHelpRow] {
         KeybindingAction.allCases
-            .filter { $0.section == .stream }
+            .filter { $0.section == .stream && $0.isAvailable }
             .map { action in
                 NativeShortcutHelpRow(
                     id: action.rawValue,

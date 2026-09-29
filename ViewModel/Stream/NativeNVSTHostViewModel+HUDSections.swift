@@ -18,6 +18,7 @@ extension NativeNVSTHostViewModel {
             .session: [],
             .audio: audioFocusEntries,
             .capture: captureFocusEntries,
+            .clipboard: clipboardFocusEntries,
             .display: displayFocusEntries,
             .input: inputFocusEntries,
             .controllers: controllersFocusEntries,
@@ -83,6 +84,46 @@ extension NativeNVSTHostViewModel {
             StreamHUDFocusEntry(id: "screenshot", isDisabled: !sidebarCapabilities.supports(.screenshot) || !isConnected || screenshotTask != nil, group: "capture", columns: 4, action: takeNativeScreenshot),
         ]
     }
+
+    /// The mode selector, then one row of actions per entry, then the clear action. The selector leads
+    /// because it is what a reader reaches for when the copy starts bothering them.
+    var clipboardFocusEntries: [StreamHUDFocusEntry] {
+        var entries = [clipboardModeFocusEntry]
+        entries += clipboard.entries.flatMap(entryFocusEntries)
+        entries.append(clipboardClearFocusEntry)
+        return entries
+    }
+
+    private var clipboardModeFocusEntry: StreamHUDFocusEntry {
+        StreamHUDFocusEntry(id: Self.clipboardCaptureModeFocusID, isDisabled: false) { [weak self] in
+            self?.cycleClipboardCaptureMode()
+        }
+    }
+
+    private var clipboardClearFocusEntry: StreamHUDFocusEntry {
+        StreamHUDFocusEntry(id: Self.clipboardClearFocusID, isDisabled: clipboard.entries.isEmpty) { [weak self] in
+            self?.requestClearClipboardHistory()
+        }
+    }
+
+    /// An entry's actions share one row, so up/down walks entries and left/right picks the action —
+    /// the same shape the Co-Op participant rows use.
+    private func entryFocusEntries(for entry: StreamClipboardEntry) -> [StreamHUDFocusEntry] {
+        let group = "clipboard-\(entry.id.uuidString)"
+        return [
+            StreamHUDFocusEntry(id: Self.clipboardEntryFocusPrefix + entry.id.uuidString, isDisabled: false, group: group, columns: 2) { [weak self] in
+                self?.copyClipboardEntry(entry)
+            },
+            StreamHUDFocusEntry(id: Self.clipboardRemoveFocusPrefix + entry.id.uuidString, isDisabled: false, group: group, columns: 2) { [weak self] in
+                self?.removeClipboardEntry(entry)
+            },
+        ]
+    }
+
+    static let clipboardEntryFocusPrefix = "clipboard-entry-"
+    static let clipboardRemoveFocusPrefix = "clipboard-remove-"
+    static let clipboardClearFocusID = "clipboard-clear"
+    static let clipboardCaptureModeFocusID = "clipboard-capture-mode"
 
     private var displayFocusEntries: [StreamHUDFocusEntry] {
         [
@@ -154,6 +195,10 @@ extension NativeNVSTHostViewModel {
         switch section {
         case .controllers: return !controllerBatteries.isEmpty
         case .coop: return remoteCoOpPreferences.isEnabled
+        // The history survives the feature being switched off, so the panel is gated on the flag
+        // that offers the feature, not on the trigger toggle: a reader who turned capture off can
+        // still get at what was already filed.
+        case .clipboard: return OPNLabs.isClipboardCaptureEnabled
         default: return true
         }
     }

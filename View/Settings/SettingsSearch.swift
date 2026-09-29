@@ -138,6 +138,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Video Bitrate", .capture, "recording", keywords: ["record", "capture", "quality", "file size"]),
         SettingsSearchEntry("Audio Bitrate", .capture, "recording", keywords: ["record", "capture", "sound"]),
         SettingsSearchEntry("Record Enhanced Video", .capture, "recording", keywords: ["record", "capture", "upscaled", "metalfx"]),
+        SettingsSearchEntry("Capture on Copy", .capture, "clipboard", keywords: ["clipboard", "ocr", "text", "copy", "paste", "history", "frame", "selection", "region", "off"]),
         SettingsSearchEntry("Recording Mode", .capture, "recording", keywords: ["replay", "clip", "buffer", "rolling", "last minutes", "shadowplay", "highlights", "instant replay", "manual", "off", "length", "window", "duration", "2 hours", "clip length", "last seconds", "save"]),
         SettingsSearchEntry("Your recordings", .capture, "recordings", keywords: ["library", "clips", "trim", "crop", "export", "browse"]),
         SettingsSearchEntry("Your screenshots", .capture, "screenshots", keywords: ["library", "stills", "crop", "album", "albums", "export", "browse", "view"]),
@@ -169,12 +170,27 @@ enum SettingsSearchIndex {
     static func results(for query: String, limit: Int = 8) -> [SettingsSearchEntry] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard needle.count >= 2 else { return [] }
-        let titleMatches = entries.filter { $0.title.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
-        let keywordMatches = entries.filter { entry in
+        // A row gated behind a Labs flag is not drawn until the flag is on, and a result that leads
+        // to a card nobody can see lies about where the setting is.
+        let available = entries.filter { isAvailable($0) }
+        let titleMatches = available.filter { $0.title.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        let keywordMatches = available.filter { entry in
             guard !titleMatches.contains(entry) else { return false }
             return entry.keywords.contains { $0.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
         }
         return Array((titleMatches + keywordMatches).prefix(limit))
+    }
+
+    /// Whether a row is on screen right now. Only the in-stream clipboard history is gated, by its
+    /// Labs flag; every other entry is always drawn.
+    private static func isAvailable(_ entry: SettingsSearchEntry) -> Bool {
+        if entry.group == .keybindings, entry.title == KeybindingAction.captureStreamText.title {
+            return KeybindingAction.captureStreamText.isAvailable
+        }
+        if entry.group == .capture, entry.title == "Capture on Copy" {
+            return OPNLabs.isClipboardCaptureEnabled
+        }
+        return true
     }
 
     /// Where a result says it lives, for the line under its title.

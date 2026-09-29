@@ -68,9 +68,10 @@ struct OPNNewTag: View {
     }
 }
 
-/// A small "BETA" tag, for surfaces that are shipped but still settling. One component rather than
-/// three inline `Text`s: it appears on the Settings rail, in the stream HUD and on the Home entry
-/// point, and three copies would drift in colour and casing the way the relay rows already did.
+/// A small trial tag for surfaces that are shipped but still settling, or on trial behind a Labs
+/// flag. One component rather than three inline `Text`s: it appears on the Settings rail, in the
+/// stream HUD and on the Home entry point, and three copies would drift in colour and casing the
+/// way the relay rows already did.
 struct OPNBetaTag: View {
     let uiScale: CGFloat
     /// The HUD and the top bar sit on a dark stream surface where the accent reads as interactive;
@@ -79,9 +80,12 @@ struct OPNBetaTag: View {
     /// Rides along inside another control - a tab, a row title - where the tag is an annotation on
     /// something else and must not outweigh it.
     var compact = false
+    /// What the tag says. BETA is the default; a feature behind a Labs flag wears EXPERIMENTAL, and
+    /// the chrome is otherwise identical so a trial reads the same wherever it appears.
+    var label = "BETA"
 
     var body: some View {
-        Text("BETA")
+        Text(label)
             .font(.settingsFont(size: (compact ? 8 : 9) * uiScale, weight: .bold))
             .tracking(SettingsTagMetrics.tracking * uiScale)
             .foregroundStyle(foreground)
@@ -89,7 +93,7 @@ struct OPNBetaTag: View {
             .padding(.trailing, (leadingPadding - SettingsTagMetrics.tracking) * uiScale)
             .padding(.vertical, 2 * uiScale)
             .background(background)
-            .accessibilityLabel("Beta")
+            .accessibilityLabel(label.capitalized)
     }
 
     private var leadingPadding: CGFloat { compact ? 4 : 5 }

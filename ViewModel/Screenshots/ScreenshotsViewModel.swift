@@ -30,7 +30,7 @@ final class ScreenshotsViewModel: ObservableObject {
 
     var editorSaveTask: Task<Void, Never>?
 
-    private let systemIntegration: any SystemIntegrationServing
+    let systemIntegration: any SystemIntegrationServing
     private var reloadTask: Task<Void, Never>?
     // Removed from `deinit`, which is nonisolated, so the token is held nonisolated like the other
     // deinit-removed observer tokens in the app (see `OPNMenuBarSessionModel`).

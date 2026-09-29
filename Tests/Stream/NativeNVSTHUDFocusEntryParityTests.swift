@@ -72,6 +72,52 @@ struct NativeNVSTHUDFocusEntryParityTests {
         #expect(Set(ids).count == ids.count)
     }
 
+    /// Every clipboard row and the clear action are full-width entries, so the pad reaches the whole
+    /// panel even though none of it is a tile.
+    @Test func clipboardRowsAndClearAreReachableFromAPad() {
+        OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
+        let (_, model) = makeHUDSurface()
+        let entry = StreamClipboardEntry(text: "captured text", applicationID: "100", gameTitle: "Game")
+        model.clipboard.entries = [entry]
+        let ids = model.hudFocusEntries.map(\.id)
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardCaptureModeFocusID))
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardEntryFocusPrefix + entry.id.uuidString))
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardRemoveFocusPrefix + entry.id.uuidString))
+        #expect(ids.contains(NativeNVSTHostViewModel.clipboardClearFocusID))
+    }
+
+    /// Copy and remove share one row per entry, so left/right picks the action and up/down moves
+    /// between entries rather than between the two buttons of one entry.
+    @Test func copyAndRemoveShareAnEntrysRow() {
+        OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
+        let (_, model) = makeHUDSurface()
+        model.clipboard.entries = [
+            StreamClipboardEntry(text: "first", applicationID: "100", gameTitle: "Game"),
+            StreamClipboardEntry(text: "second", applicationID: "100", gameTitle: "Game"),
+        ]
+        let group = "clipboard-\(model.clipboard.entries[0].id.uuidString)"
+        let entries = model.hudFocusEntries.filter { $0.group == group }
+        #expect(entries.map(\.id) == [
+            NativeNVSTHostViewModel.clipboardEntryFocusPrefix + model.clipboard.entries[0].id.uuidString,
+            NativeNVSTHostViewModel.clipboardRemoveFocusPrefix + model.clipboard.entries[0].id.uuidString,
+        ])
+        #expect(entries.allSatisfy { $0.columns == 2 })
+        #expect(StreamHUDFocusEntry.rows(of: model.hudFocusEntries).contains { row in
+            row.map { model.hudFocusEntries[$0].group } == [group, group]
+        })
+    }
+
+    /// The mode selector leads the panel, so it stays reachable however long the history grows.
+    @Test func theClipboardModeSelectorLeadsThePanel() {
+        OPNLabs.setEnabled(OPNLabs.clipboardCapture, true)
+        let (_, model) = makeHUDSurface()
+        let ids = model.hudFocusEntries.map(\.id)
+        let modeIndex = ids.firstIndex(of: NativeNVSTHostViewModel.clipboardCaptureModeFocusID)
+        let firstEntryIndex = ids.firstIndex { $0.hasPrefix(NativeNVSTHostViewModel.clipboardEntryFocusPrefix) }
+        #expect(modeIndex != nil)
+        if let modeIndex, let firstEntryIndex { #expect(modeIndex < firstEntryIndex) }
+    }
+
     /// The STATS panel's two selectors are full-width rows, not tiles, so nothing but this contract
     /// keeps them reachable from a pad.
     @Test func statsShapeControlsAreReachableFromAPad() {

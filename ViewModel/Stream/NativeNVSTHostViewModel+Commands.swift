@@ -22,6 +22,8 @@ extension NativeNVSTHostViewModel {
             saveNativeReplayClip()
         case .takeScreenshot:
             takeNativeScreenshot()
+        case .captureStreamText:
+            captureStreamText()
         case .toggleAntiAFK:
             toggleNativeAntiAFKMouseMovement()
         case .togglePointerCapture:
