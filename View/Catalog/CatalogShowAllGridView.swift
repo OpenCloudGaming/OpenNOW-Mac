@@ -165,27 +165,18 @@ struct CatalogShowAllGridTile: View {
         .zIndex(isHovering ? 1 : 0)
     }
 
-    private var playButtonAction: () -> Void {
-        if game.isLaunchPatching { return onQueueForPatching }
-        return game.cardPrimaryActionIsLaunchable ? onPlay : onMarkOwned
-    }
-
-    private var playButtonTitle: String {
-        if game.isLaunchPatching { return isQueuedForPatching ? "QUEUED" : "QUEUE" }
-        return game.cardPrimaryActionIsLaunchable ? "PLAY" : "MARK OWNED"
-    }
-
-    private var playButtonIconName: String {
-        if game.isLaunchPatching { return isQueuedForPatching ? "clock.fill" : "plus.circle.fill" }
-        return game.cardPrimaryActionIsLaunchable ? "play.fill" : "checkmark.seal.fill"
+    private var cardPrimaryAction: CatalogCardPrimaryAction {
+        game.cardPrimaryAction(isQueuedForPatching: isQueuedForPatching)
     }
 
     private var playButton: some View {
-        Button(action: playButtonAction) {
+        Button {
+            cardPrimaryAction.perform(onLaunch: onPlay, onMarkOwned: onMarkOwned, onQueueForPatching: onQueueForPatching)
+        } label: {
             HStack(spacing: 7) {
-                Image(systemName: playButtonIconName)
+                Image(systemName: cardPrimaryAction.iconName)
                     .catalogFont(size: 10, weight: .bold)
-                Text(playButtonTitle)
+                Text(cardPrimaryAction.title)
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
@@ -197,7 +188,9 @@ struct CatalogShowAllGridTile: View {
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
-        .disabled(game.isLaunchPatching && isQueuedForPatching)
+        .disabled(!cardPrimaryAction.isEnabled)
+        .opacity(cardPrimaryAction.isDimmed ? 0.45 : 1)
+        .accessibilityLabel(cardPrimaryAction.accessibilityLabel(gameTitle: game.title))
     }
 
     private var tileContent: some View {

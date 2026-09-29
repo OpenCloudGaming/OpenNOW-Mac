@@ -80,3 +80,66 @@ private func parseFixture(_ dictionary: [String: Any]) -> OPNGameInfo {
     #expect(!GameDetailPresentation.showsAvailabilityNotice(.available))
     #expect(GameDetailPresentation.availabilityNoticeTitle(.unavailable) == "Unavailable")
 }
+
+@Test func cardPrimaryActionLaunchesAnOwnedAvailableTitle() {
+    var game = OPNGameInfo()
+    game.id = "owned"
+    game.isInLibrary = true
+
+    let action = OPNCatalogGameObject(game: game).cardPrimaryAction(isQueuedForPatching: false)
+    #expect(action == .launch)
+    #expect(action.isEnabled)
+    #expect(!action.isDimmed)
+}
+
+@Test func cardPrimaryActionMarksAnUnownedTitleAsOwned() {
+    var game = OPNGameInfo()
+    game.id = "not-owned"
+    game.variants = [OPNGameVariant(id: "v", appStore: "STEAM")]
+
+    let action = OPNCatalogGameObject(game: game).cardPrimaryAction(isQueuedForPatching: false)
+    #expect(action == .markOwned)
+    #expect(action.isEnabled)
+}
+
+@Test func cardPrimaryActionQueuesAPatchingTitle() {
+    var game = OPNGameInfo()
+    game.id = "patching"
+    game.isPatching = true
+    let object = OPNCatalogGameObject(game: game)
+
+    #expect(object.cardPrimaryAction(isQueuedForPatching: false) == .queueForPatching(isQueued: false))
+    #expect(object.cardPrimaryAction(isQueuedForPatching: false).isEnabled)
+    #expect(object.cardPrimaryAction(isQueuedForPatching: true) == .queueForPatching(isQueued: true))
+    #expect(!object.cardPrimaryAction(isQueuedForPatching: true).isEnabled)
+}
+
+@Test func takenDownOwnedTitleDisablesTheCardLaunchInsteadOfErroring() {
+    var variant = OPNGameVariant(id: "v", appStore: "STEAM")
+    variant.catalogStatus = "SERVER_MAINTENANCE"
+    variant.catalogStateDetailsSubType = "GFN_DEVELOPER_MAINTENANCE"
+    var game = OPNGameInfo()
+    game.id = "owned-maintenance"
+    game.isInLibrary = true
+    game.variants = [variant]
+
+    let action = OPNCatalogGameObject(game: game).cardPrimaryAction(isQueuedForPatching: false)
+    #expect(action == .unavailable(.maintenance))
+    #expect(action.title == "OFFLINE")
+    #expect(!action.isEnabled)
+    #expect(action.isDimmed)
+}
+
+@Test func unavailableOwnedTitleReportsUnavailableOnTheCard() {
+    var variant = OPNGameVariant(id: "v", appStore: "STEAM")
+    variant.catalogStatus = "UNAVAILABLE"
+    var game = OPNGameInfo()
+    game.id = "owned-unavailable"
+    game.isInLibrary = true
+    game.variants = [variant]
+
+    let action = OPNCatalogGameObject(game: game).cardPrimaryAction(isQueuedForPatching: false)
+    #expect(action == .unavailable(.unavailable))
+    #expect(action.title == "UNAVAILABLE")
+    #expect(!action.isEnabled)
+}

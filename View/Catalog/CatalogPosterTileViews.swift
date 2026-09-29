@@ -31,7 +31,7 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
         lhs.imageURL == rhs.imageURL &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isSelectionActive == rhs.isSelectionActive &&
-        lhs.isQueuedForPatching == rhs.isQueuedForPatching &&
+        lhs.cardPrimaryAction == rhs.cardPrimaryAction &&
         lhs.isResumableSession == rhs.isResumableSession
     }
 
@@ -70,12 +70,16 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
         .zIndex(isHovering ? 1 : 0)
     }
 
+    private var cardPrimaryAction: CatalogCardPrimaryAction {
+        game.cardPrimaryAction(isQueuedForPatching: isQueuedForPatching)
+    }
+
     private var playButton: some View {
         Button(action: primaryAction) {
             HStack(spacing: 7) {
-                Image(systemName: primaryIconName)
+                Image(systemName: cardPrimaryAction.iconName)
                     .catalogFont(size: 10, weight: .bold)
-                Text(primaryTitle)
+                Text(cardPrimaryAction.title)
                     .catalogFont(size: 11, weight: .bold)
                     .tracking(0.9)
             }
@@ -86,36 +90,13 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
             .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
         }
         .buttonStyle(.opnPressable(scale: 0.94))
-        .disabled(game.isLaunchPatching && isQueuedForPatching)
-        .accessibilityLabel(primaryAccessibilityLabel)
-    }
-
-    private var primaryTitle: String {
-        if game.isLaunchPatching { return isQueuedForPatching ? "QUEUED" : "QUEUE" }
-        return game.cardPrimaryActionIsLaunchable ? "PLAY" : "MARK OWNED"
-    }
-
-    private var primaryIconName: String {
-        if game.isLaunchPatching { return isQueuedForPatching ? "clock.fill" : "plus.circle.fill" }
-        return game.cardPrimaryActionIsLaunchable ? "play.fill" : "checkmark.seal.fill"
+        .disabled(!cardPrimaryAction.isEnabled)
+        .opacity(cardPrimaryAction.isDimmed ? 0.45 : 1)
+        .accessibilityLabel(cardPrimaryAction.accessibilityLabel(gameTitle: game.title))
     }
 
     private func primaryAction() {
-        guard !game.isLaunchPatching else {
-            onQueueForPatching()
-            return
-        }
-        guard !game.cardPrimaryActionIsLaunchable else {
-            onPlay()
-            return
-        }
-        onMarkOwned()
-    }
-
-    private var primaryAccessibilityLabel: String {
-        let title = game.title.isEmpty ? "game" : game.title
-        if game.isLaunchPatching { return isQueuedForPatching ? "Queued \(title)" : "Queue \(title) after patching" }
-        return game.cardPrimaryActionIsLaunchable ? "Play \(title)" : "Mark \(title) as owned"
+        cardPrimaryAction.perform(onLaunch: onPlay, onMarkOwned: onMarkOwned, onQueueForPatching: onQueueForPatching)
     }
 
     private var tileContent: some View {

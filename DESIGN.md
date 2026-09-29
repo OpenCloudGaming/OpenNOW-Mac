@@ -1242,6 +1242,8 @@ keyboard focus across the app and stream surfaces.
 
 The amber strip a catalog title shows when the vendor has taken it down — rendered in the desktop
 detail panel and the controller game page in place of the play affordance, which dims and disables.
+A desktop card has no room for the strip, so its hover button relabels to OFFLINE / UNAVAILABLE and
+disables at 0.45 opacity instead of starting a launch the vendor will reject.
 The vendor serves four availability states (measured live 2026-09-29): `AVAILABLE`,
 `SERVER_MAINTENANCE` (with `stateDetails.subType == GFN_DEVELOPER_MAINTENANCE`) and `PATCHING`
 (`PATCHING_AUTO`) in the authenticated catalog, and the shorter `MAINTENANCE` / `PATCHING` in the
