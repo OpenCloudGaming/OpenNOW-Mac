@@ -29,40 +29,44 @@ extension NativeNVSTHostViewModel {
     func enterNativeFullScreenWhenSessionReady() {
         sessionReadyFullScreenTask?.cancel()
         sessionReadyFullScreenTask = Task { @MainActor [weak self] in
-            await self?.performNativeFullScreenEntry()
+            await self?.driveNativeFullScreenEntry()
         }
     }
 
-    private func performNativeFullScreenEntry() async {
+    /// A deferred activation resumes the attempt loop rather than nesting a second driver, so a user
+    /// who comes and goes repeatedly grows no stack and no second budget.
+    private func driveNativeFullScreenEntry() async {
+        while !Task.isCancelled {
+            guard await runNativeFullScreenEntryAttempts() else { return }
+            guard await waitForAppActivation() else { return }
+        }
+    }
+
+    /// Spends one geometry budget. `true` means the entry is waiting on activation and the caller
+    /// should resume it; `false` means it was issued, was already done, or the session went away.
+    private func runNativeFullScreenEntryAttempts() async -> Bool {
         let startedAt = Date()
         var attemptCount = 0
         var lastDeferral: OPNStreamFullScreenEntry.DeferralReason?
         for attempt in 1...Self.sessionReadyFullScreenAttemptLimit {
             try? await Task.sleep(for: Self.sessionReadyFullScreenRetryDelay)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return false }
             attemptCount = attempt
             switch nativeFullScreenEntryAttempt() {
-            case .stop:
-                return
-            case .alreadyFullScreen:
-                return
+            case .stop, .alreadyFullScreen:
+                return false
             case .enter:
                 let activation = OPNStreamFullScreenEntry.activation(
                     bringsAppToFrontWhenReady: OPNSessionReadyAction.mode.bringsAppToFrontWhenReady,
                     isAppActive: NSApp.isActive
                 )
-                guard activation == .activateNow else {
-                    await waitForAppActivation()
-                    guard !Task.isCancelled else { return }
-                    await performNativeFullScreenEntry()
-                    return
-                }
-                guard let window = nativeView?.window else { return }
+                guard activation == .activateNow else { return true }
+                guard let window = nativeView?.window else { return false }
                 isSessionReadyFullScreenEntryRequested = true
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
                 window.toggleFullScreen(nil)
-                return
+                return false
             case .wait(let reason):
                 lastDeferral = reason
             }
@@ -73,17 +77,19 @@ extension NativeNVSTHostViewModel {
             attemptCount: attemptCount,
             elapsedMs: Int(Date().timeIntervalSince(startedAt) * 1000)
         )
+        return false
     }
 
     /// Waits for the next activation notification. The subscription is registered in the same
     /// main-actor turn as the caller's own `isActive` read, so an activation cannot land between the
-    /// two and be missed; the loop re-checks after each notification because the task can also end
-    /// by cancellation, in which case the sequence finishes with the app still in the background.
-    private func waitForAppActivation() async {
+    /// two and be missed; the loop re-checks after each notification because the sequence can also
+    /// finish by cancellation, with the app still in the background. `false` means cancelled.
+    private func waitForAppActivation() async -> Bool {
         let notifications = NotificationCenter.default.notifications(named: NSApplication.didBecomeActiveNotification, object: nil)
         while !Task.isCancelled, !NSApp.isActive {
             for await _ in notifications { break }
         }
+        return !Task.isCancelled
     }
 
     private func nativeFullScreenEntryAttempt() -> OPNStreamFullScreenEntry.Attempt {
