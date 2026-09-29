@@ -13,7 +13,7 @@ Execute every task in this order:
 
 # Build Artifact Discipline
 - UI work is linted against DESIGN.md by the `design_*` custom rules in `.swiftlint.yml`. Run `swift package --scratch-path .build/lint plugin --allow-writing-to-package-directory swiftlint lint --strict --baseline .swiftlint-baseline.json App GFN Model OPN View ViewModel Tests` before handing back a change under `View/`. Pre-existing surfaces are grandfathered in `.swiftlint-baseline.json`; do not add new entries to it — annotate a documented exception at the site instead.
-- For this Xcode project, use Xcode/XcodeBuildMCP only for builds, tests, and runs. Do not use SwiftPM commands as build/test/run shortcuts unless the user explicitly overrides this instruction for a specific task.
+- For builds and tests, use SwiftPM from the repository root: `swift build --scratch-path .build/shared` and `swift test --scratch-path .build/shared`. Reserve Xcode/XcodeBuildMCP for running the app or when a task needs the signed app bundle.
 - Run SwiftPM commands from the repository root unless a task explicitly requires otherwise.
 - Use `--scratch-path .build/shared` for SwiftPM commands that generate build state, including `swift build`, `swift test`, `swift run`, and relevant `swift package` commands.
 - Do not run package-local SwiftPM commands that create package-specific `.build` directories. Use the root `Package.swift` with the shared scratch path instead.

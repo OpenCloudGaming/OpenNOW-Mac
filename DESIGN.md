@@ -281,21 +281,6 @@ on a handle to resize it. Arrow keys move by one source pixel, Option-arrow resi
 uses ten-pixel steps. All chrome dimensions scale with `opnUIScale`; image coordinates remain
 source pixels. The library is inactive during the edit so the draft stays associated with its image.
 
-### Availability Notice & Watch Chip (`CatalogAvailabilityNotice`)
-
-One notice serves the mouse detail panel and the pad overlay, so an offline title says the same thing
-on both. It is a flat warning-tinted strip — 14/11 padding, a 1px `Semantic.warning` @ 0.45 stroke, a
-tinted fill at 0.14, a 15pt `warning` glyph over a 13pt bold title and a 13pt medium body — and never a
-card.
-
-- **The watch chip** is offered only for `.maintenance`. It is a square 28-high chip like the panel's
-  other secondary controls, square corners and a 1px stroke: neutral fill and primary text when idle,
-  accent fill and `onAccent` text while watching. It is never disabled — a tap at the cap answers with
-  copy under it rather than a dead control that cannot explain itself.
-- **The copy is honest about time.** The vendor publishes no maintenance ETA, so neither the body nor
-the chip promises a schedule; the watching body says the app will tell the reader within about a
-minute of the title coming back, and nothing here says *when*.
-
 ### Borders on Filled Controls
 
 Use `Rectangle().strokeBorder(...)`, never `Rectangle().stroke(...)`, on anything with a
@@ -1267,6 +1252,13 @@ keyboard focus across the app and stream surfaces.
 
 The amber strip a catalog title shows when the vendor has taken it down — rendered in the desktop
 detail panel and the controller game page in place of the play affordance, which dims and disables.
+A desktop card has no room for the strip, so its hover button relabels to OFFLINE / UNAVAILABLE and
+disables at 0.45 opacity instead of starting a launch the vendor will reject.
+The strip also carries the maintenance **Watch** chip: a square 28-high control with a 1px stroke —
+neutral fill and primary text idle, accent fill and `onAccent` while watching. It is offered for
+`maintenance` only, since withdrawal carries no promise of returning, and is never disabled: at the
+25-watch cap the copy under it says so rather than a dead control. Its copy names no time — the vendor
+publishes no maintenance ETA — promising detection within about a poll interval instead.
 The vendor serves four availability states (measured live 2026-09-29): `AVAILABLE`,
 `SERVER_MAINTENANCE` (with `stateDetails.subType == GFN_DEVELOPER_MAINTENANCE`) and `PATCHING`
 (`PATCHING_AUTO`) in the authenticated catalog, and the shorter `MAINTENANCE` / `PATCHING` in the

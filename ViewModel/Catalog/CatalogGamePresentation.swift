@@ -53,6 +53,14 @@ extension OPNCatalogGameObject {
         isInLibrary || variants.contains { $0.inLibrary || $0.librarySelected } || variants.isEmpty
     }
 
+    /// The card's hover action for this game. A vendor takedown wins over ownership: the detail panel
+    /// already dims and disables its Play button for it, and patching keeps its own queue affordance.
+    func cardPrimaryAction(isQueuedForPatching: Bool) -> CatalogCardPrimaryAction {
+        if isLaunchPatching { return .queueForPatching(isQueued: isQueuedForPatching) }
+        if !catalogAvailability.isPlayable { return .unavailable(catalogAvailability) }
+        return cardPrimaryActionIsLaunchable ? .launch : .markOwned
+    }
+
     /// The server spells its keys SCREAMING_SNAKE; the lowercased probe covers the loose top-level
     /// fields the parser folds into the same map.
     func firstImageURL(ofTypes types: [String]) -> String? {
@@ -258,5 +266,65 @@ extension OPNCatalogGameObject {
         if !playabilityState.isEmpty { chips.append(playabilityState.replacingOccurrences(of: "_", with: " ").uppercased()) }
         chips.append(contentsOf: genres.prefix(3).map { $0.uppercased() })
         return chips.isEmpty ? ["CLOUD READY"] : chips
+    }
+}
+
+/// The affordance a catalog card's hover button shows. The label, icon, enabled state and dimming
+/// all read from one case, so the three desktop card layouts cannot disagree on what a press does.
+enum CatalogCardPrimaryAction: Equatable {
+    case launch
+    case markOwned
+    case queueForPatching(isQueued: Bool)
+    case unavailable(CatalogAvailability)
+
+    var title: String {
+        switch self {
+        case .launch: return "PLAY"
+        case .markOwned: return "MARK OWNED"
+        case .queueForPatching(let isQueued): return isQueued ? "QUEUED" : "QUEUE"
+        case .unavailable(let availability): return availability == .maintenance ? "OFFLINE" : "UNAVAILABLE"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .launch: return "play.fill"
+        case .markOwned: return "checkmark.seal.fill"
+        case .queueForPatching(let isQueued): return isQueued ? "clock.fill" : "plus.circle.fill"
+        case .unavailable: return "exclamationmark.circle.fill"
+        }
+    }
+
+    /// A taken-down title blocks the button; a queued patch is disabled but keeps its accent fill.
+    var isEnabled: Bool {
+        switch self {
+        case .launch, .markOwned: return true
+        case .queueForPatching(let isQueued): return !isQueued
+        case .unavailable: return false
+        }
+    }
+
+    var isDimmed: Bool {
+        if case .unavailable = self { return true }
+        return false
+    }
+
+    func accessibilityLabel(gameTitle: String) -> String {
+        let title = gameTitle.isEmpty ? "game" : gameTitle
+        switch self {
+        case .launch: return "Play \(title)"
+        case .markOwned: return "Mark \(title) as owned"
+        case .queueForPatching(let isQueued): return isQueued ? "Queued \(title)" : "Queue \(title) after patching"
+        case .unavailable: return "\(title) is \(self.title.lowercased())"
+        }
+    }
+
+    func perform(onLaunch: () -> Void, onMarkOwned: () -> Void, onQueueForPatching: () -> Void) {
+        switch self {
+        case .launch: onLaunch()
+        case .markOwned: onMarkOwned()
+        case .queueForPatching: onQueueForPatching()
+        case .unavailable: break
+        }
     }
 }
