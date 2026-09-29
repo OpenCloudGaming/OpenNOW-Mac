@@ -93,7 +93,7 @@ struct GameDetailPanel: View {
                                 .padding(.top, 9)
                         }
                         if showsAvailabilityNotice {
-                            availabilityNotice(for: availability)
+                            availabilityNotice(for: game, availability: availability)
                                 .padding(.top, 13)
                         }
                         detailActions(game: game)

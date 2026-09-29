@@ -23,6 +23,7 @@ public struct OPNAppPreferenceStorage: @unchecked Sendable {
         "OpenNOW.Interface.HomeRailsHidden",
         "OpenNOW.Catalog.CollectionLocalAccounts",
         "OpenNOW.Catalog.CollectionAccountAliases",
+        "OpenNOW.Catalog.MaintenanceWatches",
         "OpenNOW.CloudSync.CatalogBaseline",
         "OpenNOW.CloudSync.CatalogSignatureBaseline",
         "OpenNOW.CloudSync.SettingsBaseline",

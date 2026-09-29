@@ -24,12 +24,19 @@ enum OPNDockIconController {
 
     /// Whether the Dock icon should be hidden right now. Pure, so the decision is testable without
     /// touching `NSApplication`.
+    ///
+    /// A watch that is announcing keeps the icon: the reader parked the app in the menu bar and is
+    /// being called back, so withdrawing the icon mid-bounce would erase the one signal the whole
+    /// feature exists to send. It is the only input that overrides the reader's menu-bar-only choice,
+    /// and only until they activate the app.
     static func shouldHideDockIcon(
         behavior: OPNWindowCloseBehavior,
         showsStatusItem: Bool,
-        hasVisibleAppWindow: Bool
+        hasVisibleAppWindow: Bool,
+        isAnnouncingWatch: Bool = false
     ) -> Bool {
-        behavior == .menuBarOnly && showsStatusItem && !hasVisibleAppWindow
+        if isAnnouncingWatch { return false }
+        return behavior == .menuBarOnly && showsStatusItem && !hasVisibleAppWindow
     }
 
     static func install() {
@@ -61,6 +68,8 @@ enum OPNDockIconController {
         observerTokens.removeAll()
         sessionObservers.removeAll()
         appliedContent = .none
+        isAnnouncingWatch = false
+        watchedTitleCount = 0
         queueProgress.reset()
         exportFraction = nil
         progressView = nil
@@ -80,9 +89,32 @@ enum OPNDockIconController {
         let hide = shouldHideDockIcon(
             behavior: OPNWindowClosePreferences.behavior,
             showsStatusItem: OPNMenuBarPreferences.showsStatusItem,
-            hasVisibleAppWindow: hasVisibleAppWindow()
+            hasVisibleAppWindow: hasVisibleAppWindow(),
+            isAnnouncingWatch: isAnnouncingWatch
         )
         setPolicy(hide ? .accessory : .regular)
+    }
+
+    /// Whether a maintenance watch is currently announcing a returning title. Held so the icon the
+    /// announcement brought back is not withdrawn by the next `apply()` before the reader arrives.
+    private static var isAnnouncingWatch = false
+    /// How many maintenance watches are running, as the badge reads it.
+    private static var watchedTitleCount = 0
+
+    static func setWatchAnnouncementActive(_ active: Bool) {
+        guard isAnnouncingWatch != active else { return }
+        isAnnouncingWatch = active
+        apply()
+        refreshTile(phase: OPNMenuBarSessionModel.shared.phase, resumableSessionTitle: OPNMenuBarSessionModel.shared.resumableSessionTitle)
+    }
+
+    /// The watched-title count as an input to the badge. Reaches the tile only when no session is
+    /// pending, which `OPNDockTileContent.badgeLabel` decides.
+    static func setWatchedTitleCount(_ count: Int) {
+        let clamped = max(0, count)
+        guard watchedTitleCount != clamped else { return }
+        watchedTitleCount = clamped
+        refreshTile(phase: OPNMenuBarSessionModel.shared.phase, resumableSessionTitle: OPNMenuBarSessionModel.shared.resumableSessionTitle)
     }
 
     /// Any ordinary window counts: the main window, the Remote Co-Op guest window. A minimized window
@@ -184,7 +216,9 @@ enum OPNDockIconController {
                 hasResumableSession: resumableSessionTitle != nil
             ),
             progress: OPNDockTileContent.progress(queue: queueFraction, isStarting: phase == .starting, export: exportFraction),
-            isStreaming: phase == .streaming
+            isStreaming: phase == .streaming,
+            watchedTitles: watchedTitleCount,
+            isAnnouncingWatch: isAnnouncingWatch
         ))
     }
 

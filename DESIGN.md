@@ -554,8 +554,18 @@ it is drawn by the app except the one thing the system does not offer:
   `OPNMenuBarSessionModel`, as the popover's tiles do, and re-read the phase on the way. Neither brings
   the stream window forward; the user asked to stop the stream, not to go to it.
 
-A badge is one system-drawn label — the count of sessions waiting on the user, capped at `99+` — and
-is cleared by the same rule that set it: nothing pending, no badge.
+A badge is one system-drawn label, capped at `99+`, and is cleared by the same rule that set it.
+`OPNDockTileContent.badgeLabel` draws the count of sessions waiting on the user first and the count of
+running maintenance watches only when nothing is pending: a pending session is something the reader can
+act on now, a watch is something the app is doing for them. The watch count is a new input to the pure
+`OPNDockTileContent`, never a direct `NSDockTile` write, because `OPNDockIconController` recomputes and
+reapplies the tile on every session-surface change and would otherwise clobber it.
+
+One state overrides the reader's menu-bar-only choice: a watch that is announcing a returning title.
+`shouldHideDockIcon` takes `isAnnouncingWatch`, and while it is set the icon stays in the Dock so there
+is a tile to bounce. The request is `.criticalRequest`, made after `showDockIcon()` so the tile exists
+first, one at a time via `OPNMaintenanceWatchAttentionArbiter`, and it is released the moment the reader
+activates the app — after which the icon withdraws again if menu-bar-only is still the choice.
 
 ### Login Wall Layout
 
@@ -1244,6 +1254,11 @@ The amber strip a catalog title shows when the vendor has taken it down — rend
 detail panel and the controller game page in place of the play affordance, which dims and disables.
 A desktop card has no room for the strip, so its hover button relabels to OFFLINE / UNAVAILABLE and
 disables at 0.45 opacity instead of starting a launch the vendor will reject.
+The strip also carries the maintenance **Watch** chip: a square 28-high control with a 1px stroke —
+neutral fill and primary text idle, accent fill and `onAccent` while watching. It is offered for
+`maintenance` only, since withdrawal carries no promise of returning, and is never disabled: at the
+25-watch cap the copy under it says so rather than a dead control. Its copy names no time — the vendor
+publishes no maintenance ETA — promising detection within about a poll interval instead.
 The vendor serves four availability states (measured live 2026-09-29): `AVAILABLE`,
 `SERVER_MAINTENANCE` (with `stateDetails.subType == GFN_DEVELOPER_MAINTENANCE`) and `PATCHING`
 (`PATCHING_AUTO`) in the authenticated catalog, and the shorter `MAINTENANCE` / `PATCHING` in the

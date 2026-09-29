@@ -84,6 +84,7 @@ struct CatalogPosterRailView: View {
                                     isSelectionActive: viewModel.selectedGame != nil,
                                     isQueuedForPatching: viewModel.isQueuedForPatching(game),
                                     isResumableSession: viewModel.isResumableSessionGame(game),
+                                    isWatched: viewModel.isWatching(game),
                                     showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                                     onSelect: { viewModel.toggleGameSelection(game, inSection: section.id) },
                                     onPlay: { viewModel.launch(game: game) },

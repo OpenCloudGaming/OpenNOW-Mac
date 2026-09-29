@@ -190,6 +190,7 @@ struct ControllerGameRail: View {
                             imageURL: viewModel.optimizedImageURL(item.game.bestWideImageURL, width: 720),
                             isFocused: isFocused && selectedIndex == item.index,
                             isQueuedForPatching: viewModel.isQueuedForPatching(item.game),
+                            isWatched: viewModel.isWatching(item.game),
                             showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                             tileSize: metrics.tileSize,
                             action: { openDetails(item.game) }
@@ -246,6 +247,7 @@ struct ControllerGameTile: View, Equatable {
     let imageURL: URL?
     let isFocused: Bool
     let isQueuedForPatching: Bool
+    let isWatched: Bool
     let showsFreeAccountAccessBadges: Bool
     let tileSize: CGSize
     let action: () -> Void
@@ -261,6 +263,7 @@ struct ControllerGameTile: View, Equatable {
         imageURL: URL?,
         isFocused: Bool,
         isQueuedForPatching: Bool,
+        isWatched: Bool = false,
         showsFreeAccountAccessBadges: Bool,
         tileSize: CGSize,
         action: @escaping () -> Void
@@ -269,6 +272,7 @@ struct ControllerGameTile: View, Equatable {
         self.imageURL = imageURL
         self.isFocused = isFocused
         self.isQueuedForPatching = isQueuedForPatching
+        self.isWatched = isWatched
         self.showsFreeAccountAccessBadges = showsFreeAccountAccessBadges
         self.tileSize = tileSize
         self.action = action
@@ -284,6 +288,7 @@ struct ControllerGameTile: View, Equatable {
             && lhs.imageURL == rhs.imageURL
             && lhs.isFocused == rhs.isFocused
             && lhs.isQueuedForPatching == rhs.isQueuedForPatching
+            && lhs.isWatched == rhs.isWatched
             && lhs.showsFreeAccountAccessBadges == rhs.showsFreeAccountAccessBadges
             && lhs.tileSize == rhs.tileSize
     }
@@ -310,8 +315,8 @@ struct ControllerGameTile: View, Equatable {
                 VStack(alignment: .leading, spacing: 7 * uiScale) {
                     Spacer(minLength: 0)
                     HStack(spacing: 8 * uiScale) {
-                        if game.isLaunchPatching {
-                            Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
+                        if let statusSymbolName {
+                            Image(systemName: statusSymbolName)
                                 .catalogFont(size: 12, weight: .bold)
                                 .foregroundStyle(OPNDesign.accent)
                         }
@@ -335,8 +340,17 @@ struct ControllerGameTile: View, Equatable {
         .accessibilityLabel(game.title.isEmpty ? "Game" : game.title)
     }
 
+    /// The title row has room for one state glyph: patching wins, because a title that started
+    /// patching is no longer waiting on maintenance.
+    private var statusSymbolName: String? {
+        if game.isLaunchPatching { return isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill" }
+        guard isWatched else { return nil }
+        return "eye.fill"
+    }
+
     private var subtitle: String {
         if game.isLaunchPatching { return isQueuedForPatching ? "Queued for patch completion" : game.patchStatusPrimaryDisplayText }
+        if isWatched { return "Watching for maintenance" }
         if game.isInLibrary { return "In Library" }
         if !game.primaryStoreLabel.isEmpty { return game.primaryStoreLabel }
         return game.supportsGamepad ? "Gamepad supported" : "Cloud ready"

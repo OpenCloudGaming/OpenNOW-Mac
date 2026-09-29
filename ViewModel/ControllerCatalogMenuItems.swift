@@ -45,6 +45,7 @@ enum ControllerGameDetailFocusRow {
 /// "Visit Store". `close` is gone with them: B already backs out of the page.
 enum ControllerDetailAction: Equatable {
     case primary
+    case watchAvailability
     case favorite
     case collections
     case more
@@ -58,6 +59,7 @@ enum ControllerDetailAction: Equatable {
         switch self {
         case .primary:
             return Self.primaryTitle(game: game, selectedVariant: selectedVariant, viewModel: viewModel)
+        case .watchAvailability: return viewModel.isWatching(game) ? "Watching" : "Watch"
         case .favorite: return viewModel.isFavorite(game) ? "Unfavorite" : "Favorite"
         case .collections:
             return Self.collectionTitle(count: viewModel.collections(containing: game).count)
@@ -75,6 +77,7 @@ enum ControllerDetailAction: Equatable {
     var icon: String {
         switch self {
         case .primary: return "play.fill"
+        case .watchAvailability: return "eye.fill"
         case .favorite: return "heart.fill"
         case .collections: return "square.stack.3d.up.fill"
         case .more: return "ellipsis"
