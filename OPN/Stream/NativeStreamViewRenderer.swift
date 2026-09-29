@@ -56,6 +56,7 @@ extension NativeStreamView {
     public override func layout() {
         super.layout()
         videoSurface.frame = videoContentFrame()
+        if !nativeNVSTCompositionBar.isHidden { nativeNVSTCompositionBar.frame = compositionBarFrame() }
         window?.invalidateCursorRects(for: self)
         nativeNVSTMetalView?.frame = videoSurface.bounds
         if nativeNVSTRendererEnabled {
