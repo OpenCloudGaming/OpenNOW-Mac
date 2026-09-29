@@ -7,14 +7,27 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private static let antiAFKShortcutKeyCode: UInt16 = 40
     private static let initialUpdateCheckDelaySeconds: TimeInterval = 5
 
-    private let githubUpdater = OPNGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")
+    private let githubUpdater: OPNGitHubUpdater
+    private let updateChecks: OPNUpdateCheckCoordinator
     private var applicationUpdateCheckTimer: Timer?
-    private var updateCheckTask: Task<Void, Never>?
     private var updateInstallTask: Task<Void, Never>?
     private var deferredUpdateRelease: OPNGitHubRelease?
     private var streamEndUpdateObserver: NSObjectProtocol?
     private var streamShortcutMonitor: Any?
     private var isCompletingUserApprovedTermination = false
+
+    override init() {
+        let updater = OPNGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")
+        githubUpdater = updater
+        updateChecks = OPNUpdateCheckCoordinator(
+            checkForUpdate: { try await updater.checkForUpdate(channel: $0) },
+            currentVersion: { updater.currentVersion },
+            updateChannel: { OPNUpdatePreferences.updateChannel },
+            isSuspended: { OPNUpdatePreferences.updateChecksAreSuspendedForDebugging },
+            shouldRunAutomaticCheck: { OPNUpdatePreferences.shouldRunAutomaticUpdateCheck() }
+        )
+        super.init()
+    }
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
         OPNLog.info(.shortcut, "application(openFile:) received: \(filename)")
@@ -160,7 +173,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static func requestApplicationUpdateCheck() {
-        (NSApp.delegate as? OPNAppDelegate)?.checkForApplicationUpdates()
+        (NSApp.delegate as? OPNAppDelegate)?.checkForApplicationUpdates(automatic: false)
     }
 
     static func setAutomaticApplicationUpdateChecksEnabled(_ enabled: Bool) {
@@ -176,12 +189,12 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         // catalog and login fetches; subsequent checks stay on the hourly timer.
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Self.initialUpdateCheckDelaySeconds))
-            self?.checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
+            self?.checkForApplicationUpdates(automatic: true)
         }
     }
 
     @objc private func applicationUpdateCheckTimerFired(_ timer: Timer) {
-        checkForApplicationUpdates(showingCurrentStatus: false, automatic: true)
+        checkForApplicationUpdates(automatic: true)
     }
 
     /// The modal and the What's New card drive the same updater instance the delegate owns, so the
@@ -194,6 +207,18 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         }
         presentation.remindHandler = {
             OPNUpdatePreferences.remindTomorrow()
+        }
+        updateChecks.onCheckStarted = {
+            presentation.beginUpdateCheck()
+        }
+        updateChecks.onCheckFinished = {
+            presentation.endUpdateCheck()
+        }
+        updateChecks.onCheckCompleted = {
+            OPNUpdatePreferences.lastUpdateCheckDate = Date()
+        }
+        updateChecks.onOutcome = { [weak self] outcome, kind in
+            self?.surfaceUpdateCheckOutcome(outcome, kind: kind)
         }
     }
 
@@ -209,8 +234,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         applicationUpdateCheckTimer?.invalidate()
         applicationUpdateCheckTimer = nil
         if cancelActiveCheck {
-            updateCheckTask?.cancel()
-            updateCheckTask = nil
+            updateChecks.cancel()
         }
     }
 
@@ -222,50 +246,39 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         startApplicationUpdateChecks()
     }
 
-    private func checkForApplicationUpdates() {
-        checkForApplicationUpdates(showingCurrentStatus: true, automatic: false)
-    }
-
-    private func checkForApplicationUpdates(showingCurrentStatus: Bool, automatic: Bool) {
+    /// Manual requests clear the "remind tomorrow" snooze before the gate so a dismissal never
+    /// suppresses the next explicit check, matching the behaviour before the check was extracted.
+    /// An install owns the update modal — its scrim already blocks the Settings control, and
+    /// presenting a check result would replace the running install's progress.
+    private func checkForApplicationUpdates(automatic: Bool) {
         if !automatic {
             OPNUpdatePreferences.clearReminder()
         }
-        if automatic, !OPNUpdatePreferences.shouldRunAutomaticUpdateCheck() { return }
-        if OPNUpdatePreferences.updateChecksAreSuspendedForDebugging { return }
-        guard updateCheckTask == nil, updateInstallTask == nil else { return }
-        updateCheckTask = Task { @MainActor in
-            let presentation = OPNUpdatePresentation.shared
-            presentation.beginUpdateCheck()
-            let startedAt = ContinuousClock.now
-            do {
-                let release = try await githubUpdater.checkForUpdate(channel: OPNUpdatePreferences.updateChannel)
-                if let release {
-                    presentUpdate(for: release, automatic: automatic)
-                } else if showingCurrentStatus {
-                    presentation.present(.upToDate(version: githubUpdater.currentVersion))
-                }
-            } catch is CancellationError where !showingCurrentStatus {
-                // Automatic check interrupted; nothing to surface.
-            } catch is CancellationError {
-                presentation.present(.checkFailed(message: "The update check was interrupted."))
-            } catch where !showingCurrentStatus {
-                // Automatic check failed; nothing to surface.
-            } catch {
-                presentation.present(.checkFailed(message: error.localizedDescription))
-            }
-            // A cached or very fast check would flash the CHECKING state imperceptibly, so hold it
-            // long enough to read and stamp the result so the UI can report when that last happened.
-            let remaining = Self.minimumUpdateCheckVisibility - (ContinuousClock.now - startedAt)
-            if remaining > .zero {
-                try? await Task.sleep(for: remaining)
-            }
-            OPNUpdatePreferences.lastUpdateCheckDate = Date()
-            updateCheckTask = nil
-            presentation.endUpdateCheck()
+        guard updateInstallTask == nil else { return }
+        updateChecks.request(automatic ? .automatic : .manual)
+    }
+
+    /// Automatic checks stay silent except for an installable release. A manual request always
+    /// surfaces: the release, "up to date", the failure, or — when checks are suspended — the
+    /// reason the request could not run.
+    private func surfaceUpdateCheckOutcome(_ outcome: OPNUpdateCheckCoordinator.Outcome, kind: OPNUpdateCheckCoordinator.Kind) {
+        let presentation = OPNUpdatePresentation.shared
+        let automatic = kind == .automatic
+        switch outcome {
+        case .available(let release):
+            presentUpdate(for: release, automatic: automatic)
+        case .upToDate(let version):
+            guard !automatic else { return }
+            presentation.present(.upToDate(version: version))
+        case .failed(let message):
+            guard !automatic else { return }
+            presentation.present(.checkFailed(message: message))
+        case .suspended:
+            presentation.present(.checkUnavailable(message: Self.checksSuspendedMessage))
         }
     }
 
-    private static let minimumUpdateCheckVisibility: Duration = .milliseconds(800)
+    static let checksSuspendedMessage = "Update checks are suspended while OpenNOW runs as a debug build or with a debugger attached, because those report version 0.0.0 and would always think an update is available. Use OpenNOW ▸ Preview Update Dialog to test the update dialogs."
 
     /// An automatic check that lands mid-session would drop a modal over the game, so it waits for
     /// the stream to end. A check the user asked for is shown immediately either way.

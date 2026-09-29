@@ -13,6 +13,9 @@ final class OPNUpdatePresentation: ObservableObject {
         case upToDate(version: String)
         case checkFailed(message: String)
         case installFailed(message: String)
+        /// A manual check could not start because checks are suspended for this build. The Settings
+        /// button states the same reason, but the app menu reaches the check directly.
+        case checkUnavailable(message: String)
     }
 
     enum InstallState: Equatable {
