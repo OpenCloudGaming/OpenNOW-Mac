@@ -384,6 +384,7 @@ public final class NativeStreamView: NSView {
     var activeGamepadStates: [Int: GamepadState] = [:]
     var streamContentSize = CGSize.zero
     let videoSurface = NativeVideoSurfaceView(frame: .zero)
+    let nativeNVSTCompositionBar = NativeNVSTCompositionBarView(frame: .zero)
     var pillarboxFillMode: OPNPillarboxFillMode = .black
     private var pillarboxFillDim: Int = 55
     private var upscalingMode: Int = 0
@@ -414,6 +415,8 @@ public final class NativeStreamView: NSView {
         // Clip the video layer when crop/stretch grows it past the surface edges so
         // the pushed-out bars are cropped instead of drawn beyond the picture.
         videoSurface.layer?.masksToBounds = true
+        addSubview(nativeNVSTCompositionBar)
+        nativeNVSTCompositionBar.isHidden = true
         nativeNVSTRendererWindow.backgroundColor = .clear
         nativeNVSTRendererWindow.contentView = NativeVideoSurfaceView(frame: .zero)
         nativeNVSTRendererWindow.hasShadow = false
@@ -526,6 +529,7 @@ public final class NativeStreamView: NSView {
             removeKeyEquivalentMonitor()
             gamepadMonitor.stop()
             handleFocusLoss()
+            updateCompositionBar()
             removePointerLockNotifications()
         } else {
             installKeyEquivalentMonitor()

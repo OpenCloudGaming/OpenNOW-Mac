@@ -254,6 +254,7 @@ extension NativeStreamView {
         textInputKeyCodes.removeAll()
         pushToTalkState?.release()
         textInputState.cancel()
+        updateCompositionBar()
         activeGamepadStates.removeAll()
         preciseScrollRemainder = 0
         preciseHorizontalScrollRemainder = 0
@@ -486,12 +487,29 @@ extension NativeStreamView {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard !modifiers.contains(.command), !modifiers.contains(.control) else { return false }
         if hasMarkedText || modifiers.contains(.option) { return true }
-        if inputSourceID?.localizedCaseInsensitiveContains("inputmethod") == true { return true }
         guard let characters = event.characters, !characters.isEmpty else { return true }
-        // Special keys (arrows, Home, Page Up/Down, Delete, F1-F12, etc.) use Unicode
-        // private-use-area characters. They must be forwarded as key events, not text.
-        if characters.unicodeScalars.contains(where: { $0.value >= 0xF700 && $0.value <= 0xF8FF }) { return false }
+        // An idle IME cannot consume these, so they are seat input whatever input source is merely
+        // selected. Checked ahead of the inputmethod branch, which otherwise claims Backspace,
+        // Return, Escape, Tab, the arrows and Space while a CJK source is selected and composing
+        // nothing — `interpretKeyEvents` then yields nothing and the seat never sees the key.
+        if isIdleSeatKey(characters) { return false }
+        if inputSourceID?.localizedCaseInsensitiveContains("inputmethod") == true { return true }
         return !characters.unicodeScalars.allSatisfy(\.isASCII)
+    }
+
+    /// Whether a keystroke's characters are ones an idle IME cannot consume and the seat must
+    /// receive as a key event: C0 controls (Backspace, Return, Escape, Tab), DEL, the Unicode
+    /// private-use-area characters AppKit uses for the special keys (arrows, Home/End, F1-F12), and
+    /// space. Text characters — letters, digits, and punctuation such as `。`/`、`, which
+    /// legitimately opens conversion candidates in a Japanese IME — are deliberately excluded.
+    static func isIdleSeatKey(_ characters: String) -> Bool {
+        guard !characters.isEmpty else { return false }
+        return characters.unicodeScalars.allSatisfy { scalar in
+            scalar.value < 0x20
+                || scalar.value == 0x7F
+                || (0xF700...0xF8FF).contains(scalar.value)
+                || scalar == " "
+        }
     }
 
     func handlePushToTalk(_ event: NSEvent, isPressed: Bool) -> Bool {
@@ -512,6 +530,7 @@ extension NativeStreamView {
     public func insertText(_ string: Any, replacementRange: NSRange) {
         let value = Self.string(from: string)
         guard let committed = textInputState.commit(value) else { return }
+        updateCompositionBar()
         onInputEvent?(.text(deviceID: "keyboard", value: committed, timestamp: Self.timestamp()))
     }
 
@@ -521,10 +540,12 @@ extension NativeStreamView {
 
     public func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         textInputState.setMarkedText(Self.attributedString(from: string), selectedRange: selectedRange, replacementRange: replacementRange)
+        updateCompositionBar()
     }
 
     public func unmarkText() {
         guard let committed = textInputState.unmark() else { return }
+        updateCompositionBar()
         onInputEvent?(.text(deviceID: "keyboard", value: committed, timestamp: Self.timestamp()))
     }
 
@@ -545,15 +566,22 @@ extension NativeStreamView {
         [.markedClauseSegment, .replacementIndex, .underlineStyle, .underlineColor, .foregroundColor, .backgroundColor]
     }
 
+    /// The IME draws its candidate panel relative to this rect, so it is the drawn bar's rect at
+    /// the proposed range's caret: the panel docks above the visible composition instead of a
+    /// screen corner. The prefix offset is the same pure static the bar's caret uses.
     public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        let length = textInputState.markedText.length
+        let text = textInputState.markedText
+        let length = text.length
         let location = range.location == NSNotFound ? textInputState.selection.location : min(range.location, length)
         actualRange?.pointee = NSRange(location: location, length: min(range.length, length - location))
-        let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        let prefixRange = NSRange(location: 0, length: location)
-        let prefix = textInputState.markedText.attributedSubstring(from: prefixRange).string as NSString
-        let offset = prefix.size(withAttributes: [.font: font]).width
-        let localRect = NSRect(x: min(bounds.maxX, bounds.minX + offset), y: bounds.minY, width: 1, height: font.ascender - font.descender)
+        let scale = Self.compositionScale()
+        let font = Self.compositionFont(scale: scale)
+        let barFrame = compositionBarFrame()
+        let offset = Self.compositionPrefixWidth(text, upTo: location, font: font)
+        let localRect = NSRect(x: barFrame.minX + Self.compositionHorizontalPadding(scale: scale) + offset,
+                               y: barFrame.minY,
+                               width: 1,
+                               height: barFrame.height)
         guard let window else { return localRect }
         return window.convertToScreen(convert(localRect, to: nil))
     }
@@ -563,11 +591,12 @@ extension NativeStreamView {
         let localPoint = convert(window.convertPoint(fromScreen: point), from: nil)
         let text = textInputState.markedText.string as NSString
         guard text.length > 0 else { return 0 }
-        let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let font = Self.compositionFont(scale: Self.compositionScale())
+        let originX = compositionBarTextOriginX()
         var width: CGFloat = 0
         for index in 0..<text.length {
             let characterWidth = text.substring(with: NSRange(location: index, length: 1)).size(withAttributes: [.font: font]).width
-            if localPoint.x < bounds.minX + width + characterWidth / 2 { return index }
+            if localPoint.x < originX + width + characterWidth / 2 { return index }
             width += characterWidth
         }
         return text.length
@@ -575,6 +604,7 @@ extension NativeStreamView {
 
     public override func cancelOperation(_ sender: Any?) {
         textInputState.cancel()
+        updateCompositionBar()
     }
 
     static func string(from value: Any) -> String {
