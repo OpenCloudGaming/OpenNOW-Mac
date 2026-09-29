@@ -10,6 +10,7 @@ enum OPNStreamHUDSection: String, CaseIterable, Identifiable, Sendable {
     case session
     case audio
     case capture
+    case clipboard
     case display
     case input
     case controllers
@@ -28,6 +29,7 @@ enum OPNStreamHUDSection: String, CaseIterable, Identifiable, Sendable {
         case .session: return "SESSION"
         case .audio: return "AUDIO"
         case .capture: return "CAPTURE"
+        case .clipboard: return "CLIPBOARD"
         case .display: return "DISPLAY"
         case .input: return "INPUT"
         case .controllers: return "CONTROLLERS"

@@ -1,14 +1,30 @@
 import Foundation
 import SwiftUI
 
+/// The trial annotation a HUD section can wear. BETA is shipped but still settling; EXPERIMENTAL is
+/// a Labs feature that is off until its flag is on. Both draw the same way — the difference is what
+/// the reader is being told, and a section that only exists behind a flag should say that rather
+/// than read as something already in everyone's build.
+enum StreamHUDSectionTag: Equatable, Sendable {
+    case beta
+    case experimental
+
+    var label: String {
+        switch self {
+        case .beta: "BETA"
+        case .experimental: "EXPERIMENTAL"
+        }
+    }
+}
+
 /// One collapsible panel in the unified HUD dock. The header is a button and a pad focus row; the
 /// caller owns `isCollapsed`, and a folded section still draws its header so a pad can reopen it.
 struct StreamHUDSection<Content: View>: View {
     let label: String
     let spacing: CGFloat
-    /// Marks a section as still settling. Sits beside the label rather than in the content so it
-    /// reads as a property of the feature, not of one control inside it.
-    let showsBetaTag: Bool
+    /// Marks the section's trial state. Sits beside the label rather than in the content so it reads
+    /// as a property of the feature, not of one control inside it.
+    let tag: StreamHUDSectionTag?
     /// What the focused control in this section does, for a pad user reading icon-only tiles.
     /// Drawn in the accent colour under the content; nil hides the line.
     let caption: String?
@@ -27,7 +43,7 @@ struct StreamHUDSection<Content: View>: View {
     init(
         label: String,
         spacing: CGFloat = 10,
-        showsBetaTag: Bool = false,
+        tag: StreamHUDSectionTag? = nil,
         caption: String? = nil,
         isCollapsed: Bool = false,
         isFocused: Bool = false,
@@ -37,7 +53,7 @@ struct StreamHUDSection<Content: View>: View {
     ) {
         self.label = label
         self.spacing = spacing
-        self.showsBetaTag = showsBetaTag
+        self.tag = tag
         self.caption = caption
         self.isCollapsed = isCollapsed
         self.isFocused = isFocused
@@ -106,7 +122,7 @@ struct StreamHUDSection<Content: View>: View {
                 .font(.streamFont(size: 10, weight: .bold))
                 .tracking(1.1)
                 .foregroundStyle(isFocused ? StreamHUDTheme.textSecondary : StreamHUDTheme.textTertiary)
-            if showsBetaTag { OPNBetaTag(uiScale: 1, prominent: true) }
+            if let tag { OPNBetaTag(uiScale: 1, prominent: true, label: tag.label) }
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

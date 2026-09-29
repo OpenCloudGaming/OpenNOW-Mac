@@ -131,6 +131,12 @@ extension NativeNVSTHostViewModel {
             guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
         }
         lastAcceptedStreamInputAt = Date()
+        // The left button's edges bracket a text selection: everything between press and release is
+        // what the reader chose. Tracked before the dispatcher so a drop later in this call cannot
+        // lose the selection.
+        if case .mouse(.button(_, let button, let isPressed, _)) = event, button == .left {
+            clipboard.pointerSelection.noteLeftButton(isPressed: isPressed, at: Date())
+        }
         if case .mouse = event {
             if view.mouseInputMode == .relative, !view.isPointerLocked {
                 // The seat asked for mouselook but the capture is not held — an association macOS
@@ -208,6 +214,9 @@ extension NativeNVSTHostViewModel {
             guard view.isEmittingNeutralizingAbsolutePosition ||
                     (NSApplication.shared.isActive && view.window?.isKeyWindow == true) else { return }
             self.lastAcceptedStreamInputAt = Date()
+            // The pointer the reader is dragging the selection with, in the space a capture region is
+            // named in. Recorded here because this is the only place the position is resolved.
+            self.clipboard.pointerSelection.notePointer(event)
             self.inputDispatcher?.enqueueAbsoluteMove(event)
         }
         view.onGamepadTopologyChanged = { [weak self] topology in

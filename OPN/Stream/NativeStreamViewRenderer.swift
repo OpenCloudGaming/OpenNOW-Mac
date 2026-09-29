@@ -307,7 +307,7 @@ extension NativeStreamView {
         // then does a Command-shortcut get forwarded to the remote. Without the forward, macOS
         // routes Cmd+C / Cmd+A to the Edit menu (or discards them) and they never reach `keyDown`,
         // so the remote never sees the copy/select-all the user pressed.
-        return handlePasteShortcut(event) || handleCommand(event)
+        return handleTextCaptureShortcut(event) || handlePasteShortcut(event) || handleCommand(event)
             || forwardCommandShortcut(event) || super.performKeyEquivalent(with: event)
     }
 }

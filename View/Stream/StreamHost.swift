@@ -140,6 +140,9 @@ struct NativeNVSTMediaStreamSurface: View {
             if model.isPictureInPicture && !model.streamControlsVisible { nativePictureInPictureControls }
             if model.isShortcutsHelpVisible { nativeShortcutsHelpOverlay }
             if model.isHUDCustomizeVisible { nativeHUDCustomizeOverlay }
+            // Above the game and above the dock: while a frame is frozen the drag belongs to the
+            // reader, and nothing underneath should take the pointer first.
+            StreamRegionCapturePresenter(model: model, clipboard: model.clipboard)
             if !model.networkPathAvailable && !model.streamControlsVisible { nativeNetworkRecoveryOverlay }
             if !model.transientStreamMessage.isEmpty { nativeTransientStreamMessageOverlay.allowsHitTesting(false) }
         }

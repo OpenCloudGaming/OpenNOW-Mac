@@ -364,6 +364,44 @@ extension NativeStreamView {
         return modifiers == .command
     }
 
+    /// The in-stream copy chords. Command-C is swallowed for the app and translated into Control-C,
+    /// so the game's own copy still runs; Control-C is untouched and fires the capture on its way
+    /// through. Both are rebindable, so neither is checked by key code — the binding decides.
+    func handleTextCaptureShortcut(_ event: NSEvent) -> Bool {
+        guard OPNKeybindings.standard.resolvedAction(
+            keyCode: UInt16(event.keyCode),
+            modifierFlags: event.modifierFlags,
+            in: .stream
+        ) == .captureStreamText else { return false }
+        if event.type == .keyDown, shouldHandleCommand?(.captureStreamText) == true {
+            onCommand?(.captureStreamText)
+        }
+        guard Self.reservesApplicationMenuKeyEquivalent(event.modifierFlags) else {
+            // Control-C and any other non-Command rebinding: the capture rides along and the event
+            // continues to the seat through the ordinary forward path, byte-identical.
+            forwardKeyEvent(event)
+            return true
+        }
+        // Command-C: macOS owns it, so the seat gets the Control-C it would have seen instead.
+        if event.type == .keyDown { emitSeatControlCopy() }
+        return true
+    }
+
+    /// The Control-C the seat would have received had macOS not eaten the Command-C. The same
+    /// nest-and-release sequence `forwardCommandShortcut` uses, with both keys released on every
+    /// path because the whole sequence is emitted synchronously.
+    func emitSeatControlCopy() {
+        for stroke in Self.commandShortcutStrokes(keyCode: 8, shift: false, option: false) {
+            onInputEvent?(.keyboard(KeyboardEvent(
+                deviceID: "keyboard",
+                keyCode: stroke.keyCode,
+                scanCode: stroke.keyCode,
+                isPressed: stroke.isPressed,
+                timestamp: Self.timestamp()
+            )))
+        }
+    }
+
     func streamCommand(for event: NSEvent) -> StreamCommand? {
         StreamCommand.shortcutCommand(keyCode: UInt16(event.keyCode), modifierFlags: event.modifierFlags)
     }
@@ -387,6 +425,9 @@ extension NativeStreamView {
         }
         guard remoteInputEnabled else { return handleCommand(event) ? nil : event }
         if handlePushToTalk(event, isPressed: event.type == .keyDown) { return nil }
+        // Ahead of the menu gate: Command-C is translated rather than reserved, and Control-C keeps
+        // travelling to the seat below with the capture already fired.
+        if handleTextCaptureShortcut(event) { return nil }
         let routesToApplication = Self.reservesApplicationMenuKeyEquivalent(event.modifierFlags)
         if routesToApplication { releaseRemotelyPressedKeyIfNeeded(event) }
         if handlePasteShortcut(event) { return nil }
