@@ -436,16 +436,19 @@ extension NativeNVSTHostViewModel {
         guard let window = nativeView?.window, !isFullScreenTransitioning, !isPictureInPicture else { return }
         guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
         // Read before the toggle: `.fullScreen` is only inserted once the transition finishes.
-        let willEnterFullScreen = !window.styleMask.contains(.fullScreen)
+        let isEnteringFullScreen = !window.styleMask.contains(.fullScreen)
         window.toggleFullScreen(nil)
-        showNativeTransientStreamMessage(willEnterFullScreen ? "Entering full screen" : "Leaving full screen")
-        // The manual entry is the path Game Mode engages on for every Session Ready mode but Full
-        // Screen, so the eligibility that decides it is recorded here too.
-        var attributes = ["applicationID": configuration.applicationID, "fullScreen": String(willEnterFullScreen)]
-        if willEnterFullScreen {
-            attributes.merge(OPNStreamGameModePreconditions.current().telemetryAttributes) { _, new in new }
-        }
-        OPNStreamTelemetry.capture("nvst.ui.fullscreen.toggle", level: .info, message: willEnterFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.", attributes: attributes)
+        showNativeTransientStreamMessage(isEnteringFullScreen ? "Entering full screen" : "Leaving full screen")
+        OPNStreamTelemetry.capture(
+            OPNStreamFullScreenTelemetry.toggleEventName,
+            level: .info,
+            message: isEnteringFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.",
+            attributes: OPNStreamFullScreenTelemetry.toggleAttributes(
+                applicationID: configuration.applicationID,
+                isEnteringFullScreen: isEnteringFullScreen,
+                preconditions: OPNStreamGameModePreconditions.current()
+            )
+        )
     }
 
     /// PiP is a mode of the stream window, so this is a window change and nothing else: one surface,

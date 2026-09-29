@@ -83,7 +83,7 @@ extension NativeNVSTHostViewModel {
                     self.fullScreenTransitionWatchdog?.cancel()
                     self.fullScreenTransitionWatchdog = nil
                     self.streamWindowIsFullScreen = transition.isFullScreen
-                    if transition.isFullScreen {
+                    guard !transition.isFullScreen else {
                         self.reportSessionReadyFullScreenEntry()
                         return
                     }
@@ -94,10 +94,8 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    /// Reports the session-ready full-screen request only once the transition has landed. AppKit can
-    /// refuse a `toggleFullScreen` and reports that through delegate callbacks that post no
-    /// notification, so reporting at the request would claim a full-screen state the window may
-    /// never reach.
+    /// Reported on the landing, never the request: AppKit can refuse a `toggleFullScreen` through
+    /// delegate callbacks that post no notification, so the request alone proves nothing.
     private func reportSessionReadyFullScreenEntry() {
         guard isSessionReadyFullScreenEntryRequested else { return }
         isSessionReadyFullScreenEntryRequested = false

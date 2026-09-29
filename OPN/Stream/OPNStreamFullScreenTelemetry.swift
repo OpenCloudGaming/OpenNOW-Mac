@@ -1,29 +1,23 @@
-//  The preconditions Game Mode is gated on, and the telemetry that records them with the
-//  full-screen entry.
+//  The preconditions Game Mode is gated on, reported alongside the full-screen entry.
 //
 //  macOS exposes no public API that reads whether Game Mode is on - every `GameMode` symbol in the
-//  SDK is either unrelated or exported-but-undeclared SPI - so nothing here ever reports a
-//  `gameMode` boolean. What it reports is eligibility: the plist key, the app category, and the
-//  process state the OS requires, plus whether the transition actually landed. Full screen is
-//  necessary but not sufficient, and the user can disable Game Mode while full screen, so
-//  `enteredFullScreen` must never be read as Game Mode being on.
+//  SDK is unrelated or exported-but-undeclared SPI - so nothing here reports a state. Eligibility,
+//  never `enteredFullScreen`, is the only claim the app can honestly make.
 //
 
 import AppKit
 import Foundation
 
-/// The four conditions macOS checks before it will offer Game Mode, limited to the ones this
-/// process can observe. Read at the moment the transition lands; `isFrontmost` is deliberately not
-/// captured when the request is issued, because activation is not synchronous.
-struct OPNStreamGameModePreconditions: Equatable, Sendable {
+/// The four conditions macOS checks before it will offer Game Mode, limited to the ones this process
+/// can observe. Read at the moment the transition lands, because activation is not synchronous.
+struct OPNStreamGameModePreconditions: Sendable {
     let isGameModeKeyDeclared: Bool
     let applicationCategoryType: String
     let isFrontmost: Bool
     let isAppleSilicon: Bool
 
-    /// Injectable so both the bundle read and the process state are assertable without a window
-    /// server. `supportsGameModeKey` is the telemetry attribute name Apple's own documentation uses
-    /// for the plist key, not this property's name.
+    /// Injectable, so both the bundle read and the process state are assertable without a window
+    /// server. `supportsGameModeKey` is Apple's own attribute name for the plist key.
     static func read(
         infoDictionary: [String: Any]?,
         isFrontmost: Bool,
@@ -42,12 +36,19 @@ struct OPNStreamGameModePreconditions: Equatable, Sendable {
         read(
             infoDictionary: Bundle.main.infoDictionary,
             isFrontmost: NSApplication.shared.isActive,
-            isAppleSilicon: hostIsAppleSilicon
+            isAppleSilicon: isHostAppleSilicon
         )
     }
 
-    /// What every full-screen entry event reports. Never a `gameMode` boolean: macOS exposes no
-    /// public API that reads Game Mode's state, so eligibility is all that can be claimed.
+    static var isHostAppleSilicon: Bool {
+        #if arch(arm64)
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// What every full-screen entry event reports, never a `gameMode` boolean.
     var telemetryAttributes: [String: String] {
         [
             "supportsGameModeKey": String(isGameModeKeyDeclared),
@@ -56,21 +57,13 @@ struct OPNStreamGameModePreconditions: Equatable, Sendable {
             "isAppleSilicon": String(isAppleSilicon),
         ]
     }
-
-    static var hostIsAppleSilicon: Bool {
-        #if arch(arm64)
-        true
-        #else
-        false
-        #endif
-    }
 }
 
 enum OPNStreamFullScreenTelemetry {
-    /// Fires when the transition lands, not when it is requested, so `enteredFullScreen` records
-    /// the window's real state.
+    /// Fires when the transition lands, so `enteredFullScreen` records the window's real state.
     static let successEventName = "nvst.ui.fullscreen.sessionReady"
     static let failureEventName = "nvst.ui.fullscreen.sessionReady.failed"
+    static let toggleEventName = "nvst.ui.fullscreen.toggle"
 
     static func successAttributes(
         applicationID: String,
@@ -97,6 +90,19 @@ enum OPNStreamFullScreenTelemetry {
             "attemptCount": String(attemptCount),
             "elapsedMs": String(elapsedMs),
         ]
+    }
+
+    /// The manual toggle is the path Game Mode engages on for every mode but Full Screen, so
+    /// eligibility is recorded there too - but only when entering.
+    static func toggleAttributes(
+        applicationID: String,
+        isEnteringFullScreen: Bool,
+        preconditions: OPNStreamGameModePreconditions
+    ) -> [String: String] {
+        var attributes = ["applicationID": applicationID, "fullScreen": String(isEnteringFullScreen)]
+        guard isEnteringFullScreen else { return attributes }
+        attributes.merge(preconditions.telemetryAttributes) { current, _ in current }
+        return attributes
     }
 
     static func captureSuccess(

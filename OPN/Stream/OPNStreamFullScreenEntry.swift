@@ -1,12 +1,8 @@
 //  What a session-ready request to enter native full screen should do before it is issued.
 //
-//  Full screen is what macOS gates Game Mode on, but the entry is only requested when the Session
-//  Ready mode asks for it, so this type stays a predicate about the window, not about whether the
-//  user wants full screen.
-//
 //  The window is not always mutable when the seat reports ready: it may not be in a hierarchy yet,
-//  AppKit may be inside a nested run loop, or the user may be dragging an edge. This type is the
-//  pure predicate behind the retry loop, so the whole matrix is assertable without a window server.
+//  AppKit may be inside a nested run loop, or the user may be dragging an edge. The predicate is
+//  pure, so the whole matrix is assertable without a window server.
 //
 
 import Foundation
@@ -20,7 +16,7 @@ enum OPNStreamFullScreenEntry {
         case wait(reason: DeferralReason)
     }
 
-    /// Why one attempt did not issue the transition. The driver reports the last one it saw.
+    /// Why one attempt did not issue the transition.
     enum DeferralReason: String, Equatable, Sendable {
         case windowUnreachable
         case transitionInFlight
@@ -44,24 +40,21 @@ enum OPNStreamFullScreenEntry {
         }
     }
 
-    /// `isLive` is the session still wanted: connected and neither ending nor ended. A dead session
-    /// stops the retry loop without a failure event, because nothing was asked of the window.
-    ///
-    /// Ordering mirrors the conditions AppKit imposes: the window has to exist before it can be
-    /// inspected, a transition already running refuses a second style-mask change, and a nested run
-    /// loop or live resize has to end before the mask can change at all.
+    /// A dead session stops the loop without a failure event, because nothing was asked of the
+    /// window. AppKit refuses a second style-mask change mid-transition, and needs the nested loop or
+    /// live resize over before the mask can change at all.
     static func attempt(
         isLive: Bool,
-        hasWindow: Bool,
+        isWindowReachable: Bool,
         isFullScreenTransitioning: Bool,
-        windowIsFullScreen: Bool,
-        geometryDeferred: Bool
+        isWindowFullScreen: Bool,
+        isGeometryDeferred: Bool
     ) -> Attempt {
         guard isLive else { return .stop }
-        guard hasWindow else { return .wait(reason: .windowUnreachable) }
+        guard isWindowReachable else { return .wait(reason: .windowUnreachable) }
         guard !isFullScreenTransitioning else { return .wait(reason: .transitionInFlight) }
-        guard !geometryDeferred else { return .wait(reason: .geometryDeferred) }
-        guard !windowIsFullScreen else { return .alreadyFullScreen }
+        guard !isGeometryDeferred else { return .wait(reason: .geometryDeferred) }
+        guard !isWindowFullScreen else { return .alreadyFullScreen }
         return .enter
     }
 }

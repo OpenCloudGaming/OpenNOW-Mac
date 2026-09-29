@@ -273,9 +273,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// it only reports through delegate callbacks that post no notification.
     static let fullScreenTransitionTimeout = Duration.seconds(2)
     var sessionReadyFullScreenTask: Task<Void, Never>?
-    /// Set when the session-ready entry issues the transition, cleared when it lands. The success
-    /// telemetry hangs off the landing notification rather than off the request, so it records the
-    /// window's real state - a requested transition can still be refused by AppKit.
+    /// Set when the session-ready entry issues the transition, cleared when it lands, so the success
+    /// telemetry records the window's real state rather than the request.
     var isSessionReadyFullScreenEntryRequested = false
     let onScreenKeyboard = StreamOnScreenKeyboardModel()
 

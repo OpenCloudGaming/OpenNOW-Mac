@@ -1,6 +1,6 @@
-//  Game Mode's own state has no public API, so the full-screen entry telemetry records eligibility
-//  and the transition landing instead. These tests pin both, plus the failure event's warning level
-//  and its reason/attemptCount/elapsedMs contract, through the injectable sink.
+//  Game Mode's own state has no public API, so the full-screen telemetry records eligibility and the
+//  transition landing instead. The failure event's warning level and its reason/attemptCount/
+//  elapsedMs contract are pinned here through the injectable sink.
 //
 
 import Foundation
@@ -18,6 +18,20 @@ private final class RecordingStreamTelemetrySink: StreamTelemetrySink, @unchecke
     var captured: [StreamTelemetryEvent] {
         lock.withLock { events }
     }
+}
+
+private func gameModePreconditions(
+    isGameModeKeyDeclared: Bool = true,
+    applicationCategoryType: String = "public.app-category.games",
+    isFrontmost: Bool = true,
+    isAppleSilicon: Bool = true
+) -> OPNStreamGameModePreconditions {
+    OPNStreamGameModePreconditions(
+        isGameModeKeyDeclared: isGameModeKeyDeclared,
+        applicationCategoryType: applicationCategoryType,
+        isFrontmost: isFrontmost,
+        isAppleSilicon: isAppleSilicon
+    )
 }
 
 @Suite("OPNStreamFullScreenTelemetry", .serialized)
@@ -51,43 +65,51 @@ struct OPNStreamFullScreenTelemetryTests {
         #expect(!preconditions.isAppleSilicon)
     }
 
-    @Test("success attributes report eligibility and the landing, never a game mode state")
-    func successAttributesReportEligibilityNotState() {
-        let attributes = OPNStreamFullScreenTelemetry.successAttributes(
-            applicationID: "game-123",
-            launchMode: "notification",
-            enteredFullScreen: true,
-            preconditions: OPNStreamGameModePreconditions(
-                isGameModeKeyDeclared: true,
-                applicationCategoryType: "public.app-category.games",
-                isFrontmost: true,
-                isAppleSilicon: true
-            )
-        )
-        #expect(attributes["applicationID"] == "game-123")
-        #expect(attributes["launchMode"] == "notification")
-        #expect(attributes["supportsGameModeKey"] == "true")
-        #expect(attributes["applicationCategoryType"] == "public.app-category.games")
-        #expect(attributes["isFrontmost"] == "true")
-        #expect(attributes["isAppleSilicon"] == "true")
-        #expect(attributes["enteredFullScreen"] == "true")
-        #expect(attributes["gameMode"] == nil)
-    }
-
-    @Test("the shipped eligibility attributes carry the four preconditions and no state")
+    @Test("eligibility attributes carry the four preconditions and never a game mode state")
     func eligibilityAttributesCarryTheFourPreconditions() {
-        let attributes = OPNStreamGameModePreconditions(
-            isGameModeKeyDeclared: true,
-            applicationCategoryType: "public.app-category.games",
-            isFrontmost: false,
-            isAppleSilicon: true
-        ).telemetryAttributes
-        #expect(attributes == [
+        #expect(gameModePreconditions(isFrontmost: false).telemetryAttributes == [
             "supportsGameModeKey": "true",
             "applicationCategoryType": "public.app-category.games",
             "isFrontmost": "false",
             "isAppleSilicon": "true",
         ])
+    }
+
+    @Test("success attributes report eligibility alongside the landing")
+    func successAttributesReportEligibilityAndLanding() {
+        let attributes = OPNStreamFullScreenTelemetry.successAttributes(
+            applicationID: "game-123",
+            launchMode: "notification",
+            enteredFullScreen: true,
+            preconditions: gameModePreconditions()
+        )
+        #expect(attributes["applicationID"] == "game-123")
+        #expect(attributes["launchMode"] == "notification")
+        #expect(attributes["enteredFullScreen"] == "true")
+        #expect(attributes["supportsGameModeKey"] == "true")
+        #expect(attributes["applicationCategoryType"] == "public.app-category.games")
+        #expect(attributes["isFrontmost"] == "true")
+        #expect(attributes["isAppleSilicon"] == "true")
+        #expect(attributes["gameMode"] == nil)
+    }
+
+    @Test("the manual toggle reports eligibility only when entering full screen")
+    func toggleAttributesReportEligibilityOnlyWhenEntering() {
+        let entering = OPNStreamFullScreenTelemetry.toggleAttributes(
+            applicationID: "game-123",
+            isEnteringFullScreen: true,
+            preconditions: gameModePreconditions()
+        )
+        #expect(entering["fullScreen"] == "true")
+        #expect(entering["supportsGameModeKey"] == "true")
+        #expect(entering["isAppleSilicon"] == "true")
+
+        let leaving = OPNStreamFullScreenTelemetry.toggleAttributes(
+            applicationID: "game-123",
+            isEnteringFullScreen: false,
+            preconditions: gameModePreconditions()
+        )
+        #expect(leaving == ["applicationID": "game-123", "fullScreen": "false"])
     }
 
     @Test("the success event is captured at info with the landing attributes")
@@ -100,19 +122,13 @@ struct OPNStreamFullScreenTelemetryTests {
             applicationID: "game-123",
             launchMode: "notification",
             enteredFullScreen: true,
-            preconditions: OPNStreamGameModePreconditions(
-                isGameModeKeyDeclared: true,
-                applicationCategoryType: "public.app-category.games",
-                isFrontmost: true,
-                isAppleSilicon: true
-            )
+            preconditions: gameModePreconditions()
         )
 
         let event = sink.captured.first
         #expect(event?.name == OPNStreamFullScreenTelemetry.successEventName)
         #expect(event?.level == .info)
         #expect(event?.attributes["enteredFullScreen"] == "true")
-        #expect(event?.attributes["supportsGameModeKey"] == "true")
     }
 
     @Test("the failure event is captured at warning with the reason and the budget")
