@@ -1,8 +1,6 @@
-//  What happens when a maintenance-watched title comes back: a system notification per edge, a
-//  critical Dock attention request that keeps bouncing until OpenNOW is activated, and an in-app
-//  status line when OpenNOW is already frontmost. A sibling of `OPNSessionReadyAction` rather than a
-//  reuse of it: a session becoming ready and a watched title returning are different promises with
-//  different copy, and the session path activates the app for a game about to be streamed.
+//  What happens when a maintenance-watched title comes back: a notification per edge, a critical
+//  Dock attention request, and an in-app status line when OpenNOW is already frontmost. A sibling of
+//  `OPNSessionReadyAction`, not a reuse of it: the two promises carry different copy.
 //
 
 import AppKit
@@ -13,17 +11,14 @@ import UserNotifications
 enum OPNMaintenanceWatchAction {
     private static let notificationIdentifierPrefix = "io.github.opencloudgaming.opennow.maintenance-watch"
     private static var didRequestAuthorization = false
-    /// The one attention request this cycle owns. Held so a second cycle replaces rather than stacks
-    /// a second bounce on the Dock.
     private static var attentionArbiter = OPNMaintenanceWatchAttentionArbiter()
-    /// The delivered notification identifiers, so the reader coming back can retract exactly the
-    /// watches that posted rather than every notification the app has ever shown.
+    /// The identifiers of notifications still delivered, so coming back retracts exactly those.
     private static var postedIdentifiers = Set<String>()
     private static var activationObserver: NSObjectProtocol?
 
     /// Asks for notification permission while the reader is looking at the Watch control, so the
     /// system prompt appears in context. Asks at most once per run.
-    static func prepareAuthorizationIfNeeded() {
+    static func prepareAuthorization() {
         guard !didRequestAuthorization, Bundle.main.bundleIdentifier != nil else { return }
         didRequestAuthorization = true
         Task {
@@ -38,15 +33,13 @@ enum OPNMaintenanceWatchAction {
         }
     }
 
-    /// Announces the edges one poll detected.
-    ///
-    /// When OpenNOW is frontmost there is no bounce to make and no reason to interrupt: the returned
-    /// line is what the caller writes into the catalog status line. In the background it posts one
-    /// notification per edge, brings the Dock icon back, and requests attention once for the cycle.
+    /// Announces the edges one poll detected. Returns the catalog status line the caller writes when
+    /// OpenNOW is frontmost, where a bounce would be no bounce at all; nil when it announced in the
+    /// background.
     @discardableResult
     static func announce(_ events: [CatalogMaintenanceWatchEvent]) -> String? {
         guard !events.isEmpty else { return nil }
-        guard !NSApplication.shared.isActive else {
+        if NSApplication.shared.isActive {
             return events.map(inAppMessage).joined(separator: " ")
         }
         for event in events { postNotification(event) }
@@ -55,8 +48,7 @@ enum OPNMaintenanceWatchAction {
     }
 
     /// The line the catalog status area shows when the reader is already looking at OpenNOW. Never
-    /// names a time: the vendor publishes no maintenance ETA, so the honest promise is detection
-    /// within one poll interval of it happening.
+    /// names a time: the vendor publishes no maintenance ETA, so the promise is detection only.
     static func inAppMessage(_ event: CatalogMaintenanceWatchEvent) -> String {
         let title = displayTitle(event.watch)
         switch event.edge {
@@ -92,9 +84,8 @@ enum OPNMaintenanceWatchAction {
 
     // MARK: - Dock attention
 
-    /// Brings the icon back first, then asks for attention, so menu-bar-only mode has a tile to
-    /// bounce. The announcing flag keeps the next `apply()` from withdrawing it before the reader
-    /// arrives. One request per cycle: a held identifier is cancelled before the new one is made.
+    /// Brings the icon back first, then asks for attention, so menu-bar-only has a tile to bounce.
+    /// The held request is cancelled before a new one, so a cycle makes at most one bounce.
     private static func beginAttention() {
         guard shouldRequestAttention(isActive: NSApplication.shared.isActive) else { return }
         OPNDockIconController.setWatchAnnouncementActive(true)
@@ -105,15 +96,13 @@ enum OPNMaintenanceWatchAction {
         installActivationObserver()
     }
 
-    /// No bounce when the reader is already looking at the app: there is nothing to call them back
-    /// to, so the in-app line carries it instead. Pure, so the guard is testable without a Dock.
+    /// No bounce when the reader is already looking at the app. Pure, so it is testable without a Dock.
     static func shouldRequestAttention(isActive: Bool) -> Bool {
         !isActive
     }
 
-    /// The reader is back: stop the bounce, give the Dock icon back to the close behaviour that owns
-    /// it, and retract the notifications the return just made redundant. Idempotent, so it can run
-    /// from the activation observer and from a fresh announcement alike.
+    /// The reader is back: stop the bounce, give the icon back to the close behaviour that owns it,
+    /// and retract the now-redundant notifications. Idempotent.
     static func endAttention() {
         if let cancelled = attentionArbiter.clear() {
             NSApplication.shared.cancelUserAttentionRequest(cancelled)
@@ -140,7 +129,6 @@ enum OPNMaintenanceWatchAction {
     }
 
     private static func postNotification(_ event: CatalogMaintenanceWatchEvent) {
-
         guard Bundle.main.bundleIdentifier != nil else { return }
         let identifier = "\(notificationIdentifierPrefix).\(event.watch.identity).\(event.edge.rawValue)"
         let title = notificationTitle(event)
@@ -170,11 +158,8 @@ enum OPNMaintenanceWatchAction {
     }
 }
 
-/// At most one Dock attention request at a time.
-///
-/// `replace(with:)` hands back the request a new one supersedes, so the caller cancels it rather than
-/// stacking a second bounce when several titles return in the same cycle. Pure, so the arbitration
-/// is testable without a running Dock.
+/// At most one Dock attention request at a time. `replace(with:)` hands back the request a new one
+/// supersedes, so several titles returning in one cycle still make one bounce.
 struct OPNMaintenanceWatchAttentionArbiter: Equatable {
     private(set) var heldRequestId: Int?
 

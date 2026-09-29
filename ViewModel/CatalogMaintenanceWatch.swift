@@ -1,6 +1,5 @@
 //  Opt-in maintenance watching: the view-facing state and actions over `CatalogMaintenanceWatchStore`,
-//  and the hand-off that turns a poll's availability into an announcement. Detection rides the
-//  existing patching poll — no second timer, no second fetch path.
+//  plus the hand-off that turns a poll's availability into an announcement.
 
 import Foundation
 import Observation
@@ -29,30 +28,33 @@ extension CatalogViewModel {
 
     /// The one toggle behind the mouse control and the pad action.
     func toggleMaintenanceWatch(for game: OPNCatalogGameObject) {
-        let identity = Self.identity(for: game)
-        guard !identity.isEmpty else { return }
-        guard !maintenanceWatchStore.isWatching(identity) else {
-            removeMaintenanceWatch(identity: identity)
+        guard isWatching(game) else {
+            startWatchingMaintenance(for: game)
             return
         }
-        // Only `.maintenance` carries a promise of returning; `.unavailable` does not.
+        removeMaintenanceWatch(identity: Self.identity(for: game))
+    }
+
+    /// Opts one maintenance-down title in. Only `.maintenance` carries a promise of returning;
+    /// `.unavailable` does not.
+    func startWatchingMaintenance(for game: OPNCatalogGameObject) {
+        let identity = Self.identity(for: game)
+        guard !identity.isEmpty else { return }
         guard game.catalogAvailability == .maintenance else { return }
-        let title = game.title.isEmpty ? "this title" : game.title
-        let result = maintenanceWatchStore.adding(
+        let addResult = maintenanceWatchStore.adding(
             identity: identity,
             appId: CatalogPatchStatusLogic.patchStatusAppId(game) ?? "",
             title: game.title,
             availability: .maintenance
         )
-        guard result.added else {
-            if maintenanceWatchStore.isAtCapacity {
-                setActionMessage("You are watching \(CatalogMaintenanceWatchStore.maximumCount) titles. Remove one to watch another.")
-            }
+        guard addResult.isAdded else {
+            setActionMessage("You are watching \(CatalogMaintenanceWatchStore.maximumCount) titles. Remove one to watch another.")
             return
         }
-        applyMaintenanceWatchStore(result.store, immediatePoll: true)
+        applyMaintenanceWatchStore(addResult.store, immediatePoll: true)
         // Ask while the reader is looking at the control, so the system prompt lands in context.
-        OPNMaintenanceWatchAction.prepareAuthorizationIfNeeded()
+        OPNMaintenanceWatchAction.prepareAuthorization()
+        let title = game.title.isEmpty ? "this title" : game.title
         setActionMessage("Watching \(title). OpenNOW will let you know when it is playable again.")
     }
 
@@ -73,32 +75,30 @@ extension CatalogViewModel {
     /// the game graph already carries the polled availability this reads.
     func advanceMaintenanceWatches(statuses: [String: OPNAppPatchStatus]) {
         guard !maintenanceWatches.isEmpty else { return }
-        let availability = maintenanceWatchAvailability(statuses: statuses)
-        let result = maintenanceWatchStore.advancing(availabilityByIdentity: availability)
-        guard !result.events.isEmpty else {
-            if result.store.watches != maintenanceWatches {
-                applyMaintenanceWatchStore(result.store, immediatePoll: false)
-            }
+        let advanceResult = maintenanceWatchStore.advancing(availabilityByIdentity: availabilityByIdentity(statuses: statuses))
+        guard !advanceResult.events.isEmpty else {
+            storeAdvancedObservations(advanceResult.store)
             return
         }
-        applyMaintenanceWatchStore(result.store, immediatePoll: false)
-        handleMaintenanceWatchEvents(result.events)
+        applyMaintenanceWatchStore(advanceResult.store, immediatePoll: false)
+        handleMaintenanceWatchEvents(advanceResult.events)
     }
 
     /// A watched title's availability from the game graph, falling back to the poll's own status keyed
     /// by the app id the watch stored, for a title the loaded catalog does not contain.
-    private func maintenanceWatchAvailability(statuses: [String: OPNAppPatchStatus]) -> [String: CatalogAvailability] {
+    private func availabilityByIdentity(statuses: [String: OPNAppPatchStatus]) -> [String: CatalogAvailability] {
         var availability: [String: CatalogAvailability] = [:]
         for watch in maintenanceWatches {
-            if let game = allKnownGames.first(where: { Self.identity(for: $0) == watch.identity }) {
-                availability[watch.identity] = game.catalogAvailability
-                continue
-            }
-            if let polled = statuses[watch.appId]?.availability {
-                availability[watch.identity] = polled
-            }
+            let game = allKnownGames.first { Self.identity(for: $0) == watch.identity }
+            availability[watch.identity] = game?.catalogAvailability ?? statuses[watch.appId]?.availability
         }
         return availability
+    }
+
+    /// Persists the poll's bookkeeping when no edge fired, without rescheduling anything.
+    private func storeAdvancedObservations(_ store: CatalogMaintenanceWatchStore) {
+        guard store.watches != maintenanceWatches else { return }
+        applyMaintenanceWatchStore(store, immediatePoll: false)
     }
 
     private func handleMaintenanceWatchEvents(_ events: [CatalogMaintenanceWatchEvent]) {

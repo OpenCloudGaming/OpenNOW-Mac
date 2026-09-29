@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// The maintenance watches this Mac is running: what OpenNOW is waiting on for the reader, and where
-/// they end one. The list is local to this machine, so the page says so — and says, just as plainly,
-/// that monitoring stops when OpenNOW quits, because there is no background agent to keep it.
+/// The maintenance watches this Mac is running, and where the reader ends one. The page says plainly
+/// that the list is local and that monitoring stops when OpenNOW quits.
 struct MaintenanceWatchSettingsPage: View {
     let viewModel: CatalogViewModel
     @Environment(\.opnUIScale) private var uiScale
@@ -19,42 +18,28 @@ struct MaintenanceWatchSettingsPage: View {
 
     var body: some View {
         SettingsCard(title: "Maintenance Watch", isNew: OPNNewSettings.isNew(.maintenanceWatch), uiScale: uiScale) {
-            if viewModel.maintenanceWatches.isEmpty {
-                emptyState
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(viewModel.maintenanceWatches) { watch in
-                        watchRow(watch)
-                        SettingsDivider(uiScale: uiScale)
-                    }
-                }
-                HStack {
-                    SettingsActionButton(title: "STOP WATCHING ALL", tone: .secondary, uiScale: uiScale) {
-                        OPNNewSettings.acknowledge(.maintenanceWatch)
-                        viewModel.clearMaintenanceWatches()
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.top, 14 * uiScale)
+            if !viewModel.maintenanceWatches.isEmpty { watchList }
+            if viewModel.maintenanceWatches.isEmpty { emptyState }
+            footer
+        }
+        .settingsSection("maintenance-watch")
+    }
+
+    private var watchList: some View {
+        VStack(spacing: 0) {
+            ForEach(viewModel.maintenanceWatches) { watch in
+                watchRow(watch)
+                SettingsDivider(uiScale: uiScale)
             }
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text("OpenNOW checks watched games on the same 30-60 second poll it uses for patching, and brings you back the moment one is playable again.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("A watch ends on its own once the title is ready to play, or when you remove it here. Watching runs only while OpenNOW is running, window hidden included. Quitting OpenNOW ends it, and the watch list stays on this Mac — it is not synced to iCloud.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(limitLine)
-                    .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.muted)
-                    .tracking(0.4)
-                    .padding(.top, 2 * uiScale)
+            HStack {
+                SettingsActionButton(title: "STOP WATCHING ALL", tone: .secondary, uiScale: uiScale) {
+                    OPNNewSettings.acknowledge(.maintenanceWatch)
+                    viewModel.clearMaintenanceWatches()
+                }
+                Spacer(minLength: 0)
             }
             .padding(.top, 14 * uiScale)
         }
-        .settingsSection("maintenance-watch")
     }
 
     private var emptyState: some View {
@@ -62,6 +47,25 @@ struct MaintenanceWatchSettingsPage: View {
             .font(.settingsFont(size: 13 * uiScale, weight: .medium))
             .foregroundStyle(OPNDesign.Text.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 5 * uiScale) {
+            Text("OpenNOW checks watched games on the same 30-60 second poll it uses for patching, and brings you back the moment one is playable again.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("A watch ends on its own once the title is ready to play, or when you remove it here. Watching runs only while OpenNOW is running, window hidden included. Quitting OpenNOW ends it, and the watch list stays on this Mac — it is not synced to iCloud.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(limitLine)
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
+                .foregroundStyle(OPNDesign.Text.muted)
+                .tracking(0.4)
+                .padding(.top, 2 * uiScale)
+        }
+        .padding(.top, 14 * uiScale)
     }
 
     private func watchRow(_ watch: CatalogMaintenanceWatch) -> some View {

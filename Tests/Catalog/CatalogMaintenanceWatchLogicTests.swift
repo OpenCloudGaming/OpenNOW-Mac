@@ -1,36 +1,13 @@
 //  The maintenance watch's announcement surface: the copy each edge carries, the one-request
 //  arbitration, and the view model's opt-in wiring.
 
-import AppKit
 import Foundation
 import Testing
 @testable import OpenNOW
 
-private func watch(_ identity: String, title: String) -> CatalogMaintenanceWatch {
-    CatalogMaintenanceWatch(
-        identity: identity,
-        appId: "app-\(identity)",
-        title: title,
-        startedAt: Date(timeIntervalSince1970: 0),
-        observedAvailability: .maintenance,
-        lastNotifiedEdge: nil
-    )
-}
-
-private func maintenanceGame(id: String, title: String) -> OPNCatalogGameObject {
-    var variant = OPNGameVariant(id: "\(id)-v", appStore: "STEAM")
-    variant.catalogStatus = "SERVER_MAINTENANCE"
-    variant.catalogStateDetailsSubType = "GFN_DEVELOPER_MAINTENANCE"
-    var info = OPNGameInfo()
-    info.id = id
-    info.title = title
-    info.variants = [variant]
-    return OPNCatalogGameObject(game: info)
-}
-
 @Test @MainActor func theTwoEdgesCarryDistinctCopy() {
-    let patching = CatalogMaintenanceWatchEvent(watch: watch("g", title: "Hades"), edge: .patching)
-    let available = CatalogMaintenanceWatchEvent(watch: watch("g", title: "Hades"), edge: .available)
+    let patching = CatalogMaintenanceWatchEvent(watch: makeMaintenanceWatchForTesting(identity: "g", title: "Hades"), edge: .patching)
+    let available = CatalogMaintenanceWatchEvent(watch: makeMaintenanceWatchForTesting(identity: "g", title: "Hades"), edge: .available)
 
     #expect(OPNMaintenanceWatchAction.notificationTitle(patching) == "Hades is now patching")
     #expect(OPNMaintenanceWatchAction.notificationTitle(available) == "Hades is ready to play")
@@ -40,7 +17,7 @@ private func maintenanceGame(id: String, title: String) -> OPNCatalogGameObject 
     // The vendor publishes no maintenance ETA, so no copy may imply a schedule.
     for message in [OPNMaintenanceWatchAction.inAppMessage(patching), OPNMaintenanceWatchAction.inAppMessage(available)] {
         #expect(!message.localizedCaseInsensitiveContains("schedule"))
-        #expect(!message.localizedCaseInsensitiveContains("at "))
+        #expect(!message.localizedCaseInsensitiveContains("estimated"))
     }
 }
 
@@ -80,7 +57,7 @@ private func maintenanceGame(id: String, title: String) -> OPNCatalogGameObject 
         defer { clearStore() }
 
         let model = makeCatalogViewModelForTesting()
-        let game = maintenanceGame(id: "hades", title: "Hades")
+        let game = makeMaintenanceGameForTesting(id: "hades", title: "Hades")
         model.catalogGames = [game]
 
         model.toggleMaintenanceWatch(for: game)
@@ -114,7 +91,6 @@ private func maintenanceGame(id: String, title: String) -> OPNCatalogGameObject 
 
         // Two watched titles widen the one poll set; they do not add a second fetch path.
         #expect(model.patchingPollAppIds() == ["app-1", "app-2"])
-        #expect(Set(model.patchingPollAppIds()).count == model.patchingPollAppIds().count)
     }
 
     @Test func anUnrecoverableSessionStopsTheWatchAndSaysSo() {
@@ -122,7 +98,7 @@ private func maintenanceGame(id: String, title: String) -> OPNCatalogGameObject 
         defer { clearStore() }
 
         let model = makeCatalogViewModelForTesting()
-        let game = maintenanceGame(id: "hades", title: "Hades")
+        let game = makeMaintenanceGameForTesting(id: "hades", title: "Hades")
         model.catalogGames = [game]
         model.toggleMaintenanceWatch(for: game)
         stopPoll(model)

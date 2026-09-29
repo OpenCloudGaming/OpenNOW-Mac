@@ -36,12 +36,16 @@ struct OPNDockTileContent: Equatable, Sendable {
     static let none = OPNDockTileContent(isStreaming: false)
 
     var badgeLabel: String? {
-        if let pendingSessions, pendingSessions > 0 {
-            // Capped like every other badge on the system: past two digits the exact count is wider
-            // than the tile and is not a number anyone acts on.
-            return pendingSessions > 99 ? "99+" : String(pendingSessions)
-        }
-        return watchedTitles > 0 ? String(min(watchedTitles, 99)) + (watchedTitles > 99 ? "+" : "") : nil
+        guard let pendingSessions, pendingSessions > 0 else { return Self.cappedBadgeLabel(watchedTitles) }
+        return Self.cappedBadgeLabel(pendingSessions)
+    }
+
+    /// Capped like every other badge on the system: past two digits the exact count is wider than the
+    /// tile and is not a number anyone acts on. Zero means no badge at all.
+    private static func cappedBadgeLabel(_ count: Int) -> String? {
+        guard count > 0 else { return nil }
+        guard count <= 99 else { return "99+" }
+        return String(count)
     }
 
     /// The sessions the user has to act on: one being acquired, and one that exists but is not

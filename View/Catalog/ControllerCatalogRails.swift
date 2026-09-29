@@ -315,15 +315,10 @@ struct ControllerGameTile: View, Equatable {
                 VStack(alignment: .leading, spacing: 7 * uiScale) {
                     Spacer(minLength: 0)
                     HStack(spacing: 8 * uiScale) {
-                        if game.isLaunchPatching {
-                            Image(systemName: isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill")
+                        if let statusSymbolName {
+                            Image(systemName: statusSymbolName)
                                 .catalogFont(size: 12, weight: .bold)
                                 .foregroundStyle(OPNDesign.accent)
-                        } else if isWatched {
-                            Image(systemName: "eye.fill")
-                                .catalogFont(size: 12, weight: .bold)
-                                .foregroundStyle(OPNDesign.accent)
-                                .accessibilityLabel("Watching for maintenance to finish")
                         }
                         Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                             .catalogFont(size: 16, weight: .bold)
@@ -343,6 +338,14 @@ struct ControllerGameTile: View, Equatable {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(game.title.isEmpty ? "Game" : game.title)
+    }
+
+    /// The title row has room for one state glyph: patching wins, because a title that started
+    /// patching is no longer waiting on maintenance.
+    private var statusSymbolName: String? {
+        if game.isLaunchPatching { return isQueuedForPatching ? "clock.fill" : "wrench.and.screwdriver.fill" }
+        guard isWatched else { return nil }
+        return "eye.fill"
     }
 
     private var subtitle: String {

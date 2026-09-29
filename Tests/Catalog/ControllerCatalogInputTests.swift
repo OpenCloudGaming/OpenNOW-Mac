@@ -284,20 +284,9 @@ import Testing
     #expect(ControllerGameDetailPage.screenshots.stepped(by: 1, in: [.about, .details]) == .about)
 }
 
-private func maintenanceWatchGame(id: String, title: String) -> OPNCatalogGameObject {
-    var variant = OPNGameVariant(id: "\(id)-v", appStore: "STEAM")
-    variant.catalogStatus = "SERVER_MAINTENANCE"
-    variant.catalogStateDetailsSubType = "GFN_DEVELOPER_MAINTENANCE"
-    var info = OPNGameInfo()
-    info.id = id
-    info.title = title
-    info.variants = [variant]
-    return OPNCatalogGameObject(game: info)
-}
-
 @Test @MainActor func aMaintenanceTitlePutsWatchInTheActionRow() {
     let model = ControllerCatalogViewModel()
-    let game = maintenanceWatchGame(id: "hades", title: "Hades")
+    let game = makeMaintenanceGameForTesting(id: "hades", title: "Hades")
 
     // Watch joins the row beside Play rather than hiding behind More: for a maintenance title it is
     // the only thing the reader can do. A playable title gets the old row back.
@@ -318,7 +307,7 @@ private func maintenanceWatchGame(id: String, title: String) -> OPNCatalogGameOb
     defer { OPNAppPreferenceStorage.syncStore.removeObject(forKey: storageKey) }
 
     let model = makeCatalogViewModelForTesting()
-    let game = maintenanceWatchGame(id: "hades", title: "Hades")
+    let game = makeMaintenanceGameForTesting(id: "hades", title: "Hades")
     model.catalogGames = [game]
     model.selectGame(game)
 

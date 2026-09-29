@@ -1,21 +1,17 @@
-//  The titles this Mac is watching for maintenance to end. There is no vendor endpoint for a
-//  watch and no Mac other than this one can honour it, so it is stored locally and never reaches
-//  iCloud — the same reasoning `OPNCloudSyncSettingsRegistry.deniedKeys` documents for values bound
-//  to one machine. A watch is keyed on a title's `catalogIdentity`, so every edition and storefront
-//  of a title shares one watch.
+//  The titles this Mac is watching for maintenance to end. A watch is keyed on a title's
+//  `catalogIdentity`, stored locally because no Mac other than this one can honour it.
 
 import Foundation
 
-/// The two moments a maintenance watch can announce: maintenance ended into patching, or the title
-/// is actually playable again. Kept as raw values because the store persists the last one notified.
+/// The two moments a watch can announce: maintenance ended into patching, or the title is playable
+/// again. Raw values because the store persists the last one notified.
 enum CatalogMaintenanceWatchEdge: String, Codable, Equatable, Sendable {
     case patching
     case available
 }
 
-/// One watched title. `observedAvailability` is what the last poll saw, held so the next poll can
-/// tell a real edge from a status that never moved; `lastNotifiedEdge` suppresses a duplicate when
-/// the vendor's status flaps, while a removed-and-re-added watch starts fresh and can fire again.
+/// One watched title. `observedAvailability` is what the last poll saw, so the next poll can tell a
+/// real edge from a status that never moved; `lastNotifiedEdge` suppresses a flapping duplicate.
 struct CatalogMaintenanceWatch: Codable, Equatable, Identifiable, Sendable {
     var identity: String
     var appId: String
@@ -61,7 +57,7 @@ struct CatalogMaintenanceWatchStore: Equatable {
 
     /// Adding is refused at the cap rather than silently dropping another watch: the reader chose
     /// both, and only the reader can decide which one goes.
-    func adding(identity: String, appId: String, title: String, availability: CatalogAvailability, now: Date = Date()) -> (store: CatalogMaintenanceWatchStore, added: Bool) {
+    func adding(identity: String, appId: String, title: String, availability: CatalogAvailability, now: Date = Date()) -> (store: CatalogMaintenanceWatchStore, isAdded: Bool) {
         guard !identity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return (self, false) }
         guard !isWatching(identity) else { return (self, false) }
         guard !isAtCapacity else { return (self, false) }
@@ -84,8 +80,8 @@ struct CatalogMaintenanceWatchStore: Equatable {
         .empty
     }
 
-    /// Advances the polling bookkeeping after a poll: the observation each watch now holds and the
-    /// edges that have to be announced. Pure, so edge detection is testable without a poll.
+    /// The observation each watch now holds and the edges to announce. Pure, so detection is
+    /// testable without a poll.
     func advancing(availabilityByIdentity: [String: CatalogAvailability]) -> (store: CatalogMaintenanceWatchStore, events: [CatalogMaintenanceWatchEvent]) {
         var updated: [CatalogMaintenanceWatch] = []
         var events: [CatalogMaintenanceWatchEvent] = []
@@ -113,9 +109,8 @@ struct CatalogMaintenanceWatchStore: Equatable {
         return (CatalogMaintenanceWatchStore(watches: updated), events)
     }
 
-    /// The edge between two observations, or nil when nothing announcable happened. Patching is only
-    /// an edge out of maintenance; ready is an edge out of anything that was not already ready. The
-    /// last-notified record turns a flapping status into one announcement per edge.
+    /// The edge between two observations, or nil when nothing announcable happened. The last-notified
+    /// record turns a flapping status into one announcement per edge.
     static func edge(from previous: CatalogAvailability, to current: CatalogAvailability, lastNotified: CatalogMaintenanceWatchEdge?) -> CatalogMaintenanceWatchEdge? {
         if current == .patching, previous == .maintenance {
             return lastNotified == .patching ? nil : .patching
@@ -148,18 +143,18 @@ struct CatalogMaintenanceWatchStore: Equatable {
         announceChange()
     }
 
-    /// Drops unusable records and the newest write per identity, then caps. The store's own writes
-    /// already keep identity order, so a load restores what was saved.
+    /// Drops unusable records and keeps one per identity, then caps. Writes already keep identity
+    /// order, so a load restores what was saved.
     static func sanitized(_ watches: [CatalogMaintenanceWatch]) -> [CatalogMaintenanceWatch] {
-        var seen = Set<String>()
-        var result: [CatalogMaintenanceWatch] = []
+        var seenIdentities = Set<String>()
+        var sanitizedWatches: [CatalogMaintenanceWatch] = []
         for watch in watches {
             let identity = watch.identity.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !identity.isEmpty, !seen.contains(identity) else { continue }
-            seen.insert(identity)
-            result.append(watch)
+            guard !identity.isEmpty, !seenIdentities.contains(identity) else { continue }
+            seenIdentities.insert(identity)
+            sanitizedWatches.append(watch)
         }
-        return Array(result.prefix(maximumCount))
+        return Array(sanitizedWatches.prefix(maximumCount))
     }
 
     private func announceChange() {

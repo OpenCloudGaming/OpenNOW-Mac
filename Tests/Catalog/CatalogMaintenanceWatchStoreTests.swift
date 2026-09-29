@@ -10,25 +10,14 @@ import Testing
         OPNAppPreferenceStorage.syncStore.removeObject(forKey: CatalogMaintenanceWatchStore.storageKey)
     }
 
-    private func makeWatch(_ identity: String, title: String = "Game") -> CatalogMaintenanceWatch {
-        CatalogMaintenanceWatch(
-            identity: identity,
-            appId: "app-\(identity)",
-            title: title,
-            startedAt: Date(timeIntervalSince1970: 0),
-            observedAvailability: .maintenance,
-            lastNotifiedEdge: nil
-        )
-    }
-
     @Test func addingAndRemovingRoundTripsThroughStorage() {
         clearStore()
         defer { clearStore() }
 
-        let added = CatalogMaintenanceWatchStore.empty.adding(identity: "steam:1", appId: "app-1", title: "Hades", availability: .maintenance)
-        #expect(added.added)
-        #expect(added.store.isWatching("steam:1"))
-        added.store.save()
+        let addResult = CatalogMaintenanceWatchStore.empty.adding(identity: "steam:1", appId: "app-1", title: "Hades", availability: .maintenance)
+        #expect(addResult.isAdded)
+        #expect(addResult.store.isWatching("steam:1"))
+        addResult.store.save()
 
         let loaded = CatalogMaintenanceWatchStore.load()
         #expect(loaded.isWatching("steam:1"))
@@ -56,7 +45,7 @@ import Testing
         var store = CatalogMaintenanceWatchStore.empty
         for index in 0..<CatalogMaintenanceWatchStore.maximumCount {
             let result = store.adding(identity: "id-\(index)", appId: "app-\(index)", title: "Game \(index)", availability: .maintenance)
-            #expect(result.added)
+            #expect(result.isAdded)
             store = result.store
         }
         #expect(store.isAtCapacity)
@@ -65,14 +54,14 @@ import Testing
         // The one past the cap is refused rather than silently dropping another watch the reader
         // chose. The count is what the UI states; this asserts the cap matches it.
         let refused = store.adding(identity: "one-more", appId: "app", title: "One More", availability: .maintenance)
-        #expect(refused.added == false)
+        #expect(refused.isAdded == false)
         #expect(refused.store.watches.count == CatalogMaintenanceWatchStore.maximumCount)
     }
 
     @Test func addingTheSameTitleTwiceIsRefused() {
         let first = CatalogMaintenanceWatchStore.empty.adding(identity: "same", appId: "a", title: "A", availability: .maintenance)
         let second = first.store.adding(identity: "same", appId: "a", title: "A", availability: .maintenance)
-        #expect(second.added == false)
+        #expect(second.isAdded == false)
         #expect(second.store.watches.count == 1)
     }
 
@@ -109,18 +98,18 @@ import Testing
         clearStore()
         defer { clearStore() }
 
-        let fired = NotificationFlag()
-        let observer = NotificationCenter.default.addObserver(forName: CatalogMaintenanceWatchStore.didChangeNotification, object: nil, queue: nil) { _ in fired.value = true }
+        let notificationFlag = NotificationFlag()
+        let observer = NotificationCenter.default.addObserver(forName: CatalogMaintenanceWatchStore.didChangeNotification, object: nil, queue: nil) { _ in notificationFlag.isFired = true }
         defer { NotificationCenter.default.removeObserver(observer) }
 
         CatalogMaintenanceWatchStore.empty.adding(identity: "notify", appId: "a", title: "A", availability: .maintenance).store.save()
-        #expect(fired.value)
+        #expect(notificationFlag.isFired)
     }
 
     // MARK: - Edge detection
 
     @Test func maintenanceEndingIntoPatchingIsOneEdge() {
-        let store = CatalogMaintenanceWatchStore(watches: [makeWatch("g")])
+        let store = CatalogMaintenanceWatchStore(watches: [makeMaintenanceWatchForTesting(identity: "g")])
         let result = store.advancing(availabilityByIdentity: ["g": .patching])
         #expect(result.events.map(\.edge) == [.patching])
         #expect(result.store.watch(for: "g")?.lastNotifiedEdge == .patching)
@@ -128,7 +117,7 @@ import Testing
     }
 
     @Test func patchingFinishingIsASecondDistinctEdgeAndEndsTheWatch() {
-        let first = CatalogMaintenanceWatchStore(watches: [makeWatch("g")]).advancing(availabilityByIdentity: ["g": .patching])
+        let first = CatalogMaintenanceWatchStore(watches: [makeMaintenanceWatchForTesting(identity: "g")]).advancing(availabilityByIdentity: ["g": .patching])
         let second = first.store.advancing(availabilityByIdentity: ["g": .available])
         #expect(second.events.map(\.edge) == [.available])
         // The promise is kept, so the watch is done: it stops counting toward the badge.
@@ -136,13 +125,13 @@ import Testing
     }
 
     @Test func maintenanceGoingStraightToAvailableFiresTheReadyEdgeAndClearsTheWatch() {
-        let result = CatalogMaintenanceWatchStore(watches: [makeWatch("g")]).advancing(availabilityByIdentity: ["g": .available])
+        let result = CatalogMaintenanceWatchStore(watches: [makeMaintenanceWatchForTesting(identity: "g")]).advancing(availabilityByIdentity: ["g": .available])
         #expect(result.events.map(\.edge) == [.available])
         #expect(result.store.watches.isEmpty)
     }
 
     @Test func aFlappingStatusDoesNotDuplicateThePatchingEdge() {
-        let first = CatalogMaintenanceWatchStore(watches: [makeWatch("g")]).advancing(availabilityByIdentity: ["g": .patching])
+        let first = CatalogMaintenanceWatchStore(watches: [makeMaintenanceWatchForTesting(identity: "g")]).advancing(availabilityByIdentity: ["g": .patching])
         #expect(first.events.count == 1)
         let back = first.store.advancing(availabilityByIdentity: ["g": .maintenance])
         #expect(back.events.isEmpty)
@@ -152,7 +141,7 @@ import Testing
     }
 
     @Test func aFreshWatchCanFireAgain() {
-        let first = CatalogMaintenanceWatchStore(watches: [makeWatch("g")]).advancing(availabilityByIdentity: ["g": .available])
+        let first = CatalogMaintenanceWatchStore(watches: [makeMaintenanceWatchForTesting(identity: "g")]).advancing(availabilityByIdentity: ["g": .available])
         #expect(first.events.count == 1)
         #expect(first.store.watches.isEmpty)
         // Re-watching after the title went down again is a new watch with no notified edge.
@@ -162,13 +151,13 @@ import Testing
     }
 
     @Test func aTitleWithNoNewObservationIsLeftAlone() {
-        let result = CatalogMaintenanceWatchStore(watches: [makeWatch("g")]).advancing(availabilityByIdentity: [:])
+        let result = CatalogMaintenanceWatchStore(watches: [makeMaintenanceWatchForTesting(identity: "g")]).advancing(availabilityByIdentity: [:])
         #expect(result.events.isEmpty)
         #expect(result.store.watch(for: "g")?.observedAvailability == .maintenance)
     }
 
     @Test func threeReturningTitlesProduceOneEventEach() {
-        let watches = ["a", "b", "c"].map { makeWatch($0) }
+        let watches = ["a", "b", "c"].map { makeMaintenanceWatchForTesting(identity: $0) }
         let result = CatalogMaintenanceWatchStore(watches: watches).advancing(availabilityByIdentity: ["a": .available, "b": .available, "c": .available])
         #expect(result.events.count == 3)
         // All three are ready events: the announcer collapses them into one attention request.
@@ -180,5 +169,5 @@ import Testing
 /// A notification flag the observer's `@Sendable` closure can set without tripping the concurrency
 /// checker on a captured local.
 private final class NotificationFlag: @unchecked Sendable {
-    var value = false
+    var isFired = false
 }
