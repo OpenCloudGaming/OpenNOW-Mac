@@ -113,6 +113,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var publisherName: String
     public var releaseDate: String
     public var supportedControls: [String]
+    public var catalogStatus: String
+    public var catalogStateDetailsSubType: String
     public var serviceStatus: String
     public var libraryStatus: String
     public var libraryPlayStatus: String
@@ -146,6 +148,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
         publisherName = variant.publisherName
         releaseDate = variant.releaseDate
         supportedControls = variant.supportedControls
+        catalogStatus = variant.catalogStatus
+        catalogStateDetailsSubType = variant.catalogStateDetailsSubType
         serviceStatus = variant.serviceStatus
         libraryStatus = variant.libraryStatus
         libraryPlayStatus = variant.libraryPlayStatus
@@ -178,6 +182,8 @@ public final class OPNCatalogGameVariantObject: NSObject {
             publisherName: publisherName,
             releaseDate: releaseDate,
             supportedControls: supportedControls,
+            catalogStatus: catalogStatus,
+            catalogStateDetailsSubType: catalogStateDetailsSubType,
             serviceStatus: serviceStatus,
             libraryStatus: libraryStatus,
             libraryPlayStatus: libraryPlayStatus,
@@ -196,6 +202,10 @@ public final class OPNCatalogGameVariantObject: NSObject {
             librarySelected: librarySelected,
             inLibrary: inLibrary
         )
+    }
+
+    public var catalogAvailability: CatalogAvailability {
+        CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
     }
 }
 
@@ -358,6 +368,16 @@ public final class OPNCatalogGameObject: NSObject {
         game.patchStatusSecondaryText = patchStatusSecondaryText
         game.variants = variants.map(\.swiftValue)
         return game
+    }
+
+    /// The title-level availability, used when no variant is selected yet. Maintenance is the
+    /// strongest signal and wins; a title is only patching when every one of its variants is.
+    public var catalogAvailability: CatalogAvailability {
+        let statuses = variants.map(\.catalogAvailability)
+        if statuses.contains(.maintenance) { return .maintenance }
+        if statuses.contains(.unavailable) { return .unavailable }
+        if !statuses.isEmpty, statuses.allSatisfy({ $0 == .patching }) { return .patching }
+        return .available
     }
 
     public static func isFreeMembershipTier(_ membershipTier: String) -> Bool {

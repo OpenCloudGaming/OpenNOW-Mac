@@ -21,6 +21,9 @@ struct GameDetailAccessContext: Equatable {
     var subscriptionOptionTitle: String?
     /// Display name of the store the game must be owned on, when ownership is what is missing.
     var ownershipStoreName: String?
+    /// Whether the vendor currently serves the selected variant. Distinct from access: an owned
+    /// title under maintenance has access but cannot be launched.
+    var availability: CatalogAvailability = .available
 }
 
 enum GameDetailPresentation {
@@ -124,6 +127,27 @@ enum GameDetailPresentation {
         if context.selectedPlatformHasAccess { return "PLAY" }
         if context.hasSelectedVariant { return "MARK OWNED" }
         return "PLAY"
+    }
+
+    /// The offline notice replaces the play affordance for a title the vendor has taken down. Only
+    /// maintenance and a hard "unavailable" earn it; patching keeps its own copy under the button.
+    static func showsAvailabilityNotice(_ availability: CatalogAvailability) -> Bool {
+        availability.isOffline
+    }
+
+    static func availabilityNoticeTitle(_ availability: CatalogAvailability) -> String {
+        availability == .maintenance ? "Offline" : "Unavailable"
+    }
+
+    static func availabilityNoticeBody(_ availability: CatalogAvailability) -> String {
+        switch availability {
+        case .maintenance:
+            return "GeForce NOW is doing maintenance on this game. It will be available to play again once maintenance finishes."
+        case .unavailable:
+            return "This game is not available on GeForce NOW right now. Try again later."
+        case .available, .patching:
+            return ""
+        }
     }
 
     static func accessBody(game: OPNCatalogGameObject, context: GameDetailAccessContext) -> String {

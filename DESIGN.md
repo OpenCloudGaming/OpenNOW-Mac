@@ -1238,6 +1238,20 @@ current state in the new slots.
 2px accent `Rectangle` stroke overlay on the focused control. Used for gamepad and
 keyboard focus across the app and stream surfaces.
 
+### Catalog Availability Notice (`CatalogAvailabilityNotice`)
+
+The amber strip a catalog title shows when the vendor has taken it down — rendered in the desktop
+detail panel and the controller game page in place of the play affordance, which dims and disables.
+The vendor serves four availability states (measured live 2026-09-29): `AVAILABLE`,
+`SERVER_MAINTENANCE` (with `stateDetails.subType == GFN_DEVELOPER_MAINTENANCE`) and `PATCHING`
+(`PATCHING_AUTO`) in the authenticated catalog, and the shorter `MAINTENANCE` / `PATCHING` in the
+public supported-game list. Only maintenance and a hard unavailable state earn the notice; patching
+keeps its own copy under the button. Flat like the rest of the shell: `Semantic.warning` @ 0.14 fill,
+a 1px `Semantic.warning` @ 0.45 stroke, an amber `exclamationmark.circle.fill`, a bold 13pt warning
+headline over a secondary body — no shadow. Availability is classified from the raw vendor fields by
+`CatalogAvailability`, deliberately separate from library ownership, which the parser keeps in its own
+`catalogStatus` / `catalogStateDetailsSubType` fields.
+
 ## Elevation
 
 Flat by default — depth comes from 1px strokes and fill tints, not shadows. Shadows are

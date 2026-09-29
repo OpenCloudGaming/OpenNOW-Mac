@@ -123,6 +123,8 @@ extension OPNGameDataCache {
         putString(variant.publisherName, key: "r", into: &dictionary)
         putString(variant.releaseDate, key: "e", into: &dictionary)
         putArray(variant.supportedControls, key: "c", into: &dictionary)
+        putString(variant.catalogStatus, key: "ct", into: &dictionary)
+        putString(variant.catalogStateDetailsSubType, key: "cd", into: &dictionary)
         putString(variant.serviceStatus, key: "t", into: &dictionary)
         putString(variant.libraryStatus, key: "ls", into: &dictionary)
         putString(variant.libraryPlayStatus, key: "lp", into: &dictionary)
@@ -156,6 +158,8 @@ extension OPNGameDataCache {
             publisherName: dictionary["r"] as? String ?? "",
             releaseDate: dictionary["e"] as? String ?? "",
             supportedControls: dictionary["c"] as? [String] ?? [],
+            catalogStatus: dictionary["ct"] as? String ?? "",
+            catalogStateDetailsSubType: dictionary["cd"] as? String ?? "",
             serviceStatus: dictionary["t"] as? String ?? "",
             libraryStatus: dictionary["ls"] as? String ?? "",
             libraryPlayStatus: dictionary["lp"] as? String ?? "",

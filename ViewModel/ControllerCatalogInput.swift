@@ -485,6 +485,7 @@ extension ControllerCatalogViewModel {
     }
 
     private func handleDetailPrimary(catalog: CatalogViewModel, game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?) {
+        guard (selectedVariant?.catalogAvailability ?? game.catalogAvailability).isPlayable else { return }
         if game.isLaunchPatching || selectedVariant?.isPatching == true {
             catalog.queuePatchingLaunch(game: game, variantIndex: catalog.selectedVariantIndex)
         } else if catalog.selectedPlatformHasAccess(in: game) || selectedVariant == nil {

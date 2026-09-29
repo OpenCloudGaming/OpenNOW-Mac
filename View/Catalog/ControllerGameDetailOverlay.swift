@@ -39,6 +39,8 @@ struct ControllerGameDetailOverlay: View {
 
     var selectedVariant: OPNCatalogGameVariantObject? { viewModel.selectedVariant(in: game) }
 
+    private var availability: CatalogAvailability { selectedVariant?.catalogAvailability ?? game.catalogAvailability }
+
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.displayScale) private var displayScale
 
@@ -58,6 +60,9 @@ struct ControllerGameDetailOverlay: View {
                     .padding(.horizontal, metrics.horizontalPadding)
                     .padding(.top, 18 * uiScale)
                     .padding(.bottom, 14 * uiScale)
+                if GameDetailPresentation.showsAvailabilityNotice(availability) {
+                    ControllerAvailabilityNotice(availability: availability, contentWidth: contentWidth(metrics), horizontalPadding: metrics.horizontalPadding)
+                }
                 pageTabs
                     .frame(width: contentWidth(metrics), alignment: .leading)
                     .padding(.horizontal, metrics.horizontalPadding)
@@ -264,6 +269,8 @@ struct ControllerGameDetailOverlay: View {
             .openNowFocusRing(isFocused, onAccentFill: true)
         }
         .buttonStyle(.plain)
+        .disabled(isPrimary && !availability.isPlayable)
+        .opacity(isPrimary && !availability.isPlayable ? 0.45 : 1)
     }
 
     /// The secondary actions, one Y press away. Vertical and centred rather than a wide row: this
@@ -510,5 +517,23 @@ private struct ControllerInfoSpecRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+}
+
+private struct ControllerAvailabilityNotice: View {
+    let availability: CatalogAvailability
+    let contentWidth: CGFloat
+    let horizontalPadding: CGFloat
+
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        CatalogAvailabilityNotice(
+            title: GameDetailPresentation.availabilityNoticeTitle(availability),
+            message: GameDetailPresentation.availabilityNoticeBody(availability)
+        )
+        .frame(width: contentWidth, alignment: .leading)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.bottom, 14 * uiScale)
     }
 }

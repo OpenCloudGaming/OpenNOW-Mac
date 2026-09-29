@@ -32,6 +32,8 @@ struct GameDetailPanel: View {
             let imageIndex = imageURLs.indices.contains(activeImageIndex) ? activeImageIndex : 0
             let imageURL = imageURLs.indices.contains(imageIndex) ? imageURLs[imageIndex] : game.bestDetailImageURL
             let panelHeight = CatalogVendorLayout.detailPanelHeight(for: availableWidth, viewportHeight: viewportHeight, scale: uiScale)
+            let availability = accessContext(game: game).availability
+            let showsAvailabilityNotice = GameDetailPresentation.showsAvailabilityNotice(availability)
             GeometryReader { proxy in
                 // `proxy` measures the scroll content - the widest rail until the page settles - so
                 // the band the panel really occupies is whichever of the two is narrower.
@@ -90,11 +92,17 @@ struct GameDetailPanel: View {
                             variantChips(game: game)
                                 .padding(.top, 9)
                         }
+                        if showsAvailabilityNotice {
+                            availabilityNotice(for: availability)
+                                .padding(.top, 13)
+                        }
                         detailActions(game: game)
                             .padding(.top, 11)
                             .zIndex(1)
-                        accessMessage(game: game)
-                            .padding(.top, 11)
+                        if !showsAvailabilityNotice {
+                            accessMessage(game: game)
+                                .padding(.top, 11)
+                        }
                         detailMetadataScrollArea(game: game, panelHeight: resolvedHeight)
                             .padding(.top, 15)
                         moreInfoButton
@@ -267,6 +275,7 @@ struct GameDetailPanel: View {
     }
 
     func primaryAction(game: OPNCatalogGameObject) {
+        guard accessContext(game: game).availability.isPlayable else { return }
         if game.isLaunchPatching || selectedVariant?.isPatching == true {
             viewModel.queuePatchingLaunch(game: game, variantIndex: viewModel.selectedVariantIndex)
             return

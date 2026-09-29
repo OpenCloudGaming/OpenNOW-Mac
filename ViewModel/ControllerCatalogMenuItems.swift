@@ -92,6 +92,8 @@ enum ControllerDetailAction: Equatable {
     }
 
     @MainActor private static func primaryTitle(game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject?, viewModel: CatalogViewModel) -> String {
+        let availability = selectedVariant?.catalogAvailability ?? game.catalogAvailability
+        if !availability.isPlayable { return availability == .maintenance ? "Offline" : "Unavailable" }
         if game.isLaunchPatching || selectedVariant?.isPatching == true { return viewModel.isQueuedForPatching(game) ? "Queued" : "Queue" }
         if viewModel.selectedPlatformHasAccess(in: game) { return "Play" }
         if selectedVariant != nil { return "Mark Owned" }

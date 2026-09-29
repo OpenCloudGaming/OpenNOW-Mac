@@ -4,7 +4,7 @@ import Foundation
 final class OPNGameDataCache: @unchecked Sendable {
     static let shared = OPNGameDataCache()
 
-    private static let catalogCacheVersion = 13
+    private static let catalogCacheVersion = 14
     private static let catalogDefinitionsCacheVersion = "v2"
 
     // Catalog snapshots are ~60 MB each and keyed per query/filter/vpc, so

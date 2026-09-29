@@ -136,6 +136,8 @@ extension OPNGameService {
 
     /// Service status and patch state for one variant.
     private func applyVariantGfn(_ gfn: NSDictionary, to variant: inout OPNGameVariant) {
+        variant.catalogStatus = safeString(gfn["status"]) ?? ""
+        variant.catalogStateDetailsSubType = (gfn["stateDetails"] as? NSDictionary).flatMap { safeString($0["subType"]) } ?? ""
         variant.serviceStatus = safeString(gfn["status"]) ?? ""
         variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: gfn["stateDetails"])
         let patchText = patchStatusText(status: gfn["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)

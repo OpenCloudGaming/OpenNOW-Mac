@@ -11,12 +11,16 @@ import SwiftUI
 
 extension GameDetailPanel {
     func detailActions(game: OPNCatalogGameObject) -> some View {
-        HStack(spacing: 10) {
+        let availability = accessContext(game: game).availability
+        let buttonTitle = primaryActionTitle(game: game)
+        let isQueuedPatching = (game.isLaunchPatching || selectedVariant?.isPatching == true) && viewModel.isQueuedForPatching(game)
+        return HStack(spacing: 10) {
             Button { primaryAction(game: game) } label: {
-                Text(primaryActionTitle(game: game))
+                Text(buttonTitle)
             }
-            .buttonStyle(VendorGetInButtonStyle(size: .large, uiScale: uiScale, minimumWidth: primaryActionTitle(game: game) == "PLAY" ? 72 : 132))
-            .disabled((game.isLaunchPatching || selectedVariant?.isPatching == true) && viewModel.isQueuedForPatching(game))
+            .buttonStyle(VendorGetInButtonStyle(size: .large, uiScale: uiScale, minimumWidth: buttonTitle == "PLAY" ? 72 : 132))
+            .disabled(!availability.isPlayable || isQueuedPatching)
+            .opacity(availability.isPlayable ? 1 : 0.45)
             .fixedSize()
 
             favoriteActionButton(game: game)
@@ -157,6 +161,13 @@ extension GameDetailPanel {
         .frame(maxWidth: 520 * uiScale, alignment: .leading)
     }
 
+    func availabilityNotice(for availability: CatalogAvailability) -> some View {
+        CatalogAvailabilityNotice(
+            title: GameDetailPresentation.availabilityNoticeTitle(availability),
+            message: GameDetailPresentation.availabilityNoticeBody(availability)
+        )
+    }
+
     /// Only when a store actually stands between the user and the game.
     func showsStoreConfigurationHint(game: OPNCatalogGameObject) -> Bool {
         !selectedPlatformHasAccess(game) && !game.isLaunchPatching
@@ -174,7 +185,8 @@ extension GameDetailPanel {
             hasSelectedVariant: variant != nil,
             selectedPlatformHasAccess: selectedPlatformHasAccess(game),
             subscriptionOptionTitle: option?.hasSubscriptionEntitlement == true ? option?.title : nil,
-            ownershipStoreName: (variant?.appStore.isEmpty == false) ? viewModel.displayName(forStore: variant?.appStore ?? "") : nil
+            ownershipStoreName: (variant?.appStore.isEmpty == false) ? viewModel.displayName(forStore: variant?.appStore ?? "") : nil,
+            availability: variant?.catalogAvailability ?? game.catalogAvailability
         )
     }
 

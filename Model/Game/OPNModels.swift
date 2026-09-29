@@ -41,6 +41,12 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var publisherName = ""
     public var releaseDate = ""
     public var supportedControls: [String] = []
+    /// The vendor's raw `gfn.status`, kept apart from `serviceStatus`, which the parser overwrites
+    /// with the account's library status. Collapsing the two lost maintenance state.
+    public var catalogStatus = ""
+    /// The `stateDetails.subType` companion (`GFN_DEVELOPER_MAINTENANCE`, `PATCHING_AUTO`, ...),
+    /// which tells a maintenance window apart from an autopatch.
+    public var catalogStateDetailsSubType = ""
     public var serviceStatus = ""
     public var libraryStatus = ""
     public var libraryPlayStatus = ""
@@ -60,7 +66,12 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var inLibrary = false
     /// When the account last played this variant, straight from the vendor's library sync. A raw
     /// ISO string (or a bare date) because the vendor sends both shapes; empty when it never has.
-    public var libraryLastPlayedDate = ""}
+    public var libraryLastPlayedDate = ""
+
+    public var catalogAvailability: CatalogAvailability {
+        CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
+    }
+}
 
 public struct OPNStoreAccountSyncingInfo: Equatable, Sendable {
     public var totalNumberOfSyncedGfnGames = 0

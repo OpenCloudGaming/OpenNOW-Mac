@@ -100,8 +100,16 @@ func limitedModeSessionResponse() -> [String: Any] {
     ]
 }
 
-func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil, favorited: Bool = false, freeToPlay: Bool = false) -> [String: Any] {
-    [
+func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String = "NOT_OWNED", librarySelected: Bool = false, appStore: String = "STEAM", variantId: String? = nil, favorited: Bool = false, freeToPlay: Bool = false, gfnStatus: String = "AVAILABLE", gfnStateDetails: [String: Any]? = nil) -> [String: Any] {
+    var variantGfn: [String: Any] = [
+        "status": gfnStatus,
+        "installTimeInMinutes": 7,
+        "supportedLanguages": [["language": "en_US"]],
+        "features": [["__typename": "GfnSubscriptionFeatureValue", "key": "RAY_TRACING", "value": "SUPPORTED"]],
+        "library": ["status": libraryStatus, "selected": librarySelected, "playStatus": "PLAYABLE", "installed": true, "subscription": "GFN_PREMIUM"],
+    ]
+    if let gfnStateDetails { variantGfn["stateDetails"] = gfnStateDetails }
+    return [
         "id": id,
         "title": title ?? "Catalog Game \(id)",
         "shortName": "vendor-title",
@@ -128,13 +136,7 @@ func catalogGraphQLGame(id: String, title: String? = nil, libraryStatus: String 
             "paymentModels": [["__typename": freeToPlay ? "FreeToPlay" : "IncludedWithSubscription"]],
             "minimumSizeInBytes": 42_000_000,
             "cloudSaveSupported": true,
-            "gfn": [
-                "status": "AVAILABLE",
-                "installTimeInMinutes": 7,
-                "supportedLanguages": [["language": "en_US"]],
-                "features": [["__typename": "GfnSubscriptionFeatureValue", "key": "RAY_TRACING", "value": "SUPPORTED"]],
-                "library": ["status": libraryStatus, "selected": librarySelected, "playStatus": "PLAYABLE", "installed": true, "subscription": "GFN_PREMIUM"],
-            ],
+            "gfn": variantGfn,
         ]],
         "gfn": ["playabilityState": "PLAYABLE", "minimumMembershipTierLabel": "Free", "playType": "FULL_GAME", "catalogSkuStrings": ["SKU_BASED_TAG": ["NEW_ON_GFN"], "SKU_BASED_PLAYABILITY_TEXT": "Included with membership", "SKU_BASED_UNPLAYABLE_DIALOG_HEADER": "Upgrade required", "SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE": "Upgrade to play", "SKU_BASED_UNPLAYABLE_DIALOG_BODY_UPGRADE_ECOMM_RESTRICTED": "Upgrade in your account"]],
         "itemMetadata": ["campaignIds": []],
