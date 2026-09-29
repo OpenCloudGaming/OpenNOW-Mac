@@ -1,7 +1,8 @@
 //  What a session-ready request to enter native full screen should do before it is issued.
 //
 //  macOS only offers Game Mode to a game that is already in native full screen and frontmost, so
-//  the stream enters full screen on every connect - the decision must not depend on a preference.
+//  the stream enters full screen on every connect - the transition itself is not gated on a
+//  preference, though the activation that precedes it follows the Session Ready mode.
 //  The window is not always mutable when the seat reports ready: it may not be in a hierarchy yet,
 //  AppKit may be inside a nested run loop, or the user may be dragging an edge. This type is the
 //  pure predicate behind the retry loop, so the whole matrix is assertable without a window server.
@@ -23,6 +24,12 @@ enum OPNStreamFullScreenEntry {
         case windowUnreachable
         case transitionInFlight
         case geometryDeferred
+    }
+
+    /// Whether the entry request may pull OpenNOW to the front, or has to wait for the user.
+    enum Activation: Equatable {
+        case activateNow
+        case waitForAppActivation
     }
 
     /// The `reason` attribute of `nvst.ui.fullscreen.sessionReady.failed`.
@@ -61,5 +68,14 @@ enum OPNStreamFullScreenEntry {
         guard !geometryDeferred else { return .wait(reason: .geometryDeferred) }
         guard !windowIsFullScreen else { return .alreadyFullScreen }
         return .enter
+    }
+
+    /// The Session Ready preference's remaining say over the entry. Off and Notification exist so a
+    /// launch that became ready while the user was elsewhere does not pull them back, so the entry
+    /// waits for the user instead of activating. Full screen still happens either way - it lands
+    /// when the user returns, which is also the moment Game Mode can engage.
+    static func activation(bringsAppToFrontWhenReady: Bool, isAppActive: Bool) -> Activation {
+        guard !isAppActive else { return .activateNow }
+        return bringsAppToFrontWhenReady ? .activateNow : .waitForAppActivation
     }
 }

@@ -1,9 +1,10 @@
 //  Entering native full screen when a session becomes ready.
 //
-//  macOS only offers Game Mode to a game that is already in native full screen and frontmost, so
-//  the stream enters full screen on every connect regardless of the Session Ready preference: a
-//  setting would leave Game Mode off for every default install. The preference keeps its remaining
-//  job - bringing a backgrounded app forward - in `OPNSessionReadyAction`.
+//  macOS only offers Game Mode to a game that is already in native full screen and frontmost, so a
+//  session that lands while the user is in the app enters full screen and activates. The Session
+//  Ready preference keeps its say over a launch that became ready in the background: Off and
+//  Notification wait for the user rather than pulling them back, Bring to Front and Full Screen
+//  activate as they always did. See `OPNSessionReadyAction`.
 //
 //  AppKit is imported for the same reason the sibling files are: the request acts on the window and
 //  on the application's activation state. See `NativeNVSTHostViewModel.swift`.
@@ -19,10 +20,12 @@ extension NativeNVSTHostViewModel {
     static let sessionReadyFullScreenAttemptLimit = 200
 
     /// The window is only reachable once the view is in a hierarchy and the aspect coordinator has
-    /// settled the first frame, so the transition retries on the geometry gate's ceiling. Activation
-    /// is part of the request: the presenter orders a launched window front **without** activating
-    /// when OpenNOW is not frontmost, and a full-screen window that is not frontmost cannot reach
-    /// Game Mode.
+    /// settled the first frame, so the transition retries on the geometry gate's ceiling.
+    ///
+    /// Activation follows the Session Ready preference rather than overriding it. Off and
+    /// Notification mean a launch that became ready while the user was elsewhere must not pull them
+    /// back, so the transition waits for the next activation and lands then - which is also when
+    /// Game Mode can engage. Bring to Front and Full Screen activate as they always have.
     func enterNativeFullScreenWhenSessionReady() {
         sessionReadyFullScreenTask?.cancel()
         sessionReadyFullScreenTask = Task { @MainActor [weak self] in
@@ -44,6 +47,16 @@ extension NativeNVSTHostViewModel {
             case .alreadyFullScreen:
                 return
             case .enter:
+                let activation = OPNStreamFullScreenEntry.activation(
+                    bringsAppToFrontWhenReady: OPNSessionReadyAction.mode.bringsAppToFrontWhenReady,
+                    isAppActive: NSApp.isActive
+                )
+                guard activation == .activateNow else {
+                    await waitForAppActivation()
+                    guard !Task.isCancelled else { return }
+                    await performNativeFullScreenEntry()
+                    return
+                }
                 guard let window = nativeView?.window else { return }
                 isSessionReadyFullScreenEntryRequested = true
                 NSApp.activate(ignoringOtherApps: true)
@@ -60,6 +73,17 @@ extension NativeNVSTHostViewModel {
             attemptCount: attemptCount,
             elapsedMs: Int(Date().timeIntervalSince(startedAt) * 1000)
         )
+    }
+
+    /// Waits for the next activation notification. The subscription is registered in the same
+    /// main-actor turn as the caller's own `isActive` read, so an activation cannot land between the
+    /// two and be missed; the loop re-checks after each notification because the task can also end
+    /// by cancellation, in which case the sequence finishes with the app still in the background.
+    private func waitForAppActivation() async {
+        let notifications = NotificationCenter.default.notifications(named: NSApplication.didBecomeActiveNotification, object: nil)
+        while !Task.isCancelled, !NSApp.isActive {
+            for await _ in notifications { break }
+        }
     }
 
     private func nativeFullScreenEntryAttempt() -> OPNStreamFullScreenEntry.Attempt {

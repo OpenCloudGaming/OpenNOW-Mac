@@ -94,4 +94,30 @@ struct OPNStreamFullScreenEntryTests {
     func noRecordedConditionFallsBackToTheAttemptLimit() {
         #expect(OPNStreamFullScreenEntry.FailureReason(deferral: nil) == .attemptLimitReached)
     }
+
+    @Test("a frontmost app is never waited on")
+    func frontmostAppIsNeverWaitedOn() {
+        for bringsAppToFrontWhenReady in [true, false] {
+            let activation = OPNStreamFullScreenEntry.activation(
+                bringsAppToFrontWhenReady: bringsAppToFrontWhenReady,
+                isAppActive: true
+            )
+            #expect(activation == .activateNow)
+        }
+    }
+
+    @Test("a backgrounded app is activated only when the preference asks for it")
+    func backgroundedAppFollowsThePreference() {
+        #expect(OPNStreamFullScreenEntry.activation(bringsAppToFrontWhenReady: true, isAppActive: false) == .activateNow)
+        #expect(OPNStreamFullScreenEntry.activation(bringsAppToFrontWhenReady: false, isAppActive: false) == .waitForAppActivation)
+    }
+
+    @Test("Off and Notification leave the user where they are; Bring to Front and Full Screen do not")
+    @MainActor
+    func onlyBringToFrontAndFullScreenFetchTheUser() {
+        #expect(!OPNSessionReadyAction.Mode.off.bringsAppToFrontWhenReady)
+        #expect(!OPNSessionReadyAction.Mode.notification.bringsAppToFrontWhenReady)
+        #expect(OPNSessionReadyAction.Mode.bringToFront.bringsAppToFrontWhenReady)
+        #expect(OPNSessionReadyAction.Mode.fullScreen.bringsAppToFrontWhenReady)
+    }
 }
