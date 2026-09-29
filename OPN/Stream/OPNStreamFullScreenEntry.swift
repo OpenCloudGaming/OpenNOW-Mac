@@ -1,9 +1,8 @@
 //  What a session-ready request to enter native full screen should do before it is issued.
 //
-//  macOS only offers Game Mode to a game that is already in native full screen and frontmost, so a
-//  session that lands while the user is in the app enters full screen and activates. A launch that
-//  became ready in the background is not taken over: on Off and Notification the window stays
-//  windowed until the user asks for full screen themselves.
+//  Full screen is what macOS gates Game Mode on, but the entry is only requested when the Session
+//  Ready mode asks for it, so this type stays a predicate about the window, not about whether the
+//  user wants full screen.
 //
 //  The window is not always mutable when the seat reports ready: it may not be in a hierarchy yet,
 //  AppKit may be inside a nested run loop, or the user may be dragging an edge. This type is the
@@ -64,13 +63,5 @@ enum OPNStreamFullScreenEntry {
         guard !geometryDeferred else { return .wait(reason: .geometryDeferred) }
         guard !windowIsFullScreen else { return .alreadyFullScreen }
         return .enter
-    }
-
-    /// Whether the entry may issue now. A frontmost app enters - activation is then a no-op. A
-    /// backgrounded app enters only when the Session Ready mode brings it forward; on Off and
-    /// Notification the window is left windowed for the user to take full screen themselves, so a
-    /// stream never surprises them by going full screen the moment the app regains focus.
-    static func shouldEnterNow(bringsAppToFrontWhenReady: Bool, isAppActive: Bool) -> Bool {
-        isAppActive || bringsAppToFrontWhenReady
     }
 }

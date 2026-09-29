@@ -24,16 +24,6 @@ enum OPNSessionReadyAction {
             case .fullScreen: "Full Screen"
             }
         }
-
-        /// Whether a ready session brings OpenNOW to the front. Off and Notification deliberately
-        /// leave the user where they are, so a launch that became ready in the background waits for
-        /// them rather than stealing focus.
-        nonisolated var bringsAppToFrontWhenReady: Bool {
-            switch self {
-            case .off, .notification: false
-            case .bringToFront, .fullScreen: true
-            }
-        }
     }
 
     static let modeKey = "OpenNOW.Interface.SessionReadyAction"

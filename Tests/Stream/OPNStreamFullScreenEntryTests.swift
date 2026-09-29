@@ -95,25 +95,4 @@ struct OPNStreamFullScreenEntryTests {
         #expect(OPNStreamFullScreenEntry.FailureReason(deferral: nil) == .attemptLimitReached)
     }
 
-    @Test("a frontmost app enters regardless of the preference")
-    func frontmostAppEnters() {
-        for bringsAppToFrontWhenReady in [true, false] {
-            #expect(OPNStreamFullScreenEntry.shouldEnterNow(bringsAppToFrontWhenReady: bringsAppToFrontWhenReady, isAppActive: true))
-        }
-    }
-
-    @Test("a backgrounded app enters only when the preference brings it forward")
-    func backgroundedAppFollowsThePreference() {
-        #expect(OPNStreamFullScreenEntry.shouldEnterNow(bringsAppToFrontWhenReady: true, isAppActive: false))
-        #expect(!OPNStreamFullScreenEntry.shouldEnterNow(bringsAppToFrontWhenReady: false, isAppActive: false))
-    }
-
-    @Test("Off and Notification leave the user where they are; Bring to Front and Full Screen do not")
-    @MainActor
-    func onlyBringToFrontAndFullScreenFetchTheUser() {
-        #expect(!OPNSessionReadyAction.Mode.off.bringsAppToFrontWhenReady)
-        #expect(!OPNSessionReadyAction.Mode.notification.bringsAppToFrontWhenReady)
-        #expect(OPNSessionReadyAction.Mode.bringToFront.bringsAppToFrontWhenReady)
-        #expect(OPNSessionReadyAction.Mode.fullScreen.bringsAppToFrontWhenReady)
-    }
 }

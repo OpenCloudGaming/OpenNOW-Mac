@@ -439,7 +439,13 @@ extension NativeNVSTHostViewModel {
         let willEnterFullScreen = !window.styleMask.contains(.fullScreen)
         window.toggleFullScreen(nil)
         showNativeTransientStreamMessage(willEnterFullScreen ? "Entering full screen" : "Leaving full screen")
-        OPNStreamTelemetry.capture("nvst.ui.fullscreen.toggle", level: .info, message: willEnterFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.", attributes: ["applicationID": configuration.applicationID, "fullScreen": String(willEnterFullScreen)])
+        // The manual entry is the path Game Mode engages on for every Session Ready mode but Full
+        // Screen, so the eligibility that decides it is recorded here too.
+        var attributes = ["applicationID": configuration.applicationID, "fullScreen": String(willEnterFullScreen)]
+        if willEnterFullScreen {
+            attributes.merge(OPNStreamGameModePreconditions.current().telemetryAttributes) { _, new in new }
+        }
+        OPNStreamTelemetry.capture("nvst.ui.fullscreen.toggle", level: .info, message: willEnterFullScreen ? "Native NVST stream entered full screen." : "Native NVST stream left full screen.", attributes: attributes)
     }
 
     /// PiP is a mode of the stream window, so this is a window change and nothing else: one surface,

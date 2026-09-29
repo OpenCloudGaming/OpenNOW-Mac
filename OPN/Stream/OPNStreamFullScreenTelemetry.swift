@@ -46,6 +46,17 @@ struct OPNStreamGameModePreconditions: Equatable, Sendable {
         )
     }
 
+    /// What every full-screen entry event reports. Never a `gameMode` boolean: macOS exposes no
+    /// public API that reads Game Mode's state, so eligibility is all that can be claimed.
+    var telemetryAttributes: [String: String] {
+        [
+            "supportsGameModeKey": String(isGameModeKeyDeclared),
+            "applicationCategoryType": applicationCategoryType,
+            "isFrontmost": String(isFrontmost),
+            "isAppleSilicon": String(isAppleSilicon),
+        ]
+    }
+
     static var hostIsAppleSilicon: Bool {
         #if arch(arm64)
         true
@@ -67,15 +78,11 @@ enum OPNStreamFullScreenTelemetry {
         enteredFullScreen: Bool,
         preconditions: OPNStreamGameModePreconditions
     ) -> [String: String] {
-        [
-            "applicationID": applicationID,
-            "launchMode": launchMode,
-            "supportsGameModeKey": String(preconditions.isGameModeKeyDeclared),
-            "applicationCategoryType": preconditions.applicationCategoryType,
-            "isFrontmost": String(preconditions.isFrontmost),
-            "isAppleSilicon": String(preconditions.isAppleSilicon),
-            "enteredFullScreen": String(enteredFullScreen),
-        ]
+        var attributes = preconditions.telemetryAttributes
+        attributes["applicationID"] = applicationID
+        attributes["launchMode"] = launchMode
+        attributes["enteredFullScreen"] = String(enteredFullScreen)
+        return attributes
     }
 
     static func failureAttributes(

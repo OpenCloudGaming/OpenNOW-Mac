@@ -74,6 +74,22 @@ struct OPNStreamFullScreenTelemetryTests {
         #expect(attributes["gameMode"] == nil)
     }
 
+    @Test("the shipped eligibility attributes carry the four preconditions and no state")
+    func eligibilityAttributesCarryTheFourPreconditions() {
+        let attributes = OPNStreamGameModePreconditions(
+            isGameModeKeyDeclared: true,
+            applicationCategoryType: "public.app-category.games",
+            isFrontmost: false,
+            isAppleSilicon: true
+        ).telemetryAttributes
+        #expect(attributes == [
+            "supportsGameModeKey": "true",
+            "applicationCategoryType": "public.app-category.games",
+            "isFrontmost": "false",
+            "isAppleSilicon": "true",
+        ])
+    }
+
     @Test("the success event is captured at info with the landing attributes")
     func successEventIsCapturedAtInfo() {
         let sink = RecordingStreamTelemetrySink()
