@@ -116,7 +116,7 @@ struct UpdatesSettingsPage: View {
                 SettingsActionButton(title: isButtonChecking ? "CHECKING…" : "CHECK FOR UPDATES", uiScale: uiScale) {
                     OPNAppDelegate.requestApplicationUpdateCheck()
                 }
-                .disabled(isButtonChecking || updateChecksSuspended)
+                .disabled(isButtonChecking || isUpdateCheckSuspended)
                 Text(updateCheckStatusText)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.tertiary)
@@ -137,9 +137,8 @@ struct UpdatesSettingsPage: View {
         return updatePresentation.isCheckingForUpdate
     }
 
-    /// The button cannot run a check while checks are suspended, so it must not present as live.
-    /// The status text beside it states the same reason and names the preview menu that replaces it.
-    private var updateChecksSuspended: Bool {
+    /// A suspended build cannot run a check, so the button must not present as live.
+    private var isUpdateCheckSuspended: Bool {
         OPNUpdatePreferences.updateChecksAreSuspendedForDebugging
     }
 
@@ -156,7 +155,7 @@ struct UpdatesSettingsPage: View {
             break
         }
         #endif
-        if updateChecksSuspended {
+        if isUpdateCheckSuspended {
             return "Update checks are suspended for debug builds and attached debuggers, which report version 0.0.0. Test the update dialogs with OpenNOW ▸ Preview Update Dialog."
         }
         guard !updatePresentation.isCheckingForUpdate else {

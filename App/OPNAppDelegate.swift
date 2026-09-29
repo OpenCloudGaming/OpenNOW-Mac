@@ -173,7 +173,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static func requestApplicationUpdateCheck() {
-        (NSApp.delegate as? OPNAppDelegate)?.checkForApplicationUpdates(automatic: false)
+        (NSApp.delegate as? OPNAppDelegate)?.checkForApplicationUpdates(isAutomatic: false)
     }
 
     static func setAutomaticApplicationUpdateChecksEnabled(_ enabled: Bool) {
@@ -189,12 +189,12 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         // catalog and login fetches; subsequent checks stay on the hourly timer.
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Self.initialUpdateCheckDelaySeconds))
-            self?.checkForApplicationUpdates(automatic: true)
+            self?.checkForApplicationUpdates(isAutomatic: true)
         }
     }
 
     @objc private func applicationUpdateCheckTimerFired(_ timer: Timer) {
-        checkForApplicationUpdates(automatic: true)
+        checkForApplicationUpdates(isAutomatic: true)
     }
 
     /// The modal and the What's New card drive the same updater instance the delegate owns, so the
@@ -246,44 +246,58 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         startApplicationUpdateChecks()
     }
 
-    /// Manual requests clear the "remind tomorrow" snooze before the gate so a dismissal never
-    /// suppresses the next explicit check, matching the behaviour before the check was extracted.
-    /// An install owns the update modal — its scrim already blocks the Settings control, and
-    /// presenting a check result would replace the running install's progress.
-    private func checkForApplicationUpdates(automatic: Bool) {
-        if !automatic {
-            OPNUpdatePreferences.clearReminder()
+    /// Manual requests clear the "remind tomorrow" snooze before the gate, matching prior behaviour.
+    private func checkForApplicationUpdates(isAutomatic: Bool) {
+        guard !isAutomatic else {
+            requestUpdateCheck(.automatic)
+            return
         }
-        guard updateInstallTask == nil else { return }
-        updateChecks.request(automatic ? .automatic : .manual)
+        OPNUpdatePreferences.clearReminder()
+        requestUpdateCheck(.manual)
     }
 
-    /// Automatic checks stay silent except for an installable release. A manual request always
-    /// surfaces: the release, "up to date", the failure, or — when checks are suspended — the
-    /// reason the request could not run.
+    /// An install owns the update modal: its scrim blocks the Settings control, and a check result
+    /// would replace the running install's progress.
+    private func requestUpdateCheck(_ kind: OPNUpdateCheckCoordinator.Kind) {
+        guard updateInstallTask == nil else { return }
+        updateChecks.request(kind)
+    }
+
     private func surfaceUpdateCheckOutcome(_ outcome: OPNUpdateCheckCoordinator.Outcome, kind: OPNUpdateCheckCoordinator.Kind) {
+        guard kind == .manual else {
+            surfaceAutomaticUpdateCheckOutcome(outcome)
+            return
+        }
+        surfaceManualUpdateCheckOutcome(outcome)
+    }
+
+    /// An automatic check only ever interrupts the user for an installable release.
+    private func surfaceAutomaticUpdateCheckOutcome(_ outcome: OPNUpdateCheckCoordinator.Outcome) {
+        guard case .available(let release) = outcome else { return }
+        presentUpdate(for: release, isAutomatic: true)
+    }
+
+    /// A manual request always surfaces: the release, "up to date", the failure, or the suspension.
+    private func surfaceManualUpdateCheckOutcome(_ outcome: OPNUpdateCheckCoordinator.Outcome) {
         let presentation = OPNUpdatePresentation.shared
-        let automatic = kind == .automatic
         switch outcome {
         case .available(let release):
-            presentUpdate(for: release, automatic: automatic)
+            presentUpdate(for: release, isAutomatic: false)
         case .upToDate(let version):
-            guard !automatic else { return }
             presentation.present(.upToDate(version: version))
         case .failed(let message):
-            guard !automatic else { return }
             presentation.present(.checkFailed(message: message))
         case .suspended:
-            presentation.present(.checkUnavailable(message: Self.checksSuspendedMessage))
+            presentation.present(.checkUnavailable(message: Self.updateChecksSuspendedMessage))
         }
     }
 
-    static let checksSuspendedMessage = "Update checks are suspended while OpenNOW runs as a debug build or with a debugger attached, because those report version 0.0.0 and would always think an update is available. Use OpenNOW ▸ Preview Update Dialog to test the update dialogs."
+    static let updateChecksSuspendedMessage = "Update checks are suspended while OpenNOW runs as a debug build or with a debugger attached, because those report version 0.0.0 and would always think an update is available. Use OpenNOW ▸ Preview Update Dialog to test the update dialogs."
 
     /// An automatic check that lands mid-session would drop a modal over the game, so it waits for
     /// the stream to end. A check the user asked for is shown immediately either way.
-    private func presentUpdate(for release: OPNGitHubRelease, automatic: Bool) {
-        guard !(automatic && StreamSessionLifecycle.hasActiveStream) else {
+    private func presentUpdate(for release: OPNGitHubRelease, isAutomatic: Bool) {
+        guard !(isAutomatic && StreamSessionLifecycle.hasActiveStream) else {
             OPNLog.info(.app, "Deferring update prompt for \(release.version) until the active stream ends")
             deferredUpdateRelease = release
             observeStreamEndForDeferredUpdate()

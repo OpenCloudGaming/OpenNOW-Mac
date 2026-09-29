@@ -25,7 +25,7 @@ struct OPNUpdatePreviewCommands: Commands {
                     OPNUpdatePresentation.shared.presentSampleStatus(.installFailed(message: "The downloaded app bundle did not pass macOS code-signature verification."))
                 }
                 Button("Checks Suspended") {
-                    OPNUpdatePresentation.shared.presentSampleStatus(.checkUnavailable(message: OPNAppDelegate.checksSuspendedMessage))
+                    OPNUpdatePresentation.shared.presentSampleStatus(.checkUnavailable(message: OPNAppDelegate.updateChecksSuspendedMessage))
                 }
             }
             Menu("Preview Button Status") {

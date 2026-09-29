@@ -2,15 +2,13 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// The gate the reported bug fell through: a manual check request must never disappear without a
-/// visible outcome, and an automatic one must stay quiet when checks are suspended. The delegate
-/// cannot be exercised directly because the test build compiles with `DEBUG`, where suspension is
-/// permanently `true`; the coordinator takes both decisions as injected values.
+/// The gate the reported bug fell through: a manual request must never disappear without a visible
+/// outcome, and an automatic one must stay quiet while checks are suspended.
 @Suite(.serialized) @MainActor
 struct UpdateCheckCoordinatorTests {
     @Test func aManualRequestWhileSuspendedSurfacesTheSuspension() {
         let recorder = UpdateCheckRecorder()
-        let coordinator = makeCoordinator(suspended: true, check: { _ in
+        let coordinator = makeCoordinator(isSuspended: true, check: { _ in
             Issue.record("A suspended check must not reach GitHub")
             return nil
         })
@@ -18,13 +16,13 @@ struct UpdateCheckCoordinatorTests {
 
         coordinator.request(.manual)
 
-        #expect(recorder.started == 0)
+        #expect(recorder.startCount == 0)
         #expect(recorder.records == [Recorded(outcome: .suspended, kind: .manual)])
     }
 
     @Test func anAutomaticRequestWhileSuspendedStaysSilent() {
         let recorder = UpdateCheckRecorder()
-        let coordinator = makeCoordinator(suspended: true, check: { _ in
+        let coordinator = makeCoordinator(isSuspended: true, check: { _ in
             Issue.record("A suspended check must not reach GitHub")
             return nil
         })
@@ -32,28 +30,28 @@ struct UpdateCheckCoordinatorTests {
 
         coordinator.request(.automatic)
 
-        #expect(recorder.started == 0)
+        #expect(recorder.startCount == 0)
         #expect(recorder.records.isEmpty)
     }
 
     @Test func anAutomaticRequestThatIsNotDueStaysSilent() {
         let recorder = UpdateCheckRecorder()
-        let coordinator = makeCoordinator(automaticDue: false)
+        let coordinator = makeCoordinator(isAutomaticDue: false)
         recorder.attach(to: coordinator)
 
         coordinator.request(.automatic)
 
-        #expect(recorder.started == 0)
+        #expect(recorder.startCount == 0)
         #expect(recorder.records.isEmpty)
     }
 
     @Test func aManualRequestDuringAnInFlightCheckIsCoalescedIntoOneFollowUp() async {
         let gate = UpdateCheckGate()
-        var callCount = 0
+        var checkCount = 0
         let recorder = UpdateCheckRecorder()
         let coordinator = makeCoordinator(check: { _ in
-            callCount += 1
-            if callCount == 1 { await gate.wait() }
+            checkCount += 1
+            if checkCount == 1 { await gate.wait() }
             return nil
         })
         recorder.attach(to: coordinator)
@@ -63,8 +61,7 @@ struct UpdateCheckCoordinatorTests {
         gate.open()
 
         await waitFor { recorder.records.count == 2 }
-        #expect(callCount == 2)
-        // The in-flight automatic check still reports; the manual request runs a surfaced follow-up.
+        #expect(checkCount == 2)
         #expect(recorder.records == [
             Recorded(outcome: .upToDate(version: "1.0.0"), kind: .automatic),
             Recorded(outcome: .upToDate(version: "1.0.0"), kind: .manual),
@@ -72,10 +69,10 @@ struct UpdateCheckCoordinatorTests {
     }
 
     @Test func anAutomaticRequestDuringAnInFlightCheckIsNotQueued() async {
-        var callCount = 0
+        var checkCount = 0
         let recorder = UpdateCheckRecorder()
         let coordinator = makeCoordinator(check: { _ in
-            callCount += 1
+            checkCount += 1
             return nil
         })
         recorder.attach(to: coordinator)
@@ -84,7 +81,7 @@ struct UpdateCheckCoordinatorTests {
         coordinator.request(.automatic)
 
         await waitFor { !coordinator.isChecking && !recorder.records.isEmpty }
-        #expect(callCount == 1)
+        #expect(checkCount == 1)
         #expect(recorder.records.count == 1)
     }
 
@@ -124,14 +121,14 @@ private struct Recorded: Equatable {
 @MainActor
 private final class UpdateCheckRecorder {
     private(set) var records: [Recorded] = []
-    private(set) var started = 0
-    private(set) var finished = 0
-    private(set) var completed = 0
+    private(set) var startCount = 0
+    private(set) var finishCount = 0
+    private(set) var completionCount = 0
 
     func attach(to coordinator: OPNUpdateCheckCoordinator) {
-        coordinator.onCheckStarted = { [weak self] in self?.started += 1 }
-        coordinator.onCheckFinished = { [weak self] in self?.finished += 1 }
-        coordinator.onCheckCompleted = { [weak self] in self?.completed += 1 }
+        coordinator.onCheckStarted = { [weak self] in self?.startCount += 1 }
+        coordinator.onCheckFinished = { [weak self] in self?.finishCount += 1 }
+        coordinator.onCheckCompleted = { [weak self] in self?.completionCount += 1 }
         coordinator.onOutcome = { [weak self] outcome, kind in
             self?.records.append(Recorded(outcome: outcome, kind: kind))
         }
@@ -158,8 +155,8 @@ private final class UpdateCheckGate {
 
 @MainActor
 private func makeCoordinator(
-    suspended: Bool = false,
-    automaticDue: Bool = true,
+    isSuspended: Bool = false,
+    isAutomaticDue: Bool = true,
     check: @escaping @MainActor (OPNUpdateChannel) async throws -> OPNGitHubRelease? = { _ in nil }
 ) -> OPNUpdateCheckCoordinator {
     OPNUpdateCheckCoordinator(
@@ -168,8 +165,8 @@ private func makeCoordinator(
         checkForUpdate: check,
         currentVersion: { "1.0.0" },
         updateChannel: { .stable },
-        isSuspended: { suspended },
-        shouldRunAutomaticCheck: { automaticDue }
+        isSuspended: { isSuspended },
+        shouldRunAutomaticCheck: { isAutomaticDue }
     )
 }
 
