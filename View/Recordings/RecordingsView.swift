@@ -36,6 +36,8 @@ struct RecordingsView: View {
     @State private var contextMenuAnchor: CGPoint = .zero
     /// The list's frame of reference for resolving a row's right-click into list coordinates.
     @State private var contextSurface = OPNContextSurface()
+    @State private var quickLookRequest: OPNQuickLookRequest?
+    @FocusState private var isListFocused: Bool
 
     private var visibleRecordings: [StreamRecording] { model.visibleRecordings }
 
@@ -60,6 +62,7 @@ struct RecordingsView: View {
         // Opaque base, not the striped backdrop: the list is the page's content surface and the
         // stripes belong to the preview pane only.
         .background(RecordingsLayout.surface)
+        .background { OPNQuickLookHost(request: $quickLookRequest).allowsHitTesting(false) }
         // The page owns the bottom of the window: the editor drawer sits on that edge, and stopping
         // at the safe area left a band of whatever is behind it.
         .ignoresSafeArea(edges: .bottom)
@@ -145,6 +148,7 @@ struct RecordingsView: View {
                     LazyVStack(spacing: 10 * uiScale) {
                         ForEach(visibleRecordings) { recording in
                             RecordingRow(recording: recording, isSelected: model.selectedRecording?.id == recording.id, uiScale: uiScale) {
+                                isListFocused = true
                                 model.requestSelect(recording, autoplay: true)
                             }
                             .background {
@@ -156,6 +160,11 @@ struct RecordingsView: View {
                     .padding(.horizontal, 14 * uiScale)
                     .padding(.vertical, 18 * uiScale)
                 }
+                .focusable()
+                .focusEffectDisabled()
+                .focused($isListFocused)
+                .opnTakingFocus($isListFocused, while: true)
+                .onKeyPress(.space, action: handleSpacebar)
             }
         }
         .background(RecordingsLayout.sidebar)
@@ -185,6 +194,17 @@ struct RecordingsView: View {
         }
     }
 
+    private func presentQuickLook(for recording: StreamRecording) {
+        guard let url = model.quickLookURL(for: recording) else { return }
+        quickLookRequest = OPNQuickLookRequest(url: url)
+    }
+
+    private func handleSpacebar() -> KeyPress.Result {
+        guard model.editorViewModel == nil, let recording = model.selectedRecording else { return .ignored }
+        presentQuickLook(for: recording)
+        return .handled
+    }
+
     private func presentContextMenu(for recording: StreamRecording, at point: CGPoint) {
         contextMenuRecording = recording
         contextMenuAnchor = point
@@ -199,7 +219,10 @@ struct RecordingsView: View {
             OPNDropdownItem(id: "open", title: "Open Recording") { model.open(recording) },
             OPNDropdownItem(id: "edit", title: "Edit Recording") { model.startEditing(recording) },
             OPNDropdownItem(id: "reveal", title: "Reveal in Finder") { model.reveal(recording) },
-            OPNDropdownItem(id: "copy", title: "Copy File Path") { model.copyPath(recording) },
+            OPNDropdownItem(id: "share", title: "Share…") { model.share(recording) },
+            OPNDropdownItem(id: "copy", title: "Copy") { model.copyFile(recording) },
+            OPNDropdownItem(id: "quickLook", title: "Quick Look") { presentQuickLook(for: recording) },
+            OPNDropdownItem(id: "copyPath", title: "Copy File Path") { model.copyPath(recording) },
             OPNDropdownItem(id: "delete", title: "Delete", isDestructive: true, startsGroup: true) {
                 model.pendingDelete = recording
             }
@@ -481,9 +504,7 @@ private struct RecordingRow: View {
     /// Draggable so a second recording can be dropped straight onto the editor timeline.
     var body: some View {
         content
-            .onDrag {
-                NSItemProvider(object: RecordingEditorDragPayload.recording(recording.id).stringValue as NSString)
-            }
+            .onDrag { OPNLibraryDragPayload.recording(for: recording) }
     }
 
     private var content: some View {

@@ -229,16 +229,12 @@ private struct StreamHUDSegmentedChip: View {
     }
 }
 
-/// The approve / remove control on a Remote Co-Op participant row.
-///
-/// Shared when both stream HUDs hosted Remote Co-Op; only the native HUD does now and the row has to look identical in each:
-/// it was a private helper on the WebRTC HUD until the native NVST transport grew the same panel.
+/// The approve / remove control on a Remote Co-Op participant row. The clipboard rows borrow it as
+/// their copy and remove controls, so it keeps the ring a controller follows.
 struct StreamHUDParticipantIconButton: View {
     let systemName: String
     let label: String
     let color: Color
-    /// Drawn with the same ring the rest of the HUD uses, so a controller can find these rows.
-    /// Approving a guest happens mid-game, when reaching for the trackpad is worst.
     var isFocused = false
     let action: () -> Void
 

@@ -313,6 +313,9 @@ extension NativeNVSTHostViewModel {
         recordingStatusResetTask = nil
         screenshotTask?.cancel()
         screenshotTask = nil
+        clipboard.cancelCapture()
+        clipboard.pendingMerge = nil
+        clipboard.regionCapture = nil
     }
 
     func showStreamControls(completion: StreamSessionQuitDecisionHandler? = nil) {
@@ -366,6 +369,7 @@ extension NativeNVSTHostViewModel {
             refreshMicrophoneTransportAvailability()
             // Hot-plug: a microphone connected since the HUD was last open is a row now.
             refreshMicrophoneDeviceOptions()
+            reloadClipboardHistory()
             // Read before the input drop: dropping remote input releases the pointer, and the
             // release is the one place that forgets the override. Without this the HUD silently
             // ended a capture the player took by hand, and closing it again left the pointer free.
@@ -379,6 +383,7 @@ extension NativeNVSTHostViewModel {
         } else {
             unifiedHUDVisible = false
             hudFocusID = nil
+            clipboard.isClearArmed = false
             let restoreManualCapture = restoreManualCaptureOnHUDHide
             restoreManualCaptureOnHUDHide = false
             // Not unconditionally `true`: the network monitor blocks remote input while the path is
@@ -416,6 +421,10 @@ extension NativeNVSTHostViewModel {
         nativeStatsVisible.toggle()
         OPNStreamTelemetry.capture("nvst.ui.stats.toggle", level: .info, message: nativeStatsVisible ? "OpenNOW NVST stats shown." : "OpenNOW NVST stats hidden.", attributes: ["applicationID": configuration.applicationID, "visible": String(nativeStatsVisible)])
     }
+
+    /// The full-screen tile and its focus entry share this rather than each writing the condition
+    /// out: a PiP window is small and floating, and there is no full screen to enter from it.
+    var isFullScreenTileDisabled: Bool { nativeView?.window == nil || isPictureInPicture }
 
     /// The window owns the transition: nothing here touches the style mask, collection behaviour,
     /// aspect ratio or frame - `WindowFitting` grants `.fullScreenPrimary` before the window

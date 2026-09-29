@@ -75,7 +75,7 @@ struct KeybindingsSettingsPage: View {
     }
 
     private func sectionCard(_ section: KeybindingSection) -> some View {
-        let actions = KeybindingAction.allCases.filter { $0.section == section }
+        let actions = KeybindingAction.allCases.filter { $0.section == section && $0.isAvailable }
         return SettingsCard(title: section.title, uiScale: uiScale) {
             HStack(spacing: 8 * uiScale) {
                 Image(systemName: section == .stream ? "play.tv.fill" : "square.grid.2x2.fill")
@@ -118,7 +118,14 @@ struct KeybindingRecorderRow: View {
 
     private var combo: OPNKeyCombo { keybindings.combo(for: action) }
     private var isCustom: Bool { keybindings.hasCustomBinding(for: action) }
+    private var isEnabled: Bool { keybindings.isEnabled(action) }
     private var conflicts: [KeybindingAction] { keybindings.conflictingActions(for: action) }
+    /// The extra default chord the action answers to, e.g. Control-C beside Command-C for the
+    /// frame-text capture. Nil once the reader customizes the binding — a rebind replaces the whole set.
+    private var alternateLabel: String? {
+        guard isEnabled, !isCustom else { return nil }
+        return action.alternateDefaultCombos.first?.label
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
@@ -143,14 +150,29 @@ struct KeybindingRecorderRow: View {
             }
             .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
             .disabled(!isCustom)
+            Button(isEnabled ? "Disable" : "Enable") {
+                keybindings.setEnabled(!isEnabled, for: action)
+                OPNNewSettings.acknowledge(.keybindings)
+            }
+            .buttonStyle(OPNCompactButtonStyle(uiScale: uiScale))
         }
+        .opacity(isEnabled ? 1 : 0.5)
     }
 
     @ViewBuilder private var statusLine: some View {
-        if conflicts.isEmpty {
-            Text("Default \(action.defaultCombo.label)")
-                .font(.settingsFont(size: 11 * uiScale, weight: .medium))
-                .foregroundStyle(OPNDesign.Text.muted)
+        if !isEnabled {
+            Text("Disabled")
+                .font(.settingsFont(size: 11 * uiScale, weight: .bold))
+                .foregroundStyle(OPNDesign.Semantic.warning)
+        } else if conflicts.isEmpty {
+            HStack(spacing: 6 * uiScale) {
+                Text("Default \(action.defaultCombo.label)")
+                if let alternateLabel {
+                    Text("also \(alternateLabel)")
+                }
+            }
+            .font(.settingsFont(size: 11 * uiScale, weight: .medium))
+            .foregroundStyle(OPNDesign.Text.muted)
         } else {
             HStack(spacing: 5 * uiScale) {
                 Image(systemName: "exclamationmark.triangle.fill")

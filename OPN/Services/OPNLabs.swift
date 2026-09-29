@@ -19,11 +19,24 @@ struct OPNLabsFlag: Identifiable, Equatable, Sendable {
     var storageKey: String { "OpenNOW.Labs.\(id)" }
 }
 
-@MainActor
 enum OPNLabs {
+    /// The in-stream clipboard history: select text in a stream, copy, and the selection is read on
+    /// this Mac and filed for copying back out from the HUD. Off by default — a selection is not
+    /// always what Control-C is for in a game, so the flag is the reader opting into that trade.
+    static let clipboardCapture = OPNLabsFlag(
+        id: "streamClipboardCapture",
+        title: "In-Stream Clipboard History",
+        summary: "Command-C or Control-C in a stream reads the selected text on this Mac and files it in a clipboard history you can copy from the HUD.",
+        since: "0.15"
+    )
+
     /// Every trial in flight. Empty is the normal state, and the Settings rail drops the Labs
     /// destination while it is.
-    static let flags: [OPNLabsFlag] = []
+    static let flags: [OPNLabsFlag] = [clipboardCapture]
+
+    /// Whether the in-stream clipboard history is switched on. Read at every point the feature is
+    /// offered — the HUD panel, the Settings card, the binding and the capture path itself.
+    static var isClipboardCaptureEnabled: Bool { isEnabled(clipboardCapture) }
 
     static var hasFlags: Bool { !flags.isEmpty }
 

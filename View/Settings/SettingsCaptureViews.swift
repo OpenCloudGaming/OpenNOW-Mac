@@ -170,9 +170,68 @@ struct InstantReplayCard: View {
 extension CaptureSettingsPage {
     static let sections: [SettingsSection] = [
         SettingsSection("recording", "Recording"),
+        SettingsSection("clipboard", "Clipboard"),
         SettingsSection("recordings", "Recordings"),
         SettingsSection("screenshots", "Screenshots"),
     ]
+}
+
+/// The in-stream clipboard history's own settings: what the copy chords read, how many entries are
+/// held, and — because OCR touches what the reader types elsewhere — one honest line about where the
+/// text lives. The mode row is the same value the HUD selector shows.
+struct StreamClipboardSettingsCard: View {
+    let uiScale: CGFloat
+    /// Observed raw value; empty when the reader has never chosen a mode, in which case the migrated
+    /// setting decides. Written on every change so the HUD and this row cannot drift.
+    @AppStorage(StreamTextCaptureSettings.modeKey) private var captureModeRawValue = ""
+    @State private var entryCount = 0
+
+    private var mode: StreamTextCaptureMode {
+        StreamTextCaptureMode(rawValue: captureModeRawValue) ?? StreamTextCaptureSettings.mode
+    }
+
+    var body: some View {
+        SettingsCard(title: "Clipboard", badge: .experimental, uiScale: uiScale) {
+            SettingsOptionRow(
+                title: "Capture on Copy",
+                subtitle: subtitle,
+                options: StreamTextCaptureMode.allCases.map(\.label),
+                selectedIndex: StreamTextCaptureMode.allCases.firstIndex(of: mode) ?? 0,
+                uiScale: uiScale,
+                action: { index in
+                    let selected = StreamTextCaptureMode.allCases[index]
+                    StreamTextCaptureSettings.mode = selected
+                    captureModeRawValue = selected.rawValue
+                }
+            )
+            SettingsDivider(uiScale: uiScale)
+            HStack(spacing: 12 * uiScale) {
+                Text(entryCount == 1 ? "1 entry saved" : "\(entryCount) entries saved")
+                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                    .foregroundStyle(OPNDesign.Text.tertiary)
+                Spacer(minLength: 0)
+                SettingsActionButton(title: "CLEAR HISTORY", tone: .secondary, uiScale: uiScale) {
+                    StreamClipboardHistoryStore.shared.clear()
+                    refreshCount()
+                }
+                .disabled(entryCount == 0)
+            }
+            SettingsDivider(uiScale: uiScale)
+            Text("Text recognition runs entirely on this Mac and the history is kept on this Mac. Nothing is uploaded, and the history holds the newest \(StreamClipboardHistoryStore.entryLimit) entries.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { refreshCount() }
+    }
+
+    private var subtitle: String {
+        "\(mode.summary) Command-C or Control-C in a stream reads it on this Mac and files it in the clipboard history; the game still receives the copy."
+    }
+
+    private func refreshCount() {
+        entryCount = StreamClipboardHistoryStore.shared.load().count
+    }
 }
 
 /// Storage-level notices that concern both libraries at once: a one-time migration banner, and the
@@ -346,12 +405,19 @@ struct CaptureLibraryCard: View {
 struct CaptureSettingsGroup: View {
     let viewModel: CatalogViewModel
     @Environment(\.opnUIScale) private var uiScale
+    /// The Labs flag that offers the clipboard history at all. Read here, not from `OPNLabs`, so the
+    /// card appears and disappears as the switch is toggled.
+    @AppStorage(OPNLabs.clipboardCapture.storageKey) private var isClipboardCaptureOn = false
 
     static let sections: [SettingsSection] = CaptureSettingsPage.sections
 
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             CaptureSettingsPage(viewModel: viewModel, uiScale: uiScale)
+            if isClipboardCaptureOn {
+                StreamClipboardSettingsCard(uiScale: uiScale)
+                    .settingsSection("clipboard")
+            }
             if hasStorageNotices {
                 CaptureStorageNoticesCard(viewModel: viewModel, uiScale: uiScale)
             }

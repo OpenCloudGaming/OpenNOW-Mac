@@ -56,6 +56,7 @@ extension NativeNVSTMediaStreamSurface {
         case .session: nativeHUDSessionPanel
         case .audio: nativeHUDAudioPanel
         case .capture: nativeHUDCapturePanel
+        case .clipboard: nativeHUDClipboardPanel
         case .display: nativeHUDDisplayPanel
         case .input: nativeHUDInputPanel
         case .controllers: nativeHUDControllersPanel

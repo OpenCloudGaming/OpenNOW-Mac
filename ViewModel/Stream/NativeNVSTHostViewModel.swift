@@ -131,6 +131,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     var lastAcceptedStreamInputAt = Date()
     @Published var transientStreamMessage = ""
     var transientStreamMessageTask: Task<Void, Never>?
+    /// In-stream clipboard history, reloaded whenever the HUD opens so entries filed by another
+    /// session — or in a previous run — are on screen.
+    let clipboard = StreamClipboardController()
     @Published var pendingApplicationQuitCompletion: StreamSessionQuitDecisionHandler?
     var streamingPerformanceActivity: (any NSObjectProtocol)?
     @Published var sessionLimit: StreamSessionSidebarLimit?
@@ -203,9 +206,6 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// True while the dedicated stream window is in Picture-in-Picture. The HUD is suppressed in the
     /// mode: the dock alone (`StreamHUDTheme.dockWidth`) is 344pt wide in a 640pt window.
     @Published var isPictureInPicture = false
-    /// The full-screen tile and its focus entry share this rather than each writing the condition
-    /// out: a PiP window is small and floating, and there is no full screen to enter from it.
-    var isFullScreenTileDisabled: Bool { nativeView?.window == nil || isPictureInPicture }
     @Published var pillarboxFillModeIndex = 0
     /// The VSync mode this session uses, as the index into `OPNStreamPreferences.vsyncModeOptions`.
     /// Saved on change; the transport applies the client-facing half live and the announce holds
