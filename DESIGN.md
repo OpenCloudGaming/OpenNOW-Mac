@@ -672,6 +672,21 @@ row's label beside its control, which would be the one-column layout at half the
 card and leaves a hole whenever a pair differs. Cards inside the columns get
 `opnSettingsNarrowRows`, which moves a row's control under its label instead of beside it.
 
+### Settings Row Label Column (`SettingsLayoutMetrics`)
+
+A row's label column is fluid and clamped, not fixed: `min(labelMeasure, max(labelFloor,
+cardWidth / uiScale - rowGap - chipReserve))`, all in logical points - a 250 floor, a 460 readable
+measure (roughly 65 characters at the 12pt subtitle), an 18 gap, and a 240 control reserve sized so
+line one holds the widest chip plus the smallest. The result is scaled by `uiScale`, and it depends
+only on the container width and the interface scale, so every row in one card computes the same
+column and the controls keep a single shared start line. Nothing shrinks as the card grows: each
+added point goes to the text until the measure caps it, then to the control. Below
+`narrowRowWidth` - `labelFloor + rowGap + chipReserve`, derived from the same constants - rows
+stack and the label takes the full width instead. Toggle rows have no control column, so their
+explanation is simply capped at `labelMeasure` beside the trailing switch. Chips respond to a
+narrower proposal by shrinking glyphs to 80% and then ellipsizing, so a chip wider than its
+container is never drawn past the bounds.
+
 ### Settings Disclosure Card (`SettingsDisclosureCard`)
 
 A `SettingsCollapsibleCard` whose open state persists under `OpenNOW.Settings.Expanded.<key>`. For a

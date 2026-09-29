@@ -41,16 +41,53 @@ extension EnvironmentValues {
 }
 
 enum SettingsLayoutMetrics {
+    // MARK: Row rhythm
+
+    /// The gap between a row's label column and its control, in logical points.
+    static let rowGap: CGFloat = 18
+
+    /// The label column's guaranteed minimum when a row sits side by side, in logical points.
+    /// This was the whole fixed column once; it is now only the floor.
+    static let labelFloor: CGFloat = 250
+
+    /// The label column's readable cap, in logical points - roughly 65 characters per line at the
+    /// 12pt subtitle. Prose stops widening here and the control takes everything past it.
+    static let labelMeasure: CGFloat = 460
+
+    /// The control column's minimum, in logical points: the widest chip (~180pt including padding)
+    /// plus the flow spacing plus the smallest chip (~44pt), so line one always holds two chips.
+    /// This is the single tunable in the row-width formula.
+    static let chipReserve: CGFloat = 240
+
+    /// A card narrower than this cannot hold the label floor beside a control that keeps its
+    /// reserve, so its rows stack. Derived from the same constants the widths use, so the gate and
+    /// the widths can never disagree.
+    static var narrowRowWidth: CGFloat { labelFloor + rowGap + chipReserve }
+
     /// Wide enough that each column can still hold a row's label beside its control. Splitting
     /// below this produced two columns whose every row stacked anyway - the same layout as one
     /// column, at half the measure.
     static var twoColumnMinimumWidth: CGFloat { narrowRowWidth * 2 + columnGutter }
 
-    /// A card narrower than this cannot hold a 250pt label column beside its control.
-    static let narrowRowWidth: CGFloat = 600
-
     /// The gutter between the two columns.
     static let columnGutter: CGFloat = 16
+
+    /// The label column a row gets at this card width, in points (already scaled by `uiScale`).
+    ///
+    /// Purely a function of the container width and the interface scale - no per-row input - so
+    /// every row in one card computes the same column and the controls keep a shared start line.
+    /// Below `narrowRowWidth` the caller stacks instead and does not consult this.
+    static func labelColumnWidth(cardWidth: CGFloat, uiScale: CGFloat) -> CGFloat {
+        guard uiScale > 0 else { return labelFloor }
+        let fluid = cardWidth / uiScale - rowGap - chipReserve
+        return min(labelMeasure, max(labelFloor, fluid)) * uiScale
+    }
+
+    /// What is left for the control once the label column and the gap are taken, in points. Never
+    /// negative, though the caller only uses it side by side, where it is at least `chipReserve`.
+    static func controlColumnWidth(cardWidth: CGFloat, uiScale: CGFloat) -> CGFloat {
+        max(0, cardWidth - labelColumnWidth(cardWidth: cardWidth, uiScale: uiScale) - rowGap * uiScale)
+    }
 
     /// - Parameter cardWidth: the measured width a full-page card gets, in points.
     static func allowsTwoColumns(cardWidth: CGFloat, uiScale: CGFloat) -> Bool {
@@ -90,7 +127,8 @@ struct SettingsColumns<Leading: View, Trailing: View>: View {
 
     /// Each column is half a page, so a row inside one can need its control stacked while the
     /// full-width cards on the same page keep theirs beside the label. Measured rather than
-    /// assumed: above roughly a 1216pt page the columns are as wide as a page that would not stack.
+    /// assumed: only past `twoColumnMinimumWidth` are the columns as wide as a page that would
+    /// not stack its rows.
     private var columnUsesNarrowRows: Bool {
         SettingsLayoutMetrics.usesNarrowRows(
             cardWidth: SettingsLayoutMetrics.columnWidth(cardWidth: cardWidth),
@@ -166,20 +204,24 @@ struct SettingsSubheading: View {
 private struct SettingsLabelColumn: ViewModifier {
     let uiScale: CGFloat
     @Environment(\.opnSettingsNarrowRows) private var isNarrow
+    @Environment(\.opnSettingsCardWidth) private var cardWidth
 
     func body(content: Content) -> some View {
         if isNarrow {
             content.frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            content.frame(width: 250 * uiScale, alignment: .leading)
+            content.frame(
+                width: SettingsLayoutMetrics.labelColumnWidth(cardWidth: cardWidth, uiScale: uiScale),
+                alignment: .leading
+            )
         }
     }
 }
 
 extension View {
-    /// A row's label column: a fixed 250 beside its control, or the full width when the container
-    /// is too narrow to hold both. Rows whose control cannot stack - a text field, a level meter -
-    /// still read better full-width than squeezed into what is left of 250.
+    /// A row's label column: a fluid, clamped measure beside its control, or the full width when
+    /// the container is too narrow to hold both. Rows whose control cannot stack - a text field, a
+    /// level meter - still read better full-width than squeezed into what is left of the floor.
     func settingsLabelColumn(uiScale: CGFloat) -> some View {
         modifier(SettingsLabelColumn(uiScale: uiScale))
     }

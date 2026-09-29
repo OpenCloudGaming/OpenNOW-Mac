@@ -49,6 +49,7 @@ struct SettingsOptionRow: View {
     let action: (Int) -> Void
 
     @Environment(\.opnSettingsNarrowRows) private var isNarrow
+    @Environment(\.opnSettingsCardWidth) private var cardWidth
 
     var body: some View {
         layout
@@ -69,9 +70,12 @@ struct SettingsOptionRow: View {
                 chips
             }
         } else {
-            HStack(alignment: .top, spacing: 18 * uiScale) {
+            HStack(alignment: .top, spacing: SettingsLayoutMetrics.rowGap * uiScale) {
                 label
-                    .frame(width: 250 * uiScale, alignment: .leading)
+                    .frame(
+                        width: SettingsLayoutMetrics.labelColumnWidth(cardWidth: cardWidth, uiScale: uiScale),
+                        alignment: .leading
+                    )
                 chips
             }
         }
@@ -103,6 +107,11 @@ struct SettingsOptionRow: View {
                             }
                             Text(options[index])
                                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                                // Fit, then shrink to 80%, then ellipsis - never overflow. The
+                                // flow layout hands an oversized chip only the line it can have,
+                                // and without one line it would wrap vertically and clip instead.
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                                 .foregroundStyle(index == selectedIndex ? OPNDesign.onAccent : (optionEnabled ? OPNDesign.Text.secondary : OPNDesign.Text.muted))
                         }
                         .padding(.horizontal, 12 * uiScale)
@@ -215,7 +224,7 @@ struct SettingsToggleRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 18 * uiScale) {
+        HStack(alignment: .center, spacing: SettingsLayoutMetrics.rowGap * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
                 SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
                 if showsSubtitle {
@@ -225,6 +234,9 @@ struct SettingsToggleRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            // One typography rule for every row type: an explanation never runs past the readable
+            // measure, however wide the card is. The switch stays pinned to the trailing edge.
+            .frame(maxWidth: SettingsLayoutMetrics.labelMeasure * uiScale, alignment: .leading)
             Spacer()
             Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), isInert: isInert, uiScale: uiScale)
         }
@@ -341,6 +353,7 @@ struct SettingsSliderRow: View {
     let action: @MainActor @Sendable (Double) -> Void
 
     @Environment(\.opnSettingsNarrowRows) private var isNarrow
+    @Environment(\.opnSettingsCardWidth) private var cardWidth
 
     var body: some View {
         Group {
@@ -350,9 +363,12 @@ struct SettingsSliderRow: View {
                     slider
                 }
             } else {
-                HStack(alignment: .center, spacing: 18 * uiScale) {
+                HStack(alignment: .center, spacing: SettingsLayoutMetrics.rowGap * uiScale) {
                     label
-                        .frame(width: 250 * uiScale, alignment: .leading)
+                        .frame(
+                            width: SettingsLayoutMetrics.labelColumnWidth(cardWidth: cardWidth, uiScale: uiScale),
+                            alignment: .leading
+                        )
                     slider
                 }
             }
@@ -541,7 +557,14 @@ struct SettingsFlowLayout: Layout {
                 y += lineHeight + spacing
                 lineHeight = 0
             }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(subviewSize))
+            // At line start this is the true line width, so a chip wider than the container is
+            // told so - `Text` then shrinks or ellipsizes rather than drawing past the bounds.
+            // Mid-line the wrap guard above has already fired, so this is a no-op there.
+            let placedWidth = min(subviewSize.width, max(0, bounds.maxX - x))
+            subview.place(
+                at: CGPoint(x: x, y: y),
+                proposal: ProposedViewSize(width: placedWidth, height: subviewSize.height)
+            )
             x += subviewSize.width + spacing
             lineHeight = max(lineHeight, subviewSize.height)
         }
