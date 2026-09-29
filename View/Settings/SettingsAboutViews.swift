@@ -104,20 +104,19 @@ struct UpdatesSettingsPage: View {
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(
                 title: "Update Channel",
-                subtitle: "Beta builds come from GitHub pre-releases and may be less stable.",
+                subtitle: "Beta builds come from GitHub pre-releases and may be less stable. Press CHECK FOR UPDATES to apply a channel change.",
                 options: ["Stable", "Beta"],
                 selectedIndex: updateChannel == .beta ? 1 : 0,
                 uiScale: uiScale
             ) { index in
                 updateChannelRawValue = (index == 1 ? OPNUpdateChannel.beta : .stable).rawValue
-                OPNAppDelegate.requestApplicationUpdateCheck()
             }
             SettingsDivider(uiScale: uiScale)
             HStack(spacing: 10 * uiScale) {
                 SettingsActionButton(title: isButtonChecking ? "CHECKING…" : "CHECK FOR UPDATES", uiScale: uiScale) {
                     OPNAppDelegate.requestApplicationUpdateCheck()
                 }
-                .disabled(isButtonChecking)
+                .disabled(isButtonChecking || isUpdateCheckSuspended)
                 Text(updateCheckStatusText)
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.tertiary)
@@ -138,6 +137,11 @@ struct UpdatesSettingsPage: View {
         return updatePresentation.isCheckingForUpdate
     }
 
+    /// A suspended build cannot run a check, so the button must not present as live.
+    private var isUpdateCheckSuspended: Bool {
+        OPNUpdatePreferences.updateChecksAreSuspendedForDebugging
+    }
+
     private var updateCheckStatusText: String {
         #if DEBUG
         switch updatePresentation.buttonStatusPreview {
@@ -151,8 +155,8 @@ struct UpdatesSettingsPage: View {
             break
         }
         #endif
-        if OPNUpdatePreferences.updateChecksAreSuspendedForDebugging {
-            return "Update checks are suspended in debug builds, which report version 0.0.0. Test the update dialogs with OpenNOW ▸ Preview Update Dialog."
+        if isUpdateCheckSuspended {
+            return "Update checks are suspended for debug builds and attached debuggers, which report version 0.0.0. Test the update dialogs with OpenNOW ▸ Preview Update Dialog."
         }
         guard !updatePresentation.isCheckingForUpdate else {
             return "Checking GitHub for a newer release…"
