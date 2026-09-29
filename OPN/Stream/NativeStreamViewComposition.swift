@@ -5,10 +5,8 @@
 
 import AppKit
 
-/// The bar is chrome drawn over video, so it takes the fixed over-video values rather than the
-/// appearance-flipping palette. They restate `OPNDesign.Fixed` / `StreamHUDTheme` here because those
-/// tokens are SwiftUI `Color`s and `OPN/` must not import SwiftUI (`no_swiftui_in_service_layer`):
-/// the documented AppKit exception AGENTS.md asks for at the site, not a lint-baseline entry.
+/// Over-video chrome takes fixed values, not the appearance palette. Those tokens are SwiftUI
+/// `Color`s and `OPN/` must not import SwiftUI, so they are restated here per the AGENTS.md exception.
 @MainActor
 private enum NativeNVSTCompositionBarPalette {
     static let fill = NSColor.black.withAlphaComponent(0.45)
@@ -32,8 +30,7 @@ final class NativeNVSTCompositionBarView: NSView {
         didSet { needsDisplay = true }
     }
 
-    /// Flipped so the text draws from the top and the underline math reads downward, independent of
-    /// how the parent laid itself out.
+    /// Flipped so the draw rect reads from the top and the underline math runs downward.
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
 
@@ -70,41 +67,40 @@ final class NativeNVSTCompositionBarView: NSView {
 }
 
 extension NativeStreamView {
-    /// The one font shared by the drawn bar, `firstRect` and `characterIndex`, so the candidate
-    /// panel anchors to the text the player actually sees. Project face per DESIGN.md, scaled with
-    /// the interface preference the rest of the app threads through.
-    static func compositionFont(scale: CGFloat) -> NSFont {
+    /// The font shared by the drawn bar, `firstRect` and `characterIndex`, so the candidate panel
+    /// anchors to the text the player sees. Project face per DESIGN.md, scaled with the UI preference.
+    nonisolated static func compositionFont(scale: CGFloat) -> NSFont {
         OPNUIFont.nsFont(size: 15 * scale, weight: .regular)
     }
 
-    static func compositionScale() -> CGFloat {
+    nonisolated static func compositionScale() -> CGFloat {
         CGFloat(OPNInterfacePreferences.uiScale)
     }
 
-    static func compositionHorizontalPadding(scale: CGFloat) -> CGFloat {
+    nonisolated static func compositionHorizontalPadding(scale: CGFloat) -> CGFloat {
         OPNDesign.Spacing.small * scale
     }
 
-    static func compositionVerticalPadding(scale: CGFloat) -> CGFloat {
+    nonisolated static func compositionVerticalPadding(scale: CGFloat) -> CGFloat {
         OPNDesign.Spacing.xSmall * scale
     }
 
-    static func compositionInset(scale: CGFloat) -> CGFloat {
+    nonisolated static func compositionInset(scale: CGFloat) -> CGFloat {
         OPNDesign.Spacing.large * scale
     }
 
-    static func compositionUnderlineThickness(scale: CGFloat) -> CGFloat {
+    nonisolated static func compositionUnderlineThickness(scale: CGFloat) -> CGFloat {
         max(1, 1.5 * scale)
     }
 
-    static func compositionTextSize(_ markedText: NSAttributedString, font: NSFont) -> CGSize {
+    nonisolated static func compositionTextSize(_ markedText: NSAttributedString, font: NSFont) -> CGSize {
         let width = (markedText.string as NSString).size(withAttributes: [.font: font]).width
         return CGSize(width: max(0, width), height: font.ascender - font.descender)
     }
 
-    /// Width of the marked text before `location`, clamped into the string. Pure static: the bar's
-    /// caret and `firstRect` both read it, so the panel tracks the drawn caret exactly.
-    static func compositionPrefixWidth(_ markedText: NSAttributedString, upTo location: Int, font: NSFont) -> CGFloat {
+    /// Width of the marked text before `location`, clamped into the string. Shared by the bar caret
+    /// and `firstRect`, so the candidate panel tracks the drawn caret exactly.
+    nonisolated static func compositionPrefixWidth(_ markedText: NSAttributedString, upTo location: Int, font: NSFont) -> CGFloat {
         let length = markedText.length
         guard location > 0, length > 0 else { return 0 }
         let clamped = min(location, length)
@@ -112,7 +108,7 @@ extension NativeStreamView {
         return prefix.size(withAttributes: [.font: font]).width
     }
 
-    static func compositionBarFrame(in contentFrame: CGRect, textSize: CGSize, scale: CGFloat) -> CGRect {
+    nonisolated static func compositionBarFrame(in contentFrame: CGRect, textSize: CGSize, scale: CGFloat) -> CGRect {
         let horizontalPadding = compositionHorizontalPadding(scale: scale)
         let verticalPadding = compositionVerticalPadding(scale: scale)
         let inset = compositionInset(scale: scale)
@@ -131,8 +127,12 @@ extension NativeStreamView {
         return Self.compositionBarFrame(in: videoContentFrame(), textSize: textSize, scale: scale)
     }
 
-    func compositionBarTextOriginX() -> CGFloat {
-        compositionBarFrame().minX + Self.compositionHorizontalPadding(scale: Self.compositionScale())
+    nonisolated static func compositionTextOriginX(in barFrame: CGRect, scale: CGFloat) -> CGFloat {
+        barFrame.minX + compositionHorizontalPadding(scale: scale)
+    }
+
+    func compositionTextOriginX() -> CGFloat {
+        Self.compositionTextOriginX(in: compositionBarFrame(), scale: Self.compositionScale())
     }
 
     /// Repaints the bar from the marked-text state: shown with the composing text, hidden on

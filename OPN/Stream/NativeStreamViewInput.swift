@@ -488,21 +488,16 @@ extension NativeStreamView {
         guard !modifiers.contains(.command), !modifiers.contains(.control) else { return false }
         if hasMarkedText || modifiers.contains(.option) { return true }
         guard let characters = event.characters, !characters.isEmpty else { return true }
-        // An idle IME cannot consume these, so they are seat input whatever input source is merely
-        // selected. Checked ahead of the inputmethod branch, which otherwise claims Backspace,
-        // Return, Escape, Tab, the arrows and Space while a CJK source is selected and composing
-        // nothing — `interpretKeyEvents` then yields nothing and the seat never sees the key.
+        // An idle IME cannot consume these, so they are seat input whatever input source is
+        // selected; checked ahead of the inputmethod branch that otherwise claims them forever.
         if isIdleSeatKey(characters) { return false }
         if inputSourceID?.localizedCaseInsensitiveContains("inputmethod") == true { return true }
         return !characters.unicodeScalars.allSatisfy(\.isASCII)
     }
 
-    /// Whether a keystroke's characters are ones an idle IME cannot consume and the seat must
-    /// receive as a key event: C0 controls (Backspace, Return, Escape, Tab), DEL, the Unicode
-    /// private-use-area characters AppKit uses for the special keys (arrows, Home/End, F1-F12), and
-    /// space. Text characters — letters, digits, and punctuation such as `。`/`、`, which
-    /// legitimately opens conversion candidates in a Japanese IME — are deliberately excluded.
-    static func isIdleSeatKey(_ characters: String) -> Bool {
+    /// Whether an idle IME cannot consume these characters, so the seat must receive them as a key:
+    /// C0 controls, DEL, the private-use special keys, and space. Text characters are excluded.
+    nonisolated static func isIdleSeatKey(_ characters: String) -> Bool {
         guard !characters.isEmpty else { return false }
         return characters.unicodeScalars.allSatisfy { scalar in
             scalar.value < 0x20
@@ -528,9 +523,9 @@ extension NativeStreamView {
     }
 
     public func insertText(_ string: Any, replacementRange: NSRange) {
-        let value = Self.string(from: string)
-        guard let committed = textInputState.commit(value) else { return }
+        let committed = textInputState.commit(Self.string(from: string))
         updateCompositionBar()
+        guard let committed else { return }
         onInputEvent?(.text(deviceID: "keyboard", value: committed, timestamp: Self.timestamp()))
     }
 
@@ -544,8 +539,9 @@ extension NativeStreamView {
     }
 
     public func unmarkText() {
-        guard let committed = textInputState.unmark() else { return }
+        let committed = textInputState.unmark()
         updateCompositionBar()
+        guard let committed else { return }
         onInputEvent?(.text(deviceID: "keyboard", value: committed, timestamp: Self.timestamp()))
     }
 
@@ -566,19 +562,17 @@ extension NativeStreamView {
         [.markedClauseSegment, .replacementIndex, .underlineStyle, .underlineColor, .foregroundColor, .backgroundColor]
     }
 
-    /// The IME draws its candidate panel relative to this rect, so it is the drawn bar's rect at
-    /// the proposed range's caret: the panel docks above the visible composition instead of a
-    /// screen corner. The prefix offset is the same pure static the bar's caret uses.
+    /// The IME docks its candidate panel to this rect, so it is the drawn bar at the proposed
+    /// range's caret. The prefix offset is the same pure static the bar's caret uses.
     public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
         let text = textInputState.markedText
         let length = text.length
         let location = range.location == NSNotFound ? textInputState.selection.location : min(range.location, length)
         actualRange?.pointee = NSRange(location: location, length: min(range.length, length - location))
-        let scale = Self.compositionScale()
-        let font = Self.compositionFont(scale: scale)
         let barFrame = compositionBarFrame()
-        let offset = Self.compositionPrefixWidth(text, upTo: location, font: font)
-        let localRect = NSRect(x: barFrame.minX + Self.compositionHorizontalPadding(scale: scale) + offset,
+        let scale = Self.compositionScale()
+        let offset = Self.compositionPrefixWidth(text, upTo: location, font: Self.compositionFont(scale: scale))
+        let localRect = NSRect(x: Self.compositionTextOriginX(in: barFrame, scale: scale) + offset,
                                y: barFrame.minY,
                                width: 1,
                                height: barFrame.height)
@@ -592,7 +586,7 @@ extension NativeStreamView {
         let text = textInputState.markedText.string as NSString
         guard text.length > 0 else { return 0 }
         let font = Self.compositionFont(scale: Self.compositionScale())
-        let originX = compositionBarTextOriginX()
+        let originX = compositionTextOriginX()
         var width: CGFloat = 0
         for index in 0..<text.length {
             let characterWidth = text.substring(with: NSRange(location: index, length: 1)).size(withAttributes: [.font: font]).width

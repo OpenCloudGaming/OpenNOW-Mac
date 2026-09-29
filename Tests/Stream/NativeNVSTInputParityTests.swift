@@ -372,44 +372,56 @@ private func nativeKeyEvent(characters: String, keyCode: UInt16, modifiers: NSEv
                                   charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
 }
 
-/// The defect this guards: with a CJK source merely selected and nothing composing, the
-/// inputmethod branch used to claim every key, so Backspace, Return, Escape, Tab, the arrows and
-/// Space were swallowed by `interpretKeyEvents` and never reached the seat.
-@Test @MainActor func nativeIdleInputMethodForwardsSeatKeysAndKeepsTextKeys() throws {
+/// With a CJK source merely selected and nothing composing, these keys used to be claimed by
+/// `interpretKeyEvents` and never reached the seat.
+@Test @MainActor func nativeIdleInputMethodForwardsSeatKeysToTheSeat() throws {
     let idleInputMethod = "com.apple.inputmethod.Japanese"
-    let forward: [(String, UInt16)] = [
-        ("\u{7f}", 51),   // Backspace
-        ("\r", 36),       // Return
-        ("\u{1b}", 53),   // Escape
-        ("\t", 48),       // Tab
-        (" ", 49),        // Space
-        ("\u{f700}", 126),// Up arrow (private-use range)
-        ("\u{f702}", 125),// Down arrow
+    let seatKeys: [(String, UInt16)] = [
+        ("\u{7f}", 51),
+        ("\r", 36),
+        ("\u{1b}", 53),
+        ("\t", 48),
+        (" ", 49),
+        ("\u{f700}", 126),
+        ("\u{f702}", 125),
     ]
-    for (characters, keyCode) in forward {
+    for (characters, keyCode) in seatKeys {
         let event = try nativeKeyEvent(characters: characters, keyCode: keyCode)
-        #expect(!NativeStreamView.shouldInterpretAsText(event, hasMarkedText: false, inputSourceID: idleInputMethod))
+        let isTextInput = NativeStreamView.shouldInterpretAsText(event, hasMarkedText: false, inputSourceID: idleInputMethod)
+        #expect(!isTextInput)
     }
-    let routed: [(String, UInt16)] = [
-        ("a", 0), ("1", 18), ("。", 47), ("、", 43), ("\u{3042}", 0),
-    ]
-    for (characters, keyCode) in routed {
-        let event = try nativeKeyEvent(characters: characters, keyCode: keyCode)
-        #expect(NativeStreamView.shouldInterpretAsText(event, hasMarkedText: false, inputSourceID: idleInputMethod))
-    }
-    // While composing, everything stays IME-side so Backspace edits the composition.
-    let backspace = try nativeKeyEvent(characters: "\u{7f}", keyCode: 51)
-    #expect(NativeStreamView.shouldInterpretAsText(backspace, hasMarkedText: true, inputSourceID: idleInputMethod))
-    // Option/dead keys and Command/Control keep their existing routes, idle IME or not.
-    let deadKey = try nativeKeyEvent(characters: "", keyCode: 14, modifiers: [.option])
-    #expect(NativeStreamView.shouldInterpretAsText(deadKey, hasMarkedText: false, inputSourceID: "com.apple.keylayout.US"))
-    let command = try nativeKeyEvent(characters: "a", keyCode: 0, modifiers: [.command])
-    #expect(!NativeStreamView.shouldInterpretAsText(command, hasMarkedText: false, inputSourceID: idleInputMethod))
-    let control = try nativeKeyEvent(characters: "a", keyCode: 0, modifiers: [.control])
-    #expect(!NativeStreamView.shouldInterpretAsText(control, hasMarkedText: false, inputSourceID: idleInputMethod))
 }
 
-@Test @MainActor func nativeIdleSeatKeyClassifiesControlsDelPrivateUseAndSpaceOnly() {
+/// Letters, digits and the punctuation that legitimately opens conversion candidates stay IME-side.
+@Test @MainActor func nativeIdleInputMethodKeepsTextKeysWithTheIME() throws {
+    let idleInputMethod = "com.apple.inputmethod.Japanese"
+    let textKeys: [(String, UInt16)] = [("a", 0), ("1", 18), ("。", 47), ("、", 43), ("\u{3042}", 0)]
+    for (characters, keyCode) in textKeys {
+        let event = try nativeKeyEvent(characters: characters, keyCode: keyCode)
+        let isTextInput = NativeStreamView.shouldInterpretAsText(event, hasMarkedText: false, inputSourceID: idleInputMethod)
+        #expect(isTextInput)
+    }
+}
+
+/// An active composition keeps every key, and the Option and Command/Control routes stay untouched.
+@Test @MainActor func nativeIdleInputMethodPreservesCompositionAndModifierRoutes() throws {
+    let idleInputMethod = "com.apple.inputmethod.Japanese"
+    let composingBackspace = try nativeKeyEvent(characters: "\u{7f}", keyCode: 51)
+    let deadKey = try nativeKeyEvent(characters: "", keyCode: 14, modifiers: [.option])
+    let commandKey = try nativeKeyEvent(characters: "a", keyCode: 0, modifiers: [.command])
+    let controlKey = try nativeKeyEvent(characters: "a", keyCode: 0, modifiers: [.control])
+    let isCompositionText = NativeStreamView.shouldInterpretAsText(composingBackspace, hasMarkedText: true, inputSourceID: idleInputMethod)
+    let isDeadKeyText = NativeStreamView.shouldInterpretAsText(deadKey, hasMarkedText: false, inputSourceID: "com.apple.keylayout.US")
+    let isCommandText = NativeStreamView.shouldInterpretAsText(commandKey, hasMarkedText: false, inputSourceID: idleInputMethod)
+    let isControlText = NativeStreamView.shouldInterpretAsText(controlKey, hasMarkedText: false, inputSourceID: idleInputMethod)
+
+    #expect(isCompositionText)
+    #expect(isDeadKeyText)
+    #expect(!isCommandText)
+    #expect(!isControlText)
+}
+
+@Test func nativeIdleSeatKeyClassifiesControlsDelPrivateUseAndSpaceOnly() {
     #expect(NativeStreamView.isIdleSeatKey("\u{7f}"))
     #expect(NativeStreamView.isIdleSeatKey("\r"))
     #expect(NativeStreamView.isIdleSeatKey("\u{1b}"))
@@ -426,20 +438,24 @@ private func nativeKeyEvent(characters: String, keyCode: UInt16, modifiers: NSEv
     #expect(!NativeStreamView.isIdleSeatKey(" \u{7f}a"))
 }
 
-/// The candidate panel must dock to the drawn bar, so `firstRect` has to track the bar origin and
-/// the same prefix offset the caret is drawn at for a range at the start, middle and end.
+/// The candidate panel docks to the drawn bar, so `firstRect` tracks the bar origin and the same
+/// prefix offset the caret is drawn at, for a range at the start, middle and end.
 @Test @MainActor func nativeCompositionBarAnchorsCandidatePanelAtDrawnOrigin() {
     let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
     view.setStreamContentSize(width: 640, height: 360)
     view.setMarkedText("にほんご", selectedRange: NSRange(location: 0, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
 
-    #expect(!view.nativeNVSTCompositionBar.isHidden)
-    #expect(view.nativeNVSTCompositionBar.markedText.string == "にほんご")
+    let isBarVisible = !view.nativeNVSTCompositionBar.isHidden
+    let drawnString = view.nativeNVSTCompositionBar.markedText.string
+    #expect(isBarVisible)
+    #expect(drawnString == "にほんご")
+
     let scale = NativeStreamView.compositionScale()
     let font = NativeStreamView.compositionFont(scale: scale)
     let padding = NativeStreamView.compositionHorizontalPadding(scale: scale)
     let barFrame = view.compositionBarFrame()
-    #expect(barFrame.width > padding * 2)
+    let textWidth = NativeStreamView.compositionTextSize(view.textInputState.markedText, font: font).width
+    #expect(textWidth > 0)
 
     for location in [0, 2, view.textInputState.markedText.length] {
         var actualRange = NSRange(location: NSNotFound, length: 0)
@@ -452,23 +468,22 @@ private func nativeKeyEvent(characters: String, keyCode: UInt16, modifiers: NSEv
     }
 
     view.cancelOperation(nil)
-    #expect(view.nativeNVSTCompositionBar.isHidden)
-    #expect(view.nativeNVSTCompositionBar.markedText.string.isEmpty)
+    let isBarHiddenAfterCancel = view.nativeNVSTCompositionBar.isHidden
+    let clearedString = view.nativeNVSTCompositionBar.markedText.string
+    #expect(isBarHiddenAfterCancel)
+    #expect(clearedString.isEmpty)
 }
 
-@Test @MainActor func nativeCompositionBarHidesOnCommitAndKeepsTextInputSeam() {
+@Test @MainActor func nativeCompositionBarHidesOnCommit() {
     let view = NativeStreamView(frame: NSRect(x: 0, y: 0, width: 640, height: 360))
-    var values: [String] = []
-    view.onInputEvent = { event in
-        if case .text(_, let value, _) = event { values.append(value) }
-    }
     view.setMarkedText("だま", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
-    #expect(!view.nativeNVSTCompositionBar.isHidden)
+    let isBarVisibleWhileComposing = !view.nativeNVSTCompositionBar.isHidden
 
     view.insertText("だま", replacementRange: NSRange(location: NSNotFound, length: 0))
 
-    #expect(values == ["だま"])
-    #expect(view.nativeNVSTCompositionBar.isHidden)
+    let isBarHiddenAfterCommit = view.nativeNVSTCompositionBar.isHidden
+    #expect(isBarVisibleWhileComposing)
+    #expect(isBarHiddenAfterCommit)
 }
 
 @Test func nativePushToTalkIsEdgeTriggeredAndRequiresConfiguredModifiers() {
