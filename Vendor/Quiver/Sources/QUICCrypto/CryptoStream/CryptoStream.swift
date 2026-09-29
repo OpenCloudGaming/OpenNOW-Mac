@@ -11,6 +11,8 @@ public enum CryptoStreamError: Error, Sendable {
     case bufferExceeded(currentSize: Int, maxSize: Int)
     /// Invalid offset (negative or overflow)
     case invalidOffset(UInt64)
+    /// The reassembly buffer holds too many non-contiguous segments
+    case tooManySegments(limit: Int)
 }
 
 /// Reassembles out-of-order CRYPTO frames for a single encryption level
@@ -73,7 +75,11 @@ public struct CryptoStream: Sendable {
         }
 
         // Insert into buffer
-        buffer.insert(offset: insertOffset, data: dataToInsert)
+        do {
+            try buffer.insert(offset: insertOffset, data: dataToInsert)
+        } catch CryptoBufferError.segmentLimitExceeded(let limit) {
+            throw CryptoStreamError.tooManySegments(limit: limit)
+        }
         totalReceived += UInt64(dataToInsert.count)
     }
 

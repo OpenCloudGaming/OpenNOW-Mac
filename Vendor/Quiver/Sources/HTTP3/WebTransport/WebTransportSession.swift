@@ -158,6 +158,30 @@ public actor WebTransportSession {
     /// The default per-session stream bound used when none is configured.
     public static let defaultMaxStreamsPerSession: UInt64 = 64
 
+    /// The default per-session event-buffer bound used when none is configured.
+    public static let defaultMaxBufferedEvents = 256
+
+    /// The maximum number of events buffered per session event stream.
+    public let maxBufferedEvents: Int
+
+    /// Counts of events dropped because an event stream's buffer was full.
+    public struct DroppedEventCounts: Sendable, Equatable {
+        /// Dropped incoming bidirectional stream events.
+        public var bidirectionalStreams = 0
+        /// Dropped incoming unidirectional stream events.
+        public var unidirectionalStreams = 0
+        /// Dropped incoming datagrams.
+        public var datagrams = 0
+        /// Dropped capsule events.
+        public var capsules = 0
+    }
+
+    /// Events dropped because a consumer did not keep up with an event stream.
+    ///
+    /// The four event streams are bounded, so a peer that outruns the consumer
+    /// loses its excess events here instead of growing the buffers unboundedly.
+    public private(set) var droppedEvents = DroppedEventCounts()
+
     /// The current session state.
     public private(set) var state: WebTransportSessionState = .connecting
 
@@ -253,39 +277,44 @@ public actor WebTransportSession {
         connectStream: any QUICStreamProtocol,
         connection: HTTP3Connection,
         role: Role,
-        maxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
+        maxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession,
+        maxBufferedEvents: Int = WebTransportSession.defaultMaxBufferedEvents
     ) {
         self.connectStream = connectStream
         self.connection = connection
         self.role = role
         self.maxStreamsPerSession = maxStreamsPerSession
+        self.maxBufferedEvents = max(1, maxBufferedEvents)
         self.sessionID = connectStream.id
         self.quarterStreamID = connectStream.id / 4
 
+        let policy: AsyncStream<WebTransportStream>.Continuation.BufferingPolicy =
+            .bufferingNewest(self.maxBufferedEvents)
+
         // Create incoming bidirectional streams
         var bidiCont: AsyncStream<WebTransportStream>.Continuation!
-        self.incomingBidirectionalStreams = AsyncStream { cont in
+        self.incomingBidirectionalStreams = AsyncStream(bufferingPolicy: policy) { cont in
             bidiCont = cont
         }
         self.incomingBidiContinuation = bidiCont
 
         // Create incoming unidirectional streams
         var uniCont: AsyncStream<WebTransportStream>.Continuation!
-        self.incomingUnidirectionalStreams = AsyncStream { cont in
+        self.incomingUnidirectionalStreams = AsyncStream(bufferingPolicy: policy) { cont in
             uniCont = cont
         }
         self.incomingUniContinuation = uniCont
 
         // Create incoming datagrams stream
         var datagramCont: AsyncStream<Data>.Continuation!
-        self.incomingDatagrams = AsyncStream { cont in
+        self.incomingDatagrams = AsyncStream(bufferingPolicy: .bufferingNewest(self.maxBufferedEvents)) { cont in
             datagramCont = cont
         }
         self.incomingDatagramContinuation = datagramCont
 
         // Create capsule events stream
         var capsuleCont: AsyncStream<WebTransportCapsule>.Continuation!
-        self.capsuleEvents = AsyncStream { cont in
+        self.capsuleEvents = AsyncStream(bufferingPolicy: .bufferingNewest(self.maxBufferedEvents)) { cont in
             capsuleCont = cont
         }
         self.capsuleEventContinuation = capsuleCont
@@ -644,7 +673,9 @@ public actor WebTransportSession {
             return
         }
 
-        incomingDatagramContinuation?.yield(data)
+        if let result = incomingDatagramContinuation?.yield(data), case .dropped = result {
+            droppedEvents.datagrams += 1
+        }
     }
 
     // MARK: - Incoming Stream Delivery
@@ -692,7 +723,9 @@ public actor WebTransportSession {
             await connection.registerActiveResponseStream(quicStream.id, priority: priority)
         }
 
-        incomingBidiContinuation?.yield(wtStream)
+        if let result = incomingBidiContinuation?.yield(wtStream), case .dropped = result {
+            droppedEvents.bidirectionalStreams += 1
+        }
 
         Self.logger.trace(
             "Delivered incoming bidi stream",
@@ -748,7 +781,9 @@ public actor WebTransportSession {
             await connection.registerActiveResponseStream(quicStream.id, priority: priority)
         }
 
-        incomingUniContinuation?.yield(wtStream)
+        if let result = incomingUniContinuation?.yield(wtStream), case .dropped = result {
+            droppedEvents.unidirectionalStreams += 1
+        }
 
         Self.logger.trace(
             "Delivered incoming uni stream",
@@ -1055,7 +1090,9 @@ public actor WebTransportSession {
         )
 
         // Deliver to the capsule events stream
-        capsuleEventContinuation?.yield(capsule)
+        if let result = capsuleEventContinuation?.yield(capsule), case .dropped = result {
+            droppedEvents.capsules += 1
+        }
 
         switch capsule {
         case .close(let info):
