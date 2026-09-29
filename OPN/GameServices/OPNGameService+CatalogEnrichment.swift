@@ -52,7 +52,15 @@ extension OPNGameService {
         }
         if !metadataGame.description.isEmpty { merged.description = metadataGame.description }
         if !metadataGame.screenshotUrls.isEmpty { merged.screenshotUrls = metadataGame.screenshotUrls }
-        for (key, value) in metadataGame.imageUrlsByType where merged.imageUrlsByType[key] == nil {
+        // The app-metadata endpoint is the current one; browse's titles and artwork come from a
+        // legacy endpoint that lags it (a renamed app kept its old name and its old art URLs in
+        // browse while metadata had the new ones), so metadata is authoritative for both whenever
+        // it carries them. Panels already read the current endpoint, so this only ever corrects a
+        // browse row.
+        if !metadataGame.title.isEmpty { merged.title = metadataGame.title }
+        if !metadataGame.imageUrl.isEmpty { merged.imageUrl = metadataGame.imageUrl }
+        if !metadataGame.heroImageUrl.isEmpty { merged.heroImageUrl = metadataGame.heroImageUrl }
+        for (key, value) in metadataGame.imageUrlsByType where !value.isEmpty {
             merged.imageUrlsByType[key] = value
         }
         return merged
