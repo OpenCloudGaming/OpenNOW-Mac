@@ -159,6 +159,17 @@ public actor HTTP3Connection {
     /// Active WebTransport sessions, keyed by session ID (= CONNECT stream ID).
     var webTransportSessions: [UInt64: WebTransportSession] = [:]
 
+    /// Per-session bound on tracked WebTransport streams.
+    ///
+    /// Applied when sessions are created; `0` disables the bound.
+    /// Mutate via ``setWebTransportMaxStreamsPerSession(_:)``.
+    var webTransportMaxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
+
+    /// Applies the per-session stream bound to sessions created on this connection.
+    func setWebTransportMaxStreamsPerSession(_ limit: UInt64) {
+        webTransportMaxStreamsPerSession = limit
+    }
+
     /// Continuation for delivering newly created WebTransport sessions.
     var incomingWebTransportSessionContinuation: AsyncStream<WebTransportSession>.Continuation?
 

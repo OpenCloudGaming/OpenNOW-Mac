@@ -113,17 +113,28 @@ public struct WebTransportOptions: Sendable {
     /// If empty (default), all paths are accepted.
     public var allowedPaths: [String]
 
+    /// Maximum number of concurrently tracked streams per WebTransport session.
+    ///
+    /// Bounds the streams a single session can hold open, since QUIC re-grants
+    /// stream credit as streams complete. `0` disables the bound.
+    ///
+    /// - Default: 64
+    public var maxStreamsPerSession: UInt64
+
     /// Creates WebTransport options.
     ///
     /// - Parameters:
     ///   - maxSessionsPerConnection: Max concurrent WT sessions per connection (default: 1)
     ///   - allowedPaths: Paths to accept, empty = all (default: [])
+    ///   - maxStreamsPerSession: Max tracked streams per session, 0 = unbounded (default: 64)
     public init(
         maxSessionsPerConnection: UInt64 = 1,
-        allowedPaths: [String] = []
+        allowedPaths: [String] = [],
+        maxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
     ) {
         self.maxSessionsPerConnection = maxSessionsPerConnection
         self.allowedPaths = allowedPaths
+        self.maxStreamsPerSession = maxStreamsPerSession
     }
 }
 
@@ -178,6 +189,10 @@ public actor HTTP3Server {
     /// This property may be mutated by `enableWebTransport(_:)` to merge
     /// the WebTransport-required settings before the server starts.
     public private(set) var settings: HTTP3Settings
+
+    /// Per-session bound on tracked WebTransport streams, applied to
+    /// connections this server serves. `0` disables the bound.
+    public private(set) var webTransportMaxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
 
     /// Current server state
     public private(set) var state: State = .idle
@@ -437,6 +452,7 @@ public actor HTTP3Server {
             role: .server,
             settings: settings
         )
+        await h3Connection.setWebTransportMaxStreamsPerSession(webTransportMaxStreamsPerSession)
 
         // Track the connection
         let connectionID = ObjectIdentifier(quicConnection as AnyObject)
@@ -705,6 +721,7 @@ public actor HTTP3Server {
         settings.enableConnectProtocol = true
         settings.enableH3Datagram = true
         settings.webtransportMaxSessions = options.maxSessionsPerConnection
+        webTransportMaxStreamsPerSession = options.maxStreamsPerSession
 
         // Create the session delivery stream
         var continuation: AsyncStream<WebTransportSession>.Continuation!

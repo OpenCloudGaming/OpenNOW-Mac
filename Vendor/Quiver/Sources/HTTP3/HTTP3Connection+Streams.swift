@@ -403,17 +403,25 @@ extension HTTP3Connection {
         // possibility, which is why the catch falls through to request handling.
         do {
             var (varint, consumed) = try Varint.decode(from: firstData)
+            var hasSignal = false
             // A spec-compliant peer (Chrome, and this library's own client) opens a bidirectional
             // WebTransport stream with the 0x41 signal before the session ID.
             if varint.value == kWebTransportBidiSignal {
+                hasSignal = true
                 let (sessionVarint, sessionConsumed) = try Varint.decode(from: Data(firstData.dropFirst(consumed)))
                 varint = sessionVarint
                 consumed += sessionConsumed
             }
             let candidateSessionID = varint.value
 
+            // A peer that predates the signal sends the session ID directly, but the lowest
+            // session IDs overlap HTTP/3 frame types (0 = DATA, 4 = SETTINGS). Without the
+            // signal, treat a value that is a valid frame type as request framing so a DATA
+            // frame cannot be swallowed into session 0.
+            let isHTTP3FrameType = HTTP3FrameType(rawValue: candidateSessionID) != nil
+
             // Check if this matches a known WebTransport session
-            if let session = webTransportSessions[candidateSessionID] {
+            if (hasSignal || !isHTTP3FrameType), let session = webTransportSessions[candidateSessionID] {
                 Self.logger.debug("handleIncomingBidiStream: stream \(stream.id) matched WebTransport session \(candidateSessionID)")
                 let remaining: Data
                 if consumed < firstData.count {

@@ -331,7 +331,8 @@ public actor WebTransportServer {
         let h3Sessions = await httpServer.enableWebTransport(
             WebTransportOptions(
                 maxSessionsPerConnection: configuration.maxSessions,
-                allowedPaths: serverOptions.allowedPaths
+                allowedPaths: serverOptions.allowedPaths,
+                maxStreamsPerSession: configuration.maxStreamsPerSession
             )
         )
 
