@@ -83,10 +83,28 @@ extension NativeNVSTHostViewModel {
                     self.fullScreenTransitionWatchdog?.cancel()
                     self.fullScreenTransitionWatchdog = nil
                     self.streamWindowIsFullScreen = transition.isFullScreen
+                    guard !transition.isFullScreen else {
+                        self.reportSessionReadyFullScreenEntry()
+                        return
+                    }
+                    self.isSessionReadyFullScreenEntryRequested = false
                 }
             }
             fullScreenObserverTokens.append(token)
         }
+    }
+
+    /// Reported on the landing, never the request: AppKit can refuse a `toggleFullScreen` through
+    /// delegate callbacks that post no notification, so the request alone proves nothing.
+    private func reportSessionReadyFullScreenEntry() {
+        guard isSessionReadyFullScreenEntryRequested else { return }
+        isSessionReadyFullScreenEntryRequested = false
+        OPNStreamFullScreenTelemetry.captureSuccess(
+            applicationID: configuration.applicationID,
+            launchMode: OPNSessionReadyAction.mode.rawValue,
+            enteredFullScreen: streamWindowIsFullScreen,
+            preconditions: OPNStreamGameModePreconditions.current()
+        )
     }
 
     /// AppKit reports a refused transition through `windowDidFailToEnter/ExitFullScreen`, which post
@@ -110,6 +128,7 @@ extension NativeNVSTHostViewModel {
         fullScreenTransitionWatchdog?.cancel()
         fullScreenTransitionWatchdog = nil
         isFullScreenTransitioning = false
+        isSessionReadyFullScreenEntryRequested = false
     }
 
     /// Every callback below is stored *on the view*, and the view model holds the view - so each one
