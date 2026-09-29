@@ -1,0 +1,498 @@
+# Why: Release WebTransport sessions and streams: unregister on close, remove streams on FIN/reset, cap streams per session, and reset child streams on session close.
+# Applied by scripts/vendor-quiver.sh in filename order. See VENDORING.md.
+diff -ruN 5/Sources/HTTP3/HTTP3Connection+Streams.swift 6/Sources/HTTP3/HTTP3Connection+Streams.swift
+--- 5/Sources/HTTP3/HTTP3Connection+Streams.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/HTTP3Connection+Streams.swift	2026-09-30 00:50:43
+@@ -403,17 +403,25 @@
+         // possibility, which is why the catch falls through to request handling.
+         do {
+             var (varint, consumed) = try Varint.decode(from: firstData)
++            var hasSignal = false
+             // A spec-compliant peer (Chrome, and this library's own client) opens a bidirectional
+             // WebTransport stream with the 0x41 signal before the session ID.
+             if varint.value == kWebTransportBidiSignal {
++                hasSignal = true
+                 let (sessionVarint, sessionConsumed) = try Varint.decode(from: Data(firstData.dropFirst(consumed)))
+                 varint = sessionVarint
+                 consumed += sessionConsumed
+             }
+             let candidateSessionID = varint.value
+ 
++            // A peer that predates the signal sends the session ID directly, but the lowest
++            // session IDs overlap HTTP/3 frame types (0 = DATA, 4 = SETTINGS). Without the
++            // signal, treat a value that is a valid frame type as request framing so a DATA
++            // frame cannot be swallowed into session 0.
++            let isHTTP3FrameType = HTTP3FrameType(rawValue: candidateSessionID) != nil
++
+             // Check if this matches a known WebTransport session
+-            if let session = webTransportSessions[candidateSessionID] {
++            if (hasSignal || !isHTTP3FrameType), let session = webTransportSessions[candidateSessionID] {
+                 Self.logger.debug("handleIncomingBidiStream: stream \(stream.id) matched WebTransport session \(candidateSessionID)")
+                 let remaining: Data
+                 if consumed < firstData.count {
+diff -ruN 5/Sources/HTTP3/HTTP3Connection+WebTransport.swift 6/Sources/HTTP3/HTTP3Connection+WebTransport.swift
+--- 5/Sources/HTTP3/HTTP3Connection+WebTransport.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/HTTP3Connection+WebTransport.swift	2026-09-30 00:50:43
+@@ -135,7 +135,8 @@
+         let session = WebTransportSession(
+             connectStream: context.stream,
+             connection: self,
+-            role: role
++            role: role,
++            maxStreamsPerSession: webTransportMaxStreamsPerSession
+         )
+ 
+         // Enforce per-connection session quota
+@@ -172,7 +173,8 @@
+         let session = WebTransportSession(
+             connectStream: connectStream,
+             connection: self,
+-            role: .client
++            role: .client,
++            maxStreamsPerSession: webTransportMaxStreamsPerSession
+         )
+ 
+         // Enforce per-connection session quota (client side)
+diff -ruN 5/Sources/HTTP3/HTTP3Connection.swift 6/Sources/HTTP3/HTTP3Connection.swift
+--- 5/Sources/HTTP3/HTTP3Connection.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/HTTP3Connection.swift	2026-09-30 00:55:59
+@@ -159,6 +159,17 @@
+     /// Active WebTransport sessions, keyed by session ID (= CONNECT stream ID).
+     var webTransportSessions: [UInt64: WebTransportSession] = [:]
+ 
++    /// Per-session bound on tracked WebTransport streams.
++    ///
++    /// Applied when sessions are created; `0` disables the bound.
++    /// Mutate via ``setWebTransportMaxStreamsPerSession(_:)``.
++    var webTransportMaxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
++
++    /// Applies the per-session stream bound to sessions created on this connection.
++    func setWebTransportMaxStreamsPerSession(_ limit: UInt64) {
++        webTransportMaxStreamsPerSession = limit
++    }
++
+     /// Continuation for delivering newly created WebTransport sessions.
+     var incomingWebTransportSessionContinuation: AsyncStream<WebTransportSession>.Continuation?
+ 
+diff -ruN 5/Sources/HTTP3/HTTP3Server.swift 6/Sources/HTTP3/HTTP3Server.swift
+--- 5/Sources/HTTP3/HTTP3Server.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/HTTP3Server.swift	2026-09-30 00:55:59
+@@ -113,17 +113,28 @@
+     /// If empty (default), all paths are accepted.
+     public var allowedPaths: [String]
+ 
++    /// Maximum number of concurrently tracked streams per WebTransport session.
++    ///
++    /// Bounds the streams a single session can hold open, since QUIC re-grants
++    /// stream credit as streams complete. `0` disables the bound.
++    ///
++    /// - Default: 64
++    public var maxStreamsPerSession: UInt64
++
+     /// Creates WebTransport options.
+     ///
+     /// - Parameters:
+     ///   - maxSessionsPerConnection: Max concurrent WT sessions per connection (default: 1)
+     ///   - allowedPaths: Paths to accept, empty = all (default: [])
++    ///   - maxStreamsPerSession: Max tracked streams per session, 0 = unbounded (default: 64)
+     public init(
+         maxSessionsPerConnection: UInt64 = 1,
+-        allowedPaths: [String] = []
++        allowedPaths: [String] = [],
++        maxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
+     ) {
+         self.maxSessionsPerConnection = maxSessionsPerConnection
+         self.allowedPaths = allowedPaths
++        self.maxStreamsPerSession = maxStreamsPerSession
+     }
+ }
+ 
+@@ -179,6 +190,10 @@
+     /// the WebTransport-required settings before the server starts.
+     public private(set) var settings: HTTP3Settings
+ 
++    /// Per-session bound on tracked WebTransport streams, applied to
++    /// connections this server serves. `0` disables the bound.
++    public private(set) var webTransportMaxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
++
+     /// Current server state
+     public private(set) var state: State = .idle
+ 
+@@ -437,6 +452,7 @@
+             role: .server,
+             settings: settings
+         )
++        await h3Connection.setWebTransportMaxStreamsPerSession(webTransportMaxStreamsPerSession)
+ 
+         // Track the connection
+         let connectionID = ObjectIdentifier(quicConnection as AnyObject)
+@@ -705,6 +721,7 @@
+         settings.enableConnectProtocol = true
+         settings.enableH3Datagram = true
+         settings.webtransportMaxSessions = options.maxSessionsPerConnection
++        webTransportMaxStreamsPerSession = options.maxStreamsPerSession
+ 
+         // Create the session delivery stream
+         var continuation: AsyncStream<WebTransportSession>.Continuation!
+diff -ruN 5/Sources/HTTP3/WebTransport/WebTransportConfiguration.swift 6/Sources/HTTP3/WebTransport/WebTransportConfiguration.swift
+--- 5/Sources/HTTP3/WebTransport/WebTransportConfiguration.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/WebTransport/WebTransportConfiguration.swift	2026-09-30 00:50:43
+@@ -66,6 +66,14 @@
+     /// - Default: 1
+     public var maxSessions: UInt64
+ 
++    /// Maximum number of concurrently tracked streams per WebTransport session.
++    ///
++    /// Bounds a single session's stream table, since QUIC re-grants stream
++    /// credit as streams complete. `0` disables the bound.
++    ///
++    /// - Default: 64
++    public var maxStreamsPerSession: UInt64
++
+     /// Additional HTTP headers to include in the Extended CONNECT request.
+     ///
+     /// Use this for authentication tokens, origin headers, etc.
+@@ -99,6 +107,7 @@
+     /// - Parameters:
+     ///   - quic: The QUIC transport configuration (TLS, flow control, etc.)
+     ///   - maxSessions: Max concurrent WebTransport sessions (default: 1)
++    ///   - maxStreamsPerSession: Max tracked streams per session, 0 = unbounded (default: 64)
+     ///   - headers: Additional HTTP headers for CONNECT (default: [])
+     ///   - http3Settings: HTTP/3 settings overrides (default: literal-only QPACK)
+     ///   - connectionReadyTimeout: SETTINGS exchange timeout (default: 10s)
+@@ -106,6 +115,7 @@
+     public init(
+         quic: QUICConfiguration,
+         maxSessions: UInt64 = 1,
++        maxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession,
+         headers: [(String, String)] = [],
+         http3Settings: HTTP3Settings = HTTP3Settings(),
+         connectionReadyTimeout: Duration = .seconds(10),
+@@ -113,6 +123,7 @@
+     ) {
+         self.quic = quic
+         self.maxSessions = maxSessions
++        self.maxStreamsPerSession = maxStreamsPerSession
+         self.headers = headers
+         self.http3Settings = http3Settings
+         self.connectionReadyTimeout = connectionReadyTimeout
+diff -ruN 5/Sources/HTTP3/WebTransport/WebTransportServer.swift 6/Sources/HTTP3/WebTransport/WebTransportServer.swift
+--- 5/Sources/HTTP3/WebTransport/WebTransportServer.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/WebTransport/WebTransportServer.swift	2026-09-30 00:50:43
+@@ -331,7 +331,8 @@
+         let h3Sessions = await httpServer.enableWebTransport(
+             WebTransportOptions(
+                 maxSessionsPerConnection: configuration.maxSessions,
+-                allowedPaths: serverOptions.allowedPaths
++                allowedPaths: serverOptions.allowedPaths,
++                maxStreamsPerSession: configuration.maxStreamsPerSession
+             )
+         )
+ 
+diff -ruN 5/Sources/HTTP3/WebTransport/WebTransportSession.swift 6/Sources/HTTP3/WebTransport/WebTransportSession.swift
+--- 5/Sources/HTTP3/WebTransport/WebTransportSession.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/WebTransport/WebTransportSession.swift	2026-09-30 00:50:43
+@@ -149,6 +149,15 @@
+     /// The role of this endpoint.
+     public let role: Role
+ 
++    /// Upper bound on concurrently tracked streams for this session.
++    ///
++    /// QUIC re-grants stream credit as streams complete, so without this
++    /// bound a peer can churn streams indefinitely.
++    public let maxStreamsPerSession: UInt64
++
++    /// The default per-session stream bound used when none is configured.
++    public static let defaultMaxStreamsPerSession: UInt64 = 64
++
+     /// The current session state.
+     public private(set) var state: WebTransportSessionState = .connecting
+ 
+@@ -243,11 +252,13 @@
+     public init(
+         connectStream: any QUICStreamProtocol,
+         connection: HTTP3Connection,
+-        role: Role
++        role: Role,
++        maxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession
+     ) {
+         self.connectStream = connectStream
+         self.connection = connection
+         self.role = role
++        self.maxStreamsPerSession = maxStreamsPerSession
+         self.sessionID = connectStream.id
+         self.quarterStreamID = connectStream.id / 4
+ 
+@@ -450,6 +461,12 @@
+         guard state == .established else {
+             throw WebTransportError.sessionNotEstablished
+         }
++        guard maxStreamsPerSession == 0 || activeStreamCount < Int(maxStreamsPerSession) else {
++            throw WebTransportError.internalError(
++                "Per-session WebTransport stream limit reached",
++                underlying: nil
++            )
++        }
+ 
+         let quicStream = try await connection.quicConnection.openStream()
+ 
+@@ -464,7 +481,8 @@
+             sessionID: sessionID,
+             direction: .bidirectional,
+             isLocal: true,
+-            priority: priority
++            priority: priority,
++            onTerminated: terminationHandler(for: quicStream.id)
+         )
+ 
+         activeBidiStreams[quicStream.id] = wtStream
+@@ -513,6 +531,12 @@
+         guard state == .established else {
+             throw WebTransportError.sessionNotEstablished
+         }
++        guard maxStreamsPerSession == 0 || activeStreamCount < Int(maxStreamsPerSession) else {
++            throw WebTransportError.internalError(
++                "Per-session WebTransport stream limit reached",
++                underlying: nil
++            )
++        }
+ 
+         let quicStream = try await connection.quicConnection.openUniStream()
+ 
+@@ -527,7 +551,8 @@
+             sessionID: sessionID,
+             direction: .unidirectional,
+             isLocal: true,
+-            priority: priority
++            priority: priority,
++            onTerminated: terminationHandler(for: quicStream.id)
+         )
+ 
+         activeUniStreams[quicStream.id] = wtStream
+@@ -646,6 +671,8 @@
+             return
+         }
+ 
++        guard reserveStreamSlot(for: quicStream, direction: "bidirectional") else { return }
++
+         let priority = StreamPriority.webTransportBidi
+         let wtStream = WebTransportStream(
+             quicStream: quicStream,
+@@ -653,7 +680,8 @@
+             direction: .bidirectional,
+             isLocal: false,
+             priority: priority,
+-            initialData: initialData
++            initialData: initialData,
++            onTerminated: terminationHandler(for: quicStream.id)
+         )
+ 
+         activeBidiStreams[quicStream.id] = wtStream
+@@ -699,6 +727,8 @@
+             return
+         }
+ 
++        guard reserveStreamSlot(for: quicStream, direction: "unidirectional") else { return }
++
+         let priority = StreamPriority.webTransportUni
+         let wtStream = WebTransportStream(
+             quicStream: quicStream,
+@@ -706,7 +736,8 @@
+             direction: .unidirectional,
+             isLocal: false,
+             priority: priority,
+-            initialData: initialData
++            initialData: initialData,
++            onTerminated: terminationHandler(for: quicStream.id)
+         )
+ 
+         activeUniStreams[quicStream.id] = wtStream
+@@ -731,6 +762,45 @@
+ 
+     // MARK: - Stream Cleanup
+ 
++    /// Enforces the per-session stream bound at the delivery point.
++    ///
++    /// - Parameters:
++    ///   - quicStream: The stream that would exceed the bound
++    ///   - direction: A label for diagnostics only
++    /// - Returns: `true` when a slot is available
++    private func reserveStreamSlot(
++        for quicStream: any QUICStreamProtocol,
++        direction: String
++    ) -> Bool {
++        guard maxStreamsPerSession == 0 || activeStreamCount < Int(maxStreamsPerSession) else {
++            Self.logger.warning(
++                "WebTransport per-session stream limit reached",
++                metadata: [
++                    "sessionID": "\(sessionID)",
++                    "activeStreams": "\(activeStreamCount)",
++                    "limit": "\(maxStreamsPerSession)",
++                    "direction": "\(direction)",
++                    "streamID": "\(quicStream.id)",
++                ]
++            )
++            Task {
++                await quicStream.reset(
++                    errorCode: WebTransportStreamErrorCode.toHTTP3ErrorCode(0)
++                )
++            }
++            return false
++        }
++        return true
++    }
++
++    /// Builds the one-shot notification that releases a stream slot.
++    private func terminationHandler(for streamID: UInt64) -> @Sendable () -> Void {
++        { [weak self] in
++            guard let self else { return }
++            Task { await self.removeStream(streamID) }
++        }
++    }
++
+     /// Removes a stream from the session's tracking.
+     ///
+     /// Called when a stream has been fully closed or reset.
+@@ -1045,14 +1115,21 @@
+         capsuleEventContinuation?.finish()
+         capsuleEventContinuation = nil
+ 
+-        // Unregister all active streams from the HTTP/3 scheduler
++        // Unregister all active streams from the HTTP/3 scheduler, then reset the
++        // underlying QUIC streams so orphaned children do not keep the connection's
++        // open-stream count high.
++        let orphanedStreams = Array(activeBidiStreams.values) + Array(activeUniStreams.values)
+         let allStreamIDs = Array(activeBidiStreams.keys) + Array(activeUniStreams.keys)
+-        if !allStreamIDs.isEmpty {
+-            Task {
+-                for streamID in allStreamIDs {
+-                    await connection.unregisterActiveResponseStream(streamID)
+-                }
++        Task {
++            for streamID in allStreamIDs {
++                await connection.unregisterActiveResponseStream(streamID)
+             }
++            for stream in orphanedStreams {
++                await stream.quicStream.reset(
++                    errorCode: WebTransportStreamErrorCode.toHTTP3ErrorCode(0)
++                )
++            }
++            await connection.unregisterWebTransportSession(sessionID)
+         }
+ 
+         // Clear active streams
+diff -ruN 5/Sources/HTTP3/WebTransport/WebTransportStream.swift 6/Sources/HTTP3/WebTransport/WebTransportStream.swift
+--- 5/Sources/HTTP3/WebTransport/WebTransportStream.swift	2026-09-30 00:51:01
++++ 6/Sources/HTTP3/WebTransport/WebTransportStream.swift	2026-09-30 00:50:43
+@@ -159,6 +159,10 @@
+     /// on the first `read()` call before reading more from the QUIC stream.
+     private let _initialDataBuffer: InitialDataBuffer
+ 
++    /// One-shot notification delivered when this stream reaches a terminal
++    /// state (FIN observed, reset, or a local unidirectional FIN).
++    private let _terminationNotifier: StreamTerminationNotifier?
++
+     /// Creates a WebTransport stream wrapper.
+     ///
+     /// This initializer is used internally by `WebTransportSession`.
+@@ -180,7 +184,8 @@
+         direction: WebTransportStreamDirection,
+         isLocal: Bool,
+         priority: StreamPriority? = nil,
+-        initialData: Data = Data()
++        initialData: Data = Data(),
++        onTerminated: (@Sendable () -> Void)? = nil
+     ) {
+         self.quicStream = quicStream
+         self.sessionID = sessionID
+@@ -190,6 +195,7 @@
+             ? .webTransportBidi
+             : .webTransportUni)
+         self._initialDataBuffer = InitialDataBuffer(initialData)
++        self._terminationNotifier = onTerminated.map(StreamTerminationNotifier.init)
+     }
+ 
+     // MARK: - Stream Identity
+@@ -228,7 +234,16 @@
+         if let buffered = _initialDataBuffer.drain() {
+             return buffered
+         }
+-        return try await quicStream.read()
++        do {
++            let data = try await quicStream.read()
++            if data.isEmpty {
++                _terminationNotifier?.notify()
++            }
++            return data
++        } catch {
++            _terminationNotifier?.notify()
++            throw error
++        }
+     }
+ 
+     /// Reads up to a maximum number of bytes from the stream.
+@@ -241,7 +256,16 @@
+         if let buffered = _initialDataBuffer.drain(maxBytes: maxBytes) {
+             return buffered
+         }
+-        return try await quicStream.read(maxBytes: maxBytes)
++        do {
++            let data = try await quicStream.read(maxBytes: maxBytes)
++            if data.isEmpty {
++                _terminationNotifier?.notify()
++            }
++            return data
++        } catch {
++            _terminationNotifier?.notify()
++            throw error
++        }
+     }
+ 
+     // MARK: - Write Operations
+@@ -263,6 +287,9 @@
+     /// - Throws: If closing fails
+     public func closeWrite() async throws {
+         try await quicStream.closeWrite()
++        if direction == .unidirectional {
++            _terminationNotifier?.notify()
++        }
+     }
+ 
+     // MARK: - Reset Operations
+@@ -276,6 +303,7 @@
+     public func reset(applicationErrorCode: UInt32 = 0) async {
+         let http3Code = WebTransportStreamErrorCode.toHTTP3ErrorCode(applicationErrorCode)
+         await quicStream.reset(errorCode: http3Code)
++        _terminationNotifier?.notify()
+     }
+ 
+     /// Signals that no more data will be read from this stream.
+@@ -394,6 +422,28 @@
+ // MARK: - HTTP/3 Stream Type Classification Extension
+ 
+ // MARK: - Initial Data Buffer
++
++/// Thread-safe one-shot notifier for a stream reaching a terminal state.
++private final class StreamTerminationNotifier: @unchecked Sendable {
++    private let handler: @Sendable () -> Void
++    private let lock = NSLock()
++    private var fired = false
++
++    init(_ handler: @Sendable @escaping () -> Void) {
++        self.handler = handler
++    }
++
++    func notify() {
++        lock.lock()
++        if fired {
++            lock.unlock()
++            return
++        }
++        fired = true
++        lock.unlock()
++        handler()
++    }
++}
+ 
+ /// Thread-safe buffer for initial data read during stream routing.
+ ///

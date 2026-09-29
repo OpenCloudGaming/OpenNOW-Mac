@@ -1,0 +1,109 @@
+# Why: Fail closed on 0-RTT without replay protection, index sliced Retry data from its own startIndex, remove duplicate protocol limits, and fail closed on an empty ALPN list.
+# Applied by scripts/vendor-quiver.sh in filename order. See VENDORING.md.
+diff -ruN 8/Sources/QUICCore/Packet/ConnectionID.swift 9/Sources/QUICCore/Packet/ConnectionID.swift
+--- 8/Sources/QUICCore/Packet/ConnectionID.swift	2026-09-30 00:53:27
++++ 9/Sources/QUICCore/Packet/ConnectionID.swift	2026-09-30 00:54:14
+@@ -11,7 +11,7 @@
+     public let bytes: Data
+ 
+     /// Maximum length of a connection ID
+-    public static let maxLength = 20
++    public static let maxLength = ProtocolLimits.maxConnectionIDLength
+ 
+     /// An empty connection ID (zero length)
+     public static let empty = ConnectionID(uncheckedBytes: Data())
+diff -ruN 8/Sources/QUICCore/ProtocolLimits.swift 9/Sources/QUICCore/ProtocolLimits.swift
+--- 8/Sources/QUICCore/ProtocolLimits.swift	2026-09-30 00:53:27
++++ 9/Sources/QUICCore/ProtocolLimits.swift	2026-09-30 00:54:14
+@@ -62,11 +62,6 @@
+     /// (``minimumMaximumDatagramSize``) minus header overhead.
+     public static let maxInitialTokenLength = minimumMaximumDatagramSize
+ 
+-    /// Maximum packet payload length
+-    /// Based on maximum UDP datagram size minus headers
+-    /// 65535 (max UDP) - 8 (UDP header) - 20 (IP header minimum)
+-    public static let maxPacketPayloadLength = 65507
+-
+     /// Maximum Long Header length field value
+     /// Length field includes packet number (1-4 bytes) and encrypted payload
+     /// We use a practical limit to prevent memory exhaustion
+@@ -109,11 +104,6 @@
+     /// Most parameters are varints (8 bytes max), but some like
+     /// preferred_address are larger
+     public static let maxTransportParameterLength = 65535
+-
+-    /// Maximum length of preferred_address parameter
+-    /// IPv6 address (16) + port (2) + CID length (1) + CID (20) + token (16) = 55
+-    /// Plus IPv4 components
+-    public static let maxPreferredAddressLength = 128
+ 
+     // MARK: - Retry (RFC 9000 Section 17.2.5)
+ 
+diff -ruN 8/Sources/QUICCrypto/RetryIntegrityTag.swift 9/Sources/QUICCrypto/RetryIntegrityTag.swift
+--- 8/Sources/QUICCrypto/RetryIntegrityTag.swift	2026-09-30 00:53:27
++++ 9/Sources/QUICCrypto/RetryIntegrityTag.swift	2026-09-30 00:54:14
+@@ -317,16 +317,19 @@
+         // Must have at least: first byte + 4 bytes version + 1 dcid len + 1 scid len + 16 tag
+         guard data.count >= 23 else { return false }
+ 
++        // `Data` slices may have a non-zero startIndex, so index from the start of this slice.
++        let base = data.startIndex
++
+         // Check long header format (first bit = 1)
+-        guard (data[0] & 0x80) != 0 else { return false }
++        guard (data[base] & 0x80) != 0 else { return false }
+ 
+         // Check version is not 0 (that's Version Negotiation)
+-        let version = UInt32(data[1]) << 24 | UInt32(data[2]) << 16 |
+-                      UInt32(data[3]) << 8 | UInt32(data[4])
++        let version = UInt32(data[base + 1]) << 24 | UInt32(data[base + 2]) << 16 |
++                      UInt32(data[base + 3]) << 8 | UInt32(data[base + 4])
+         guard version != 0 else { return false }
+ 
+         // Check packet type is Retry (type bits = 11)
+-        let packetType = (data[0] >> 4) & 0x03
++        let packetType = (data[base] >> 4) & 0x03
+         return packetType == 0x03
+     }
+ }
+diff -ruN 8/Sources/QUICCrypto/TLS/ServerStateMachine.swift 9/Sources/QUICCrypto/TLS/ServerStateMachine.swift
+--- 8/Sources/QUICCrypto/TLS/ServerStateMachine.swift	2026-09-30 00:53:27
++++ 9/Sources/QUICCrypto/TLS/ServerStateMachine.swift	2026-09-30 00:54:14
+@@ -141,6 +141,11 @@
+                 let clientHelloMessage = HandshakeCodec.encode(type: .clientHello, content: data)
+                 let bindersSize = offeredPsks.bindersSize
+                 let truncatedLength = clientHelloMessage.count - bindersSize
++                guard truncatedLength >= 0 else {
++                    throw TLSHandshakeError.internalError(
++                        "ClientHello binders exceed the encoded message length"
++                    )
++                }
+                 let truncatedTranscript = clientHelloMessage.prefix(truncatedLength)
+ 
+                 // Try each offered PSK identity
+@@ -201,8 +206,10 @@
+                 // Check if client offered early_data and session allows it
+                 if clientHello.earlyData && session.maxEarlyDataSize > 0 {
+                     // Check replay protection if configured (RFC 8446 Section 8)
+-                    // 0-RTT data can be replayed, so servers should track ticket usage
+-                    var acceptEarlyData = true
++                    // 0-RTT data can be replayed, so servers MUST track ticket usage. Refuse
++                    // early data unless replay protection is wired in, rather than accepting
++                    // unguarded by default.
++                    var acceptEarlyData = false
+                     if let replayProtection = configuration.replayProtection {
+                         // Create ticket identifier from ticket nonce (unique per ticket)
+                         let ticketIdentifier = ReplayProtection.createIdentifier(from: session.ticketNonce)
+@@ -244,8 +251,10 @@
+             guard let clientALPN = clientHello.alpn else {
+                 throw TLSHandshakeError.noALPNMatch
+             }
+-            if let common = configuration.alpnProtocols.isEmpty ? clientALPN.protocols.first :
+-                ALPNExtension(protocols: configuration.alpnProtocols).negotiate(with: clientALPN) {
++            guard !configuration.alpnProtocols.isEmpty else {
++                throw TLSHandshakeError.noALPNMatch
++            }
++            if let common = ALPNExtension(protocols: configuration.alpnProtocols).negotiate(with: clientALPN) {
+                 state.context.negotiatedALPN = common
+             } else {
+                 throw TLSHandshakeError.noALPNMatch

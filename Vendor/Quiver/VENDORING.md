@@ -14,30 +14,61 @@ Quiver is the only implementation that ships a complete **WebTransport server** 
 stream framing, capsules, datagrams) that we could drive from Swift on macOS — `msquic`, `ngtcp2`
 and `lsquic` stop at QUIC/HTTP-3 and would leave us to write the WebTransport layer ourselves.
 
-It cannot be consumed as a normal external SwiftPM dependency, though: its TLS provider
-(`TLS13Handler`) is declared `package`-scoped in the `QUICCrypto` target, and that target is not
-exposed as a library product, so an external package cannot build a TLS server at all (upstream
-works only because its own demo lives inside the package). Vendoring a patched copy is therefore
-the supported way to consume it.
+It cannot be consumed as a normal external SwiftPM dependency for one reason: upstream's
+`Package.swift` does not expose `QUICCrypto` as a library product, so an external package cannot
+link the TLS provider at all (upstream works only because its own demo lives inside the package).
+`TLS13Handler` itself is already `public` at the pinned commit.
+
+The `package`-to-`public` lift in `Sources/QUICCrypto` is a consequence of consuming the module
+externally, not the reason for vendoring: with `QUICCrypto` exposed as a product, its
+externally-visible surface must be reachable from another module. Should upstream add the product,
+the reason to vendor disappears; see "Exiting the vendoring".
+
+## Reproducing the tree
+
+`Vendor/Quiver` is generated from the pinned commit plus the committed patch series:
+
+```sh
+scripts/vendor-quiver.sh
+```
+
+The script clones the pin, strips the non-library trees (`Tests/`, `Examples/`, `Benchmarks/`,
+`Docs/`, `assets/`, `certs/`, the DocC catalogs and `TLS/TLS_SECURITY.md`), applies every patch in
+`Vendor/Quiver/Patches/` in filename order, and fails if `Sources/`, `Package.swift` or `LICENSE`
+differ from the committed tree. CI runs it on any change under `Vendor/Quiver`.
+
+Every change to the vendored tree must be recorded as a patch. Editing the tree without a matching
+patch makes the script — and CI — fail.
 
 ## Local changes from upstream
 
-1. **Slimmed.** Removed `Tests/`, `Examples/`, `Benchmarks/`, the DocC catalogs and the DocC plugin;
-   kept only the library targets the app links.
-2. **Exposed `QUICCrypto` as a library product.**
-3. **Lifted `package` access to `public`** throughout `Sources/QUICCrypto`, so our target can
-   construct a `TLS13Handler` for `QUICConfiguration.development`/`.production`.
-4. **Fixed bidirectional WebTransport stream framing** (`HTTP3Connection+Streams.swift`,
-   `WebTransport/WebTransportStream.swift`). Per draft-ietf-webtrans-http3 §4.4, a bidirectional
-   WebTransport stream begins with the signal value `0x41` (as a varint) *before* the session ID.
-   Upstream omits the signal on send and treats the first varint as the session ID on receive, so it
-   only interoperates with itself. A real browser (Chrome 153) sends `0x41`, which upstream read as a
-   session ID of 65 and dropped — the guest joined but no stream was ever delivered. The client now
-   writes the signal, and the server accepts it optionally (so a peer without it, including upstream
-   output, still works). Verified end to end against Chrome; see `spikes/browseregress`.
+The patch series, with the reason for each:
 
-These are the only differences; everything else is upstream verbatim. Re-applying them after an
-upstream bump is: copy `Sources/`, strip the extra targets from `Package.swift`, add the
-`QUICCrypto` product, run `s/\bpackage /public /g` over `Sources/QUICCrypto`, re-apply the bidi
-framing fix, then re-run `spikes/webtransport` (agency loopback) and `spikes/browseregress`
-(real-browser) to confirm both still pass.
+| Patch | Change |
+|-------|--------|
+| `0001-slim-vendor-tree-and-expose-quiccrypto` | Drop the non-library targets and DocC plugin, and expose `QUICCrypto` as a library product. |
+| `0002-lift-quiccrypto-package-access-to-public` | Lift `package` access to `public` across `Sources/QUICCrypto` so an external package can build the TLS server. |
+| `0003-bound-clienthello-legacy-session-id` | Reject an oversized peer `legacy_session_id` as a protocol error; the initializer would otherwise trap. |
+| `0004-saturate-ack-range-estimate` | Saturate the capacity estimate derived from peer ACK ranges; a plain sum traps on a 62-bit range length. |
+| `0005-add-webtransport-bidi-stream-signal` | Write the draft-ietf-webtrans-http3 §4.4 `0x41` signal on outgoing bidirectional WebTransport streams, which Chrome requires. |
+| `0006-release-webtransport-sessions-and-streams` | Unregister sessions on close, remove streams on FIN/reset, cap streams per session, and reset child streams on session close. |
+| `0007-deliver-frame-spanning-bidi-streams` | Read the signal and session-ID varints across STREAM frames; reset a signal with no session ID; reject a DATA-frame first varint instead of routing it to session 0. |
+| `0008-bound-webtransport-and-crypto-buffers` | Bound the session event streams (with a drop counter), the capsule payload length, and the CRYPTO reassembly segment count. |
+| `0009-harden-0rtt-retry-and-protocol-limits` | Refuse 0-RTT without replay protection, index sliced Retry data safely, remove duplicate protocol limits, and fail closed on an empty ALPN list. |
+
+Two notes on older changes:
+
+- The previous recipe ran `s/\bpackage /public /g` over `Sources/QUICCrypto`. That regex also hit
+  prose, rewriting the `SystemTrustStore` diagnostic from "ca-certificates package" to
+  "ca-certificates public". The wording is restored, and because the restored text matches upstream
+  the fix leaves no delta — the access lift is now captured as `0002` rather than a blind regex.
+- `MockTLSProvider` is unreachable from the app: it is selected only by
+  `QUICSecurityMode.testing` inside `#if DEBUG`, and the app configures
+  `QUICConfiguration.development { TLS13Handler(...) }`.
+
+## Exiting the vendoring
+
+Two small upstream changes would let the app consume Quiver as a normal SwiftPM dependency and
+delete the vendored copy: expose `QUICCrypto` as a library product, and add the `0x41` bidirectional
+signal per draft-ietf-webtrans-http3 §4.4. Until then, the patch series above is the supported
+consumption path.

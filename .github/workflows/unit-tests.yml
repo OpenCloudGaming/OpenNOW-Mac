@@ -112,6 +112,23 @@ jobs:
             App GFN Model OPN View ViewModel Tests
         shell: bash
 
+  vendor:
+    name: Verify Vendored Quiver
+    runs-on: blacksmith-12vcpu-macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Fails when Vendor/Quiver differs from the pinned commit plus the committed
+      # patch series, i.e. when someone edits the tree without adding a patch.
+      - name: Verify the vendor tree reproduces from pin + patches
+        run: scripts/vendor-quiver.sh
+        shell: bash
+
   app-build:
     name: Build macOS App
     runs-on: blacksmith-6vcpu-macos-26
