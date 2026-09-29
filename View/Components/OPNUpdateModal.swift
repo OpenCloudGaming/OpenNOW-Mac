@@ -129,6 +129,8 @@ struct OPNUpdateModal: View {
                 message(text)
             case .installFailed(let text):
                 message(text)
+            case .checkUnavailable(let text):
+                message(text)
             }
         }
         .padding(OPNDesign.Spacing.card(scale: uiScale))
@@ -220,6 +222,7 @@ struct OPNUpdateModal: View {
         case .upToDate: return "UP TO DATE"
         case .checkFailed: return "UPDATE CHECK FAILED"
         case .installFailed: return "UPDATE INSTALL FAILED"
+        case .checkUnavailable: return "UPDATE CHECK UNAVAILABLE"
         }
     }
 
@@ -229,6 +232,7 @@ struct OPNUpdateModal: View {
         case .upToDate: return "OpenNOW is up to date"
         case .checkFailed: return "Could not reach GitHub"
         case .installFailed: return "Update was not installed"
+        case .checkUnavailable: return "Update checks are suspended"
         }
     }
 
@@ -260,7 +264,7 @@ struct OPNUpdateModal: View {
             return notes.compareURL ?? URL(string: release.releaseURL)
         case .installFailed:
             return presentation.availableRelease.flatMap { URL(string: $0.releaseURL) }
-        case .upToDate, .checkFailed:
+        case .upToDate, .checkFailed, .checkUnavailable:
             return nil
         }
     }
