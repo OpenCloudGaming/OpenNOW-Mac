@@ -61,7 +61,7 @@ struct ControllerGameDetailOverlay: View {
                     .padding(.top, 18 * uiScale)
                     .padding(.bottom, 14 * uiScale)
                 if GameDetailPresentation.showsAvailabilityNotice(availability) {
-                    ControllerAvailabilityNotice(availability: availability, contentWidth: contentWidth(metrics), horizontalPadding: metrics.horizontalPadding)
+                    ControllerAvailabilityNotice(viewModel: viewModel, game: game, availability: availability, contentWidth: contentWidth(metrics), horizontalPadding: metrics.horizontalPadding)
                 }
                 pageTabs
                     .frame(width: contentWidth(metrics), alignment: .leading)
@@ -521,6 +521,8 @@ private struct ControllerInfoSpecRow: View {
 }
 
 private struct ControllerAvailabilityNotice: View {
+    let viewModel: CatalogViewModel
+    let game: OPNCatalogGameObject
     let availability: CatalogAvailability
     let contentWidth: CGFloat
     let horizontalPadding: CGFloat
@@ -530,7 +532,14 @@ private struct ControllerAvailabilityNotice: View {
     var body: some View {
         CatalogAvailabilityNotice(
             title: GameDetailPresentation.availabilityNoticeTitle(availability),
-            message: GameDetailPresentation.availabilityNoticeBody(availability)
+            message: GameDetailPresentation.availabilityNoticeBody(
+                availability,
+                isWatching: viewModel.isWatching(game),
+                isAtWatchLimit: viewModel.isMaintenanceWatchLimitReached
+            ),
+            isWatching: viewModel.isWatching(game),
+            showsWatchControl: GameDetailPresentation.showsWatchControl(availability),
+            onToggleWatch: { viewModel.toggleMaintenanceWatch(for: game) }
         )
         .frame(width: contentWidth, alignment: .leading)
         .padding(.horizontal, horizontalPadding)

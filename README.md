@@ -207,6 +207,34 @@ or waiting to be resumed. A queue wait and a recording export each draw their pr
 so a long wait is visible with the window closed. Choose *Close, Menu Bar Only* and the app leaves the
 Dock entirely - there the menu bar is the surface that answers instead.
 
+## Maintenance Watch
+
+When GeForce NOW takes a game down for maintenance, the offline notice on its detail page offers
+**Watch**. Opt in and OpenNOW watches that one title while it runs and brings you back the moment it
+is playable again - no checking by hand.
+
+- **Per title, opt-in.** Nothing is watched implicitly. The control is offered on a game under
+  maintenance and nowhere else; a title that is simply unavailable carries no promise of returning.
+  A watch ends on its own once the title is ready to play, or when you remove it in Settings.
+- **Told at both edges.** Maintenance usually ends into patching, so a returning title first says
+  *“is now patching”* and later *“is ready to play”*. The patching announcement hands off to the same
+  queued auto-launch a manual **Queue** uses, so the game comes up on its own from there.
+- **Called back, not just told.** In the background the Dock icon bounces until you activate OpenNOW
+  and a system notification is posted; with OpenNOW already frontmost there is no bounce to make, so
+  the catalog's status line says it instead. Several titles returning together produce one bounce,
+  not one each.
+- **Visible the whole time.** A watched title is marked in the catalog's rails, its detail notice
+  reads **Watching**, and the Dock icon wears a badge with how many titles are being watched. The
+  list, with per-title **Remove** and **Stop Watching All**, is in **Settings → General → Maintenance
+  Watch**.
+
+Watching runs only while OpenNOW is running - window hidden and menu-bar-only included - because the
+check rides the same 30-60 second poll the app already runs for patching. It does **not** survive
+quitting OpenNOW; there is no background agent behind it. The vendor publishes no maintenance ETA,
+so nothing here promises a time: the promise is detection within about a minute of the title actually
+coming back. Up to 25 titles can be watched at once, and the list is stored on this Mac only - it is
+never synced to iCloud.
+
 ## Settings You Can Find
 
 Nine destinations named for what they hold - Account, Video, Audio, Input, Recording, Network, Remote Co-Op, General, and Labs - down a sidebar that shows all of them at once. Settings that arrived recently wear a **NEW** tag until you have seen them, so a new option in a tab you never open still announces itself.

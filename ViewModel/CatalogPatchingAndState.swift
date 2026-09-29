@@ -85,6 +85,9 @@ extension CatalogViewModel {
         CatalogPatchStatusLogic.mergePatchStatuses(targetedResult.statuses, into: &mergedStatuses)
         if !mergedStatuses.isEmpty {
             applyPatchingStatuses(mergedStatuses)
+            // Availability classification rides the same poll; the watch engine reads it from the
+            // game graph `applyPatchingStatuses` just updated.
+            advanceMaintenanceWatches(statuses: mergedStatuses)
         }
         for error in [libraryResult.error, targetedResult.error] where !error.isEmpty {
             if refreshAuthIfNeeded(error: error) { return }
@@ -109,8 +112,12 @@ extension CatalogViewModel {
     }
 
     func patchingPollAppIds() -> [String] {
-        let ids = allKnownGames.filter(CatalogPatchStatusLogic.isPatching).compactMap(CatalogPatchStatusLogic.patchStatusAppId)
-        return Array(Set(ids)).sorted()
+        // Watched titles join the loop even when nothing is patching: a maintenance-down title has
+        // no patching status at all, so without this it would never be polled. One merged fetch per
+        // cycle either way.
+        let patchingIds = allKnownGames.filter(CatalogPatchStatusLogic.isPatching).compactMap(CatalogPatchStatusLogic.patchStatusAppId)
+        let watchedIds = maintenanceWatches.map(\.appId).filter { !$0.isEmpty }
+        return Array(Set(patchingIds + watchedIds)).sorted()
     }
 
     func applyPatchingStatuses(_ statuses: [String: OPNAppPatchStatus]) {
@@ -311,6 +318,9 @@ extension CatalogViewModel {
             authRefreshInFlight = false
             guard refreshed else {
                 errorMessage = "Unable to refresh your NVIDIA session. Sign out and sign in again."
+                // A watch outlives many polls, so an unrecoverable session is also the end of every
+                // watch: the app cannot detect a return it can no longer ask the vendor about.
+                stopMaintenanceWatchesForUnrecoverableAuth()
                 return
             }
             errorMessage = ""

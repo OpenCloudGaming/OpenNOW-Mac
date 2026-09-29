@@ -31,6 +31,7 @@ enum OPNNewSettings {
         case instantReplay
         case sessionInsights
         case captureLocations
+        case maintenanceWatch
 
         /// The marketing version the row shipped in.
         nonisolated var introducedIn: String {
@@ -41,6 +42,7 @@ enum OPNNewSettings {
             case .keybindings, .menuBar, .launchAtLogin, .startupPresentation, .homeCategories: "0.10.0"
             case .instantReplay, .sessionInsights: "0.11.0"
             case .captureLocations: "0.14.0"
+            case .maintenanceWatch: "0.15.0"
             }
         }
     }

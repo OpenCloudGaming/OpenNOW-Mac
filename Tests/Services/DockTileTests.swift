@@ -436,4 +436,33 @@ import Testing
         #expect(NSImage(systemSymbolName: OPNDockTileProgressView.liveBadgeSymbolName, accessibilityDescription: nil) != nil)
     }
 
+    // MARK: - Maintenance watches
+
+    @Test func watchedTitlesShowACountWhenNothingIsPending() {
+        #expect(OPNDockTileContent(pendingSessions: nil, progress: nil, isStreaming: false, watchedTitles: 3).badgeLabel == "3")
+        #expect(OPNDockTileContent(pendingSessions: nil, progress: nil, isStreaming: false, watchedTitles: 0).badgeLabel == nil)
+    }
+
+    @Test func aPendingSessionWinsTheBadgeOverWatchedTitles() {
+        // A pending session is something the reader can act on now; a watch is something the app is
+        // doing for them. Two things waiting are still more urgent than twenty being watched.
+        let content = OPNDockTileContent(pendingSessions: 2, progress: nil, isStreaming: false, watchedTitles: 7)
+        #expect(content.badgeLabel == "2")
+    }
+
+    @Test func watchedTitlesAreCappedLikeAnyOtherBadge() {
+        #expect(OPNDockTileContent(pendingSessions: nil, progress: nil, isStreaming: false, watchedTitles: 120).badgeLabel == "99+")
+    }
+
+    @Test func anAnnouncingWatchKeepsTheIconThroughMenuBarOnly() {
+        // The existing three inputs still decide the same way.
+        #expect(OPNDockIconController.shouldHideDockIcon(behavior: .menuBarOnly, showsStatusItem: true, hasVisibleAppWindow: false))
+        #expect(OPNDockIconController.shouldHideDockIcon(behavior: .menuBarOnly, showsStatusItem: true, hasVisibleAppWindow: true) == false)
+        #expect(OPNDockIconController.shouldHideDockIcon(behavior: .keepRunningInDock, showsStatusItem: true, hasVisibleAppWindow: false) == false)
+        #expect(OPNDockIconController.shouldHideDockIcon(behavior: .menuBarOnly, showsStatusItem: false, hasVisibleAppWindow: false) == false)
+        // An announcement overrides the reader's menu-bar-only choice only for the moment it takes
+        // them to come back, so there is a tile to bounce.
+        #expect(OPNDockIconController.shouldHideDockIcon(behavior: .menuBarOnly, showsStatusItem: true, hasVisibleAppWindow: false, isAnnouncingWatch: true) == false)
+    }
+
 }

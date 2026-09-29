@@ -80,3 +80,34 @@ private func parseFixture(_ dictionary: [String: Any]) -> OPNGameInfo {
     #expect(!GameDetailPresentation.showsAvailabilityNotice(.available))
     #expect(GameDetailPresentation.availabilityNoticeTitle(.unavailable) == "Unavailable")
 }
+
+@Test func theWatchControlIsOfferedForMaintenanceOnly() {
+    #expect(GameDetailPresentation.showsWatchControl(.maintenance))
+    #expect(GameDetailPresentation.showsWatchControl(.available) == false)
+    #expect(GameDetailPresentation.showsWatchControl(.patching) == false)
+    #expect(GameDetailPresentation.showsWatchControl(.unavailable) == false,
+            "withdrawal carries no promise of returning, so there is nothing to watch")
+}
+
+@Test func theNoticeCopySpeaksToTheWatchState() {
+    let idle = GameDetailPresentation.availabilityNoticeBody(.maintenance, isWatching: false, isAtWatchLimit: false)
+    let watching = GameDetailPresentation.availabilityNoticeBody(.maintenance, isWatching: true, isAtWatchLimit: false)
+    let capped = GameDetailPresentation.availabilityNoticeBody(.maintenance, isWatching: false, isAtWatchLimit: true)
+
+    #expect(idle.localizedCaseInsensitiveContains("maintenance"))
+    #expect(watching.localizedCaseInsensitiveContains("watching"))
+    #expect(watching.localizedCaseInsensitiveContains("playable"))
+    #expect(capped.localizedCaseInsensitiveContains("maximum"))
+    // The cap is stated, and where to relieve it.
+    #expect(capped.localizedCaseInsensitiveContains("Settings"))
+    // No copy implies a schedule; the vendor publishes no maintenance ETA.
+    for message in [idle, watching, capped] {
+        #expect(!message.localizedCaseInsensitiveContains("scheduled"))
+    }
+}
+
+@Test func theWatchActionReadsItsState() {
+    #expect(GameDetailPresentation.watchActionTitle(isWatching: false) == "WATCH")
+    #expect(GameDetailPresentation.watchActionTitle(isWatching: true) == "WATCHING")
+    #expect(GameDetailPresentation.watchActionAccessibilityLabel(isWatching: true).localizedCaseInsensitiveContains("stop"))
+}

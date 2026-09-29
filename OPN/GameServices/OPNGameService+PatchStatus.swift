@@ -132,10 +132,21 @@ extension OPNGameService {
                 let library = gfn?["library"] as? NSDictionary
                 let variantIsPatching = currentStatusIsPatching(status: gfn?["status"], playabilityState: gfn?["playabilityState"], libraryStatus: library?["status"], stateDetails: gfn?["stateDetails"])
                 status.variantPatchingById[variantId] = variantIsPatching
+                // Availability rides the same payload the patching check already consumes. Classified
+                // only when the vendor actually said something: a missing status is "no data", not a
+                // silent `available` that would look like a maintenance watch coming back.
+                let catalogStatus = safeString(gfn?["status"]) ?? ""
+                let subtype = (gfn?["stateDetails"] as? NSDictionary).flatMap { safeString($0["subType"]) } ?? ""
+                if !catalogStatus.isEmpty || !subtype.isEmpty {
+                    status.availabilityById[variantId] = CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: subtype)
+                }
                 let patchText = patchStatusText(status: gfn?["status"] ?? library?["status"], stateDetails: gfn?["stateDetails"], isPatching: variantIsPatching)
                 if !patchText.primary.isEmpty { status.primaryTextByVariantId[variantId] = patchText.primary }
                 if !patchText.secondary.isEmpty { status.secondaryTextByVariantId[variantId] = patchText.secondary }
                 status.isPatching = status.isPatching || variantIsPatching
+            }
+            if !status.availabilityById.isEmpty {
+                status.availability = CatalogAvailability.rollUp(Array(status.availabilityById.values))
             }
             statuses[appId] = status
         }

@@ -135,13 +135,40 @@ enum GameDetailPresentation {
         availability.isOffline
     }
 
+    /// The watch control rides the maintenance notice and nothing else. `.unavailable` carries no
+    /// promise of returning, and patching is already its own wait the app handles.
+    static func showsWatchControl(_ availability: CatalogAvailability) -> Bool {
+        availability == .maintenance
+    }
+
+    static func watchActionTitle(isWatching: Bool) -> String {
+        isWatching ? "WATCHING" : "WATCH"
+    }
+
+    static func watchActionAccessibilityLabel(isWatching: Bool) -> String {
+        isWatching ? "Stop watching this game for maintenance to finish" : "Watch this game and be told when it is playable again"
+    }
+
     static func availabilityNoticeTitle(_ availability: CatalogAvailability) -> String {
         availability == .maintenance ? "Offline" : "Unavailable"
     }
 
     static func availabilityNoticeBody(_ availability: CatalogAvailability) -> String {
+        availabilityNoticeBody(availability, isWatching: false, isAtWatchLimit: false)
+    }
+
+    /// The maintenance notice's copy in the state the reader is in. Watching says what the app is
+    /// now doing for them; at the cap it says why it cannot start. Nothing here implies a schedule:
+    /// the vendor publishes no maintenance ETA, so the promise is detection after it happens.
+    static func availabilityNoticeBody(_ availability: CatalogAvailability, isWatching: Bool, isAtWatchLimit: Bool) -> String {
         switch availability {
         case .maintenance:
+            if isWatching {
+                return "OpenNOW is watching this game. It will notify you the moment it is playable again, about a minute after maintenance finishes."
+            }
+            if isAtWatchLimit {
+                return "OpenNOW is watching the maximum number of titles. Remove one from Settings to watch this game."
+            }
             return "GeForce NOW is doing maintenance on this game. It will be available to play again once maintenance finishes."
         case .unavailable:
             return "This game is not available on GeForce NOW right now. Try again later."

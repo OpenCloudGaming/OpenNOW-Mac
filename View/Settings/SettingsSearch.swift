@@ -128,6 +128,9 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("At Launch, Show", .general, "window-closing", keywords: ["startup", "start up", "launch", "window", "menu bar only", "windowless", "no window", "open at launch"]),
         SettingsSearchEntry("Steam Big Picture Mode", .general, "game-launch", keywords: ["launcher", "gamepad friendly", "steam", "tv", "couch"]),
         SettingsSearchEntry("Rich Presence", .general, "discord", keywords: ["discord", "status", "friends", "profile"]),
+        SettingsSearchEntry("Maintenance Watch", .general, "maintenance-watch", keywords: [
+            "watch", "watching", "notify", "notification", "offline", "unavailable", "maintenance", "down", "bounce", "dock", "alert", "playable",
+        ]),
         SettingsSearchEntry("Automatic Update Checks", .system, "updates", keywords: ["update", "version", "release", "upgrade"]),
         SettingsSearchEntry("Update Channel", .system, "updates", keywords: ["beta", "stable", "pre-release", "update", "channel"]),
         SettingsSearchEntry("Disable Telemetry", .general, "privacy", keywords: ["privacy", "analytics", "sentry", "tracking", "diagnostics"]),

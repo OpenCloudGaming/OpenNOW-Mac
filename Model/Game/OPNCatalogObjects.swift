@@ -128,6 +128,10 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var supportedLanguages: [String]
     public var gfnFeatureLabels: [String]
     public var isPatching: Bool
+    /// The availability the 30-60s patch-status poll last classified for this variant. Transient:
+    /// it lives only on this reference object, never in the cache or the vendor round-trip, and nil
+    /// means the catalog snapshot's own `catalogStatus` still stands.
+    public var catalogAvailabilityOverride: CatalogAvailability?
     public var patchStatusPrimaryText: String
     public var patchStatusSecondaryText: String
     public var librarySelected: Bool
@@ -205,7 +209,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
     }
 
     public var catalogAvailability: CatalogAvailability {
-        CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
+        catalogAvailabilityOverride ?? CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
     }
 }
 
@@ -373,11 +377,7 @@ public final class OPNCatalogGameObject: NSObject {
     /// The title-level availability, used when no variant is selected yet. Maintenance is the
     /// strongest signal and wins; a title is only patching when every one of its variants is.
     public var catalogAvailability: CatalogAvailability {
-        let statuses = variants.map(\.catalogAvailability)
-        if statuses.contains(.maintenance) { return .maintenance }
-        if statuses.contains(.unavailable) { return .unavailable }
-        if !statuses.isEmpty, statuses.allSatisfy({ $0 == .patching }) { return .patching }
-        return .available
+        CatalogAvailability.rollUp(variants.map(\.catalogAvailability))
     }
 
     public static func isFreeMembershipTier(_ membershipTier: String) -> Bool {

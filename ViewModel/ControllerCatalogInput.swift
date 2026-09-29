@@ -461,6 +461,8 @@ extension ControllerCatalogViewModel {
         switch action {
         case .primary:
             handleDetailPrimary(catalog: catalog, game: game, selectedVariant: selectedVariant)
+        case .watchAvailability:
+            catalog.toggleMaintenanceWatch(for: game)
         case .favorite:
             catalog.toggleFavoriteSelectedGame()
         case .collections:

@@ -201,6 +201,7 @@ struct ControllerSearchOverlay: View {
                                 imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 720),
                                 isFocused: isResultsRowFocused && resultIndex == index,
                                 isQueuedForPatching: viewModel.isQueuedForPatching(game),
+                                isWatched: viewModel.isWatching(game),
                                 showsFreeAccountAccessBadges: viewModel.isFreeTierAccount,
                                 tileSize: tileSize,
                                 action: { selectResult(game) }

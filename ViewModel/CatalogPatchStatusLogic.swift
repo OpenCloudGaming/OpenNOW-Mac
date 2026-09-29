@@ -28,6 +28,11 @@ enum CatalogPatchStatusLogic {
                 variant.patchStatusPrimaryText = isPatching ? status.primaryTextByVariantId[variant.id] ?? variant.patchStatusPrimaryText : ""
                 variant.patchStatusSecondaryText = isPatching ? status.secondaryTextByVariantId[variant.id] ?? variant.patchStatusSecondaryText : ""
             }
+            // Availability is layered over the catalog snapshot without touching it: a variant this
+            // poll said nothing about keeps whatever the catalog parse classified.
+            if let availability = status.availabilityById[variant.id] {
+                variant.catalogAvailabilityOverride = availability
+            }
         }
         game.isPatching = status.isPatching || game.variants.contains { $0.isPatching }
         game.patchStatusPrimaryText = game.isPatching ? game.variants.first { !$0.patchStatusPrimaryText.isEmpty }?.patchStatusPrimaryText ?? status.primaryTextByVariantId.values.first ?? "Patching" : ""
@@ -44,6 +49,8 @@ enum CatalogPatchStatusLogic {
             existing.variantPatchingById.merge(status.variantPatchingById) { _, new in new }
             existing.primaryTextByVariantId.merge(status.primaryTextByVariantId) { _, new in new }
             existing.secondaryTextByVariantId.merge(status.secondaryTextByVariantId) { _, new in new }
+            existing.availabilityById.merge(status.availabilityById) { _, new in new }
+            existing.availability = status.availability ?? existing.availability
             target[appId] = existing
         }
     }

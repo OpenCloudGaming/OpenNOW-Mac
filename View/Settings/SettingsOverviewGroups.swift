@@ -86,6 +86,7 @@ struct GeneralSettingsGroup: View {
             SettingsSection("game-launch", "Game Launch"),
             SettingsSection("discord", "Discord"),
         ]
+        + MaintenanceWatchSettingsPage.sections
         + PrivacySettingsPage.sections
         + CacheSettingsPage.sections
         + DiagnosticsSettingsPage.sections
@@ -96,6 +97,7 @@ struct GeneralSettingsGroup: View {
             InterfaceSettingsPage(viewModel: viewModel, uiScale: uiScale)
             GameLaunchSettingsPage(viewModel: viewModel, uiScale: uiScale)
                 .settingsSection("game-launch")
+            MaintenanceWatchSettingsPage(viewModel: viewModel)
             DiscordSettingsPage(uiScale: uiScale)
                 .settingsSection("discord")
             PrivacySettingsPage(uiScale: uiScale)

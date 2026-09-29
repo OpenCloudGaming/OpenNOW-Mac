@@ -283,3 +283,61 @@ import Testing
     // A page missing from the available list falls back to the first rather than staying stranded.
     #expect(ControllerGameDetailPage.screenshots.stepped(by: 1, in: [.about, .details]) == .about)
 }
+
+private func maintenanceWatchGame(id: String, title: String) -> OPNCatalogGameObject {
+    var variant = OPNGameVariant(id: "\(id)-v", appStore: "STEAM")
+    variant.catalogStatus = "SERVER_MAINTENANCE"
+    variant.catalogStateDetailsSubType = "GFN_DEVELOPER_MAINTENANCE"
+    var info = OPNGameInfo()
+    info.id = id
+    info.title = title
+    info.variants = [variant]
+    return OPNCatalogGameObject(game: info)
+}
+
+@Test @MainActor func aMaintenanceTitlePutsWatchInTheActionRow() {
+    let model = ControllerCatalogViewModel()
+    let game = maintenanceWatchGame(id: "hades", title: "Hades")
+
+    // Watch joins the row beside Play rather than hiding behind More: for a maintenance title it is
+    // the only thing the reader can do. A playable title gets the old row back.
+    #expect(model.detailActions(for: game) == [.primary, .watchAvailability, .more])
+    #expect(ControllerDetailAction.watchAvailability.title(game: game, selectedVariant: nil, viewModel: makeCatalogViewModelForTesting()) == "Watch")
+    #expect(ControllerDetailAction.watchAvailability.icon == "eye.fill")
+
+    var info = OPNGameInfo()
+    info.id = "free"
+    info.title = "Free"
+    info.variants = [OPNGameVariant(id: "free-v", appStore: "STEAM")]
+    #expect(model.detailActions(for: OPNCatalogGameObject(game: info)) == [.primary, .more])
+}
+
+@Test @MainActor func confirmingWatchTogglesTheTitleAndTheRowSaysSo() {
+    let storageKey = CatalogMaintenanceWatchStore.storageKey
+    OPNAppPreferenceStorage.syncStore.removeObject(forKey: storageKey)
+    defer { OPNAppPreferenceStorage.syncStore.removeObject(forKey: storageKey) }
+
+    let model = makeCatalogViewModelForTesting()
+    let game = maintenanceWatchGame(id: "hades", title: "Hades")
+    model.catalogGames = [game]
+    model.selectGame(game)
+
+    let controller = ControllerCatalogViewModel()
+    controller.bind(catalog: model, host: ControllerCatalogHost(), capturesControllerInput: false)
+
+    #expect(controller.detailActions(for: game) == [.primary, .watchAvailability, .more])
+    controller.executeDetailAction(.watchAvailability)
+    model.deinitHandle.patchingPollTask?.cancel()
+    model.deinitHandle.patchingPollTask = nil
+
+    #expect(model.isWatching(game))
+    // The row keeps its shape, so focus returns to where it was; only the label changes.
+    let actions = controller.detailActions(for: game)
+    #expect(actions == [.primary, .watchAvailability, .more])
+    #expect(ControllerDetailAction.watchAvailability.title(game: game, selectedVariant: model.selectedVariant(in: game), viewModel: model) == "Watching")
+
+    controller.executeDetailAction(.watchAvailability)
+    model.deinitHandle.patchingPollTask?.cancel()
+    model.deinitHandle.patchingPollTask = nil
+    #expect(model.isWatching(game) == false)
+}

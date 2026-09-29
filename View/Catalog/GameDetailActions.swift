@@ -161,10 +161,17 @@ extension GameDetailPanel {
         .frame(maxWidth: 520 * uiScale, alignment: .leading)
     }
 
-    func availabilityNotice(for availability: CatalogAvailability) -> some View {
+    func availabilityNotice(for game: OPNCatalogGameObject, availability: CatalogAvailability) -> some View {
         CatalogAvailabilityNotice(
             title: GameDetailPresentation.availabilityNoticeTitle(availability),
-            message: GameDetailPresentation.availabilityNoticeBody(availability)
+            message: GameDetailPresentation.availabilityNoticeBody(
+                availability,
+                isWatching: viewModel.isWatching(game),
+                isAtWatchLimit: viewModel.isMaintenanceWatchLimitReached
+            ),
+            isWatching: viewModel.isWatching(game),
+            showsWatchControl: GameDetailPresentation.showsWatchControl(availability),
+            onToggleWatch: { viewModel.toggleMaintenanceWatch(for: game) }
         )
     }
 

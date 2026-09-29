@@ -281,6 +281,21 @@ on a handle to resize it. Arrow keys move by one source pixel, Option-arrow resi
 uses ten-pixel steps. All chrome dimensions scale with `opnUIScale`; image coordinates remain
 source pixels. The library is inactive during the edit so the draft stays associated with its image.
 
+### Availability Notice & Watch Chip (`CatalogAvailabilityNotice`)
+
+One notice serves the mouse detail panel and the pad overlay, so an offline title says the same thing
+on both. It is a flat warning-tinted strip — 14/11 padding, a 1px `Semantic.warning` @ 0.45 stroke, a
+tinted fill at 0.14, a 15pt `warning` glyph over a 13pt bold title and a 13pt medium body — and never a
+card.
+
+- **The watch chip** is offered only for `.maintenance`. It is a square 28-high chip like the panel's
+  other secondary controls, square corners and a 1px stroke: neutral fill and primary text when idle,
+  accent fill and `onAccent` text while watching. It is never disabled — a tap at the cap answers with
+  copy under it rather than a dead control that cannot explain itself.
+- **The copy is honest about time.** The vendor publishes no maintenance ETA, so neither the body nor
+the chip promises a schedule; the watching body says the app will tell the reader within about a
+minute of the title coming back, and nothing here says *when*.
+
 ### Borders on Filled Controls
 
 Use `Rectangle().strokeBorder(...)`, never `Rectangle().stroke(...)`, on anything with a
@@ -554,8 +569,18 @@ it is drawn by the app except the one thing the system does not offer:
   `OPNMenuBarSessionModel`, as the popover's tiles do, and re-read the phase on the way. Neither brings
   the stream window forward; the user asked to stop the stream, not to go to it.
 
-A badge is one system-drawn label — the count of sessions waiting on the user, capped at `99+` — and
-is cleared by the same rule that set it: nothing pending, no badge.
+A badge is one system-drawn label, capped at `99+`, and is cleared by the same rule that set it.
+`OPNDockTileContent.badgeLabel` draws the count of sessions waiting on the user first and the count of
+running maintenance watches only when nothing is pending: a pending session is something the reader can
+act on now, a watch is something the app is doing for them. The watch count is a new input to the pure
+`OPNDockTileContent`, never a direct `NSDockTile` write, because `OPNDockIconController` recomputes and
+reapplies the tile on every session-surface change and would otherwise clobber it.
+
+One state overrides the reader's menu-bar-only choice: a watch that is announcing a returning title.
+`shouldHideDockIcon` takes `isAnnouncingWatch`, and while it is set the icon stays in the Dock so there
+is a tile to bounce. The request is `.criticalRequest`, made after `showDockIcon()` so the tile exists
+first, one at a time via `OPNMaintenanceWatchAttentionArbiter`, and it is released the moment the reader
+activates the app — after which the icon withdraws again if menu-bar-only is still the choice.
 
 ### Login Wall Layout
 

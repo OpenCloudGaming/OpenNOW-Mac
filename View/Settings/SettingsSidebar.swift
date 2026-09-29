@@ -107,6 +107,7 @@ enum SettingsNewBadges {
         case .menuBar, .launchAtLogin, .startupPresentation, .sessionInsights: .general
         case .instantReplay: .capture
         case .captureLocations: .capture
+        case .maintenanceWatch: .general
         }
     }
 

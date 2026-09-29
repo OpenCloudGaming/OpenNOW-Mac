@@ -41,6 +41,10 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     let isQueuedForPatching: Bool
     /// This game is the live seat session, so it carries the vendor's resumable treatment.
     let isResumableSession: Bool
+    /// This game is being watched for maintenance to end. The marker yields to the patching label:
+    /// a title that started patching is no longer waiting on maintenance, and the rail has room for
+    /// one state.
+    var isWatched = false
     let showsFreeAccountAccessBadges: Bool
     let onSelect: () -> Void
     let onPlay: () -> Void
@@ -66,7 +70,8 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
         lhs.isSelected == rhs.isSelected &&
         lhs.isSelectionActive == rhs.isSelectionActive &&
         lhs.isQueuedForPatching == rhs.isQueuedForPatching &&
-        lhs.isResumableSession == rhs.isResumableSession
+        lhs.isResumableSession == rhs.isResumableSession &&
+        lhs.isWatched == rhs.isWatched
     }
 
     var body: some View {
@@ -154,7 +159,10 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
     private var tileContent: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
-                let showsTitleTray = OPNThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
+                let showsWatchMarker = isWatched && !game.isLaunchPatching
+                // A watched title keeps its tray even when titles are hidden on hover: the marker
+                // only means something if the reader can see it.
+                let showsTitleTray = showsWatchMarker || OPNThemePreferences.showsTileTitle(visibility: tileTitleVisibility, isHovering: isHovering, isSelected: isSelected)
                 CatalogRemoteImage(url: imageURL, contentMode: .fill, maxPixelSize: 768)
                     .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
                     .clipped()
@@ -185,6 +193,12 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                     VStack {
                         Spacer(minLength: 0)
                         HStack(spacing: 8) {
+                            if showsWatchMarker {
+                                Image(systemName: "eye.fill")
+                                    .catalogFont(size: 11, weight: .bold)
+                                    .foregroundStyle(OPNDesign.Fixed.accent)
+                                    .accessibilityLabel("Watching for maintenance to finish")
+                            }
                             Text(game.title.isEmpty ? "GeForce NOW" : game.title)
                                 .catalogFont(size: 12, weight: isSelected ? .medium : .regular)
                                 .lineLimit(1)
