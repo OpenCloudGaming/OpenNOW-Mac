@@ -46,7 +46,9 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | ⚓ **Dock integration** | Right-click the Dock icon for your three most recent games, New Session, and Open Recordings - with a badge while a seat is waiting and a progress bar for a queue or an export. [More ↓](#menu-bar--windowless) |
 | 🌐 **Remote Co-Op** | Invite a friend from a browser link and hand them a player slot in your session - hosted by OpenNOW itself, no server to deploy, host-approved, native input path. |
 | ⌨️ **On-screen keyboard in-stream** | Steam + X summons a Steam Deck-style keyboard right over the game - dual trackpads aim, L2/R2 or a pad click types. Tap the ⬍ key to flip it to the top of the screen when it overlaps something important. Works on any controller. |
-| 🔊 **5.1 / 7.1 surround** | Multi-channel Opus on both transports, negotiated from your output device and membership, with a stereo fold for recordings and Remote Co-Op. |
+| 🔊 **5.1 surround** | Real multi-channel game audio: OpenNOW asks the server for the surround layouts it can send, decodes 5.1 natively and puts each channel on the right speaker, with a stereo mix for recordings and Remote Co-Op. [More ↓](#51-surround-sound) |
+| 🖼️ **VRR frame pacing** | On a variable refresh rate display, each frame is shown the moment it arrives with vsync on, so the screen refreshes with the game instead of on a fixed clock. [More ↓](#frame-pacing-and-vrr) |
+| 🖱️ **Smooth mouse aim** | Raw Mouse Input sends every movement the mouse reports - up to 1,000 a second - instead of the ~120 batches macOS delivers, so the camera turns smoothly in fast games. [More ↓](#raw-mouse-input) |
 | 🔔 **Session ready** | Queue in the background: pick a system notification or have OpenNOW come to the front the moment your seat is ready. |
 | 🔎 **Settings you can find** | Nine destinations named for what they hold, and a search that answers the word you know: type 5.1, black bars or vsync and it lands on the setting. [More ↓](#settings-you-can-find) |
 | 💬 **Discord Rich Presence** | Your friends see what you're playing, automatically. |
@@ -109,6 +111,34 @@ Every GeForce NOW launch and resume uses NVST - NVIDIA's native streaming protoc
 The standalone WebRTC streaming backend has been removed. `WebRTC.framework` still supplies NVST's connection bundle, audio, and parts of rendering, as well as Remote Co-Op's browser and native guest connections.
 
 The current architecture and remaining dependency-removal milestones are documented in [`docs/StreamTransportArchitecture.md`](docs/StreamTransportArchitecture.md), and the provenance of the vendor-protocol code in [`docs/PROTOCOL_PROVENANCE.md`](docs/PROTOCOL_PROVENANCE.md).
+
+## Frame Pacing and VRR
+
+**Settings → Video → Frame Pacing** decides when a decoded frame is put on screen:
+
+- **Balanced** - the newest frame at every display refresh.
+- **Smooth** - holds one frame, so two that arrive together are shown a refresh apart. Even motion for about one frame of extra latency.
+- **Lowest Latency** - each frame the instant it decodes, with vsync off. Fastest, but tearing is possible, and macOS drops a variable refresh rate display back to a fixed rate.
+- **VRR** - each frame the instant it decodes, with vsync on. A variable refresh rate display (Adaptive-Sync, G-SYNC Compatible, ProMotion) then refreshes exactly when the frame arrives instead of on a fixed clock, which keeps motion smooth when the game's frame rate moves around. This is how the official client presents on a VRR display. On a fixed-rate display it still never tears.
+
+## Raw Mouse Input
+
+macOS hands mouse movement to apps about once per screen refresh - roughly 120 batches a second, each a few milliseconds late - however fast the mouse itself reports. In a game running at 120 fps, that turns a steady swipe into uneven camera steps from one frame to the next, which looks like micro-stutter even when every video frame arrives on time. A controller does not have this problem: its stick position is simply read once per frame.
+
+**Settings → Input → Mouse → Raw Mouse Input** reads the mouse directly and sends each movement as soon as the mouse reports it, up to 1,000 times a second on a gaming mouse. The official client reads the mouse the same way.
+
+- It needs the **Input Monitoring** permission (System Settings → Privacy & Security → Input Monitoring). Without it, OpenNOW keeps using macOS's mouse events and says so in Settings.
+- It skips macOS's pointer speed and acceleration, so aim can feel faster than before. Lower **Mouse Sensitivity** on the same card, or the game's own sensitivity, to match.
+- Trackpads and Apple mice keep going through macOS.
+
+## 5.1 Surround Sound
+
+**Settings → Audio → Surround Sound** picks Auto, Stereo, 5.1 or 7.1. When a stream starts, the server lists the surround layouts it can send; OpenNOW asks for the widest one that fits your choice and your speakers, and falls back to stereo when the server offers none. Before, it could ask for 5.1 and then decode only two channels, which made game audio sound muffled and underwater.
+
+- Each channel goes to the speaker your output device names, so centre dialogue comes from the centre and rear effects from the back.
+- A stereo output gets a proper stereo mix of the 5.1 stream.
+- Recordings, the replay buffer and Remote Co-Op guests always get the stereo mix.
+- 7.1 is used when the server offers it; the servers tested so far offer up to 5.1.
 
 ## Steam Controller, Unlocked
 

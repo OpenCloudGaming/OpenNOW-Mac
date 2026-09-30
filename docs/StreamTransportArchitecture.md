@@ -316,6 +316,11 @@ Two format decisions exist because the native path owns Opus directly where libw
   narrower than the decode is opened in stereo and gets a -3 dB fold with the LFE dropped, scaled
   so the fold cannot clip. The recorder, replay buffer and Co-Op relay always receive that stereo
   fold, whatever the speakers carry.
+- **Decoded audio waiting for the device is capped at 40 ms.** Arrival and playout run at the same
+  rate, so anything queued beyond that is lag that would otherwise last the whole session. The
+  device took 2.2 s to start once after a reboot, and every packet that arrived meanwhile played
+  2.2 s late until the stream ended. `NvstAudioReceivePipeline` drops the oldest excess and counts
+  it as `trimmedFrames`.
 
 Full Xcode suite at this point: **2,231 passed, 4 skipped, 0 failed** across 2,235 tests, including
 the 61 added by this milestone's native components. An earlier SwiftPM-only run reported failures in
@@ -682,6 +687,27 @@ resolver, HUD, announce and surround-info tests in that file stay.
 `RTCPeerConnection`, and `WebRTCI420BGRAConverter` is the Co-Op guest renderer's converter; the
 `WebRTC` package/project dependency and `Vendor/WebRTC.xcframework` are therefore *not* part of this
 deletion. Only the stream-side bundle and its exclusive audio device go.
+
+### VRR frame pacing and raw mouse input, 2026-09-30
+
+- **VRR presentation mode.** Balanced and Smooth draw on the display link's fixed tick, and Lowest
+  Latency presents with `displaySyncEnabled` off, which macOS answers by running a variable refresh
+  rate display at its fixed maximum. `OPNVideoPresentationMode.vrr` pauses the display link, draws
+  each frame as it decodes, and keeps vsync on, so the display refreshes when the frame arrives.
+  `OPNManualDrawGate` keeps one draw outstanding and holds the next one until the previous drawable
+  is on the glass (50 ms timeout), so the main thread never waits in `nextDrawable()` and the frame
+  drawn is always the newest. Moving drawing to a render thread was tried and reverted: it did not
+  change mouse timing, and Smooth skipped 13-25% of frames because display-link ticks were coalesced
+  while a draw waited for a drawable.
+- **Raw mouse counts are pushed.** AppKit delivers mouse-moved events about once per display refresh
+  (measured ~100 a second, ~7 ms after the event, from a 1000 Hz mouse), so the seat received uneven
+  per-frame camera deltas while a controller's per-frame stick state stayed smooth. With Raw Mouse
+  Input on, `OPNRawMouseHIDMonitor` hands each HID report's counts to the main thread as it lands
+  and the AppKit event from the same mouse is ignored, so nothing is sent twice. The official
+  client's log shows it reading input through its own native HID input controller as well.
+- **HID manager order.** `OPNRawMouseHIDMonitor.start()` activated the manager before opening it,
+  which IOKit traps on ("Device has already been activated/cancelled") the first time Raw Mouse
+  Input runs with Input Monitoring granted. It now opens first, as the gamepad reader does.
 
 ### Verification gates
 
