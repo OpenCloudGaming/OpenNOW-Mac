@@ -133,12 +133,15 @@ macOS hands mouse movement to apps about once per screen refresh - roughly 120 b
 
 ## 5.1 Surround Sound
 
-**Settings → Audio → Surround Sound** picks Auto, Stereo, 5.1 or 7.1. When a stream starts, the server lists the surround layouts it can send; OpenNOW asks for the widest one that fits your choice and your speakers, and falls back to stereo when the server offers none. Before, it could ask for 5.1 and then decode only two channels, which made game audio sound muffled and underwater.
+**Settings → Audio → Surround Sound** picks Auto, Stereo, 5.1 or 7.1. When a stream starts, the server lists the surround layouts it can send; OpenNOW asks for the widest one that fits your choice, your speakers and what macOS can decode, and falls back to stereo when the server offers none. Before, it could ask for 5.1 and then decode only two channels, which made game audio sound muffled and underwater.
 
 - Each channel goes to the speaker your output device names, so centre dialogue comes from the centre and rear effects from the back.
 - A stereo output gets a proper stereo mix of the 5.1 stream.
 - Recordings, the replay buffer and Remote Co-Op guests always get the stereo mix.
 - 7.1 is used when the server offers it; the servers tested so far offer up to 5.1.
+- **5.1 and 7.1 need macOS 27 or later.** macOS 15–26 has no multistream Opus decoder, so on those versions OpenNOW asks the server for stereo however the setting is set. The setting stays available and takes effect as soon as the Mac is on a macOS that supports it.
+- If a server describes a surround layout and then sends stereo anyway, OpenNOW switches that session to stereo by itself rather than playing silence — no trip to Settings needed.
+- A 5.1 stream folded onto a stereo output is quieter than a native stereo stream: the fold is scaled so all six full-scale channels still fit without clipping, which costs about 8 dB. Switch Surround Sound to Stereo if you would rather keep the level.
 
 ## Steam Controller, Unlocked
 

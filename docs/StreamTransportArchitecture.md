@@ -311,16 +311,42 @@ Two format decisions exist because the native path owns Opus directly where libw
   to the bundle, so the seat never sends a channel count the decoder was not built for. The decoder
   is macOS's own Opus `AudioConverter` with a family 1 `OpusHead` cookie, and emits RFC 7845
   (Vorbis) speaker order.
+- **The negotiated layout is gated on the decoder actually being buildable here.** macOS's Opus
+  decoder only accepts a multistream (family 1) `OpusHead` from macOS 27: on 15–26
+  `AudioConverterNew` refuses the six-channel stream format and the cookie is rejected with
+  `kAudioConverterErr_FormatNotSupported` (`fmt?`), while the same build succeeds on macOS 27.
+  `NvstOpusDecoder.canDecode` is therefore one of the bounds `negotiated` applies, next to the
+  request and the output device's channel count — the seat's offer is not evidence that the audio
+  can be decoded on this Mac. On a macOS without multistream support the session announces and
+  plays stereo, and the minimum macOS for 5.1 and 7.1 is stated in the README.
+- **A decoder that cannot decode the negotiated layout is replaced with a stereo one.** A seat that
+  describes `nv-audio-surround-opus-params` and then sends stereo makes the family 1 decoder reject
+  every packet with `bada`, and `AudioConverter` reports that through its counters rather than by
+  throwing — so `NvstAudioReceivePipeline` reads the decoder's own health instead of its return
+  value. Once a surround decoder has consumed `NvstOpusDecoder.unproductivePacketLimit` packets
+  (20, i.e. 100 ms) without producing a single frame, the pipeline rebuilds itself with a stereo
+  decoder and calls `onLayoutFallback`; `NvstNativeBundle` swaps the layout and its
+  `NvstPlayoutMixer` together, because the render thread must never place a new width with the old
+  matrix. The device stays as wide as it was opened — the extra speakers simply stay silent — and
+  the session continues in stereo with no Settings visit.
 - **`NvstSpeakerMatrix` places each decoded channel on the speaker the device names.** The device's
   preferred channel layout is read when playout starts (WAVE order when it reports none); a device
-  narrower than the decode is opened in stereo and gets a -3 dB fold with the LFE dropped, scaled
-  so the fold cannot clip. The recorder, replay buffer and Co-Op relay always receive that stereo
-  fold, whatever the speakers carry.
-- **Decoded audio waiting for the device is capped at 40 ms.** Arrival and playout run at the same
-  rate, so anything queued beyond that is lag that would otherwise last the whole session. The
-  device took 2.2 s to start once after a reboot, and every packet that arrived meanwhile played
-  2.2 s late until the stream ended. `NvstAudioReceivePipeline` drops the oldest excess and counts
-  it as `trimmedFrames`.
+  narrower than the decode is opened in stereo and gets a fold with the LFE dropped, normalised so
+  the loudest row cannot clip. For 5.1 onto stereo that row is `1 + 0.707 + 0.707`, so every gain is
+  divided by 2.414 — about **-7.7 dB**, not the -3 dB an earlier draft of these notes claimed. It is
+  a deliberate anti-clip choice and it does not apply when the device carries the decode (an
+  identity placement has a loudest row of exactly 1). The recorder, replay buffer and Co-Op relay
+  always receive that stereo fold, whatever the speakers carry.
+- **Decoded audio waiting for the device is capped at 40 ms, with a 10 ms band below the ceiling.**
+  Arrival and playout run at the same rate, so anything queued beyond that is lag that would
+  otherwise last the whole session. The device took 2.2 s to start once after a reboot, and every
+  packet that arrived meanwhile played 2.2 s late until the stream ended. A hard ceiling, though,
+  trims on every pull once arrival outruns playout even slightly: a steady clock drift becomes a
+  continuous stream of one-frame drops rather than one audible skip. `NvstAudioReceivePipeline`
+  therefore trims only once the backlog is more than `backlogTrimHysteresisFrames` (480 frames,
+  10 ms) past the ceiling, and then trims the whole excess back to the ceiling, so the backlog
+  stays inside 40–50 ms and is corrected once per band of drift. Frames dropped are counted as
+  `trimmedFrames`.
 
 Full Xcode suite at this point: **2,231 passed, 4 skipped, 0 failed** across 2,235 tests, including
 the 61 added by this milestone's native components. An earlier SwiftPM-only run reported failures in

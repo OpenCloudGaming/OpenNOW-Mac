@@ -11,7 +11,8 @@ struct NvstSurroundAudioDecodeTests {
     private static let describeOffer = "a=nv-audio-surround-opus-params: 20000000000;32102100000;42201230000;53204123000;64204123500;"
     private static let fiveOne = NvstOpusMultistreamLayout(surroundParams: "64204123500")
     private static let sampleRate = 48_000.0
-    private static let framesPerPacket = 240
+    private static let framesPerPacket = NvstOpusDecoder.seatFramesPerPacket
+
 
     private final class Feed {
         var samples: [Float]
@@ -150,10 +151,16 @@ struct NvstSurroundAudioDecodeTests {
 
     @Test func negotiationPicksTheWidestDescribedLayoutWithinTheRequest() {
         let offered = NvstOpusMultistreamLayout.offered(inDescribe: Self.describeOffer)
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: offered).channels == 6)
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 8, offered: offered).channels == 6)
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 2, offered: offered) == .stereo)
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: []) == .stereo)
+        // The decoder probe is injected so this pins the negotiation itself on every macOS, rather
+        // than the running macOS's multistream support.
+        let decodable: (NvstOpusMultistreamLayout) -> Bool = { _ in true }
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: offered, canDecode: decodable).channels == 6)
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 8, offered: offered, canDecode: decodable).channels == 6)
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 2, offered: offered, canDecode: decodable) == .stereo)
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: [], canDecode: decodable) == .stereo)
+        // A macOS that cannot build the decoder gets stereo however wide the seat offers: ANNOUNCE
+        // and the decoder take the same value, so the seat never sends a count nobody can decode.
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 8, offered: offered, canDecode: { _ in false }) == .stereo)
     }
 
     @Test func theDecoderCookieCarriesTheStreamTable() throws {
@@ -168,7 +175,8 @@ struct NvstSurroundAudioDecodeTests {
         #expect(stereo[18] == 0)
     }
 
-    @Test func fiveOneDecodesEachChannelOntoItsOwnSpeaker() throws {
+    @Test(.disabled(if: OpusSurroundTestGate.isUnavailable, Comment(rawValue: OpusSurroundTestGate.skipReason)))
+    func fiveOneDecodesEachChannelOntoItsOwnSpeaker() throws {
         let layout = try #require(Self.fiveOne)
         let tones: [Double] = [400, 1000, 700, 1600, 2200, 250]
         let frames = Int(Self.sampleRate * 0.4)

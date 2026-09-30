@@ -39,12 +39,32 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
     /// audio that piled up while the device was starting, or a late burst after an underrun.
     public static let maximumBacklogFrames = 1_920
 
-    public let channels: Int
+    /// How far past `maximumBacklogFrames` the backlog may drift before it is trimmed: 10 ms.
+    ///
+    /// A hard ceiling trims on every pull once arrival outruns playout even slightly, which turns a
+    /// steady clock drift into a continuous stream of one-frame drops. With a band, the backlog is
+    /// trimmed once per band of drift — one skip every few minutes instead of thousands — and stays
+    /// inside 40–50 ms. `trimmedFrames` still counts every frame dropped; it just no longer climbs
+    /// on every pull.
+    public static let backlogTrimHysteresisFrames = 480
+
     public let framesPerPacket: Int
+
+    /// Called once, on the thread that pulled, when the decoder has rejected the negotiated layout
+    /// and the pipeline has rebuilt itself as stereo. `layout` already reads the new value when this
+    /// runs, and the caller must place stereo from then on — the device is still as wide as it was
+    /// opened, so the extra speakers simply stay silent.
+    public var onLayoutFallback: (@Sendable (NvstOpusMultistreamLayout) -> Void)?
 
     private let srtp: NvstAudioSrtp
     private let lock = NSLock()
-    private let decoder: NvstOpusDecoder
+    private var decoder: any NvstOpusDecoding
+    private var storedLayout: NvstOpusMultistreamLayout
+    private var pendingStereoFallback = false
+    /// Packets the decoder rejected, accumulated across the decoder the fallback replaces: the
+    /// decoder's own tally restarts at zero when one is rebuilt.
+    private var decoderFailureCount: UInt64 = 0
+    private var lastDecoderFailures: UInt64 = 0
     private var jitter: NvstAudioJitterBuffer
     private var counters = Counters()
     private var replayWindows: [UInt32: SrtpReplayWindow] = [:]
@@ -52,17 +72,37 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
     private var sampleOffset = 0
 
     public init(srtp: NvstAudioSrtp,
-                framesPerPacket: Int = 240,
+                framesPerPacket: Int = NvstOpusDecoder.seatFramesPerPacket,
                 layout: NvstOpusMultistreamLayout = .stereo,
                 targetDepth: Int = 3) throws {
         self.srtp = srtp
         self.framesPerPacket = framesPerPacket
-        self.channels = layout.channels
+        self.storedLayout = layout
         self.jitter = NvstAudioJitterBuffer(targetDepth: targetDepth)
         self.decoder = try NvstOpusDecoder(framesPerPacket: framesPerPacket, layout: layout)
     }
 
+    /// Test seam: builds the pipeline around a decoder supplied by the caller, so the stereo
+    /// fallback can be exercised on a macOS that cannot build the multistream decoder the fallback
+    /// exists for. The rebuilt decoder is always a real `NvstOpusDecoder`.
+    init(srtp: NvstAudioSrtp,
+         framesPerPacket: Int,
+         layout: NvstOpusMultistreamLayout,
+         targetDepth: Int,
+         decoder: any NvstOpusDecoding) {
+        self.srtp = srtp
+        self.framesPerPacket = framesPerPacket
+        self.storedLayout = layout
+        self.jitter = NvstAudioJitterBuffer(targetDepth: targetDepth)
+        self.decoder = decoder
+    }
+
     public var snapshot: Counters { lock.withLock { counters } }
+
+    /// The layout the pipeline is decoding right now: the negotiated one until the decoder proves it
+    /// cannot decode it, then stereo.
+    public var layout: NvstOpusMultistreamLayout { lock.withLock { storedLayout } }
+    public var channels: Int { layout.channels }
     /// How long the emitted packets waited in the jitter buffer, and how many were emitted. The HUD
     /// divides one by the other for its A/V reading, exactly as it did over libwebrtc's counters.
     public var jitterBufferDwellSeconds: TimeInterval { lock.withLock { jitter.jitterBufferDelaySeconds } }
@@ -124,29 +164,62 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
     /// fill that gap with extrapolated audio rather than silence, but `AudioConverter` does not
     /// expose it, so silence is used and counted.
     public func pull() -> [Float] {
-        lock.withLock {
+        let (samples, fallback) = lock.withLock { () -> ([Float], NvstOpusMultistreamLayout?) in
             defer { bufferedSamples.removeAll(keepingCapacity: true); sampleOffset = 0 }
-            return Array(bufferedSamples.dropFirst(sampleOffset)) + drain(jitter.advance())
+            return (Array(bufferedSamples.dropFirst(sampleOffset)) + drain(jitter.advance()), applyStereoFallbackLocked())
         }
+        if let fallback { onLayoutFallback?(fallback) }
+        return samples
     }
 
     public func pull(sampleCount: Int) -> [Float] {
-        lock.lock()
-        defer { lock.unlock() }
+        let (samples, fallback) = lock.withLock { () -> ([Float], NvstOpusMultistreamLayout?) in
+            (pullLocked(sampleCount: sampleCount), applyStereoFallbackLocked())
+        }
+        // Notified outside the lock: the owner reacts by swapping the matrix its render thread uses,
+        // and calling back into the pipeline from under this lock would deadlock it.
+        if let fallback { onLayoutFallback?(fallback) }
+        return samples
+    }
+
+    /// The body of `pull(sampleCount:)`, under the lock, so `pull()` can share it.
+    private func pullLocked(sampleCount: Int) -> [Float] {
         guard sampleCount > 0 else { return [] }
         if sampleOffset > 0 {
             bufferedSamples.removeFirst(sampleOffset)
             sampleOffset = 0
         }
         bufferedSamples.append(contentsOf: drain(jitter.advance()))
+        let channels = storedLayout.channels
         let excessFrames = (bufferedSamples.count - sampleCount) / max(1, channels) - Self.maximumBacklogFrames
-        if excessFrames > 0 {
+        if excessFrames > Self.backlogTrimHysteresisFrames {
             bufferedSamples.removeFirst(excessFrames * channels)
             counters.trimmedFrames &+= UInt64(excessFrames)
         }
         let count = min(sampleCount, bufferedSamples.count)
         sampleOffset = count
         return Array(bufferedSamples.prefix(count))
+    }
+
+    /// Rebuilds the decoder as stereo once the negotiated layout has proved undecodable. Called with
+    /// the lock held; returns the layout it fell back to, so the notification can be delivered after
+    /// the lock is dropped.
+    ///
+    /// This is what covers a seat that describes `nv-audio-surround-opus-params` and then sends
+    /// stereo: the session degrades to working stereo instead of playing silence for its whole
+    /// length. A macOS whose Opus decoder has no multistream support never gets this far —
+    /// `NvstOpusMultistreamLayout.negotiated` probes for that and negotiates stereo up front.
+    private func applyStereoFallbackLocked() -> NvstOpusMultistreamLayout? {
+        guard pendingStereoFallback, storedLayout.isSurround else { return nil }
+        pendingStereoFallback = false
+        guard let stereo = try? NvstOpusDecoder(framesPerPacket: framesPerPacket, layout: .stereo) else { return nil }
+        decoder = stereo
+        storedLayout = .stereo
+        lastDecoderFailures = 0
+        // Everything buffered is in the old width, and nothing that decoded so far was usable.
+        bufferedSamples.removeAll(keepingCapacity: true)
+        sampleOffset = 0
+        return .stereo
     }
 
     /// Emits everything still held; the stream is ending, so nothing should be left behind.
@@ -178,7 +251,6 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
                         counters.decodedSamples &+= UInt64(decoded.count)
                     }
                 } catch {
-                    counters.decodeFailures += 1
                     output.append(contentsOf: silence())
                 }
             case .lost:
@@ -187,11 +259,22 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
                 output.append(contentsOf: silence())
             }
         }
+        // The decoder reports a rejected packet through its own counters rather than by throwing,
+        // so its tally is the only honest record of one — and the pipeline's health is read from the
+        // same place. A decoder that has consumed `unproductivePacketLimit` packets without producing
+        // a single frame is not decoding the layout it was built for.
+        let failures = decoder.failedPackets
+        if failures > lastDecoderFailures { decoderFailureCount &+= failures - lastDecoderFailures }
+        lastDecoderFailures = failures
+        counters.decodeFailures = decoderFailureCount
+        if storedLayout.isSurround, decoder.hasProducedNoAudio {
+            pendingStereoFallback = true
+        }
         return output
     }
 
     private func silence() -> [Float] {
-        [Float](repeating: 0, count: framesPerPacket * channels)
+        [Float](repeating: 0, count: framesPerPacket * storedLayout.channels)
     }
 
 }

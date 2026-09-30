@@ -15,15 +15,22 @@ public struct NvstRtspNegotiator: Sendable {
 
     let reserver: any NvstBundleReserving
     let logger: (@Sendable (String) -> Void)?
+    /// Whether this macOS can build a decoder for a multistream layout at all. A surround layout is
+    /// only announced when it can, so the seat is never asked for audio the decoder cannot produce.
+    /// Injected so the negotiation can be tested on a macOS whose Opus decoder refuses the family 1
+    /// cookie.
+    private let canDecodeSurround: @Sendable (NvstOpusMultistreamLayout) -> Bool
     private let connectionFactory: @Sendable (NvstRtspEndpoints.Target, Duration, (@Sendable (String) -> Void)?) -> any NvstRtspControlChannel
 
     public init(reserver: any NvstBundleReserving,
                 logger: (@Sendable (String) -> Void)? = nil,
+                canDecodeSurround: @escaping @Sendable (NvstOpusMultistreamLayout) -> Bool = { NvstOpusDecoder.canDecode(layout: $0) },
                 connectionFactory: @escaping @Sendable (NvstRtspEndpoints.Target, Duration, (@Sendable (String) -> Void)?) -> any NvstRtspControlChannel = { target, timeout, logger in
                     NvstRtspConnection(target: target, timeout: timeout, logger: logger)
                 }) {
         self.reserver = reserver
         self.logger = logger
+        self.canDecodeSurround = canDecodeSurround
         self.connectionFactory = connectionFactory
     }
 
@@ -234,10 +241,19 @@ extension NvstRtspNegotiator {
                                input: NvstRtspNegotiationInput,
                                steps: inout [String]) async throws {
         let audioLayout = NvstOpusMultistreamLayout.negotiated(requestedChannels: input.audioChannelCount,
-                                                               offered: described.surroundLayouts)
+                                                               offered: described.surroundLayouts,
+                                                               canDecode: canDecodeSurround)
         logger?("NVST audio layout requested=\(input.audioChannelCount)"
                 + " offered=\(described.surroundLayouts.map { String($0.channels) }.joined(separator: ","))"
                 + " negotiated=\(audioLayout.summary)")
+        if input.audioChannelCount > 2, !audioLayout.isSurround {
+            // Says which bound refused the surround count, so a log with "no 5.1" in it explains
+            // itself: an offer the seat never made, a device too narrow, or this macOS's Opus
+            // decoder having no multistream support.
+            logger?("NVST surround was requested but the session runs in stereo"
+                    + " (seatOffered=\(described.surroundLayouts.map { String($0.channels) }.joined(separator: ","))"
+                    + " multistreamDecodable=\(described.surroundLayouts.contains { canDecodeSurround($0) }))")
+        }
         let bundleIdentity = await reserver.bundleIdentity(for: resolved.handoff,
                                                            microphoneOfferedOnBundle: described.microphoneOfferedOnBundle,
                                                            audioLayout: audioLayout)

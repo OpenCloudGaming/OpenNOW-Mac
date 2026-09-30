@@ -103,22 +103,17 @@ public final class NvstNativeBundle: @unchecked Sendable {
     private static let feedbackStream: UInt16 = 14
     /// The seat's game audio arrives 5 ms per packet (`x-nv-aqos.packetDuration:5`), which is the
     /// grid the Opus decoder and jitter buffer pull on.
-    private static let decodedAudioFramesPerPacket = 240
+    private static let decodedAudioFramesPerPacket = NvstOpusDecoder.seatFramesPerPacket
     /// The seat's microphone contract asks for 10 ms frames (`x-nv-mic.frameSize:10`), the same
     /// `a=ptime:10` the verified working mic section carried. Sending 5 ms Opus here leaves the
     /// seat's virtual mic meter dead even though packets leave the host.
     private static let microphoneFramesPerPacket = 480
     private static let microphoneChannels = 2
 
-    public private(set) var audioLayout = NvstOpusMultistreamLayout.stereo
-    public var audioChannelCount: Int { audioLayout.channels }
+    private let playoutLock = NSLock()
+    private var playout = NvstBundlePlayout(layout: .stereo)
     public private(set) var inputProtocolVersion: UInt16?
     public private(set) var microphoneSenderSsrc: UInt32?
-
-    public var audioOutputLatencySeconds: Double? { audioDevice?.outputPathLatencySeconds }
-    /// The seat's audio is a single stereo-or-surround stream, so the count is what the HUD reports
-    /// as the track count on this transport.
-    public var remoteAudioTrackCount: Int { audioChannelCount }
 
     public var isControlChannelOpen: Bool { association?.isChannelOpen(Self.controlStream) ?? false }
     public var isFeedbackChannelOpen: Bool { association?.isChannelOpen(Self.feedbackStream) ?? false }
@@ -166,7 +161,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
     /// background and `onHandshakeComplete` fires when the seat starts answering. Nothing here talks
     /// to the RTSP negotiator, which keeps using `NvstBundleReserving`.
     public func prepare(microphone: MicrophoneSetup?, audioLayout: NvstOpusMultistreamLayout) async throws -> Identity {
-        self.audioLayout = audioLayout
+        playoutLock.withLock { playout = NvstBundlePlayout(layout: audioLayout) }
         self.microphoneSetup = microphone
         // ANNOUNCE goes out before the DTLS handshake can key a send pipeline, so whether the mic is
         // carried and the SSRC its RTP arrives with must be known now. The SSRC is deterministic, so
@@ -347,11 +342,13 @@ public final class NvstNativeBundle: @unchecked Sendable {
             // client values and receive with the server's. Duplicating the mapping here would let a
             // future edit swap it without touching the test that pins it.
             let directions = NvstAudioSrtpDirection.directions(from: keys)
-            receivePipeline = try NvstAudioReceivePipeline(
+            let pipeline = try NvstAudioReceivePipeline(
                 srtp: try NvstAudioSrtp(masterKey: directions.inbound.key, masterSalt: directions.inbound.salt, profile: profile),
                 framesPerPacket: Self.decodedAudioFramesPerPacket,
                 layout: audioLayout
             )
+            pipeline.onLayoutFallback = { [weak self] layout in self?.adoptPlayout(layout: layout) }
+            receivePipeline = pipeline
             sendPipeline = nil
             if let microphone {
                 let send = try NvstAudioSendPipeline(
@@ -379,16 +376,20 @@ public final class NvstNativeBundle: @unchecked Sendable {
     /// device can change under a running session when the default output does.
     private func startAudioDevice() {
         let layout = audioLayout
-        let mixer = NvstPlayoutMixer(source: layout.speakers)
         let device = NvstCoreAudioDevice(playoutChannelCount: layout.channels,
                                          preferredInputDeviceUID: microphoneSetup?.deviceUniqueID)
+        // The layout and its mixer are read together, once per render, so a decoder fallback that
+        // lands between two renders cannot pair one width with the other's matrix. The device stays
+        // as wide as it was opened — a fallback just leaves its other speakers silent.
         device.fillPlayout = { [weak self, weak device] destination, sampleCount in
-            guard let pipeline = self?.receivePipeline, let speakers = device?.playoutSpeakers, !speakers.isEmpty else {
+            guard let self, let pipeline = self.receivePipeline,
+                  let speakers = device?.playoutSpeakers, !speakers.isEmpty else {
                 destination.update(repeating: 0, count: sampleCount)
                 return
             }
+            let (decode, mixer) = playoutLock.withLock { (playout.layout, playout.mixer) }
             let frames = sampleCount / speakers.count
-            mixer.render(pipeline.pull(sampleCount: frames * layout.channels), frames: frames, speakers: speakers, into: destination)
+            mixer.render(pipeline.pull(sampleCount: frames * decode.channels), frames: frames, speakers: speakers, into: destination)
             let written = frames * speakers.count
             if written < sampleCount { destination.advanced(by: written).update(repeating: 0, count: sampleCount - written) }
         }
@@ -397,7 +398,10 @@ public final class NvstNativeBundle: @unchecked Sendable {
                 self?.onGameAudioFrame?(pointer, frames, rate, channels)
                 return
             }
-            mixer.withStereoTap { stereo, stereoFrames in self?.onGameAudioFrame?(stereo, stereoFrames, rate, 2) }
+            guard let self else { return }
+            playoutLock.withLock { playout.mixer }.withStereoTap { stereo, stereoFrames in
+                self.onGameAudioFrame?(stereo, stereoFrames, rate, 2)
+            }
         }
         device.onMicrophoneAudio = { [weak self] pointer, frames, rate, channels in
             guard let self else { return }
@@ -549,7 +553,38 @@ extension NvstNativeBundle {
 }
 
 
+/// The decode width the render thread is placing, and the matrix that places it. They move
+/// together: when the decoder proves it cannot decode the negotiated layout the pipeline rebuilds as
+/// stereo, and rendering a new width with the old matrix would read every sample at the wrong stride.
+private struct NvstBundlePlayout {
+    var layout: NvstOpusMultistreamLayout
+    var mixer: NvstPlayoutMixer
+
+    init(layout: NvstOpusMultistreamLayout) {
+        self.layout = layout
+        mixer = NvstPlayoutMixer(source: layout.speakers)
+    }
+}
+
 extension NvstNativeBundle {
+    /// The audio layout the session is actually decoding: the negotiated one, or stereo once the
+    /// decoder has rejected it.
+    public var audioLayout: NvstOpusMultistreamLayout { playoutLock.withLock { playout.layout } }
+    public var audioChannelCount: Int { audioLayout.channels }
+    public var audioOutputLatencySeconds: Double? { audioDevice?.outputPathLatencySeconds }
+    /// The seat's audio is a single stereo-or-surround stream, so the count is what the HUD reports
+    /// as the track count on this transport.
+    public var remoteAudioTrackCount: Int { audioChannelCount }
+
+    /// Adopts the layout the receive pipeline actually ended up decoding. Called from the CoreAudio
+    /// render thread through the pipeline's fallback hook, so it does the two things that cannot
+    /// wait — swap the state the next render reads, and leave one line in the log explaining why
+    /// this session is in stereo — and nothing else.
+    private func adoptPlayout(layout: NvstOpusMultistreamLayout) {
+        playoutLock.withLock { playout = NvstBundlePlayout(layout: layout) }
+        logger?("NVST audio decoder could not decode the negotiated layout; the session continues in \(layout.summary)")
+    }
+
     /// Whether the microphone was armed for this session, and the SSRC its RTP arrives on. The send
     /// pipeline exists only when a setup was supplied, so this is what ANNOUNCE's
     /// `rtcMicOnNativeBundle` must follow: a pipeline with no requested microphone would advertise

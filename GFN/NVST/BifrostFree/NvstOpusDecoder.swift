@@ -30,6 +30,78 @@ public final class NvstOpusDecoder: @unchecked Sendable {
 
     public static let sampleRate: Double = 48000
 
+    /// The seat's game audio frame: 5 ms at 48 kHz, which is the `x-nv-aqos.packetDuration:5` the
+    /// session negotiates and the RTP timestamp step measured on the wire.
+    public static let seatFramesPerPacket = 240
+
+    /// Packets a decoder may consume without producing a single frame before the layout is judged
+    /// undecodable here. Opus has a priming delay, so the first packets legitimately produce
+    /// nothing; 20 packets is 100 ms, which is short enough to be heard as a click rather than as
+    /// silence.
+    public static let unproductivePacketLimit = 20
+
+    /// Whether this macOS can build a decoder for `layout` at all.
+    ///
+    /// A multistream (RFC 7845 channel-mapping family 1) `OpusHead` is not accepted everywhere the
+    /// app runs: on macOS 15–26 `AudioConverterNew` refuses the six-channel stream format and the
+    /// cookie is rejected with `kAudioConverterErr_FormatNotSupported` (`fmt?`), and the same build
+    /// succeeds on macOS 27. The seat's offer is therefore no evidence that the audio can be
+    /// decoded here, and the layout a session negotiates is gated on this probe rather than on the
+    /// negotiated count alone. See `NvstOpusMultistreamLayout.negotiated`.
+    public static func canDecode(layout: NvstOpusMultistreamLayout,
+                                 framesPerPacket: Int = seatFramesPerPacket) -> Bool {
+        guard layout.isSurround else { return true }
+        guard let converter = try? makeConverter(layout: layout, framesPerPacket: framesPerPacket) else { return false }
+        AudioConverterDispose(converter)
+        return true
+    }
+
+    /// The converter for `layout`, with the `OpusHead` magic cookie already set, or the status that
+    /// refused it. Split out of `init` so `canDecode` can ask the same question the decoder answers.
+    private static func makeConverter(layout: NvstOpusMultistreamLayout,
+                                      framesPerPacket: Int) throws -> AudioConverterRef {
+        let channels = UInt32(layout.channels)
+        var source = AudioStreamBasicDescription(
+            mSampleRate: sampleRate,
+            mFormatID: kAudioFormatOpus,
+            mFormatFlags: 0,
+            mBytesPerPacket: 0,
+            mFramesPerPacket: UInt32(framesPerPacket),
+            mBytesPerFrame: 0,
+            mChannelsPerFrame: channels,
+            mBitsPerChannel: 0,
+            mReserved: 0
+        )
+        var destination = AudioStreamBasicDescription(
+            mSampleRate: sampleRate,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: 4 * channels,
+            mFramesPerPacket: 1,
+            mBytesPerFrame: 4 * channels,
+            mChannelsPerFrame: channels,
+            mBitsPerChannel: 32,
+            mReserved: 0
+        )
+        var created: AudioConverterRef?
+        let status = AudioConverterNew(&source, &destination, &created)
+        guard status == noErr, let created else { throw DecoderError.converterUnavailable(status) }
+
+        // Without an `OpusHead` magic cookie the decoder rejects every packet with 'bada'
+        // (`kAudioCodecBadDataError`) — including packets that reference libopus decodes without a
+        // single error. Nothing in the AudioToolbox headers says a cookie is required; it simply is.
+        let cookie = opusHeadCookie(layout: layout, sampleRate: UInt32(sampleRate))
+        let cookieStatus = cookie.withUnsafeBytes { raw in
+            AudioConverterSetProperty(created, kAudioConverterDecompressionMagicCookie,
+                                      UInt32(raw.count), raw.baseAddress!)
+        }
+        guard cookieStatus == noErr else {
+            AudioConverterDispose(created)
+            throw DecoderError.converterUnavailable(cookieStatus)
+        }
+        return created
+    }
+
     private let converter: AudioConverterRef
     let lock = NSLock()
     private var output: [Float]
@@ -51,6 +123,16 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     public var oversizedPackets: UInt64 { lock.lock(); defer { lock.unlock() }; return oversizedPacketCount }
     public var lastFailure: OSStatus { lock.lock(); defer { lock.unlock() }; return lastFailureStatus }
     public var framesPerPacketSeen: [Int: UInt64] { lock.lock(); defer { lock.unlock() }; return framesPerPacketCounts }
+
+    /// True once this decoder has consumed `unproductivePacketLimit` packets without producing a
+    /// single frame. That is what a family 1 decoder does when the seat described a surround layout
+    /// and then sent stereo — it rejects every packet with 'bada' — and it is also what an accepted
+    /// but unusable cookie looks like, so the two need no separate handling.
+    public var hasProducedNoAudio: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return decodedFrameCount == 0 && decodedPacketCount >= Self.unproductivePacketLimit
+    }
 
     /// RFC 7845's identification header: magic, version, channel count, pre-skip, input sample
     /// rate, output gain, channel-mapping family, and for family 1 the stream table.
@@ -78,52 +160,14 @@ public final class NvstOpusDecoder: @unchecked Sendable {
     public var channels: Int { layout.channels }
 
     /// - Parameter framesPerPacket: samples per channel in each packet — the stream's RTP timestamp
-    ///   step. 240 is 5 ms at 48 kHz, which is what the seat sends.
-    public init(framesPerPacket: Int = 240, layout: NvstOpusMultistreamLayout = .stereo) throws {
+    ///   step. `seatFramesPerPacket` is 5 ms at 48 kHz, which is what the seat sends.
+    public init(framesPerPacket: Int = NvstOpusDecoder.seatFramesPerPacket,
+                layout: NvstOpusMultistreamLayout = .stereo) throws {
         self.framesPerPacket = framesPerPacket
         self.layout = layout
-        let channels = UInt32(layout.channels)
-        var source = AudioStreamBasicDescription(
-            mSampleRate: Self.sampleRate,
-            mFormatID: kAudioFormatOpus,
-            mFormatFlags: 0,
-            mBytesPerPacket: 0,
-            mFramesPerPacket: UInt32(framesPerPacket),
-            mBytesPerFrame: 0,
-            mChannelsPerFrame: channels,
-            mBitsPerChannel: 0,
-            mReserved: 0
-        )
-        var destination = AudioStreamBasicDescription(
-            mSampleRate: Self.sampleRate,
-            mFormatID: kAudioFormatLinearPCM,
-            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
-            mBytesPerPacket: 4 * channels,
-            mFramesPerPacket: 1,
-            mBytesPerFrame: 4 * channels,
-            mChannelsPerFrame: channels,
-            mBitsPerChannel: 32,
-            mReserved: 0
-        )
-        var created: AudioConverterRef?
-        let status = AudioConverterNew(&source, &destination, &created)
-        guard status == noErr, let created else { throw DecoderError.converterUnavailable(status) }
-        converter = created
-
-        // Without an `OpusHead` magic cookie the decoder rejects every packet with 'bada'
-        // (`kAudioCodecBadDataError`) — including packets that reference libopus decodes without a
-        // single error. Nothing in the AudioToolbox headers says a cookie is required; it simply is.
-        let cookie = Self.opusHeadCookie(layout: layout, sampleRate: UInt32(Self.sampleRate))
-        let cookieStatus = cookie.withUnsafeBytes { raw in
-            AudioConverterSetProperty(created, kAudioConverterDecompressionMagicCookie,
-                                      UInt32(raw.count), raw.baseAddress!)
-        }
-        guard cookieStatus == noErr else {
-            AudioConverterDispose(created)
-            throw DecoderError.converterUnavailable(cookieStatus)
-        }
+        converter = try Self.makeConverter(layout: layout, framesPerPacket: framesPerPacket)
         output = [Float](repeating: 0, count: max(framesPerPacket, 1) * layout.channels)
-        queue = Queue(capacity: 4096, channels: channels)
+        queue = Queue(capacity: 4096, channels: UInt32(layout.channels))
     }
 
     deinit { AudioConverterDispose(converter) }
@@ -271,3 +315,21 @@ public final class NvstOpusDecoder: @unchecked Sendable {
             .joined(separator: ",")
     }
 }
+
+/// What the receive pipeline needs from an Opus decoder: PCM, and enough about the decoder's own
+/// health to tell a layout it cannot decode from a stream that is merely quiet.
+///
+/// `NvstOpusDecoder` is the only implementation that ships. The seam exists because the fallback it
+/// feeds cannot otherwise be exercised on a macOS whose Opus decoder has no multistream support:
+/// there, the surround decoder such a test would need cannot be built in the first place.
+protocol NvstOpusDecoding: AnyObject, Sendable {
+    /// Packets the decoder rejected. A family 1 decoder rejects every packet with 'bada' when the
+    /// seat sends stereo, and it reports that through this counter rather than by throwing.
+    var failedPackets: UInt64 { get }
+    /// True once the decoder has consumed enough packets without producing a single frame that the
+    /// layout it was built for is the only remaining explanation.
+    var hasProducedNoAudio: Bool { get }
+    func decode(_ packet: Data) throws -> [Float]?
+}
+
+extension NvstOpusDecoder: NvstOpusDecoding {}
