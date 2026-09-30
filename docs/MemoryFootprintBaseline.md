@@ -7,7 +7,7 @@ configuration, and how to reproduce it.
 
 ## What is measured
 
-`OPNMemoryFootprint.currentBytes()` (`OPN/Telemetry/OPNMemoryFootprint.swift`) reads
+`OPNMemoryFootprint.physicalFootprintBytes()` (`OPN/Telemetry/OPNMemoryFootprint.swift`) reads
 `task_vm_info.phys_footprint` with `task_info`. That is the number Activity Monitor reports and the
 number the kernel enforces a memory limit against. The read is a single Mach call against a counter
 the kernel already keeps: it allocates nothing, takes no lock and touches no file.
