@@ -37,6 +37,7 @@ GeForce NOW works on a Mac, but the official client leaves a lot on the table - 
 | | |
 | --- | --- |
 | 🎮 **Steam Controller 2026 support** | Wired, Bluetooth LE, and both 2.4 GHz dongles. Full HID parsing, haptics, back grips, trackpads, custom mappings - no Steam required. |
+| 🎯 **Gamepad API for Xbox and PlayStation pads** | Read Xbox, DualSense and DualShock 4 controllers from their own reports instead of Apple's framework, so the thumbsticks reach the game without the dead zone Apple adds - and switch between the two mid-game from ⌘G. [More ↓](#controller-input-apple-framework-or-gamepad-api) |
 | 🖥️ **Built for ultrawide** | 21:9 up to 5120×2160 and 32:9 up to 5120×1440, HEVC and AV1, and six ways to kill the black bars. [More ↓](#made-for-ultrawide) |
 | 🔼 **Upscaling** | Off, Spatial, or MetalFX, targeting 2K/4K/5K, with live Clarity and Noise Reduction sliders and gamepad navigation. [More ↓](#upscaling) |
 | ⚡ **Native NVST transport** | Stream over NVIDIA's NVST protocol on OpenNOW's own native stack - RTSPS control, raw-SRTP video, VideoToolbox decode - with no vendor runtime in the bundle. [More ↓](#native-nvst-transport) |
@@ -167,6 +168,17 @@ A Steam Deck-style overlay for logins, chat, and search fields in any GeForce NO
 Struct layouts for all three formats are documented in SDL's [`controller_structs.h`](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/steam/controller_structs.h). Axis values normalize to `-1...1` (`Int16` full scale), triggers and pad pressure to `0...1`. Parsing is covered by `Tests/Stream/SteamControllerReportTests.swift`.
 
 </details>
+
+## Controller Input: Apple Framework or Gamepad API
+
+macOS hands game controllers to apps through Apple's GameController framework, which applies its own dead zone to the thumbsticks before any app sees them, and OpenNOW added a second one on top. Small stick movements never reached the game, and lowering the dead zone in the game's own settings could not bring them back.
+
+**Settings → Input → Controller Input → Controller API** chooses how pads are read:
+
+- **Apple Framework** - the default, and the behaviour OpenNOW always had.
+- **Gamepad API** - DualSense, DualShock 4 and Bluetooth Xbox controllers are read from their own HID reports, and their sticks are sent to the game untouched, so only the game's dead zone applies. Any other controller is still read through Apple Framework.
+
+During a stream, the **Controller API** tile in the ⌘G menu switches between the two and lists each connected controller with the path it is read through and the stick values being sent, so the difference can be felt and checked mid-game. The controller tester in Settings → Input shows the raw values in Gamepad API mode.
 
 ## Record Your Runs
 
