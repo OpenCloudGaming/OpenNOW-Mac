@@ -107,6 +107,13 @@ extension NativeNVSTMediaStreamSurface {
                           isActive: false,
                           isDisabled: false,
                           action: { model.showingControllerOrder = true }),
+            NativeHUDTile(id: "controller-api",
+                          title: "Controller API",
+                          subtitle: model.controllerInput.backend.label,
+                          systemName: "scope",
+                          isActive: model.controllerInput.backend == .gamepadAPI,
+                          isDisabled: false,
+                          action: model.toggleControllerInputBackend),
         ]
     }
 

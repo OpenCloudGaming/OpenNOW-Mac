@@ -254,3 +254,43 @@ struct StreamHUDParticipantIconButton: View {
         .help(label)
     }
 }
+
+/// Which input path a controller is on and the stick values the stream sends for it, so the
+/// Controller API choice can be checked mid-game.
+struct StreamHUDControllerInputRow: View {
+    let label: String
+    let name: String
+    let path: String
+    let isRaw: Bool
+    let output: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(label.uppercased())
+                    .font(.streamFont(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
+                Text(name)
+                    .font(.streamFont(size: 11, weight: .medium))
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 6)
+                Text(path.uppercased())
+                    .font(.streamFont(size: 9, weight: .bold))
+                    .tracking(0.7)
+                    .foregroundStyle(isRaw ? StreamHUDTheme.accent : StreamHUDTheme.textSecondary)
+            }
+            Text(output ?? "Move a stick to read its output")
+                .font(.streamFont(size: 10, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(StreamHUDTheme.textSecondary)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.055))
+        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+    }
+}
