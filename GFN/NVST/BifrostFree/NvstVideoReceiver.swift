@@ -134,8 +134,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// thousand packets. At the measured ~8,500 packets/s that is ~140 ms of worst-case wait
     /// before an unrepairable gap falls back to the keyframe path.
     public static let fecRepairReorderWindow = 1200
-    /// The same wait bounded in time. A packet window lasts longer the lighter the scene: at
-    /// ~700 packets/s the 1200 packets held every frame behind one lost packet for 1.7 s.
+    /// Every wait bounded in time: a gap is loss once it has been open this long, whichever packet
+    /// window applies. A packet window lasts longer the lighter the scene: at ~700 packets/s the
+    /// 1200 packets held every frame behind one lost packet for 1.7 s, and at ~120 packets/s in a
+    /// menu even the plain 32-packet reorder window held ten frames for 260 ms.
     public static let fecRepairMaximumWaitNanoseconds: UInt64 = 100_000_000
 
     public enum ReceiverError: LocalizedError, Equatable, Sendable {
@@ -647,14 +649,15 @@ extension NvstVideoReceiver {
             stats.outOfOrderPackets += 1
             if openGap?.index != expected { openGap = (expected, uptimeNanoseconds()) }
         }
-        if index - expected >= UInt64(reorderWindow),
+        let gapOutlivedWait = index > expected && gapOutlivedFecRepair()
+        if index - expected >= UInt64(reorderWindow) || gapOutlivedWait,
            // With FEC armed, a gap must outlive the chance of repair before it is loss: the
            // block's parity packets arrive after all of its sources, which at 5K is up to ~1000
            // packets after an early-frame hole — far past the plain reorder window. Holding the
            // gap costs one frame a few milliseconds of delivery delay; finalizing it early costs
            // the frame, a keyframe round trip, and the seat's frame-rate knock. The armed check
            // runs only while a gap is already open, so the hot path never takes the extra lock.
-           !(index - expected < UInt64(Self.fecRepairReorderWindow) && !gapOutlivedFecRepair() && fecRecovery.snapshot.isArmed) {
+           !(index - expected < UInt64(Self.fecRepairReorderWindow) && !gapOutlivedWait && fecRecovery.snapshot.isArmed) {
             // The gap has aged past the reorder window: whatever is still missing below the first
             // buffered packet is finalized loss, and only that range is skipped. The buffered
             // packets arrived intact and are delivered below — flushing the whole buffer here

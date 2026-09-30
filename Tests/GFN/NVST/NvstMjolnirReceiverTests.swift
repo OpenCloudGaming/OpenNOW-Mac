@@ -339,6 +339,27 @@ struct NvstMjolnirReceiverTests {
 
     /// A light scene sends few packets, so the repair window measured in packets could hold every
     /// later frame for seconds. Once repair has had its time, the gap becomes loss.
+    /// A menu can run at ~120 packets/s, where 32 packets take a quarter of a second: the gap is
+    /// loss once it has waited out the time bound, however few packets arrived behind it.
+    @Test func aGapInALightStreamBecomesLossAfterTheTimeBoundNotThePacketWindow() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 32)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        func frame(_ sequence: UInt16) throws -> Data {
+            try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07,
+                                                                      media: [0x00, 0x00, 0x00, 0x01, 0x41, UInt8(sequence)]),
+                                          sequence: sequence, handoff: handoff)
+        }
+        _ = receiver.process(datagram: try frame(1))
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(3))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitNanoseconds - 1 }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(4))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitNanoseconds }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(5))) == 1)
+        #expect(receiver.snapshot.finalizedLossPackets == 1)
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(6))) == 0)
+    }
+
     @Test func anOpenGapBecomesLossOnceFecRepairTimesOut() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
