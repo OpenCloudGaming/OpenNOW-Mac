@@ -34,20 +34,27 @@ final class GamepadHIDMonitor: @unchecked Sendable {
     func refreshActivation() {
         let wantsReading = ControllerInputBackendPreference.load() == .gamepadAPI
         let queue = queue
-        let stopped = state.withLock { state -> GamepadHIDSession? in
+        let stopped = state.withLock { state -> [GamepadHIDSession] in
             let shouldRead = wantsReading && !state.consumers.isEmpty
             if shouldRead, state.activeSession == nil {
                 let session = GamepadHIDSession(queue: queue)
+                guard session.activate(onCancelled: { [weak self] cancelled in self?.finishCancellation(of: cancelled) }) else {
+                    // The manager never opened, so nothing was activated and no callback can fire:
+                    // dropping the session here is safe. Leaving it in `activeSession` made one
+                    // failed open permanent for the rest of the stream — `refreshActivation` saw a
+                    // session already present and never tried again. No session means the next
+                    // activation retries.
+                    return []
+                }
                 state.activeSession = session
-                session.activate { [weak self] cancelled in self?.finishCancellation(of: cancelled) }
             } else if !shouldRead, let session = state.activeSession {
                 state.activeSession = nil
                 state.cancellingSessions.append(session)
-                return session
+                return [session]
             }
-            return nil
+            return []
         }
-        stopped?.cancel()
+        stopped.forEach { $0.cancel() }
     }
 
     func snapshots() -> [ObjectIdentifier: ControllerInputSnapshot] {
@@ -55,8 +62,10 @@ final class GamepadHIDMonitor: @unchecked Sendable {
         return session.snapshots(for: GCController.controllers())
     }
 
+    /// The controllers the wire will send without the client deadzone. Named for what it is used
+    /// for rather than for pairing alone: a pair whose reports have expired is not being read raw.
     func pairedControllerIDs() -> Set<ObjectIdentifier> {
-        state.withLock { $0.activeSession }?.pairedControllerIDs ?? []
+        state.withLock { $0.activeSession }?.rawReadControllerIDs ?? []
     }
 
     private func finishCancellation(of session: GamepadHIDSession) {
@@ -65,8 +74,19 @@ final class GamepadHIDMonitor: @unchecked Sendable {
 }
 
 struct GamepadHIDReading: Sendable {
+    /// A pad that stops reporting — asleep, out of range, battery flat — must not keep replaying its
+    /// last report: a button held at that moment would read as stuck down, and a stick as held off
+    /// centre, for the rest of the session. 500 ms is far longer than any live pad's report
+    /// interval, so only a pad that has genuinely gone quiet expires.
+    static let maximumAge = DispatchTimeInterval.milliseconds(500)
+
     let family: GamepadHIDFamily
     var snapshot: ControllerInputSnapshot
+    var receivedAt: DispatchTime
+
+    func isFresh(at now: DispatchTime) -> Bool {
+        receivedAt + Self.maximumAge > now
+    }
 }
 
 struct GamepadHIDSessionState: Sendable {
@@ -88,7 +108,9 @@ final class GamepadHIDSession: @unchecked Sendable {
         IOHIDManagerSetDeviceMatchingMultiple(manager, Self.deviceMatching())
     }
 
-    func activate(onCancelled: @escaping @Sendable (GamepadHIDSession) -> Void) {
+    /// Opens the manager and starts delivering reports. Returns false when the open failed, in
+    /// which case nothing was activated and the caller must not treat the session as live.
+    func activate(onCancelled: @escaping @Sendable (GamepadHIDSession) -> Void) -> Bool {
         let context = Unmanaged.passUnretained(self).toOpaque()
         IOHIDManagerRegisterDeviceMatchingCallback(manager, Self.deviceMatched, context)
         IOHIDManagerRegisterDeviceRemovalCallback(manager, Self.deviceRemoved, context)
@@ -102,16 +124,32 @@ final class GamepadHIDSession: @unchecked Sendable {
             onCancelled(self)
         }
         let status = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-        IOHIDManagerActivate(manager)
-        if status == kIOReturnSuccess {
-            OPNLog.info(.controller, "Gamepad HID reader started")
-        } else {
-            OPNLog.warning(.controller, "Gamepad HID manager open status=\(status)")
+        guard status == kIOReturnSuccess else {
+            // Reported, not swallowed: without Input Monitoring the open fails every time, and the
+            // only visible symptom is that the Gamepad API option does nothing.
+            OPNLog.warning(.controller, "Gamepad HID manager open status=\(status); will retry on the next activation")
+            OPNStreamTelemetry.capture("input.gamepad.hid.unavailable", level: .warning,
+                                       message: "Gamepad HID reader could not open, so raw stick values are unavailable.",
+                                       attributes: ["status": String(status)])
+            return false
         }
+        IOHIDManagerActivate(manager)
+        OPNLog.info(.controller, "Gamepad HID reader started")
+        return true
     }
 
-    var pairedControllerIDs: Set<ObjectIdentifier> {
-        state.withLock { Set($0.pairing.pairs.keys) }
+    /// Controller identities whose values are currently coming from this reader: paired, and with a
+    /// report recent enough to be the pad's live state. `snapshots(for:)` applies the same two
+    /// predicates, so a pad cannot be reported as read through the Gamepad API while the wire is
+    /// actually deadzoning its GameController values.
+    var rawReadControllerIDs: Set<ObjectIdentifier> {
+        let now = DispatchTime.now()
+        return state.withLock { state in
+            Set(state.pairing.pairs.compactMap { controller, device in
+                guard let reading = state.readings[device], reading.isFresh(at: now) else { return nil }
+                return controller
+            })
+        }
     }
 
     func cancel() {
@@ -127,14 +165,21 @@ final class GamepadHIDSession: @unchecked Sendable {
                          family: GamepadHIDFamily(controller: controller, gamepad: gamepad),
                          buttons: NativeGamepadMonitor.buttons(from: gamepad))
         }
+        let now = DispatchTime.now()
         let (snapshots, pairedCount, previousCount) = state.withLock { state in
             let previousCount = state.pairing.pairs.count
+            // Pairing still sees every reading, including a stale one: dropping a pair because a pad
+            // went quiet for a moment would make two identical pads re-pair from scratch, which
+            // needs a button press.
             let devices = state.readings.map { key, reading in
                 GamepadHIDPairing<ObjectIdentifier, ObjectIdentifier>.Device(id: key, family: reading.family, buttons: reading.snapshot.buttons)
             }
             state.pairing.update(controllers: candidates, devices: devices)
             let readings = state.readings
-            return (state.pairing.pairs.compactMapValues { readings[$0]?.snapshot }, state.pairing.pairs.count, previousCount)
+            return (state.pairing.pairs.compactMapValues { device -> ControllerInputSnapshot? in
+                guard let reading = readings[device], reading.isFresh(at: now) else { return nil }
+                return reading.snapshot
+            }, state.pairing.pairs.count, previousCount)
         }
         if pairedCount != previousCount {
             OPNLog.info(.controller, "Gamepad HID paired \(pairedCount) controller(s)")
@@ -165,10 +210,14 @@ final class GamepadHIDSession: @unchecked Sendable {
 
     private func receive(_ report: [UInt8], from device: IOHIDDevice) {
         let key = ObjectIdentifier(device)
+        let now = DispatchTime.now()
         state.withLock { state in
-            guard let family = state.families[key],
-                  let snapshot = GamepadHIDReport.parse(report, family: family, previous: state.readings[key]?.snapshot) else { return }
-            state.readings[key] = GamepadHIDReading(family: family, snapshot: snapshot)
+            guard let family = state.families[key] else { return }
+            // A stale report is not a usable "previous": the legacy Xbox guide-bit carry-over would
+            // otherwise resurrect a button from a pad that has since gone quiet.
+            let previous = state.readings[key].flatMap { $0.isFresh(at: now) ? $0.snapshot : nil }
+            guard let snapshot = GamepadHIDReport.parse(report, family: family, previous: previous) else { return }
+            state.readings[key] = GamepadHIDReading(family: family, snapshot: snapshot, receivedAt: now)
         }
     }
 
@@ -183,10 +232,12 @@ final class GamepadHIDSession: @unchecked Sendable {
     }
 
     private static let reportReceived: IOHIDReportCallback = { context, result, sender, _, _, report, length in
-        guard let context, let sender, result == kIOReturnSuccess else { return }
+        // `length` is CFIndex and the report pointer is not optional in this SDK, but a zero-length
+        // callback is still not a report: `Array(UnsafeBufferPointer(...))` over it would be empty.
+        guard let context, let sender, result == kIOReturnSuccess, length > 0 else { return }
         let session = Unmanaged<GamepadHIDSession>.fromOpaque(context).takeUnretainedValue()
         let device = Unmanaged<IOHIDDevice>.fromOpaque(sender).takeUnretainedValue()
-        session.receive(Array(UnsafeBufferPointer(start: report, count: max(length, 0))), from: device)
+        session.receive(Array(UnsafeBufferPointer(start: report, count: length)), from: device)
     }
 
     private static func deviceMatching() -> CFArray {

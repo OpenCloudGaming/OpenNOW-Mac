@@ -581,10 +581,17 @@ extension SteamControllerReport {
     }
 
     public static func parse(_ report: [UInt8], previous: ControllerInputSnapshot, model: SteamControllerModel) -> SteamControllerReportEvent {
-        switch model {
+        let event: SteamControllerReportEvent = switch model {
         case .legacy: parseLegacy(report, previous: previous)
         case .triton: parseTriton(report, previous: previous)
         }
+        // Every value this parser produces came off the pad's own HID reports, which carry no
+        // deadzone — so the source is stamped once here rather than in each of the builders.
+        if case .state(var snapshot) = event {
+            snapshot.inputSource = .steamHID
+            return .state(snapshot)
+        }
+        return event
     }
 
     public static func lizardModeDisableReports(model: SteamControllerModel) -> [SteamControllerFeatureReport] {

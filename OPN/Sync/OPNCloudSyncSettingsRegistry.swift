@@ -33,6 +33,11 @@ enum OPNCloudSyncSettingsRegistry {
         // yields a broken library, which is the opposite of a convenience.
         OPNCaptureLibrary.screenshots.preferenceKey,
         OPNCaptureLibrary.recordings.preferenceKey,
+        // Which reader a pad is read through depends on what is plugged into *this* Mac. Syncing
+        // this switched the setting on every other Mac the user had never touched it on — and with
+        // different hardware attached, that can mean a pad whose sticks are now filtered
+        // differently, or a Steam Controller that loses the only deadzone it has.
+        ControllerInputBackendPreference.key,
     ]
 
     /// Whole namespaces that never travel, so a proxy key added later cannot slip through by not

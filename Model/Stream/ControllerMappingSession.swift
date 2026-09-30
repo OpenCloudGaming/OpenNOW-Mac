@@ -88,6 +88,7 @@ extension ControllerInputSnapshot {
         GamepadState(deviceID: deviceID, playerIndex: playerIndex, buttons: buttons,
                      leftTrigger: leftTrigger, rightTrigger: rightTrigger,
                      leftStickX: leftStickX, leftStickY: leftStickY,
-                     rightStickX: rightStickX, rightStickY: rightStickY, timestamp: timestamp)
+                     rightStickX: rightStickX, rightStickY: rightStickY, timestamp: timestamp,
+                     inputSource: inputSource)
     }
 }

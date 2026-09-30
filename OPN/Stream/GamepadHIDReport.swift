@@ -31,11 +31,17 @@ enum GamepadHIDReport {
     }
 
     static func parse(_ report: [UInt8], family: GamepadHIDFamily, previous: ControllerInputSnapshot?) -> ControllerInputSnapshot? {
-        switch family {
+        let snapshot: ControllerInputSnapshot? = switch family {
         case .xbox: parseXbox(report, previous: previous)
         case .dualSense: parseDualSense(report)
         case .dualShock4: parseDualShock4(report)
         }
+        guard var snapshot else { return nil }
+        // These are the pad's raw report values, which is the whole point of the Gamepad API
+        // reader: the client deadzone is deliberately not applied to them. Stamped here so the
+        // decision travels with the values instead of being re-derived from the preference later.
+        snapshot.inputSource = .gamepadAPI
+        return snapshot
     }
 
     static func axis(_ value: UInt8) -> Float {

@@ -41,6 +41,10 @@ public struct ControllerInputSnapshot: Equatable, Sendable {
     /// Inertial data, when the pad reports it and motion reporting is switched on. `nil` means
     /// "no gyro data available", which is different from "held perfectly still".
     public var motion: ControllerMotionSample?
+    /// Which reader produced these values. Travels with them so the wire's deadzone decision is
+    /// made per pad rather than from the app-wide `ControllerInputBackend` preference; see
+    /// `ControllerInputSource.appliesClientDeadzone`.
+    public var inputSource: ControllerInputSource
 
     public init(buttons: GamepadButtons = [],
                 leftTrigger: Float = 0,
@@ -56,7 +60,8 @@ public struct ControllerInputSnapshot: Equatable, Sendable {
                 rightGripSense: Bool = false,
                 leftStickTouched: Bool = false,
                 rightStickTouched: Bool = false,
-                motion: ControllerMotionSample? = nil) {
+                motion: ControllerMotionSample? = nil,
+                inputSource: ControllerInputSource = .appleFramework) {
         self.buttons = buttons
         self.leftTrigger = leftTrigger
         self.rightTrigger = rightTrigger
@@ -72,6 +77,7 @@ public struct ControllerInputSnapshot: Equatable, Sendable {
         self.leftStickTouched = leftStickTouched
         self.rightStickTouched = rightStickTouched
         self.motion = motion
+        self.inputSource = inputSource
     }
 }
 

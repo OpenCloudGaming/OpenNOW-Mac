@@ -181,7 +181,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         let snapshots = devices.values.filter { $0.deviceID == deviceID }.map(\.mergedSnapshot)
         guard !snapshots.isEmpty else { return nil }
         let empty = ControllerInputSnapshot()
-        return snapshots.reduce(into: empty) { merged, snapshot in
+        var merged = snapshots.reduce(into: empty) { merged, snapshot in
             merged.buttons.formUnion(snapshot.buttons)
             merged.leftTrigger = max(merged.leftTrigger, snapshot.leftTrigger)
             merged.rightTrigger = max(merged.rightTrigger, snapshot.rightTrigger)
@@ -198,6 +198,11 @@ public final class SteamControllerHIDMonitor: ObservableObject {
             merged.rightStickTouched = merged.rightStickTouched || snapshot.rightStickTouched
             if merged.motion == nil { merged.motion = snapshot.motion }
         }
+        // A Steam Controller applies no stick deadzone of its own — `SteamControllerReport` writes
+        // raw axis values straight into the sticks — so the client deadzone is the only one it ever
+        // gets. The merge starts from an empty snapshot, so the source is set on the result.
+        merged.inputSource = .steamHID
+        return merged
     }
 
     /// Re-applies the capture configuration after the active mapping profile changes, so

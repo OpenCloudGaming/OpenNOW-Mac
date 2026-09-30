@@ -12,6 +12,14 @@ import Testing
         return report
     }
 
+    /// The values this parser produces are the pad's raw report, so they must carry the source that
+    /// tells the wire to send them without the client deadzone.
+    @Test func parsedReportsCarryTheGamepadAPISource() throws {
+        let report = sonyReport(id: 0x01, count: 64, offset: 1)
+        let snapshot = try #require(GamepadHIDReport.parse(report, family: .dualSense, previous: nil))
+        #expect(snapshot.inputSource == .gamepadAPI)
+    }
+
     @Test func axesAreCenteredAndReachBothEnds() {
         #expect(GamepadHIDReport.axis(UInt8(128)) == 0)
         #expect(GamepadHIDReport.axis(UInt8(0)) == -1)
@@ -218,7 +226,7 @@ import Testing
         let state = NativeGamepadPollState()
         state.cachedControllers = [controller]
         state.controllerSlots = [key: 0]
-        state.hidSnapshots = { [key: ControllerInputSnapshot(leftStickX: 0.03)] }
+        state.hidSnapshots = { [key: ControllerInputSnapshot(leftStickX: 0.03, inputSource: .gamepadAPI)] }
         _ = state.configureMappings([key: NativeControllerMappingConfiguration(deviceID: "test-native", playerIndex: 0, profile: nil)])
         let captured = OSAllocatedUnfairLock(initialState: [UserInputEvent]())
         state.pollAndEmit(onEvents: { events in captured.withLock { $0 += events } }, onBatteryChange: { _ in })
@@ -226,16 +234,37 @@ import Testing
             if case .gamepad(let state) = event { state } else { nil }
         }.last
         #expect(gamepadState?.leftStickX == 0.03)
+        // The source travels with the values, so the wire can decide per pad.
+        #expect(gamepadState?.inputSource == .gamepadAPI)
     }
 
-    @Test func gamepadAPISendsSticksWithoutTheClientDeadzone() {
+    /// The deadzone is a property of the pad, not of the app-wide preference: with Gamepad API
+    /// selected, a Steam Controller and a wired Xbox pad are still read through their own paths
+    /// and must keep the only deadzone they get.
+    @Test func theClientDeadzoneIsDecidedPerPad() {
         let state = GamepadState(deviceID: "pad", playerIndex: 0, leftStickX: 0.1, rightStickY: -1, timestamp: MediaTimestamp(nanoseconds: 0))
-        let framework = NvstBifrostFreeTransport.wireSticks(state, backend: .appleFramework)
+        let framework = NvstBifrostFreeTransport.wireSticks(state, source: .appleFramework)
         #expect(framework.leftX == 0)
         #expect(framework.rightY == -1)
-        let raw = NvstBifrostFreeTransport.wireSticks(state, backend: .gamepadAPI)
+        let steam = NvstBifrostFreeTransport.wireSticks(state, source: .steamHID)
+        #expect(steam.leftX == 0)
+        #expect(steam.rightY == -1)
+        let raw = NvstBifrostFreeTransport.wireSticks(state, source: .gamepadAPI)
         #expect(raw.leftX == 0.1)
         #expect(raw.rightY == -1)
+    }
+
+    @Test func onlyTheGamepadAPIReaderSkipsTheClientDeadzone() {
+        #expect(ControllerInputSource.allCases.filter(\.appliesClientDeadzone) == [.appleFramework, .steamHID])
+        #expect(!ControllerInputSource.gamepadAPI.appliesClientDeadzone)
+    }
+
+    @Test func aReadingOlderThanThePadStopsReportingExpires() {
+        let now = DispatchTime.now()
+        let reading = GamepadHIDReading(family: .dualSense, snapshot: ControllerInputSnapshot(), receivedAt: now)
+        #expect(reading.isFresh(at: now))
+        #expect(reading.isFresh(at: now + .milliseconds(400)))
+        #expect(!reading.isFresh(at: now + GamepadHIDReading.maximumAge + .milliseconds(1)))
     }
 
     @Test func inputPathsReportTheFrameworkForAnUnpairedController() throws {
@@ -255,7 +284,16 @@ import Testing
         #expect(NativeNVSTHostViewModel.stickOutputText((0.032, -0.021, 0, 1)) == "L +0.032 -0.021   R +0.000 +1.000")
     }
 
-    @Test func backendPreferenceDefaultsToAppleFramework() {
+    @Test func backendPreferenceDefaultsToAppleFramework() throws {
+        let suite = "GamepadHIDPollTests.BackendPreference.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let storage = OPNAppPreferenceStorage(defaults: defaults, defaultsDomain: suite)
+        // The name says what it asserts: on a store nothing has written to, the default is the
+        // protected path. The label/rawValue checks below are a separate contract.
+        #expect(ControllerInputBackendPreference.load(from: storage) == .appleFramework)
+        ControllerInputBackendPreference.save(.gamepadAPI, to: storage)
+        #expect(ControllerInputBackendPreference.load(from: storage) == .gamepadAPI)
         #expect(ControllerInputBackend(rawValue: "unknown") == nil)
         #expect(ControllerInputBackend.allCases.map(\.label) == ["Apple Framework", "Gamepad API"])
     }

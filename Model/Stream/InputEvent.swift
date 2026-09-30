@@ -176,6 +176,10 @@ public struct GamepadState: Codable, Equatable, Hashable, Sendable {
     public let rightStickX: Float
     public let rightStickY: Float
     public let timestamp: MediaTimestamp
+    /// How this pad is being read, carried from the snapshot that produced the state so the wire
+    /// deadzone decision is per pad. Defaults to the Apple framework path, which is the one that
+    /// keeps the client deadzone.
+    public let inputSource: ControllerInputSource
 
     public init(deviceID: InputDeviceID,
                 playerIndex: Int,
@@ -186,7 +190,8 @@ public struct GamepadState: Codable, Equatable, Hashable, Sendable {
                 leftStickY: Float = 0,
                 rightStickX: Float = 0,
                 rightStickY: Float = 0,
-                timestamp: MediaTimestamp) {
+                timestamp: MediaTimestamp,
+                inputSource: ControllerInputSource = .appleFramework) {
         self.deviceID = deviceID
         self.playerIndex = max(0, playerIndex)
         self.buttons = buttons
@@ -197,6 +202,7 @@ public struct GamepadState: Codable, Equatable, Hashable, Sendable {
         self.rightStickX = Self.clampSignedUnit(rightStickX)
         self.rightStickY = Self.clampSignedUnit(rightStickY)
         self.timestamp = timestamp
+        self.inputSource = inputSource
     }
 
     private static func clampUnit(_ value: Float) -> Float {
