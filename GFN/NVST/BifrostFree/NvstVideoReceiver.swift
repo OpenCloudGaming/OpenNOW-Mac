@@ -66,6 +66,8 @@ public struct NvstReceiverStats: Equatable, Sendable {
     /// inferred wire loss, as opposed to `droppedPackets`, which aggregates local rejections
     /// (authentication, parse, SSRC, stale) that say nothing about the network.
     public var finalizedLossPackets: UInt64 = 0
+    /// Lost repair packets of blocks whose sources all arrived: stepped over, never recovered.
+    public var parityOnlyLossPackets: UInt64 = 0
     public var boundSSRC: UInt32?
     public var highestSequence: UInt32 = 0
     /// Packets whose GS flags claim start-of-frame, versus those the FEC-block gate actually
@@ -132,6 +134,9 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// thousand packets. At the measured ~8,500 packets/s that is ~140 ms of worst-case wait
     /// before an unrepairable gap falls back to the keyframe path.
     public static let fecRepairReorderWindow = 1200
+    /// The same wait bounded in time. A packet window lasts longer the lighter the scene: at
+    /// ~700 packets/s the 1200 packets held every frame behind one lost packet for 1.7 s.
+    public static let fecRepairMaximumWaitNanoseconds: UInt64 = 100_000_000
 
     public enum ReceiverError: LocalizedError, Equatable, Sendable {
         case unsupportedProfile(String)
@@ -155,6 +160,9 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     private var replay = SrtpReplayWindow()
     private var reorder: [UInt64: NvstRtpVideoPacket] = [:]
     private var nextIndex: UInt64?
+    private var openGap: (index: UInt64, since: UInt64)?
+    private var lastDelivered: NvstRtpVideoPacket?
+    private let uptimeNanoseconds: @Sendable () -> UInt64
     private var boundSSRC: UInt32?
     private var srtcpIndex: UInt32 = 0
     private var reportFailures: UInt64 = 0
@@ -198,7 +206,9 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// FEC recovery health: verification against the live parity stream, and repairs performed.
     public var fecFindings: NvstFecRecovery.Findings { fecRecovery.snapshot }
 
-    public init(handoff: NVSTVideoHandoff) throws {
+    public init(handoff: NVSTVideoHandoff,
+                uptimeNanoseconds: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }) throws {
+        self.uptimeNanoseconds = uptimeNanoseconds
         switch handoff.srtpProfile {
         case .aeadAes128Gcm, .aeadAes128Gcm8, .aeadAes256Gcm, .aeadAes256Gcm8:
             break
@@ -613,7 +623,9 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         plaintext.append(payload)
         return Unprotected(plaintext: plaintext, index: extendedIndex, header: header)
     }
+}
 
+extension NvstVideoReceiver {
     // MARK: - Reorder
 
     private func pushReorder(index: UInt64, packet: NvstRtpVideoPacket, events: inout [NvstReceiveEvent]) -> [NvstRtpVideoPacket] {
@@ -631,7 +643,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             events.append(.dropped(.duplicateSequence(index)))
             return []
         }
-        if index > expected { stats.outOfOrderPackets += 1 }
+        if index > expected {
+            stats.outOfOrderPackets += 1
+            if openGap?.index != expected { openGap = (expected, uptimeNanoseconds()) }
+        }
         if index - expected >= UInt64(reorderWindow),
            // With FEC armed, a gap must outlive the chance of repair before it is loss: the
            // block's parity packets arrive after all of its sources, which at 5K is up to ~1000
@@ -639,7 +654,7 @@ public final class NvstVideoReceiver: @unchecked Sendable {
            // gap costs one frame a few milliseconds of delivery delay; finalizing it early costs
            // the frame, a keyframe round trip, and the seat's frame-rate knock. The armed check
            // runs only while a gap is already open, so the hot path never takes the extra lock.
-           !(index - expected < UInt64(Self.fecRepairReorderWindow) && fecRecovery.snapshot.isArmed) {
+           !(index - expected < UInt64(Self.fecRepairReorderWindow) && !gapOutlivedFecRepair() && fecRecovery.snapshot.isArmed) {
             // The gap has aged past the reorder window: whatever is still missing below the first
             // buffered packet is finalized loss, and only that range is skipped. The buffered
             // packets arrived intact and are delivered below — flushing the whole buffer here
@@ -652,12 +667,15 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         }
         reorder[index] = packet
         stats.maxReorderDepth = max(stats.maxReorderDepth, UInt32(clamping: reorder.count))
+        skipParityOnlyGap()
 
         var ready: [NvstRtpVideoPacket] = []
         while let cursor = nextIndex, let next = reorder.removeValue(forKey: cursor) {
             ready.append(next)
+            lastDelivered = next
             nextIndex = cursor + 1
         }
+        if reorder.isEmpty { openGap = nil }
         return ready
     }
 
@@ -669,5 +687,36 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             stats.maxLossBurst = max(stats.maxLossBurst, UInt32(clamping: last - first + 1))
         }
         events.append(.recoveryNeeded(firstMissingIndex: first, lastMissingIndex: last))
+    }
+
+    /// A gap made only of repair packets of a block whose sources all arrived loses nothing: its
+    /// frame is already complete, so there is nothing to wait for and nothing to recover.
+    private func skipParityOnlyGap() {
+        guard let expected = nextIndex, reorder[expected] == nil,
+              let firstAvailable = reorder.keys.min(), let after = reorder[firstAvailable],
+              let before = lastDelivered,
+              Self.isParityOnlyGap(before: before, missing: firstAvailable - expected, after: after) else { return }
+        stats.parityOnlyLossPackets += firstAvailable - expected
+        nextIndex = firstAvailable
+        openGap = nil
+    }
+
+    static func isParityOnlyGap(before: NvstRtpVideoPacket, missing: UInt64, after: NvstRtpVideoPacket) -> Bool {
+        let sources = UInt64(before.fecSourcePackets)
+        guard sources > 0, before.fecPercentage > 0, missing > 0 else { return false }
+        let total = sources + (sources * UInt64(before.fecPercentage) + 99) / 100
+        let position = UInt64(before.fecIndex)
+        guard position + 1 >= sources, position + missing < total else { return false }
+        if after.frameIndex == before.frameIndex, after.fecCurrentBlock == before.fecCurrentBlock {
+            return after.isFec && UInt64(after.fecIndex) == position + missing + 1
+        }
+        guard after.fecIndex == 0, !after.isFec, position + missing == total - 1 else { return false }
+        if after.frameIndex == before.frameIndex { return after.fecCurrentBlock == before.fecCurrentBlock &+ 1 }
+        return after.frameIndex == before.frameIndex &+ 1 && after.isStartOfFrame
+    }
+
+    private func gapOutlivedFecRepair() -> Bool {
+        guard let openGap else { return false }
+        return uptimeNanoseconds() &- openGap.since >= Self.fecRepairMaximumWaitNanoseconds
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import OpenNOW
 
@@ -334,6 +335,95 @@ struct NvstMjolnirReceiverTests {
         #expect(NvstReceiverFixtures.recoveries(events) == 0)
         #expect(NvstReceiverFixtures.frames(events).isEmpty)
         #expect(receiver.snapshot.finalizedLossPackets == 0)
+    }
+
+    /// A light scene sends few packets, so the repair window measured in packets could hold every
+    /// later frame for seconds. Once repair has had its time, the gap becomes loss.
+    @Test func anOpenGapBecomesLossOnceFecRepairTimesOut() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+
+        func fecWord(index: UInt32) -> UInt32 { (50 << 4) | (index << 12) | (2 << 22) }
+        func blockPackets(frameIndex: UInt32, baseSequence: UInt16, seed: UInt8) -> [(UInt16, Data)] {
+            let sof = NvstReceiverFixtures.packet(sequence: baseSequence, frameIndex: frameIndex, flags: 0x05,
+                             media: [0x00, 0x00, 0x00, 0x01, 0x65, seed], fecWord: fecWord(index: 0))
+            let eof = NvstReceiverFixtures.packet(sequence: baseSequence + 1, frameIndex: frameIndex, flags: 0x03,
+                             media: [0xbb, seed, 0xcc], fecWord: fecWord(index: 1))
+            let size = max(sof.count, eof.count)
+            let shards = [sof, eof].map { source -> [UInt8] in
+                let bytes = [UInt8](source)
+                return bytes.count == size ? bytes : bytes + [UInt8](repeating: 0, count: size - bytes.count)
+            }
+            let parity = NvstReedSolomon.encode(data: shards, parityCount: 1, size: size)!
+            let parityHeader = NvstReceiverFixtures.packet(sequence: baseSequence + 2, frameIndex: frameIndex, flags: 0x00,
+                                      media: [], fecWord: fecWord(index: 2))
+            return [(baseSequence, sof), (baseSequence + 1, eof),
+                    (baseSequence + 2, parityHeader + Data(parity[0][NvstFecRecovery.headerLength...]))]
+        }
+        for round in 0..<NvstFecRecovery.verificationTarget {
+            for (sequence, plain) in blockPackets(frameIndex: UInt32(round + 1),
+                                                  baseSequence: UInt16(round * 3 + 1),
+                                                  seed: UInt8(round)) {
+                _ = receiver.process(datagram: try NvstReceiverFixtures.seal(plain, sequence: sequence, handoff: handoff))
+            }
+        }
+        #expect(receiver.fecFindings.isArmed)
+
+        let base = UInt16(NvstFecRecovery.verificationTarget * 3 + 1)
+        func farPacket(_ offset: UInt16) throws -> Data {
+            try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: base + offset, frameIndex: 99, flags: 0x05,
+                                                                      media: [0x00, 0x00, 0x00, 0x01, 0x65]),
+                                          sequence: base + offset, handoff: handoff)
+        }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try farPacket(20))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitNanoseconds - 1 }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try farPacket(21))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitNanoseconds }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try farPacket(22))) == 1)
+        #expect(receiver.snapshot.finalizedLossPackets == 20)
+    }
+
+    /// Losing only a block's repair packet loses nothing: the frame already completed, so the next
+    /// frame is delivered at once instead of waiting on the gap and then asking for a keyframe.
+    @Test func aLostParityPacketOfACompleteBlockIsSteppedOver() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let receiver = try NvstVideoReceiver(handoff: handoff)
+
+        func fecWord(index: UInt32) -> UInt32 { (50 << 4) | (index << 12) | (2 << 22) }
+        func blockPackets(frameIndex: UInt32, baseSequence: UInt16, seed: UInt8) -> [(UInt16, Data)] {
+            let sof = NvstReceiverFixtures.packet(sequence: baseSequence, frameIndex: frameIndex, flags: 0x05,
+                             media: [0x00, 0x00, 0x00, 0x01, 0x65, seed], fecWord: fecWord(index: 0))
+            let eof = NvstReceiverFixtures.packet(sequence: baseSequence + 1, frameIndex: frameIndex, flags: 0x03,
+                             media: [0xbb, seed, 0xcc], fecWord: fecWord(index: 1))
+            let size = max(sof.count, eof.count)
+            let shards = [sof, eof].map { source -> [UInt8] in
+                let bytes = [UInt8](source)
+                return bytes.count == size ? bytes : bytes + [UInt8](repeating: 0, count: size - bytes.count)
+            }
+            let parity = NvstReedSolomon.encode(data: shards, parityCount: 1, size: size)!
+            let parityHeader = NvstReceiverFixtures.packet(sequence: baseSequence + 2, frameIndex: frameIndex, flags: 0x00,
+                                      media: [], fecWord: fecWord(index: 2))
+            return [(baseSequence, sof), (baseSequence + 1, eof),
+                    (baseSequence + 2, parityHeader + Data(parity[0][NvstFecRecovery.headerLength...]))]
+        }
+        var emitted = 0
+        var recoveries = 0
+        let frameCount = NvstFecRecovery.verificationTarget + 3
+        for round in 0..<frameCount {
+            let packets = blockPackets(frameIndex: UInt32(round + 1), baseSequence: UInt16(round * 3 + 1), seed: UInt8(round))
+            let lossy = round == NvstFecRecovery.verificationTarget
+            for (position, (sequence, plain)) in packets.enumerated() where !(lossy && position == 2) {
+                let events = receiver.process(datagram: try NvstReceiverFixtures.seal(plain, sequence: sequence, handoff: handoff))
+                emitted += NvstReceiverFixtures.frames(events).count
+                recoveries += NvstReceiverFixtures.recoveries(events)
+            }
+        }
+        #expect(receiver.fecFindings.isArmed)
+        #expect(emitted == frameCount)
+        #expect(recoveries == 0)
+        #expect(receiver.snapshot.finalizedLossPackets == 0)
+        #expect(receiver.snapshot.parityOnlyLossPackets == 1)
     }
 
 }

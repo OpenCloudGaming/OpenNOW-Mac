@@ -156,11 +156,19 @@ public enum NvstElementaryStream {
                 continue
             }
             let prefixLength = isFour ? 4 : 3
-            if let start = currentStart, cursor > start { body(start, cursor - start) }
+            if let start = currentStart { emitTrimmed(base: base, start: start, end: cursor, body) }
             currentStart = cursor + prefixLength
             cursor += prefixLength
         }
-        if let start = currentStart, start < count { body(start, count - start) }
+        if let start = currentStart { emitTrimmed(base: base, start: start, end: count, body) }
+    }
+
+    /// A NAL unit never ends in 0x00 (H.264 7.4.1, H.265 7.4.2): zeros before the next start code
+    /// are byte-stream padding, and a unit made of nothing else is no unit at all.
+    private static func emitTrimmed(base: UnsafePointer<UInt8>, start: Int, end: Int, _ body: (Int, Int) -> Void) {
+        var end = end
+        while end > start, base[end - 1] == 0 { end -= 1 }
+        if end > start { body(start, end - start) }
     }
 
     /// Extracts the parameter sets from an Annex-B access unit. Keyframes carry them inline; a

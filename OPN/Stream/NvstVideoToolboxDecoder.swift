@@ -146,8 +146,10 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     }
 
     /// Decodes one access unit. Throws `missingParameterSets` until the first keyframe arrives,
-    /// which is the normal state while the seat is still answering the initial PLI.
-    public func decode(_ unit: NvstAccessUnit) throws {
+    /// which is the normal state while the seat is still answering the initial PLI. Returns false
+    /// when the unit carried no sample, so no completion will follow.
+    @discardableResult
+    public func decode(_ unit: NvstAccessUnit) throws -> Bool {
         let decodeStart = DispatchTime.now().uptimeNanoseconds
         // Nothing before the stream's first keyframe can be decoded: a P-frame with no reference
         // comes out as garbage and leaves the session behind for good (measured 2026-09-05 — the
@@ -165,7 +167,7 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
 
         let sample = prepared.sample
         noteAv1FrameShape(unit, sample: sample)
-        guard !sample.isEmpty else { return }
+        guard !sample.isEmpty else { return false }
 
         let (session, description) = try prepareSession(for: prepared.parameterSets)
 
@@ -190,11 +192,10 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
         let status = VTDecompressionSessionDecodeFrame(
             session,
             sampleBuffer: sampleBuffer,
-            // WebRTC's own VideoToolbox decoder (`RTCVideoDecoderH264.mm`, the path the vendored
-            // WebRTC-based build uses) sets only `_EnableAsynchronousDecompression`. Temporal
-            // processing buffers frames for B-frame reordering — pure added latency on a
-            // low-latency cloud-gaming stream that encodes without B-frames.
-            flags: [._EnableAsynchronousDecompression],
+            // Synchronous, as the official macOS client decodes (`libGeronimo` passes no flags). An
+            // asynchronous session held each frame until the next was submitted, so every frame
+            // and its pacing ack reached the seat one frame interval late.
+            flags: [],
             infoFlagsOut: &flagsOut,
             outputHandler: { [weak self] status, _, imageBuffer, presentationTime, _ in
                 guard let self else { return }
@@ -221,6 +222,7 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
             Self.tearDown(broken)
             throw DecoderError.decodeFailed(status)
         }
+        return true
     }
 
     /// AV1 frame accounting ahead of session setup: the first keyframe's wire bytes, logged once
@@ -249,22 +251,36 @@ public final class NvstVideoToolboxDecoder: @unchecked Sendable {
     /// description to decode it with, rebuilding either when the stream geometry changed.
     private func prepareSession(for incoming: NvstElementaryStream.ParameterSets) throws -> (VTDecompressionSession, CMFormatDescription) {
         stateLock.lock()
-        var expiring: VTDecompressionSession?
         if incoming.isComplete(for: codec), incoming != parameterSets {
             parameterSets = incoming
-            // New parameter sets mean new stream geometry: rebuild before decoding this frame.
-            expiring = session
-            session = nil
             formatDescription = nil
         }
         let sets = parameterSets
         var description = formatDescription
         stateLock.unlock()
-        Self.tearDown(expiring)
 
         guard sets.isComplete(for: codec) else { throw DecoderError.missingParameterSets }
         if description == nil {
-            description = try makeFormatDescription(sets)
+            statsLock.lock()
+            let previousFormat = currentBitstreamFormat
+            statsLock.unlock()
+            let created = try makeFormatDescription(sets)
+            statsLock.lock()
+            let sameLayout = previousFormat == currentBitstreamFormat
+            statsLock.unlock()
+            description = created
+            stateLock.lock()
+            let current = session
+            // The seat re-sends parameter sets that differ only in fields such as the tier flag;
+            // rebuilding a hardware session for those stalled the picture for hundreds of ms.
+            let keepsSession = sameLayout && current.map { VTDecompressionSessionCanAcceptFormatDescription($0, formatDescription: created) } == true
+            if !keepsSession { session = nil }
+            stateLock.unlock()
+            if keepsSession {
+                onDecodeFailure?(0, "NVST decoder session kept for new parameter sets")
+            } else {
+                Self.tearDown(current)
+            }
         }
         guard let description else { throw DecoderError.missingParameterSets }
 

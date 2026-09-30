@@ -349,22 +349,17 @@ public final class NvstVideoPipeline: @unchecked Sendable {
         timings.hop = Self.milliseconds(from: enqueuedAt, to: started)
         mediaSink?(unit)
 
+        // How many earlier submissions VideoToolbox still has not answered when this one goes in.
+        // Registered before the submission: a synchronous decode completes inside it.
+        lock.lock()
+        counters.inFlightHistogram[pendingCompletions.count, default: 0] += 1
+        pendingCompletions.append(PendingCompletion(unit: unit, hopMilliseconds: timings.hop, startedAt: started))
+        lock.unlock()
         do {
-            // How many earlier submissions VideoToolbox still has not answered when this one goes
-            // in. A decoder that holds each frame until the next arrives shows 1 here on nearly
-            // every frame; one that returns frames as they finish shows 0.
-            lock.lock()
-            counters.inFlightHistogram[pendingCompletions.count, default: 0] += 1
-            lock.unlock()
-            try decoder.decode(unit)
+            if try !decoder.decode(unit) { withdrawPendingCompletion(for: unit) }
             consecutiveDecodeFailures = 0
-            // Decode is asynchronous from here — VideoToolbox has only accepted the submission.
-            // `handleDecodeCompleted` fires the ack once the frame is actually decoded (or
-            // failed), in the same order these are pushed.
-            lock.lock()
-            pendingCompletions.append(PendingCompletion(unit: unit, hopMilliseconds: timings.hop, startedAt: started))
-            lock.unlock()
         } catch NvstVideoToolboxDecoder.DecoderError.missingParameterSets {
+            withdrawPendingCompletion(for: unit)
             // Normal until the seat answers with a keyframe; nudge it. Silently counting these was
             // hiding a stalled stream: with no feedback channel the nudge never left the client.
             lock.lock()
@@ -373,6 +368,7 @@ public final class NvstVideoPipeline: @unchecked Sendable {
             onKeyframeNeeded()
             return
         } catch {
+            withdrawPendingCompletion(for: unit)
             consecutiveDecodeFailures += 1
             logger?("NVST decode error: \(error.localizedDescription)")
             // A bad-data rejection means the reference chain is broken, and every following frame
@@ -667,5 +663,15 @@ public final class NvstVideoPipeline: @unchecked Sendable {
 
     private static func seconds(from start: UInt64, to end: UInt64) -> Double {
         end > start ? Double(end - start) / 1_000_000_000 : 0
+    }
+}
+
+extension NvstVideoPipeline {
+    private func withdrawPendingCompletion(for unit: NvstAccessUnit) {
+        lock.lock()
+        if let index = pendingCompletions.lastIndex(where: { $0.unit.frameIndex == unit.frameIndex }) {
+            pendingCompletions.remove(at: index)
+        }
+        lock.unlock()
     }
 }
