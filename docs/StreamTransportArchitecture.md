@@ -303,12 +303,19 @@ Two format decisions exist because the native path owns Opus directly where libw
   configured with a 48 kHz client format and resamples to and from the hardware itself. The
   hardware's own rate is kept only for the IO-buffer and latency arithmetic, which are in device
   frames.
-- **The decode is stereo, and the device is asked for stereo.** The seat negotiates
-  `opus/48000/2`, and the decoder, jitter buffer and receive pipeline are all two-channel. Asking
-  the hardware for the configured surround count would interleave a stereo decode into a six- or
-  eight-channel buffer. A fill helper maps the stereo decode onto the channel count the device
-  actually settled on — mono averages the pair, stereo keeps it, a wider layout fills the front pair
-  and leaves the rest silent. Native surround decode remains unimplemented and is recorded as such.
+- **Surround is negotiated from the seat's own offer.** DESCRIBE lists the multistream layouts the
+  seat can encode in `a=nv-audio-surround-opus-params` (channels, streams, coupled streams, then an
+  eight-slot mapping: `64204123500` is 5.1 in four streams, mapping `0 4 1 2 3 5`).
+  `NvstOpusMultistreamLayout.negotiated` picks the widest offered layout within the requested
+  count, falls back to stereo when the seat offers none, and the same layout goes to ANNOUNCE and
+  to the bundle, so the seat never sends a channel count the decoder was not built for. The decoder
+  is macOS's own Opus `AudioConverter` with a family 1 `OpusHead` cookie, and emits RFC 7845
+  (Vorbis) speaker order.
+- **`NvstSpeakerMatrix` places each decoded channel on the speaker the device names.** The device's
+  preferred channel layout is read when playout starts (WAVE order when it reports none); a device
+  narrower than the decode is opened in stereo and gets a -3 dB fold with the LFE dropped, scaled
+  so the fold cannot clip. The recorder, replay buffer and Co-Op relay always receive that stereo
+  fold, whatever the speakers carry.
 
 Full Xcode suite at this point: **2,231 passed, 4 skipped, 0 failed** across 2,235 tests, including
 the 61 added by this milestone's native components. An earlier SwiftPM-only run reported failures in

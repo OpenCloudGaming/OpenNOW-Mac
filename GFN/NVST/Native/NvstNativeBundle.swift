@@ -109,10 +109,9 @@ public final class NvstNativeBundle: @unchecked Sendable {
     /// seat's virtual mic meter dead even though packets leave the host.
     private static let microphoneFramesPerPacket = 480
     private static let microphoneChannels = 2
-    /// The native audio decode is stereo regardless of the surround preference; see `startAudioDevice`.
-    private static let decodedAudioChannels = 2
 
-    public private(set) var audioChannelCount: Int
+    public private(set) var audioLayout = NvstOpusMultistreamLayout.stereo
+    public var audioChannelCount: Int { audioLayout.channels }
     public private(set) var inputProtocolVersion: UInt16?
     public private(set) var microphoneSenderSsrc: UInt32?
 
@@ -152,11 +151,9 @@ public final class NvstNativeBundle: @unchecked Sendable {
 
     public init(handoff: NVSTVideoHandoff,
                 identity: NvstDtlsIdentity,
-                audioChannelCount: Int = 2,
                 logger: (@Sendable (String) -> Void)? = nil) {
         self.handoff = handoff
         self.identity = identity
-        self.audioChannelCount = NvstCoreAudioFormat.supportedPlayoutChannelCount(audioChannelCount)
         self.logger = logger
     }
 
@@ -168,8 +165,8 @@ public final class NvstNativeBundle: @unchecked Sendable {
     /// carries; DTLS cannot complete before the seat has received them, so it is driven in the
     /// background and `onHandshakeComplete` fires when the seat starts answering. Nothing here talks
     /// to the RTSP negotiator, which keeps using `NvstBundleReserving`.
-    public func prepare(microphone: MicrophoneSetup?, audioChannelCount: Int) async throws -> Identity {
-        self.audioChannelCount = NvstCoreAudioFormat.supportedPlayoutChannelCount(audioChannelCount)
+    public func prepare(microphone: MicrophoneSetup?, audioLayout: NvstOpusMultistreamLayout) async throws -> Identity {
+        self.audioLayout = audioLayout
         self.microphoneSetup = microphone
         // ANNOUNCE goes out before the DTLS handshake can key a send pipeline, so whether the mic is
         // carried and the SSRC its RTP arrives with must be known now. The SSRC is deterministic, so
@@ -353,7 +350,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
             receivePipeline = try NvstAudioReceivePipeline(
                 srtp: try NvstAudioSrtp(masterKey: directions.inbound.key, masterSalt: directions.inbound.salt, profile: profile),
                 framesPerPacket: Self.decodedAudioFramesPerPacket,
-                channels: Self.microphoneChannels
+                layout: audioLayout
             )
             sendPipeline = nil
             if let microphone {
@@ -377,28 +374,30 @@ public final class NvstNativeBundle: @unchecked Sendable {
         startAudioDevice()
     }
 
+    /// The device is opened at the decode's width when it has the speakers for it and at stereo
+    /// otherwise; the mixer places each decoded channel on the speaker the device names, and the
+    /// device can change under a running session when the default output does.
     private func startAudioDevice() {
-        // The native decode is stereo end to end: the Opus decoder, the jitter buffer and the
-        // receive pipeline all carry two channels. The device is therefore asked for stereo (its
-        // own device may still fall to mono), and the fill maps the stereo decode onto whatever
-        // channel count the hardware settled on rather than letting a wider layout misread it.
-        let device = NvstCoreAudioDevice(playoutChannelCount: Self.decodedAudioChannels,
+        let layout = audioLayout
+        let mixer = NvstPlayoutMixer(source: layout.speakers)
+        let device = NvstCoreAudioDevice(playoutChannelCount: layout.channels,
                                          preferredInputDeviceUID: microphoneSetup?.deviceUniqueID)
-        let outputChannels = device.outputChannels
-        device.fillPlayout = { [weak self] destination, sampleCount in
-            guard let pipeline = self?.receivePipeline else {
+        device.fillPlayout = { [weak self, weak device] destination, sampleCount in
+            guard let pipeline = self?.receivePipeline, let speakers = device?.playoutSpeakers, !speakers.isEmpty else {
                 destination.update(repeating: 0, count: sampleCount)
                 return
             }
-            let frames = sampleCount / max(1, outputChannels)
-            let stereo = pipeline.pull(sampleCount: frames * Self.decodedAudioChannels)
-            let samples = NvstCoreAudioFormat.interleavedSamples(fromStereo: stereo, frames: frames, outputChannels: outputChannels)
-            let count = min(samples.count, sampleCount)
-            for index in 0..<count { destination[index] = samples[index] }
-            if count < sampleCount { destination.advanced(by: count).update(repeating: 0, count: sampleCount - count) }
+            let frames = sampleCount / speakers.count
+            mixer.render(pipeline.pull(sampleCount: frames * layout.channels), frames: frames, speakers: speakers, into: destination)
+            let written = frames * speakers.count
+            if written < sampleCount { destination.advanced(by: written).update(repeating: 0, count: sampleCount - written) }
         }
         device.onGameAudio = { [weak self] pointer, frames, rate, channels in
-            self?.onGameAudioFrame?(pointer, frames, rate, channels)
+            guard channels > 2 else {
+                self?.onGameAudioFrame?(pointer, frames, rate, channels)
+                return
+            }
+            mixer.withStereoTap { stereo, stereoFrames in self?.onGameAudioFrame?(stereo, stereoFrames, rate, 2) }
         }
         device.onMicrophoneAudio = { [weak self] pointer, frames, rate, channels in
             guard let self else { return }
@@ -422,6 +421,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
         audioDevice = device
         logger?("NVST native audio device playout=\(device.isPlayoutRunning) capture=\(device.isCaptureRunning)"
                 + " outRate=\(Int(device.outputSampleRate)) outChannels=\(device.outputChannels)"
+                + " decode=\(layout.summary) speakers=\(device.playoutSpeakers.map(String.init).joined(separator: ","))"
                 + " inRate=\(Int(device.inputSampleRate)) inChannels=\(device.inputChannels)"
                 + " latencyMs=\(Int((device.outputPathLatencySeconds * 1000).rounded()))")
     }
@@ -542,7 +542,7 @@ extension NvstNativeBundle {
         let device = deviceState.uniqueID.map { "dev=\($0)fallback=\(deviceState.isFallback) " } ?? ""
         let mic = microphoneSenderSsrc == nil ? "off" : "on(\(device)ssrc=\(microphoneSenderSsrc.map(String.init) ?? "?"),tx=\(microphoneSentBytes),pkts=\(sendPipeline?.snapshot.packetsSent ?? 0),frames=\(micStats.capturedFrames),level=\(String(format: "%.3f", micStats.captureLevel)))"
         let audio = receivePipeline.map {
-            "receive[datagrams=\($0.snapshot.datagrams) authenticated=\($0.snapshot.authenticated) decoded=\($0.snapshot.packetsDecoded) lost=\($0.snapshot.packetsLost) recovered=\($0.snapshot.recoveredPackets) tagFail=\($0.snapshot.authenticationFailures) decodeFail=\($0.snapshot.decodeFailures) redFail=\($0.snapshot.malformedRedPackets)]"
+            "receive[datagrams=\($0.snapshot.datagrams) authenticated=\($0.snapshot.authenticated) decoded=\($0.snapshot.packetsDecoded) lost=\($0.snapshot.packetsLost) recovered=\($0.snapshot.recoveredPackets) tagFail=\($0.snapshot.authenticationFailures) decodeFail=\($0.snapshot.decodeFailures) redFail=\($0.snapshot.malformedRedPackets) trimmedFrames=\($0.snapshot.trimmedFrames)]"
         } ?? "receive[down]"
         return "sctp=\(sctp) control=\(isControlChannelOpen) feedback=\(isFeedbackChannelOpen) input=\(isInputReady) mic=\(mic) \(audio)"
     }

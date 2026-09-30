@@ -25,12 +25,19 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
         public var datagramBytes: UInt64 = 0
         /// Interleaved samples the decoder actually produced.
         public var decodedSamples: UInt64 = 0
+        /// Decoded frames dropped to hold playout within `maximumBacklogFrames` of the seat.
+        public var trimmedFrames: UInt64 = 0
         public var ssrc: UInt32?
     }
 
     /// The payload type the seat's redundant audio is wrapped in. The primary inside it is the
     /// codec's own type.
     public static let redundantPayloadType: UInt8 = 63
+
+    /// Decoded audio kept beyond what the device just asked for: 40 ms. Arrival and playout run at
+    /// the same rate, so anything above it is delay that would stay for the rest of the session —
+    /// audio that piled up while the device was starting, or a late burst after an underrun.
+    public static let maximumBacklogFrames = 1_920
 
     public let channels: Int
     public let framesPerPacket: Int
@@ -46,13 +53,13 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
 
     public init(srtp: NvstAudioSrtp,
                 framesPerPacket: Int = 240,
-                channels: Int = 2,
+                layout: NvstOpusMultistreamLayout = .stereo,
                 targetDepth: Int = 3) throws {
         self.srtp = srtp
         self.framesPerPacket = framesPerPacket
-        self.channels = channels
+        self.channels = layout.channels
         self.jitter = NvstAudioJitterBuffer(targetDepth: targetDepth)
-        self.decoder = try NvstOpusDecoder(framesPerPacket: framesPerPacket)
+        self.decoder = try NvstOpusDecoder(framesPerPacket: framesPerPacket, layout: layout)
     }
 
     public var snapshot: Counters { lock.withLock { counters } }
@@ -132,6 +139,11 @@ public final class NvstAudioReceivePipeline: @unchecked Sendable {
             sampleOffset = 0
         }
         bufferedSamples.append(contentsOf: drain(jitter.advance()))
+        let excessFrames = (bufferedSamples.count - sampleCount) / max(1, channels) - Self.maximumBacklogFrames
+        if excessFrames > 0 {
+            bufferedSamples.removeFirst(excessFrames * channels)
+            counters.trimmedFrames &+= UInt64(excessFrames)
+        }
         let count = min(sampleCount, bufferedSamples.count)
         sampleOffset = count
         return Array(bufferedSamples.prefix(count))

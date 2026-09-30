@@ -61,6 +61,20 @@ import Testing
         #expect(total >= 5 * Self.framesPerPacket * Self.channels)
     }
 
+    @Test func audioThatPiledUpBeforePlayoutStartedIsTrimmedToTheBacklogCeiling() throws {
+        let srtp = try makeSrtp()
+        let encoder = try NvstOpusEncoder(channels: 2, framesPerPacket: Self.framesPerPacket)
+        let pipeline = try NvstAudioReceivePipeline(srtp: srtp, framesPerPacket: Self.framesPerPacket)
+        for sequence in UInt16(0)..<40 {
+            pipeline.ingest(try protectedTonePacket(srtp: srtp, encoder: encoder, sequence: sequence, timestamp: UInt32(sequence) * 240))
+        }
+        let deviceBuffer = Self.framesPerPacket * Self.channels
+        #expect(pipeline.pull(sampleCount: deviceBuffer).count == deviceBuffer)
+        let backlog = pipeline.pull(sampleCount: 1_000_000)
+        #expect(backlog.count == NvstAudioReceivePipeline.maximumBacklogFrames * Self.channels)
+        #expect(pipeline.snapshot.trimmedFrames > 0)
+    }
+
     @Test func aDatagramThatFailsItsTagIsDiscardedAndCounted() throws {
         let srtp = try makeSrtp()
         let encoder = try NvstOpusEncoder(channels: 2, framesPerPacket: Self.framesPerPacket)

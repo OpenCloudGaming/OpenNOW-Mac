@@ -365,8 +365,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         terminationStream = stream.stream
         terminationContinuation = stream.continuation
 
-        let reserver = NvstLocalBundleReserver(bundleProvider: { [weak self] handoff, microphoneOfferedOnBundle in
-            await self?.bringUpBundle(handoff: handoff, microphoneOfferedOnBundle: microphoneOfferedOnBundle)
+        let reserver = NvstLocalBundleReserver(bundleProvider: { [weak self] handoff, microphoneOfferedOnBundle, audioLayout in
+            await self?.bringUpBundle(handoff: handoff, microphoneOfferedOnBundle: microphoneOfferedOnBundle, audioLayout: audioLayout)
         })
         self.reserver = reserver
         let logger = self.logger
