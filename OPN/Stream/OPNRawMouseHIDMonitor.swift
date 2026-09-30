@@ -92,12 +92,12 @@ enum OPNRawMouseMotion: Equatable, Sendable {
 /// Reads relative counts straight from the mice, bypassing the pointer-acceleration curve that
 /// `NSEvent.deltaX/deltaY` has already been through.
 ///
-/// The counts are *pulled*, by the same AppKit motion event that would otherwise have carried the
-/// accelerated delta, rather than pushed from the HID callback. That keeps the emit cadence, the
-/// packet rate and the main-actor traffic exactly as they are on the accelerated path — only the
-/// numbers change — and it makes double movement structurally impossible instead of a matter of
-/// getting a guard right. Coalescing is free as a consequence: whatever a mouse reported between
-/// two motion events is one summed pair, which is what the accelerated delta was too.
+/// With a push handler set, each report's counts go to the main thread as soon as they land. The
+/// AppKit motion events that carry the same movement arrive batched to about one per display
+/// refresh and ~7 ms late (measured 2026-09-30: ~100 a second from a 1000 Hz mouse), so a game
+/// fed from them receives uneven per-frame camera steps; the official client reads the mouse this
+/// way for the same reason. Without a handler the counts are pulled by those motion events instead.
+/// Either way whatever arrives between two deliveries is one summed pair, so nothing is sent twice.
 ///
 /// One reader for the process: only one view can hold the pointer at a time, and two managers
 /// matching the same mice would each be handed the same counts.
@@ -125,6 +125,8 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
     private var accumulator = OPNRawMouseDeltaAccumulator()
     private var deviceAcceptance: [ObjectIdentifier: Bool] = [:]
     private var lastReportUptimeNanoseconds: UInt64 = 0
+    private var pushHandler: (@MainActor @Sendable (OPNRawMouseDelta) -> Void)?
+    private var isPushScheduled = false
 
     private init() {}
 
@@ -135,15 +137,34 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
     }
 
     /// Takes everything the mice reported since the last call. Called from the main thread, once
-    /// per AppKit motion event.
+    /// per AppKit motion event. While counts are pushed, a motion event from a read mouse carries
+    /// nothing new and is `.pending`; one from anything else is still `.unavailable`.
     func takeMotion() -> OPNRawMouseMotion {
         os_unfair_lock_lock(&lock)
         defer { os_unfair_lock_unlock(&lock) }
         guard activeManager != nil else { return .unavailable }
-        if let delta = accumulator.drain() { return .counts(delta) }
+        if pushHandler == nil, let delta = accumulator.drain() { return .counts(delta) }
         let inFlight = Self.isReportInFlight(lastReportUptimeNanoseconds: lastReportUptimeNanoseconds,
                                              uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds)
         return inFlight ? .pending : .unavailable
+    }
+
+    /// Delivers counts on the main thread as reports land. Nil returns to pulling.
+    func setPushHandler(_ handler: (@MainActor @Sendable (OPNRawMouseDelta) -> Void)?) {
+        os_unfair_lock_lock(&lock)
+        pushHandler = handler
+        accumulator.reset()
+        os_unfair_lock_unlock(&lock)
+    }
+
+    private func deliverPushedMotion() {
+        os_unfair_lock_lock(&lock)
+        isPushScheduled = false
+        let delta = accumulator.drain()
+        let handler = pushHandler
+        os_unfair_lock_unlock(&lock)
+        guard let delta, let handler else { return }
+        MainActor.assumeIsolated { handler(delta) }
     }
 
     /// The timestamp is deliberately left standing after a drain: clearing it would let the two
@@ -174,8 +195,11 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
         IOHIDManagerSetCancelHandler(manager) { [weak self] in
             self?.finishCancellation(of: manager)
         }
-        IOHIDManagerActivate(manager)
+        // Open before activating: opening an activated manager registers the value callback on
+        // devices that are already activated, which IOKit traps on ("Device has already been
+        // activated/cancelled"). Activated either way so the cancel below stays valid.
         let openStatus = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerActivate(manager)
         guard openStatus == kIOReturnSuccess else {
             cancel(manager)
             OPNLog.warning(.controller, "Raw mouse HID manager open failed status=\(openStatus)")
@@ -196,6 +220,7 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
             return
         }
         activeManager = nil
+        pushHandler = nil
         resetPendingCountsLocked()
         os_unfair_lock_unlock(&lock)
         IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -276,6 +301,9 @@ final class OPNRawMouseHIDMonitor: @unchecked Sendable {
             return
         }
         lastReportUptimeNanoseconds = DispatchTime.now().uptimeNanoseconds
+        guard pushHandler != nil, !isPushScheduled else { return }
+        isPushScheduled = true
+        DispatchQueue.main.async { [weak self] in self?.deliverPushedMotion() }
     }
 
     private func isAccepted(_ device: IOHIDDevice) -> Bool {
