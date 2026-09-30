@@ -168,8 +168,7 @@ struct InputSettingsPage: View {
     private func setControllerInputBackend(_ index: Int) {
         guard ControllerInputBackend.allCases.indices.contains(index) else { return }
         controllerInputBackend = ControllerInputBackend.allCases[index]
-        ControllerInputBackendPreference.save(controllerInputBackend)
-        GamepadHIDMonitor.shared.refreshActivation()
+        GamepadHIDMonitor.shared.applyPreference(controllerInputBackend)
     }
 
     private var mappingRow: some View {

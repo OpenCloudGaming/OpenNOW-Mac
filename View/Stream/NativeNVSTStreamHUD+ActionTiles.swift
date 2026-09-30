@@ -111,7 +111,7 @@ extension NativeNVSTMediaStreamSurface {
                           title: "Controller API",
                           subtitle: model.controllerInput.backend.label,
                           systemName: "scope",
-                          isActive: model.controllerInput.backend == .gamepadAPI,
+                          isActive: model.controllerInput.isDiagnosticsVisible,
                           isDisabled: false,
                           action: model.toggleControllerInputBackend),
         ]

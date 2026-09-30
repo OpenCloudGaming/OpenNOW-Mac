@@ -330,16 +330,17 @@ public final class NativeGamepadMonitor {
         let (controllerSlots, steamSlots, controllers) = pollingQueue.sync {
             (pollState.controllerSlots, pollState.steamControllerSlots, pollState.cachedControllers)
         }
-        let paired = GamepadHIDMonitor.shared.pairedControllerIDs()
-        let native = controllers.compactMap { controller -> ControllerInputPath? in
+        let rawReadControllerIDs = GamepadHIDMonitor.shared.rawReadControllerIDs()
+        let nativePaths = controllers.compactMap { controller -> ControllerInputPath? in
             let key = ObjectIdentifier(controller)
             guard let slot = controllerSlots[key] else { return nil }
+            let source: ControllerInputSource = rawReadControllerIDs.contains(key) ? .gamepadAPI : .appleFramework
             return ControllerInputPath(playerIndex: slot,
                                        name: controller.vendorName ?? controller.productCategory,
-                                       source: paired.contains(key) ? .gamepadAPI : .appleFramework)
+                                       source: source)
         }
-        let steam = steamSlots.values.map { ControllerInputPath(playerIndex: $0, name: "Steam Controller", source: .steamHID) }
-        return (native + steam).sorted { $0.playerIndex < $1.playerIndex }
+        let steamPaths = steamSlots.values.map { ControllerInputPath(playerIndex: $0, name: "Steam Controller", source: .steamHID) }
+        return (nativePaths + steamPaths).sorted { $0.playerIndex < $1.playerIndex }
     }
 
     private func refreshControllerSlots() {

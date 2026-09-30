@@ -1,11 +1,7 @@
 import Foundation
 
-/// The user's app-wide choice of controller reader.
-///
-/// This is a *preference*, not a description of how any particular pad is read: one session can
-/// read several pads through several paths at once. Anything that needs the per-pad truth takes a
-/// `ControllerInputSource` instead — see `ControllerInputSource.appliesClientDeadzone`, which is
-/// what the wire deadzone decision consults.
+/// The user's app-wide choice of controller reader, which is not how any particular pad is read.
+/// The per-pad truth is `ControllerInputSource`, and that is what the wire deadzone consults.
 public enum ControllerInputBackend: String, CaseIterable, Sendable {
     case appleFramework
     case gamepadAPI
@@ -14,6 +10,13 @@ public enum ControllerInputBackend: String, CaseIterable, Sendable {
         switch self {
         case .appleFramework: "Apple Framework"
         case .gamepadAPI: "Gamepad API"
+        }
+    }
+
+    public var toggled: ControllerInputBackend {
+        switch self {
+        case .appleFramework: .gamepadAPI
+        case .gamepadAPI: .appleFramework
         }
     }
 }
@@ -30,8 +33,7 @@ public enum ControllerInputBackendPreference {
     }
 }
 
-/// One pad as it is actually being read right now: which player slot, what it is, and through which
-/// path — the value the HUD shows and the one the deadzone decision is derived from.
+/// One pad as it is read right now: its player slot, what it is, and through which path.
 public struct ControllerInputPath: Equatable, Sendable {
     public let playerIndex: Int
     public let name: String

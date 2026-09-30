@@ -40,14 +40,8 @@ extension NvstBifrostFreeTransport {
             }
             let sequence = (gamepadSequences[UInt16(padIndex)] ?? 0) &+ 1
             gamepadSequences[UInt16(padIndex)] = sequence
-            // Resting analog sticks are not exactly centred (~2% drift, seen jittering every poll).
-            // A real XInput pad drifts too and the game applies XINPUT_*_THUMB_DEADZONE; this title
-            // does not, so the drift reads as a held direction and the jitter floods on-change
-            // sends. Apply the standard radial deadzone here instead, except on a pad the Gamepad
-            // API reader is genuinely reading: the player chose raw reports there to leave the
-            // deadzone to the game. The choice is per pad, not the app-wide preference — a Steam
-            // Controller and a wired Xbox pad are still read through their own paths while the
-            // preference is Gamepad API, and they need this filter.
+            // Resting sticks drift ~2%, and this title applies no XINPUT_*_THUMB_DEADZONE of its
+            // own, so the drift reads as held. Only a genuinely raw pad is exempt from the filter.
             let sticks = Self.wireSticks(state, source: state.inputSource)
             let packet = NvstGamepadPacket(
                 sequence: sequence,
@@ -392,10 +386,10 @@ extension NvstBifrostFreeTransport {
     static let leftStickDeadzone: Float = 0.2395
     static let rightStickDeadzone: Float = 0.2651
 
-    /// A radial deadzone: inside `deadzone` the stick reads centred; outside, the remaining range is
-    /// rescaled to the full 0...1 so the edge still reaches the extremes.
+    /// A radial deadzone: inside `deadzone` the stick reads centred, outside the rest of the range
+    /// is rescaled to 0...1 so the edge still reaches the extremes.
     static func wireSticks(_ state: GamepadState, source: ControllerInputSource) -> (leftX: Float, leftY: Float, rightX: Float, rightY: Float) {
-        guard source.appliesClientDeadzone else {
+        guard source.isClientDeadzoneRequired else {
             return (state.leftStickX, state.leftStickY, state.rightStickX, state.rightStickY)
         }
         let (leftX, leftY) = deadzoned(state.leftStickX, state.leftStickY, leftStickDeadzone)

@@ -2,65 +2,76 @@ import Foundation
 
 struct ControllerInputHUDState: Equatable {
     var backend = ControllerInputBackendPreference.load()
-    var rows: [ControllerInputStatusRow] = []
+    var statusRows: [ControllerInputStatusRow] = []
+
+    /// The per-pad rows exist to check the Gamepad API choice, so they are noise on the default.
+    var isDiagnosticsVisible: Bool { backend == .gamepadAPI }
 }
 
 struct ControllerInputStatusRow: Identifiable, Equatable {
     let id: Int
     let label: String
-    let name: String
+    let controllerName: String
     let source: ControllerInputSource
-    let output: String?
+    let stickOutput: String?
 }
 
 @MainActor
 extension NativeNVSTHostViewModel {
     func toggleControllerInputBackend() {
-        let next: ControllerInputBackend = controllerInput.backend == .appleFramework ? .gamepadAPI : .appleFramework
-        controllerInput.backend = next
-        ControllerInputBackendPreference.save(next)
-        GamepadHIDMonitor.shared.refreshActivation()
+        let nextBackend = controllerInput.backend.toggled
+        controllerInput.backend = nextBackend
+        GamepadHIDMonitor.shared.applyPreference(nextBackend)
         refreshControllerInputStatus()
         OPNStreamTelemetry.capture("nvst.ui.controller.backend", level: .info, message: "Controller input backend changed.",
-                                   attributes: ["applicationID": configuration.applicationID, "backend": next.rawValue])
+                                   attributes: ["applicationID": configuration.applicationID, "backend": nextBackend.rawValue])
     }
 
-    /// Keeps the HUD's controller rows live *while they are on screen*.
-    ///
-    /// The rows exist only in the open HUD, and the Controller API toggle refreshes them directly,
-    /// so there is nothing to poll with the HUD down — this used to wake the main actor 10×/s for
-    /// the whole of every stream to refresh a list nobody was looking at.
+    /// Keeps the HUD's controller rows live while they are on screen. The rows exist only in the
+    /// open HUD, so with it down this idles at 1 Hz instead of waking the main actor 10×/s.
     func pollControllerInputStatus() async {
         while !Task.isCancelled {
-            if unifiedHUDVisible {
-                refreshControllerInputStatus()
-                try? await Task.sleep(for: .milliseconds(100))
-            } else {
+            guard unifiedHUDVisible else {
                 try? await Task.sleep(for: .seconds(1))
+                continue
             }
+            refreshControllerInputStatus()
+            try? await Task.sleep(for: .milliseconds(100))
         }
     }
 
     func refreshControllerInputStatus() {
-        let backend = ControllerInputBackendPreference.load()
-        if backend != controllerInput.backend { controllerInput.backend = backend }
+        syncControllerInputBackend()
         guard let nativeView else {
-            if !controllerInput.rows.isEmpty { controllerInput.rows = [] }
+            clearControllerInputRows()
             return
         }
         let states = nativeView.latestGamepadStates
         let rows = nativeView.controllerInputPaths().map { path in
-            // The source travels on the state the wire will actually send, so the label and the
-            // stick values below cannot describe a different deadzone from the one applied.
+            // The source travels on the state the wire sends, so the label and the stick values
+            // below cannot describe a different deadzone from the one applied.
             let state = states[path.playerIndex]
             let source = state?.inputSource ?? path.source
+            let stickOutput = state.map { Self.stickOutputText(NvstBifrostFreeTransport.wireSticks($0, source: source)) }
             return ControllerInputStatusRow(id: path.playerIndex,
                                             label: "P\(path.playerIndex + 1)",
-                                            name: path.name,
+                                            controllerName: path.name,
                                             source: source,
-                                            output: state.map { Self.stickOutputText(NvstBifrostFreeTransport.wireSticks($0, source: source)) })
+                                            stickOutput: stickOutput)
         }
-        if rows != controllerInput.rows { controllerInput.rows = rows }
+        guard rows != controllerInput.statusRows else { return }
+        controllerInput.statusRows = rows
+    }
+
+    private func syncControllerInputBackend() {
+        let backend = ControllerInputBackendPreference.load()
+        guard backend != controllerInput.backend else { return }
+        controllerInput.backend = backend
+    }
+
+    private func clearControllerInputRows() {
+        guard !controllerInput.statusRows.isEmpty else { return }
+        controllerInput.statusRows = []
     }
 
     nonisolated static func stickOutputText(_ sticks: (leftX: Float, leftY: Float, rightX: Float, rightY: Float)) -> String {

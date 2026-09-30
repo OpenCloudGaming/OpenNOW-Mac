@@ -198,9 +198,8 @@ public final class SteamControllerHIDMonitor: ObservableObject {
             merged.rightStickTouched = merged.rightStickTouched || snapshot.rightStickTouched
             if merged.motion == nil { merged.motion = snapshot.motion }
         }
-        // A Steam Controller applies no stick deadzone of its own — `SteamControllerReport` writes
-        // raw axis values straight into the sticks — so the client deadzone is the only one it ever
-        // gets. The merge starts from an empty snapshot, so the source is set on the result.
+        // A Steam Controller writes raw axis values straight through, so the client deadzone is the
+        // only one it gets. The merge starts from an empty snapshot, so the source is set here.
         merged.inputSource = .steamHID
         return merged
     }

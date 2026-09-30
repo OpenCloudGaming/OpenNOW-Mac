@@ -176,9 +176,7 @@ public struct GamepadState: Codable, Equatable, Hashable, Sendable {
     public let rightStickX: Float
     public let rightStickY: Float
     public let timestamp: MediaTimestamp
-    /// How this pad is being read, carried from the snapshot that produced the state so the wire
-    /// deadzone decision is per pad. Defaults to the Apple framework path, which is the one that
-    /// keeps the client deadzone.
+    /// How this pad is being read, so the wire deadzone decision is made per pad.
     public let inputSource: ControllerInputSource
 
     public init(deviceID: InputDeviceID,

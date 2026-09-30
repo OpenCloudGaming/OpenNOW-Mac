@@ -259,10 +259,10 @@ struct StreamHUDParticipantIconButton: View {
 /// Controller API choice can be checked mid-game.
 struct StreamHUDControllerInputRow: View {
     let label: String
-    let name: String
-    let path: String
+    let controllerName: String
+    let sourceLabel: String
     let isRaw: Bool
-    let output: String?
+    let stickOutput: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -271,18 +271,18 @@ struct StreamHUDControllerInputRow: View {
                     .font(.streamFont(size: 9, weight: .bold))
                     .tracking(0.7)
                     .foregroundStyle(StreamHUDTheme.textTertiary)
-                Text(name)
+                Text(controllerName)
                     .font(.streamFont(size: 11, weight: .medium))
                     .foregroundStyle(StreamHUDTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 6)
-                Text(path.uppercased())
+                Text(sourceLabel.uppercased())
                     .font(.streamFont(size: 9, weight: .bold))
                     .tracking(0.7)
                     .foregroundStyle(isRaw ? StreamHUDTheme.accent : StreamHUDTheme.textSecondary)
             }
-            Text(output ?? "Move a stick to read its output")
+            Text(stickOutput ?? "Move a stick to read its output")
                 .font(.streamFont(size: 10, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(StreamHUDTheme.textSecondary)

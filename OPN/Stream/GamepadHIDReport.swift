@@ -37,9 +37,8 @@ enum GamepadHIDReport {
         case .dualShock4: parseDualShock4(report)
         }
         guard var snapshot else { return nil }
-        // These are the pad's raw report values, which is the whole point of the Gamepad API
-        // reader: the client deadzone is deliberately not applied to them. Stamped here so the
-        // decision travels with the values instead of being re-derived from the preference later.
+        // These are the pad's raw report values, so the client deadzone must not be applied to them.
+        // Stamped here so the decision travels with the values, not with the app-wide preference.
         snapshot.inputSource = .gamepadAPI
         return snapshot
     }
@@ -57,8 +56,8 @@ enum GamepadHIDReport {
     private static func parseXbox(_ report: [UInt8], previous: ControllerInputSnapshot?) -> ControllerInputSnapshot? {
         switch report.first {
         case 0x01 where report.count >= 16:
-            var snapshot = ControllerInputSnapshot(
-                buttons: hat(Int(report[13]) - 1),
+            return ControllerInputSnapshot(
+                buttons: hat(Int(report[13]) - 1).union(xboxBitButtons(report, previous: previous)),
                 leftTrigger: Float(word(report, 9) & 0x3FF) / 1023,
                 rightTrigger: Float(word(report, 11) & 0x3FF) / 1023,
                 leftStickX: axis(word(report, 1)),
@@ -66,25 +65,28 @@ enum GamepadHIDReport {
                 rightStickX: axis(word(report, 5)),
                 rightStickY: -axis(word(report, 7))
             )
-            if report.count == 16 {
-                // Pre-BLE firmware packs the buttons and sends the guide button in report 0x02.
-                snapshot.buttons.formUnion(buttons(report, xboxLegacyButtonBits))
-                if previous?.buttons.contains(.mode) == true { snapshot.buttons.insert(.mode) }
-            } else {
-                snapshot.buttons.formUnion(buttons(report, xboxButtonBits))
-            }
-            return snapshot
         case 0x02 where report.count >= 2:
-            guard var snapshot = previous else { return nil }
-            if report[1] & 0x01 != 0 {
-                snapshot.buttons.insert(.mode)
-            } else {
-                snapshot.buttons.remove(.mode)
-            }
-            return snapshot
+            return xboxGuideState(report, previous: previous)
         default:
             return nil
         }
+    }
+
+    /// Pre-BLE firmware packs the buttons into 16-byte reports and sends the guide button alone.
+    private static func xboxBitButtons(_ report: [UInt8], previous: ControllerInputSnapshot?) -> GamepadButtons {
+        guard report.count == 16 else { return buttons(report, xboxButtonBits) }
+        var legacy = buttons(report, xboxLegacyButtonBits)
+        if previous?.buttons.contains(.mode) == true { legacy.insert(.mode) }
+        return legacy
+    }
+
+    /// Report 0x02 carries the guide bit only, so it edits the previous snapshot rather than a new one.
+    private static func xboxGuideState(_ report: [UInt8], previous: ControllerInputSnapshot?) -> ControllerInputSnapshot? {
+        guard var snapshot = previous else { return nil }
+        snapshot.buttons.remove(.mode)
+        guard report[1] & 0x01 != 0 else { return snapshot }
+        snapshot.buttons.insert(.mode)
+        return snapshot
     }
 
     private static func parseDualSense(_ report: [UInt8]) -> ControllerInputSnapshot? {

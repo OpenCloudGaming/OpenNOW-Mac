@@ -160,9 +160,10 @@ final class GenericControllerTestModel: ObservableObject {
 
     private func refreshSnapshot() {
         guard let controller, let gamepad = controller.extendedGamepad else { return }
-        let next = GamepadHIDMonitor.shared.snapshots()[ObjectIdentifier(controller)].map(GenericControllerInputSnapshot.init(snapshot:))
+        let rawSnapshot = GamepadHIDMonitor.shared.snapshots()[ObjectIdentifier(controller)]
+        let nextSnapshot = rawSnapshot.map(GenericControllerInputSnapshot.init(snapshot:))
             ?? GenericControllerInputSnapshot(gamepad: gamepad)
-        if next != snapshot { snapshot = next }
+        if nextSnapshot != snapshot { snapshot = nextSnapshot }
         refreshBattery(controller)
     }
 

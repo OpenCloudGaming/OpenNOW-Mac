@@ -41,9 +41,7 @@ public struct ControllerInputSnapshot: Equatable, Sendable {
     /// Inertial data, when the pad reports it and motion reporting is switched on. `nil` means
     /// "no gyro data available", which is different from "held perfectly still".
     public var motion: ControllerMotionSample?
-    /// Which reader produced these values. Travels with them so the wire's deadzone decision is
-    /// made per pad rather than from the app-wide `ControllerInputBackend` preference; see
-    /// `ControllerInputSource.appliesClientDeadzone`.
+    /// Which reader produced these values, so the wire's deadzone decision is made per pad.
     public var inputSource: ControllerInputSource
 
     public init(buttons: GamepadButtons = [],

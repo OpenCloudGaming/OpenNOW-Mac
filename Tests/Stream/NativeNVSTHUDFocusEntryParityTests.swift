@@ -55,10 +55,8 @@ struct NativeNVSTHUDFocusEntryParityTests {
         model.controllerBatteries = [ControllerBatteryInfo(id: "pad", label: "P1", level: 80, charging: false)]
         let tiles = surface.nativeHUDControllerTiles
         #expect(focusIDs(in: "controllers", on: model) == tiles.map(\.id))
-        // The panel gained a third tile (Controller API), so it is the one group whose tile count
-        // can grow without a code change elsewhere; assert it still fits one row. The connected-pad
-        // case is the only one where these entries exist, which is why this assertion lives here
-        // rather than in `noPanelWrapsOntoASecondRow`.
+        // The panel gained a third tile, so assert it still fits one row. These entries exist only
+        // with a pad connected, which is why the assertion lives here, not in the wrap test.
         #expect(tiles.count <= 4, "controllers needs a second row")
     }
 

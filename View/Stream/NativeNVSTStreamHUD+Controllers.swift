@@ -18,13 +18,13 @@ extension NativeNVSTMediaStreamSurface {
                 onToggle: { model.toggleHUDSection(.controllers) }
             ) {
                 nativeHUDTileGrid(nativeHUDControllerTiles)
-                // Only while the Gamepad API is the chosen reader: these rows exist to check that
-                // choice mid-game, and with the default backend every pad is on the same path, so
-                // they were three extra rows of noise for every user who never opted in.
-                if model.controllerInput.backend == .gamepadAPI {
-                    ForEach(model.controllerInput.rows) { status in
-                        StreamHUDControllerInputRow(label: status.label, name: status.name, path: status.source.label,
-                                                    isRaw: status.source == .gamepadAPI, output: status.output)
+                if model.controllerInput.isDiagnosticsVisible {
+                    ForEach(model.controllerInput.statusRows) { status in
+                        StreamHUDControllerInputRow(label: status.label,
+                                                    controllerName: status.controllerName,
+                                                    sourceLabel: status.source.label,
+                                                    isRaw: status.source == .gamepadAPI,
+                                                    stickOutput: status.stickOutput)
                     }
                 }
                 ForEach(model.controllerBatteries) { battery in
