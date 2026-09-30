@@ -57,6 +57,10 @@ final class AppRootViewModel: ObservableObject {
         bind(login: login)
         guard !didBootstrap else { return }
         didBootstrap = true
+        // The root view's first task run is the app's first frame: AppKit has built the window and
+        // SwiftUI has built the view tree, so this is the first footprint that includes both. It is
+        // taken before the bootstrap below, which is what the catalog-visible milestone measures.
+        OPNMemoryFootprint.record(.firstFrame)
         syncModelState()
         login.bootstrap()
         drainOpenedFiles()
