@@ -135,7 +135,7 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
 
           echo "Creating DMG..."
-          ./scripts/create-dmg.sh "${APP_PATH}" "${DMG_PATH}"
+          ./scripts/release/create-dmg.sh "${APP_PATH}" "${DMG_PATH}"
           codesign --force --keychain "${RUNNER_TEMP}/build.keychain-db" \
             --sign "${CODE_SIGN_IDENTITY}" --timestamp "${DMG_PATH}"
         env:

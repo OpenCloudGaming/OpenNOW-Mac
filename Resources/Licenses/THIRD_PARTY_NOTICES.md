@@ -95,7 +95,7 @@ Derivation:
   the Xcode generator and Xcode 27, for macOS 15+ arm64. Reproduce from a clean pinned checkout:
 
   ```
-  CMAKE=/path/to/cmake bash scripts/build-usrsctp.sh /path/to/usrsctp
+  CMAKE=/path/to/cmake bash scripts/build/build-usrsctp.sh /path/to/usrsctp
   ```
 
   The configuration detects `HAVE_SA_LEN`, `HAVE_SIN_LEN`, `HAVE_SIN6_LEN` and `HAVE_SCONN_LEN`.

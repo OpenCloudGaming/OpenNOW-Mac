@@ -581,7 +581,7 @@ Corrections are based on [usrsctp's accepting-peer example](https://github.com/s
 [RFC 8832](https://www.rfc-editor.org/rfc/rfc8832), and the negotiated DTLS-SRTP profiles:
 
 - Rebuild the pinned usrsctp archive through its CMake configuration and Xcode. The macOS address
-  layout macros must agree with the shipped header. `scripts/build-usrsctp.sh` reproduces this build.
+  layout macros must agree with the shipped header. `scripts/build/build-usrsctp.sh` reproduces this build.
 - Register one transport token, bind/connect port 5000 with it, pass that token directly to
   `usrsctp_conninput`, return zero from successful output callbacks, and deregister on close.
 - Set `SCTP_SEND_SNDINFO_VALID`/`SCTP_SEND_PRINFO_VALID` rather than using `SCTP_SENDV_SPA` as
@@ -677,7 +677,7 @@ The corrections above are now in the tree and independently checked:
   PLAY unless the seat disables it, so only a literal `1` now suppresses it; absence means send.
 - **Verification.** Xcode suite: **2,260 passed, 4 skipped, 0 failed** after the 4e deletion. Strict
   lint: zero violations across 875 files. The rebuilt usrsctp static archive is committed with its
-  SHA-256 and a reproduction script (`scripts/build-usrsctp.sh`).
+  SHA-256 and a reproduction script (`scripts/build/build-usrsctp.sh`).
 
 **All four gates are now proven live (2026-09-24):**
 

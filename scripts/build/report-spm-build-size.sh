@@ -2,7 +2,7 @@
 
 set -eu
 
-repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 warn_gb=${SPM_BUILD_SIZE_WARN_GB:-8}
 warn_kb=$((warn_gb * 1024 * 1024))
 
@@ -46,6 +46,6 @@ fi
 
 if [ "$total_kb" -gt "$warn_kb" ]; then
     printf '\nWARNING: SwiftPM generated files exceed %sG.\n' "$warn_gb" >&2
-    printf 'Use scripts/clean-spm-builds.sh, then build and test with --scratch-path .build/shared.\n' >&2
+    printf 'Use scripts/build/clean-spm-builds.sh, then build and test with --scratch-path .build/shared.\n' >&2
     exit 1
 fi
