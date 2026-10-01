@@ -12,7 +12,7 @@ enum OPNUpdatePreferences {
     static let updateChannelKey = "OPNUpdateChannel"
     static let defaultUpdateChannel = OPNUpdateChannel.stable
 
-    private static let remindAfterKey = "OpenNOWUpdateRemindAfter"
+    static let remindAfterKey = "OpenNOWUpdateRemindAfter"
     static let lastUpdateCheckDateKey = "OpenNOWLastUpdateCheckDate"
 
     static var updateChannel: OPNUpdateChannel {

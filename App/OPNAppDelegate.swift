@@ -16,6 +16,10 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private var streamShortcutMonitor: Any?
     private var isCompletingUserApprovedTermination = false
 
+    /// The instance SwiftUI created for `@NSApplicationDelegateAdaptor`: `NSApp.delegate` is SwiftUI's
+    /// wrapper, so the static entry points the app menu and Settings reach resolve the delegate here.
+    private(set) static weak var activeApplicationDelegate: OPNAppDelegate?
+
     override init() {
         let updater = OPNGitHubUpdater(owner: "OpenCloudGaming", repository: "openNOW-Mac")
         githubUpdater = updater
@@ -27,6 +31,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
             shouldRunAutomaticCheck: { OPNUpdatePreferences.shouldRunAutomaticUpdateCheck() }
         )
         super.init()
+        Self.activeApplicationDelegate = self
     }
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
@@ -173,12 +178,12 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     static func requestApplicationUpdateCheck() {
-        (NSApp.delegate as? OPNAppDelegate)?.checkForApplicationUpdates(isAutomatic: false)
+        Self.activeApplicationDelegate?.checkForApplicationUpdates(isAutomatic: false)
     }
 
     static func setAutomaticApplicationUpdateChecksEnabled(_ enabled: Bool) {
         OPNUpdatePreferences.automaticUpdateChecksEnabled = enabled
-        (NSApp.delegate as? OPNAppDelegate)?.refreshApplicationUpdateCheckSchedule()
+        Self.activeApplicationDelegate?.refreshApplicationUpdateCheckSchedule()
     }
 
     private func startApplicationUpdateChecks() {
@@ -313,9 +318,9 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
             forName: StreamSessionLifecycle.activeStreamDidChangeNotification,
             object: nil,
             queue: .main
-        ) { _ in
+        ) { [weak self] _ in
             MainActor.assumeIsolated {
-                (NSApp.delegate as? OPNAppDelegate)?.presentDeferredUpdateIfStreamEnded()
+                self?.presentDeferredUpdateIfStreamEnded()
             }
         }
     }
