@@ -90,8 +90,7 @@ jobs:
             OPN_SENTRY_DSN="${OPN_SENTRY_DSN}" \
             DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM}" \
             CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            SWIFT_COMPILATION_MODE=singlefile
+            CODE_SIGNING_REQUIRED=NO
         shell: bash
 
       - name: Install dmgbuild
