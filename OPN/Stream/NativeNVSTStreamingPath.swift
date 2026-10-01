@@ -166,7 +166,7 @@ public actor NativeNVSTStreamingPath {
             throw error
         }
 
-        try await prepareAndConnectTransport(allocation: allocation, configuration: configuration, progress: progress, trace: trace)
+        try await startTransport(allocation: allocation, configuration: configuration, progress: progress, trace: trace)
 
         trace.begin(.connected)
         activeSession = allocation.session
@@ -182,50 +182,6 @@ public actor NativeNVSTStreamingPath {
         OPNStreamTelemetry.capture("nvst.path.connected", level: .info, message: "Native NVST streaming path connected.", attributes: ["sessionId": allocation.session.id, "applicationID": allocation.session.applicationID])
         trace.markConnected()
         return allocation.session
-    }
-
-    /// Prepares and connects the transport for a freshly allocated seat, and releases that seat when
-    /// any of it fails. Timed as two steps: `prepareTransport` is validation, `connectTransport` is
-    /// the RTSP negotiation.
-    private func prepareAndConnectTransport(allocation: NativeNVSTSessionAllocation,
-                                            configuration: StreamLaunchConfiguration,
-                                            progress: (@Sendable (StreamProgress) async -> Void)?,
-                                            trace: StreamStartTrace) async throws {
-        do {
-            trace.begin(.prepareTransport)
-            try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
-            try await publishProgress(configuration: configuration, step: .prepareTransport, message: "Preparing native NVST transport...", progress: progress)
-            try validate(allocation: allocation)
-            trace.begin(.connectTransport)
-            try await publishProgress(configuration: configuration, step: .connectTransport, message: "Connecting native NVST secure RTSP transport...", progress: progress)
-            _ = try await transport.connect(allocation: allocation, mediaReceiver: mediaSession)
-            try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
-        } catch {
-            await transport.disconnect()
-            await mediaSession.finish()
-            // On a resume attempt allocation.session IS the session the user is trying to
-            // reclaim, and it can still be live on the device that started it. `.paused` tears
-            // down our side without telling the seat to stop — stopping it here killed the other
-            // device's stream on every failed resume.
-            let releaseReason: StreamEndReason = allocation.isResume
-                ? .paused
-                : (Task.isCancelled ? .userRequested : .failed)
-            if error as? NativeNVSTError == .sessionLimitReached {
-                // The blocking session is a different one whose identity this error does not carry.
-                try? await sessionProvider.finishSession(allocation.session, reason: releaseReason)
-                if let conflict = await sessionProvider.lookupActiveSessionConflict(
-                    excludingSessionID: allocation.session.id,
-                    applicationID: configuration.applicationID
-                ) {
-                    throw OPNStreamSessionError.activeSessionConflict(conflict)
-                }
-                throw error
-            }
-            try? await sessionProvider.finishSession(allocation.session, reason: releaseReason)
-            if error is CancellationError || Task.isCancelled { throw error }
-            OPNStreamTelemetry.capture("nvst.path.transport.error", level: .error, message: Self.message(for: error), attributes: ["sessionId": allocation.session.id])
-            throw error
-        }
     }
 
     public func send(_ event: UserInputEvent) async throws {
@@ -519,6 +475,79 @@ public actor NativeNVSTStreamingPath {
     private static func message(for error: Error) -> String {
         if let localized = error as? LocalizedError, let description = localized.errorDescription, !description.isEmpty { return description }
         return error.localizedDescription.isEmpty ? "Native NVST stream failed." : error.localizedDescription
+    }
+}
+
+// Transport start.
+extension NativeNVSTStreamingPath {
+
+    /// Starts the transport for a freshly allocated seat, releasing that seat when either step fails.
+    private func startTransport(allocation: NativeNVSTSessionAllocation,
+                                configuration: StreamLaunchConfiguration,
+                                progress: (@Sendable (StreamProgress) async -> Void)?,
+                                trace: StreamStartTrace) async throws {
+        do {
+            try await prepareTransport(allocation: allocation, configuration: configuration, progress: progress, trace: trace)
+            try await connectTransport(allocation: allocation, configuration: configuration, progress: progress, trace: trace)
+        } catch {
+            try await releaseSeatAfterFailedStart(error, allocation: allocation, configuration: configuration)
+        }
+    }
+
+    private func prepareTransport(allocation: NativeNVSTSessionAllocation,
+                                  configuration: StreamLaunchConfiguration,
+                                  progress: (@Sendable (StreamProgress) async -> Void)?,
+                                  trace: StreamStartTrace) async throws {
+        trace.begin(.prepareTransport)
+        try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
+        try await publishProgress(configuration: configuration, step: .prepareTransport, message: "Preparing native NVST transport...", progress: progress)
+        try validate(allocation: allocation)
+    }
+
+    private func connectTransport(allocation: NativeNVSTSessionAllocation,
+                                  configuration: StreamLaunchConfiguration,
+                                  progress: (@Sendable (StreamProgress) async -> Void)?,
+                                  trace: StreamStartTrace) async throws {
+        trace.begin(.connectTransport)
+        try await publishProgress(configuration: configuration, step: .connectTransport, message: "Connecting native NVST secure RTSP transport...", progress: progress)
+        _ = try await transport.connect(allocation: allocation, mediaReceiver: mediaSession)
+        try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
+    }
+
+    /// Releases a seat whose start failed, and rethrows the failure the caller must see.
+    private func releaseSeatAfterFailedStart(_ error: Error,
+                                             allocation: NativeNVSTSessionAllocation,
+                                             configuration: StreamLaunchConfiguration) async throws -> Never {
+        await transport.disconnect()
+        await mediaSession.finish()
+        try? await sessionProvider.finishSession(allocation.session, reason: releaseReason(for: allocation))
+        guard error as? NativeNVSTError != .sessionLimitReached else {
+            try await reportActiveSessionConflict(error, allocation: allocation, configuration: configuration)
+        }
+        guard !(error is CancellationError), !Task.isCancelled else { throw error }
+        OPNStreamTelemetry.capture("nvst.path.transport.error", level: .error, message: Self.message(for: error), attributes: ["sessionId": allocation.session.id])
+        throw error
+    }
+
+    /// A resume attempt's seat can still be live on the device that started it: `.paused` tears down
+    /// our side without telling the seat to stop, where stopping it killed that device's stream.
+    private func releaseReason(for allocation: NativeNVSTSessionAllocation) -> StreamEndReason {
+        if allocation.isResume { return .paused }
+        guard Task.isCancelled else { return .failed }
+        return .userRequested
+    }
+
+    /// A session-limit failure does not carry the identity of the session actually holding the seat.
+    private func reportActiveSessionConflict(_ error: Error,
+                                             allocation: NativeNVSTSessionAllocation,
+                                             configuration: StreamLaunchConfiguration) async throws -> Never {
+        guard let conflict = await sessionProvider.lookupActiveSessionConflict(
+            excludingSessionID: allocation.session.id,
+            applicationID: configuration.applicationID
+        ) else {
+            throw error
+        }
+        throw OPNStreamSessionError.activeSessionConflict(conflict)
     }
 }
 

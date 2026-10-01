@@ -40,7 +40,7 @@ private final class RecordingStreamStartSink: StreamTelemetrySink, @unchecked Se
 @Suite("Stream start timing")
 struct StreamStartTraceTests {
     @Test("every step and the total are emitted, in launch order, on a connected start")
-    func connectedStartEmitsEveryStepAndTotal() {
+    func connectedStartEmitsEveryStepAndTotal() throws {
         let sink = RecordingStreamStartSink()
 
         let trace = StreamStartTrace(applicationID: "100", sink: sink)
@@ -54,7 +54,8 @@ struct StreamStartTraceTests {
         #expect(sink.timeline?.level == .info)
         #expect(sink.timeline?.attributes["outcome"] == StreamStartOutcome.connected.rawValue)
         #expect(sink.timeline?.attributes["failedStep"] == nil)
-        #expect(sink.timeline?.message.contains("total=") == true)
+        let message = try #require(sink.timeline?.message)
+        #expect(message.contains("total="))
     }
 
     @Test("an aborted start emits the steps it reached and names the step it stopped in")
@@ -144,11 +145,8 @@ struct StreamStartTraceTests {
             traceSink: sink
         )
 
-        do {
+        await #expect(throws: NativeNVSTError.transportFailed("Connection rejected")) {
             _ = try await path.start(configuration: launchConfiguration)
-            Issue.record("Expected the connection to fail")
-        } catch {
-            #expect(error as? NativeNVSTError == .transportFailed("Connection rejected"))
         }
 
         #expect(sink.stepNames == ["check-network-route", "allocate-cloud-session", "prepare-transport", "connect-transport"])

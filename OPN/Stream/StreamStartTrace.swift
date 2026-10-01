@@ -1,19 +1,10 @@
-//  Per-step elapsed timing for one native NVST stream start.
-//
-//  The five launch steps are published to the UI but were never timed, so "the stream takes a while
-//  to start" could not be attributed to the runtime check, the cloud allocation, transport setup or
-//  the connect. Each step gets an `OSSignposter` interval on the "Stream" category - so one start
-//  reads as one track in Instruments - and an elapsed duration through `OPNStreamTelemetry`, the
-//  sink the rest of stream telemetry already uses.
-//
-//  Start-of-stream only. Nothing here is reachable from the per-frame path.
+//  Per-step elapsed timing for one native NVST stream start, as signposts and telemetry.
 
 import Foundation
 import os
 
 extension StreamLaunchStep {
-    /// Stable key for signpost names and metric attributes. `title` is user-facing copy and may be
-    /// reworded, so it cannot key a metric that outlives the wording.
+    /// Stable metric key for this step; `title` is user-facing copy and may be reworded.
     var traceKey: String {
         switch self {
         case .checkNetworkRoute: "check-network-route"
@@ -36,41 +27,46 @@ extension StreamLaunchStep {
     }
 }
 
-/// How a stream start ended. A cancelled start is distinguished from a failed one: the user backing
-/// out is not the same signal as the seat refusing the session.
+/// How a stream start ended. A cancelled start is not the same signal as a seat refusing the session.
 enum StreamStartOutcome: String, Sendable {
     case connected
     case failed
     case cancelled
 }
 
-/// One stream start's timeline. Created at the top of the launch, advanced by `begin(_:)` at each
-/// step boundary, and closed by `finish()` on every exit path.
+/// One stream start's timeline: a duration per step plus the total, emitted on every exit path.
 final class StreamStartTrace {
-    /// The whole start, in the same track as the per-step intervals.
+    /// The whole start, on the same Instruments track as the per-step intervals.
     static let totalSignpostName: StaticString = "StreamStart.total"
-    /// One log line per start carrying every step, so a diagnostics log a user sends has the
-    /// breakdown even when the metrics backend does not.
+    /// One log line per start carrying every step, so a diagnostics log has the breakdown too.
     static let timelineEventName = "nvst.path.start.timeline"
-    /// One distribution sample per step, and one for the total.
     static let stepMetricKey = "nvst.path.start.step_ms"
     static let totalMetricKey = "nvst.path.start.total_ms"
     static let signpostCategory = "Stream"
+
+    private struct OpenStep {
+        let step: StreamLaunchStep
+        let startedAt: ContinuousClock.Instant
+        let interval: OSSignpostIntervalState
+    }
+
+    private struct MeasuredStep {
+        let step: StreamLaunchStep
+        let duration: Duration
+    }
 
     private let applicationID: String
     private let sink: any StreamTelemetrySink
     private let signposter: OSSignposter
     private let startedAt: ContinuousClock.Instant
-    private var stepStartedAt: ContinuousClock.Instant?
-    private var stepInterval: OSSignpostIntervalState?
-    private var openStep: StreamLaunchStep?
+    private var openStep: OpenStep?
     private var stepDurations: [StreamLaunchStep: Duration] = [:]
     private var outcome: StreamStartOutcome?
     private var totalInterval: OSSignpostIntervalState?
     private var isFinished = false
 
-    /// `sink` defaults to the app's configured stream telemetry sink. A caller injects one to
-    /// observe a start without touching process-wide state.
+    /// `sink` defaults to the app's configured stream telemetry sink; a caller injects one to observe
+    /// a start without touching process-wide state.
     init(applicationID: String, sink: (any StreamTelemetrySink)? = nil) {
         self.applicationID = applicationID
         self.sink = sink ?? OPNStreamStartTraceSink()
@@ -82,99 +78,131 @@ final class StreamStartTrace {
         self.totalInterval = signposter.beginInterval(Self.totalSignpostName)
     }
 
-    /// Opens the next step. The previous step closes at this boundary, so the five durations tile the
-    /// start instead of overlapping.
+    /// Opens the next step. The previous one closes at the same instant, so the durations tile.
     func begin(_ step: StreamLaunchStep) {
-        closeOpenStep()
-        openStep = step
-        stepStartedAt = .now
-        stepInterval = signposter.beginInterval(step.signpostName)
+        let boundary = ContinuousClock.now
+        closeOpenStep(at: boundary)
+        openStep = OpenStep(
+            step: step,
+            startedAt: boundary,
+            interval: signposter.beginInterval(step.signpostName)
+        )
     }
 
     /// Marks the launch as having reached the ready state.
     func markConnected() {
-        closeOpenStep()
+        closeOpenStep(at: .now)
         outcome = .connected
     }
 
-    /// Ends whatever step is still open and emits the timeline exactly once, so the `defer` on the
-    /// launch path and an explicit call cannot double-count.
+    /// Ends any open step and emits the timeline exactly once, so a `defer` cannot double-count.
     func finish() {
         guard !isFinished else { return }
         isFinished = true
-        // A step still open when the launch stops is where it stopped. Its interval ends here, so
-        // the failing step is visible in Instruments with the time it spent before giving up.
-        let stoppedAt = openStep
-        closeOpenStep()
-        if let totalInterval {
-            signposter.endInterval(Self.totalSignpostName, totalInterval)
-            self.totalInterval = nil
-        }
-        let resolvedOutcome = outcome ?? (Task.isCancelled ? .cancelled : .failed)
-        emit(outcome: resolvedOutcome,
-             failedStep: resolvedOutcome == .connected ? nil : stoppedAt,
-             total: startedAt.duration(to: .now))
+        let stoppedStep = openStep?.step
+        closeOpenStep(at: .now)
+        endTotalInterval()
+        let resolved = resolveOutcome()
+        emitTimeline(
+            outcome: resolved,
+            failedStep: failedStep(for: resolved, stoppedAt: stoppedStep),
+            total: startedAt.duration(to: .now)
+        )
     }
 
-    private func closeOpenStep() {
-        guard let openStep, let stepInterval else { return }
-        signposter.endInterval(openStep.signpostName, stepInterval)
-        stepDurations[openStep] = stepStartedAt.map { $0.duration(to: .now) } ?? .zero
+    private func closeOpenStep(at instant: ContinuousClock.Instant) {
+        guard let openStep else { return }
         self.openStep = nil
-        self.stepInterval = nil
-        self.stepStartedAt = nil
+        signposter.endInterval(openStep.step.signpostName, openStep.interval)
+        stepDurations[openStep.step] = openStep.startedAt.duration(to: instant)
     }
 
-    private func emit(outcome: StreamStartOutcome, failedStep: StreamLaunchStep?, total: Duration) {
-        var summary: [String] = []
-        for step in StreamLaunchStep.allCases {
-            guard let duration = stepDurations[step] else { continue }
-            let elapsed = Self.milliseconds(duration)
-            summary.append("\(step.traceKey)=\(Int(elapsed.rounded()))ms")
-            sink.record(
-                StreamTelemetryMetric(
-                    key: Self.stepMetricKey,
-                    kind: .distribution,
-                    value: elapsed,
-                    unit: "millisecond",
-                    attributes: ["step": step.traceKey, "outcome": outcome.rawValue, "applicationID": applicationID]
-                )
-            )
+    private func endTotalInterval() {
+        guard let totalInterval else { return }
+        signposter.endInterval(Self.totalSignpostName, totalInterval)
+        self.totalInterval = nil
+    }
+
+    private func resolveOutcome() -> StreamStartOutcome {
+        if let outcome { return outcome }
+        guard Task.isCancelled else { return .failed }
+        return .cancelled
+    }
+
+    /// A start that reached ready has no failing step; one that stopped reports the step it stopped in.
+    private func failedStep(for outcome: StreamStartOutcome, stoppedAt step: StreamLaunchStep?) -> StreamLaunchStep? {
+        guard outcome != .connected else { return nil }
+        return step
+    }
+
+    private func measuredSteps() -> [MeasuredStep] {
+        StreamLaunchStep.allCases.compactMap { step in
+            guard let duration = stepDurations[step] else { return nil }
+            return MeasuredStep(step: step, duration: duration)
         }
-        let totalMilliseconds = Self.milliseconds(total)
-        summary.append("total=\(Int(totalMilliseconds.rounded()))ms")
-        var attributes = ["applicationID": applicationID, "outcome": outcome.rawValue]
-        if let failedStep {
-            attributes["failedStep"] = failedStep.traceKey
-        }
-        sink.record(
-            StreamTelemetryMetric(
-                key: Self.totalMetricKey,
+    }
+
+    private func emitTimeline(outcome: StreamStartOutcome, failedStep: StreamLaunchStep?, total: Duration) {
+        let steps = measuredSteps()
+        let attributes = timelineAttributes(outcome: outcome, failedStep: failedStep)
+        for measured in steps {
+            sink.record(StreamTelemetryMetric(
+                key: Self.stepMetricKey,
                 kind: .distribution,
-                value: totalMilliseconds,
+                value: Self.milliseconds(measured.duration),
                 unit: "millisecond",
-                attributes: attributes
-            )
-        )
-        sink.capture(
-            StreamTelemetryEvent(
-                name: Self.timelineEventName,
-                level: outcome == .failed ? .warning : .info,
-                message: "Stream start \(outcome.rawValue): \(summary.joined(separator: " "))",
-                attributes: attributes
-            )
-        )
+                attributes: [
+                    "step": measured.step.traceKey,
+                    "outcome": outcome.rawValue,
+                    "applicationID": applicationID
+                ]
+            ))
+        }
+        sink.record(StreamTelemetryMetric(
+            key: Self.totalMetricKey,
+            kind: .distribution,
+            value: Self.milliseconds(total),
+            unit: "millisecond",
+            attributes: attributes
+        ))
+        sink.capture(StreamTelemetryEvent(
+            name: Self.timelineEventName,
+            level: timelineLevel(for: outcome),
+            message: timelineMessage(outcome: outcome, steps: steps, total: total),
+            attributes: attributes
+        ))
+    }
+
+    private func timelineAttributes(outcome: StreamStartOutcome, failedStep: StreamLaunchStep?) -> [String: String] {
+        var attributes = ["applicationID": applicationID, "outcome": outcome.rawValue]
+        guard let failedStep else { return attributes }
+        attributes["failedStep"] = failedStep.traceKey
+        return attributes
+    }
+
+    private func timelineLevel(for outcome: StreamStartOutcome) -> StreamTelemetryLevel {
+        guard outcome == .failed else { return .info }
+        return .warning
+    }
+
+    private func timelineMessage(outcome: StreamStartOutcome, steps: [MeasuredStep], total: Duration) -> String {
+        let stepSummary = steps.map { "\($0.step.traceKey)=\(Self.roundedMilliseconds($0.duration))ms" }
+        let measured = (stepSummary + ["total=\(Self.roundedMilliseconds(total))ms"]).joined(separator: " ")
+        return "Stream start \(outcome.rawValue): \(measured)"
     }
 
     private static func milliseconds(_ duration: Duration) -> Double {
         let components = duration.components
         return Double(components.seconds) * 1000 + Double(components.attoseconds) / 1e15
     }
+
+    private static func roundedMilliseconds(_ duration: Duration) -> Int {
+        Int(milliseconds(duration).rounded())
+    }
 }
 
-/// The default sink: resolves the app's configured stream telemetry sink at emission time rather
-/// than capturing it. The app configures that sink during launch, so a snapshot taken when a trace
-/// is constructed can predate it.
+/// The default sink, resolving the app's configured stream telemetry sink at emission time rather
+/// than capturing it: the app configures that sink during launch.
 struct OPNStreamStartTraceSink: StreamTelemetrySink {
     func capture(_ event: StreamTelemetryEvent) {
         OPNStreamTelemetry.capture(
