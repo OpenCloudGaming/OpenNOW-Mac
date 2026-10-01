@@ -262,6 +262,15 @@ public enum WebTransportCapsuleCodec {
         }
         offset += lengthLen
 
+        // A peer-declared length must be bounded before this decoder waits on that many
+        // bytes; an over-cap CLOSE capsule would otherwise stall the reader forever.
+        guard lengthVarint <= maxCapsulePayloadSize else {
+            throw WebTransportCapsuleError.payloadTooLarge(
+                size: lengthVarint,
+                maxAllowed: maxCapsulePayloadSize
+            )
+        }
+
         let payloadLength = Int(lengthVarint)
 
         // Check we have enough bytes for the full payload
@@ -302,6 +311,9 @@ public enum WebTransportCapsuleCodec {
 
         return (capsules, totalConsumed)
     }
+
+    /// Maximum accepted capsule payload length, matching the HTTP/3 frame bound.
+    public static let maxCapsulePayloadSize: UInt64 = 16 * 1024 * 1024
 
     /// Decodes a capsule payload based on its type.
     ///
@@ -418,12 +430,17 @@ public enum WebTransportCapsuleError: Error, Sendable, CustomStringConvertible {
     /// The capsule data is truncated (incomplete on the wire).
     case truncatedCapsule(String)
 
+    /// The declared capsule payload length exceeds the accepted maximum.
+    case payloadTooLarge(size: UInt64, maxAllowed: UInt64)
+
     public var description: String {
         switch self {
         case .payloadTooShort(let expected, let actual, let capsuleType):
             return "\(capsuleType) payload too short: expected at least \(expected) bytes, got \(actual)"
         case .malformedVarint(let context):
             return "Malformed varint in capsule: \(context)"
+        case .payloadTooLarge(let size, let maxAllowed):
+            return "Capsule payload too large: \(size) bytes (max: \(maxAllowed))"
         case .truncatedCapsule(let context):
             return "Truncated capsule data: \(context)"
         }

@@ -372,64 +372,76 @@ extension HTTP3Connection {
 
     // MARK: - Incoming Bidirectional Stream Routing
 
+    /// Upper bound on the bytes consumed while reading WebTransport
+    /// bidirectional framing (two varints, at most 8 bytes each).
+    private static let maxWebTransportFramingBytes = 16
+
     /// Routes an incoming bidirectional stream to either WebTransport or
     /// HTTP/3 request handling.
     ///
-    /// Per draft-ietf-webtrans-http3, a WebTransport bidirectional stream
-    /// starts with a session ID varint. An HTTP/3 request stream starts
-    /// with a HEADERS frame (type 0x01). We disambiguate by peeking at
-    /// the first varint and checking if it matches a known active
-    /// WebTransport session ID.
+    /// The 0x41 signal and session ID may straddle STREAM frames, so reads continue until both
+    /// are complete or the framing cap is reached. A peer that predates the signal sends the ID alone.
     func handleIncomingBidiStream(_ stream: any QUICStreamProtocol) async {
-        // If no WebTransport sessions are active, fast-path to HTTP/3 request handling
         guard !webTransportSessions.isEmpty else {
             await handleIncomingRequestStream(stream)
             return
         }
 
-        // Read the first chunk of data from the stream
-        let firstData: Data
-        do {
-            firstData = try await stream.read()
-        } catch {
-            return
-        }
-        guard !firstData.isEmpty else {
-            return
-        }
-
-        // Try to decode the first varint — this is either the nominal WT_STREAM signal (0x41) or, from
-        // a peer that predates the signal, the session ID directly. HTTP/3 frame types are the other
-        // possibility, which is why the catch falls through to request handling.
-        do {
-            var (varint, consumed) = try Varint.decode(from: firstData)
-            // A spec-compliant peer (Chrome, and this library's own client) opens a bidirectional
-            // WebTransport stream with the 0x41 signal before the session ID.
-            if varint.value == kWebTransportBidiSignal {
-                let (sessionVarint, sessionConsumed) = try Varint.decode(from: Data(firstData.dropFirst(consumed)))
-                varint = sessionVarint
-                consumed += sessionConsumed
-            }
-            let candidateSessionID = varint.value
-
-            // Check if this matches a known WebTransport session
-            if let session = webTransportSessions[candidateSessionID] {
-                Self.logger.debug("handleIncomingBidiStream: stream \(stream.id) matched WebTransport session \(candidateSessionID)")
-                let remaining: Data
-                if consumed < firstData.count {
-                    remaining = Data(firstData.dropFirst(consumed))
-                } else {
-                    remaining = Data()
+        var buffer = Data()
+        while true {
+            do {
+                let chunk = try await stream.read()
+                if chunk.isEmpty {
+                    return
                 }
+                buffer.append(chunk)
+            } catch {
+                return
+            }
+
+            guard let (firstVarint, firstLength) = try? Varint.decode(from: buffer) else {
+                if buffer.count >= Self.maxWebTransportFramingBytes {
+                    await stream.reset(errorCode: HTTP3ErrorCode.messageError.rawValue)
+                    return
+                }
+                continue
+            }
+
+            if firstVarint.value != kWebTransportBidiSignal {
+                // Without the signal the first varint is an older peer's session ID or an HTTP/3
+                // frame type; a valid frame type is request framing, never a session.
+                guard HTTP3FrameType(rawValue: firstVarint.value) == nil,
+                      let session = webTransportSessions[firstVarint.value] else {
+                    await handleIncomingRequestStreamWithBuffer(stream, initialBuffer: buffer)
+                    return
+                }
+                let remaining = buffer.count > firstLength
+                    ? Data(buffer.dropFirst(firstLength))
+                    : Data()
                 await session.deliverIncomingBidirectionalStream(stream, initialData: remaining)
                 return
             }
-        } catch {
-            // Varint decode failed — treat as HTTP/3 request stream
-        }
 
-        // Not a WebTransport stream — handle as HTTP/3 request stream
-        // with the already-read data as a prefix buffer
-        await handleIncomingRequestStreamWithBuffer(stream, initialBuffer: firstData)
+            let afterSignal = Data(buffer.dropFirst(firstLength))
+            guard let (sessionVarint, sessionLength) = try? Varint.decode(from: afterSignal) else {
+                if buffer.count >= Self.maxWebTransportFramingBytes {
+                    await stream.reset(errorCode: HTTP3ErrorCode.messageError.rawValue)
+                    return
+                }
+                continue
+            }
+
+            // The signal makes this unambiguously WebTransport, so an unknown session ID is
+            // reset rather than rerouted to request handling.
+            guard let session = webTransportSessions[sessionVarint.value] else {
+                await stream.reset(errorCode: HTTP3ErrorCode.messageError.rawValue)
+                return
+            }
+            let remaining = afterSignal.count > sessionLength
+                ? Data(afterSignal.dropFirst(sessionLength))
+                : Data()
+            await session.deliverIncomingBidirectionalStream(stream, initialData: remaining)
+            return
+        }
     }
 }

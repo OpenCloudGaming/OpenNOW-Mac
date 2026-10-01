@@ -4,6 +4,12 @@
 
 import Foundation
 
+/// Error thrown when a CRYPTO reassembly buffer exceeds its segment bound.
+enum CryptoBufferError: Error, Sendable {
+    /// The buffer would hold more non-contiguous segments than allowed.
+    case segmentLimitExceeded(limit: Int)
+}
+
 /// Internal buffer for ordered CRYPTO data reassembly
 struct CryptoBuffer: Sendable {
     /// Segments stored as (offset, data), not necessarily sorted or contiguous
@@ -12,24 +18,30 @@ struct CryptoBuffer: Sendable {
     /// Total bytes stored in the buffer
     private(set) var totalBytes: Int = 0
 
+    /// Maximum number of non-contiguous segments this buffer will hold.
+    ///
+    /// Every insert scans and merges the segment list, so an uncapped count is quadratic work.
+    let maxSegments: Int
+
     /// Creates an empty CryptoBuffer
-    init() {}
+    /// - Parameter maxSegments: Maximum non-contiguous segments to hold
+    init(maxSegments: Int = 64) {
+        self.maxSegments = max(1, maxSegments)
+    }
 
     /// Inserts data at the specified offset
     /// - Parameters:
     ///   - offset: The byte offset where this data starts
     ///   - data: The data to insert
-    mutating func insert(offset: UInt64, data: Data) {
+    /// - Throws: `CryptoBufferError.segmentLimitExceeded` if the buffer would
+    ///   hold more non-contiguous segments than `maxSegments`
+    mutating func insert(offset: UInt64, data: Data) throws {
         guard !data.isEmpty else { return }
 
-        // Find insertion point
-        var insertIndex = segments.count
-        for (index, segment) in segments.enumerated() {
-            if offset < segment.offset {
-                insertIndex = index
-                break
-            }
-        }
+        let insertIndex = segments.firstIndex { offset < $0.offset } ?? segments.count
+
+        let previousSegments = segments
+        let previousTotalBytes = totalBytes
 
         // Insert the new segment
         segments.insert((offset: offset, data: data), at: insertIndex)
@@ -37,6 +49,12 @@ struct CryptoBuffer: Sendable {
 
         // Merge overlapping and adjacent segments
         mergeSegments()
+
+        guard segments.count <= maxSegments else {
+            segments = previousSegments
+            totalBytes = previousTotalBytes
+            throw CryptoBufferError.segmentLimitExceeded(limit: maxSegments)
+        }
     }
 
     /// Merges overlapping and adjacent segments

@@ -135,7 +135,8 @@ extension HTTP3Connection {
         let session = WebTransportSession(
             connectStream: context.stream,
             connection: self,
-            role: role
+            role: role,
+            maxStreamsPerSession: webTransportMaxStreamsPerSession
         )
 
         // Enforce per-connection session quota
@@ -172,7 +173,8 @@ extension HTTP3Connection {
         let session = WebTransportSession(
             connectStream: connectStream,
             connection: self,
-            role: .client
+            role: .client,
+            maxStreamsPerSession: webTransportMaxStreamsPerSession
         )
 
         // Enforce per-connection session quota (client side)

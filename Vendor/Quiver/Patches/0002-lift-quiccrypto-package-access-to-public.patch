@@ -1,0 +1,1237 @@
+# Why: Lift package access to public across QUICCrypto so an external package can construct and drive the TLS server surface (upstream's own demo lives inside the module).
+# Applied by scripts/vendor-quiver.sh in filename order. See VENDORING.md.
+diff -ruN 1/Sources/QUICCrypto/AEAD.swift 2/Sources/QUICCrypto/AEAD.swift
+--- 1/Sources/QUICCrypto/AEAD.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/AEAD.swift	2026-09-30 00:56:23
+@@ -66,7 +66,7 @@
+ 
+     /// Creates an opener from key material
+     /// - Throws: CryptoError.invalidIVLength if IV is not 12 bytes
+-    package init(keyMaterial: KeyMaterial) throws {
++    public init(keyMaterial: KeyMaterial) throws {
+         try self.init(key: keyMaterial.key, iv: keyMaterial.iv, hp: keyMaterial.hp)
+     }
+ 
+@@ -152,7 +152,7 @@
+ 
+     /// Creates a sealer from key material
+     /// - Throws: CryptoError.invalidIVLength if IV is not 12 bytes
+-    package init(keyMaterial: KeyMaterial) throws {
++    public init(keyMaterial: KeyMaterial) throws {
+         try self.init(key: keyMaterial.key, iv: keyMaterial.iv, hp: keyMaterial.hp)
+     }
+ 
+@@ -304,7 +304,7 @@
+ 
+     /// Creates an opener from key material
+     /// - Throws: CryptoError.invalidIVLength if IV is not 12 bytes
+-    package init(keyMaterial: KeyMaterial) throws {
++    public init(keyMaterial: KeyMaterial) throws {
+         try self.init(key: keyMaterial.key, iv: keyMaterial.iv, hp: keyMaterial.hp)
+     }
+ 
+@@ -395,7 +395,7 @@
+ 
+     /// Creates a sealer from key material
+     /// - Throws: CryptoError.invalidIVLength if IV is not 12 bytes
+-    package init(keyMaterial: KeyMaterial) throws {
++    public init(keyMaterial: KeyMaterial) throws {
+         try self.init(key: keyMaterial.key, iv: keyMaterial.iv, hp: keyMaterial.hp)
+     }
+ 
+diff -ruN 1/Sources/QUICCrypto/CryptoState.swift 2/Sources/QUICCrypto/CryptoState.swift
+--- 1/Sources/QUICCrypto/CryptoState.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/CryptoState.swift	2026-09-30 00:56:23
+@@ -51,28 +51,28 @@
+ // MARK: - Crypto Context
+ 
+ /// Cryptographic context for a single encryption level
+-package struct CryptoContext: Sendable {
++public struct CryptoContext: Sendable {
+     /// The opener for this level (decryption)
+-    package let opener: (any PacketOpener)?
++    public let opener: (any PacketOpener)?
+ 
+     /// The sealer for this level (encryption)
+-    package let sealer: (any PacketSealer)?
++    public let sealer: (any PacketSealer)?
+ 
+     /// Creates an empty crypto context
+-    package init() {
++    public init() {
+         self.opener = nil
+         self.sealer = nil
+     }
+ 
+     /// Creates a crypto context with opener and sealer
+-    package init(opener: any PacketOpener, sealer: any PacketSealer) {
++    public init(opener: any PacketOpener, sealer: any PacketSealer) {
+         self.opener = opener
+         self.sealer = sealer
+     }
+ 
+     /// Creates a crypto context with optional opener and/or sealer
+     /// Used for 0-RTT where only one direction is available
+-    package init(opener: (any PacketOpener)?, sealer: (any PacketSealer)?) {
++    public init(opener: (any PacketOpener)?, sealer: (any PacketSealer)?) {
+         self.opener = opener
+         self.sealer = sealer
+     }
+@@ -81,22 +81,22 @@
+ // MARK: - Crypto State
+ 
+ /// Manages all cryptographic state for a connection
+-package final class CryptoState: Sendable {
++public final class CryptoState: Sendable {
+     /// Crypto contexts for each encryption level
+     private let contexts: [EncryptionLevel: CryptoContext]
+ 
+     /// Creates a new crypto state
+-    package init(contexts: [EncryptionLevel: CryptoContext] = [:]) {
++    public init(contexts: [EncryptionLevel: CryptoContext] = [:]) {
+         self.contexts = contexts
+     }
+ 
+     /// Gets the crypto context for an encryption level
+-    package func context(for level: EncryptionLevel) -> CryptoContext? {
++    public func context(for level: EncryptionLevel) -> CryptoContext? {
+         contexts[level]
+     }
+ 
+     /// Creates a new crypto state with an updated context for a level
+-    package func withContext(_ context: CryptoContext, for level: EncryptionLevel) -> CryptoState {
++    public func withContext(_ context: CryptoContext, for level: EncryptionLevel) -> CryptoState {
+         var newContexts = contexts
+         newContexts[level] = context
+         return CryptoState(contexts: newContexts)
+diff -ruN 1/Sources/QUICCrypto/CryptoStateKeyPhase.swift 2/Sources/QUICCrypto/CryptoStateKeyPhase.swift
+--- 1/Sources/QUICCrypto/CryptoStateKeyPhase.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/CryptoStateKeyPhase.swift	2026-09-30 00:56:23
+@@ -11,27 +11,27 @@
+ // MARK: - Key Phase Context
+ 
+ /// Context for managing key phase transitions in 1-RTT packets
+-package struct KeyPhaseContext: Sendable {
++public struct KeyPhaseContext: Sendable {
+     /// Current key phase bit (0 or 1)
+-    package let currentPhase: UInt8
++    public let currentPhase: UInt8
+ 
+     /// Opener for current key phase
+-    package let currentOpener: any PacketOpener
++    public let currentOpener: any PacketOpener
+ 
+     /// Sealer for current key phase
+-    package let currentSealer: any PacketSealer
++    public let currentSealer: any PacketSealer
+ 
+     /// Opener for previous key phase (for in-flight packets during transition)
+-    package let previousOpener: (any PacketOpener)?
++    public let previousOpener: (any PacketOpener)?
+ 
+     /// Opener for next key phase (speculatively derived for incoming key updates)
+-    package let nextOpener: (any PacketOpener)?
++    public let nextOpener: (any PacketOpener)?
+ 
+     /// Number of key updates performed
+-    package let updateCount: UInt64
++    public let updateCount: UInt64
+ 
+     /// Creates an initial key phase context
+-    package init(
++    public init(
+         opener: any PacketOpener,
+         sealer: any PacketSealer
+     ) {
+@@ -44,7 +44,7 @@
+     }
+ 
+     /// Creates a key phase context with all components
+-    package init(
++    public init(
+         currentPhase: UInt8,
+         currentOpener: any PacketOpener,
+         currentSealer: any PacketSealer,
+@@ -63,7 +63,7 @@
+     /// Gets the opener for a specific key phase bit
+     /// - Parameter phase: The key phase bit from the packet header
+     /// - Returns: The appropriate opener, or nil if not available
+-    package func opener(for phase: UInt8) -> (any PacketOpener)? {
++    public func opener(for phase: UInt8) -> (any PacketOpener)? {
+         if phase == currentPhase {
+             return currentOpener
+         } else if let prev = previousOpener {
+@@ -80,7 +80,7 @@
+ // MARK: - Key Phase Manager
+ 
+ /// Manages key phase transitions for a connection
+-package final class KeyPhaseManager: Sendable {
++public final class KeyPhaseManager: Sendable {
+     /// Internal state
+     private let state: Mutex<KeyPhaseState>
+ 
+@@ -94,7 +94,7 @@
+     /// - Parameters:
+     ///   - keySchedule: The key schedule to use for key derivation
+     ///   - isClient: Whether this endpoint is a client
+-    package init(keySchedule: KeySchedule, isClient: Bool) {
++    public init(keySchedule: KeySchedule, isClient: Bool) {
+         self.keySchedule = Mutex(keySchedule)
+         self.isClient = isClient
+         self.state = Mutex(KeyPhaseState())
+@@ -102,7 +102,7 @@
+ 
+     /// Sets the initial application keys
+     /// - Parameter context: The initial key phase context
+-    package func setInitialContext(_ context: KeyPhaseContext) {
++    public func setInitialContext(_ context: KeyPhaseContext) {
+         state.withLock { state in
+             state.context = context
+             state.keyUpdateAllowed = true
+@@ -110,12 +110,12 @@
+     }
+ 
+     /// Gets the current key phase context
+-    package var context: KeyPhaseContext? {
++    public var context: KeyPhaseContext? {
+         state.withLock { $0.context }
+     }
+ 
+     /// Gets the current key phase bit
+-    package var currentPhase: UInt8 {
++    public var currentPhase: UInt8 {
+         state.withLock { $0.context?.currentPhase ?? 0 }
+     }
+ 
+@@ -127,7 +127,7 @@
+     ///
+     /// - Returns: The new key phase context
+     /// - Throws: KeyPhaseError if key update is not allowed
+-    package func initiateKeyUpdate() throws -> KeyPhaseContext {
++    public func initiateKeyUpdate() throws -> KeyPhaseContext {
+         try state.withLock { state in
+             guard let currentContext = state.context else {
+                 throw KeyPhaseError.noApplicationKeys
+@@ -178,7 +178,7 @@
+     /// - Parameter receivedPhase: The key phase bit from the received packet
+     /// - Returns: The opener to use for decryption
+     /// - Throws: KeyPhaseError if keys are not available
+-    package func handleReceivedKeyPhase(_ receivedPhase: UInt8) throws -> any PacketOpener {
++    public func handleReceivedKeyPhase(_ receivedPhase: UInt8) throws -> any PacketOpener {
+         try state.withLock { state in
+             guard let currentContext = state.context else {
+                 throw KeyPhaseError.noApplicationKeys
+@@ -229,7 +229,7 @@
+     /// complete the key phase transition.
+     ///
+     /// - Parameter phase: The key phase that was successfully used
+-    package func confirmKeyUpdate(phase: UInt8) {
++    public func confirmKeyUpdate(phase: UInt8) {
+         state.withLock { state in
+             guard let currentContext = state.context,
+                   phase != currentContext.currentPhase,
+@@ -277,14 +277,14 @@
+     /// Re-enables key updates after previous update is confirmed
+     ///
+     /// Called when all packets sent with the old key phase have been acknowledged.
+-    package func enableKeyUpdate() {
++    public func enableKeyUpdate() {
+         state.withLock { state in
+             state.keyUpdateAllowed = true
+         }
+     }
+ 
+     /// Whether a key update can be initiated
+-    package var canInitiateKeyUpdate: Bool {
++    public var canInitiateKeyUpdate: Bool {
+         state.withLock { $0.keyUpdateAllowed }
+     }
+ 
+diff -ruN 1/Sources/QUICCrypto/CryptoStream/CryptoStreamManager.swift 2/Sources/QUICCrypto/CryptoStream/CryptoStreamManager.swift
+--- 1/Sources/QUICCrypto/CryptoStream/CryptoStreamManager.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/CryptoStream/CryptoStreamManager.swift	2026-09-30 00:56:23
+@@ -7,7 +7,7 @@
+ import QUICCore
+ 
+ /// Manages CRYPTO streams for all encryption levels
+-package final class CryptoStreamManager: Sendable {
++public final class CryptoStreamManager: Sendable {
+     /// Receive streams per encryption level
+     private let receiveStreams: Mutex<[EncryptionLevel: CryptoStream]>
+ 
+@@ -23,7 +23,7 @@
+ 
+     /// Creates a new CryptoStreamManager
+     /// - Parameter maxBufferSize: Maximum buffer size per stream (default 16KB)
+-    package init(maxBufferSize: UInt64 = CryptoStream.defaultMaxBufferSize) {
++    public init(maxBufferSize: UInt64 = CryptoStream.defaultMaxBufferSize) {
+         self.maxBufferSize = maxBufferSize
+ 
+         var streams: [EncryptionLevel: CryptoStream] = [:]
+@@ -47,7 +47,7 @@
+     ///   - frame: The CRYPTO frame to receive
+     ///   - level: The encryption level
+     /// - Throws: `CryptoStreamError` on buffer overflow
+-    package func receive(_ frame: CryptoFrame, at level: EncryptionLevel) throws {
++    public func receive(_ frame: CryptoFrame, at level: EncryptionLevel) throws {
+         try receiveStreams.withLock { streams in
+             try streams[level]?.receive(frame)
+         }
+@@ -56,7 +56,7 @@
+     /// Read available contiguous data for a level
+     /// - Parameter level: The encryption level
+     /// - Returns: Contiguous data if available, nil otherwise
+-    package func read(at level: EncryptionLevel) -> Data? {
++    public func read(at level: EncryptionLevel) -> Data? {
+         receiveStreams.withLock { streams in
+             streams[level]?.read()
+         }
+@@ -65,7 +65,7 @@
+     /// Peek at available data without consuming
+     /// - Parameter level: The encryption level
+     /// - Returns: Contiguous data if available
+-    package func peek(at level: EncryptionLevel) -> Data? {
++    public func peek(at level: EncryptionLevel) -> Data? {
+         receiveStreams.withLock { streams in
+             streams[level]?.peek()
+         }
+@@ -74,7 +74,7 @@
+     /// Whether there is pending data with gaps at a level
+     /// - Parameter level: The encryption level
+     /// - Returns: true if there are gaps in the buffered data
+-    package func hasPendingGaps(at level: EncryptionLevel) -> Bool {
++    public func hasPendingGaps(at level: EncryptionLevel) -> Bool {
+         receiveStreams.withLock { streams in
+             streams[level]?.hasPendingGaps ?? false
+         }
+@@ -83,7 +83,7 @@
+     /// Whether the receive buffer is empty at a level
+     /// - Parameter level: The encryption level
+     /// - Returns: true if empty
+-    package func isReceiveBufferEmpty(at level: EncryptionLevel) -> Bool {
++    public func isReceiveBufferEmpty(at level: EncryptionLevel) -> Bool {
+         receiveStreams.withLock { streams in
+             streams[level]?.isEmpty ?? true
+         }
+@@ -92,7 +92,7 @@
+     /// The current read offset for a level
+     /// - Parameter level: The encryption level
+     /// - Returns: The current read offset
+-    package func readOffset(at level: EncryptionLevel) -> UInt64 {
++    public func readOffset(at level: EncryptionLevel) -> UInt64 {
+         receiveStreams.withLock { streams in
+             streams[level]?.currentOffset ?? 0
+         }
+@@ -105,7 +105,7 @@
+     ///   - maxFrameSize: Maximum frame payload size.  Callers must supply
+     ///     the configured path MTU (`QUICConfiguration.maxUDPPayloadSize`).
+     /// - Returns: Array of CryptoFrames to send
+-    package func createFrames(
++    public func createFrames(
+         for data: Data,
+         at level: EncryptionLevel,
+         maxFrameSize: Int
+@@ -140,7 +140,7 @@
+     /// The current send offset for a level
+     /// - Parameter level: The encryption level
+     /// - Returns: The current send offset
+-    package func sendOffset(at level: EncryptionLevel) -> UInt64 {
++    public func sendOffset(at level: EncryptionLevel) -> UInt64 {
+         sendOffsets.withLock { offsets in
+             offsets[level] ?? 0
+         }
+@@ -153,7 +153,7 @@
+     ///
+     /// - Parameter level: The encryption level
+     /// - Returns: All CRYPTO data that has been sent at this level
+-    package func getDataForRetry(level: EncryptionLevel) -> Data {
++    public func getDataForRetry(level: EncryptionLevel) -> Data {
+         sentDataBuffers.withLock { buffers in
+             buffers[level] ?? Data()
+         }
+@@ -161,7 +161,7 @@
+ 
+     /// Discards the stream for a level (e.g., when encryption level is discarded)
+     /// - Parameter level: The encryption level to discard
+-    package func discardLevel(_ level: EncryptionLevel) {
++    public func discardLevel(_ level: EncryptionLevel) {
+         receiveStreams.withLock { streams in
+             streams[level] = CryptoStream(maxBufferSize: maxBufferSize)
+         }
+diff -ruN 1/Sources/QUICCrypto/InitialSecrets.swift 2/Sources/QUICCrypto/InitialSecrets.swift
+--- 1/Sources/QUICCrypto/InitialSecrets.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/InitialSecrets.swift	2026-09-30 00:56:23
+@@ -107,23 +107,23 @@
+ // MARK: - Key Material
+ 
+ /// Cryptographic key material derived from a secret
+-package struct KeyMaterial: Sendable {
++public struct KeyMaterial: Sendable {
+     /// The packet protection key
+-    package let key: SymmetricKey
++    public let key: SymmetricKey
+ 
+     /// The packet protection IV
+-    package let iv: Data
++    public let iv: Data
+ 
+     /// The header protection key
+-    package let hp: SymmetricKey
++    public let hp: SymmetricKey
+ 
+     /// The cipher suite used to derive this key material
+-    package let cipherSuite: QUICCipherSuite
++    public let cipherSuite: QUICCipherSuite
+ 
+     /// Derives key material from a secret using AES-128-GCM (default)
+     /// - Parameter secret: The secret to derive from
+     /// - Returns: The derived key material
+-    package static func derive(from secret: SymmetricKey) throws -> KeyMaterial {
++    public static func derive(from secret: SymmetricKey) throws -> KeyMaterial {
+         return try derive(from: secret, cipherSuite: .aes128GcmSha256)
+     }
+ 
+@@ -140,7 +140,7 @@
+     ///
+     /// The HkdfLabel uses "tls13 " prefix per RFC 8446, so final labels are:
+     /// "tls13 quic key", "tls13 quic iv", "tls13 quic hp"
+-    package static func derive(
++    public static func derive(
+         from secret: SymmetricKey,
+         cipherSuite: QUICCipherSuite
+     ) throws -> KeyMaterial {
+@@ -181,7 +181,7 @@
+ 
+     /// Creates opener and sealer for this key material
+     /// - Returns: Tuple of (opener, sealer)
+-    package func createCrypto() throws -> (opener: any PacketOpener, sealer: any PacketSealer) {
++    public func createCrypto() throws -> (opener: any PacketOpener, sealer: any PacketSealer) {
+         switch cipherSuite {
+         case .aes128GcmSha256:
+             let opener = try AES128GCMOpener(keyMaterial: self)
+diff -ruN 1/Sources/QUICCrypto/KeySchedule/KeySchedule.swift 2/Sources/QUICCrypto/KeySchedule/KeySchedule.swift
+--- 1/Sources/QUICCrypto/KeySchedule/KeySchedule.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/KeySchedule/KeySchedule.swift	2026-09-30 00:56:23
+@@ -10,7 +10,7 @@
+ // MARK: - Key Schedule
+ 
+ /// Manages QUIC key derivation across encryption levels
+-package struct KeySchedule: Sendable {
++public struct KeySchedule: Sendable {
+     /// Current encryption level
+     private var currentLevel: EncryptionLevel
+ 
+@@ -35,7 +35,7 @@
+     // MARK: - Initialization
+ 
+     /// Creates a new KeySchedule
+-    package init() {
++    public init() {
+         self.currentLevel = .initial
+         self.clientSecrets = [:]
+         self.serverSecrets = [:]
+@@ -52,7 +52,7 @@
+     ///   - connectionID: The Destination Connection ID from the first Initial packet
+     ///   - version: The QUIC version
+     /// - Returns: Client and server key material tuple
+-    package mutating func deriveInitialKeys(
++    public mutating func deriveInitialKeys(
+         connectionID: ConnectionID,
+         version: QUICVersion
+     ) throws -> (client: KeyMaterial, server: KeyMaterial) {
+@@ -78,7 +78,7 @@
+     ///   - clientSecret: Client handshake secret from TLS
+     ///   - serverSecret: Server handshake secret from TLS
+     /// - Returns: Client and server key material tuple
+-    package mutating func setHandshakeSecrets(
++    public mutating func setHandshakeSecrets(
+         clientSecret: SymmetricKey,
+         serverSecret: SymmetricKey
+     ) throws -> (client: KeyMaterial, server: KeyMaterial) {
+@@ -102,7 +102,7 @@
+     ///   - clientSecret: Client application secret from TLS
+     ///   - serverSecret: Server application secret from TLS
+     /// - Returns: Client and server key material tuple
+-    package mutating func setApplicationSecrets(
++    public mutating func setApplicationSecrets(
+         clientSecret: SymmetricKey,
+         serverSecret: SymmetricKey
+     ) throws -> (client: KeyMaterial, server: KeyMaterial) {
+@@ -129,7 +129,7 @@
+     /// ```
+     ///
+     /// - Returns: New client and server key material tuple
+-    package mutating func updateKeys() throws -> (client: KeyMaterial, server: KeyMaterial) {
++    public mutating func updateKeys() throws -> (client: KeyMaterial, server: KeyMaterial) {
+         guard let clientAppSecret = clientSecrets[.application],
+               let serverAppSecret = serverSecrets[.application] else {
+             throw KeyScheduleError.applicationSecretsNotSet
+@@ -175,48 +175,48 @@
+     /// Gets client key material for an encryption level
+     /// - Parameter level: The encryption level
+     /// - Returns: Key material if available
+-    package func clientKeyMaterial(for level: EncryptionLevel) -> KeyMaterial? {
++    public func clientKeyMaterial(for level: EncryptionLevel) -> KeyMaterial? {
+         clientKeys[level]
+     }
+ 
+     /// Gets server key material for an encryption level
+     /// - Parameter level: The encryption level
+     /// - Returns: Key material if available
+-    package func serverKeyMaterial(for level: EncryptionLevel) -> KeyMaterial? {
++    public func serverKeyMaterial(for level: EncryptionLevel) -> KeyMaterial? {
+         serverKeys[level]
+     }
+ 
+     /// Gets the client secret for an encryption level
+     /// - Parameter level: The encryption level
+     /// - Returns: Secret if available
+-    package func clientSecret(for level: EncryptionLevel) -> SymmetricKey? {
++    public func clientSecret(for level: EncryptionLevel) -> SymmetricKey? {
+         clientSecrets[level]
+     }
+ 
+     /// Gets the server secret for an encryption level
+     /// - Parameter level: The encryption level
+     /// - Returns: Secret if available
+-    package func serverSecret(for level: EncryptionLevel) -> SymmetricKey? {
++    public func serverSecret(for level: EncryptionLevel) -> SymmetricKey? {
+         serverSecrets[level]
+     }
+ 
+     /// The current encryption level
+-    package var level: EncryptionLevel {
++    public var level: EncryptionLevel {
+         currentLevel
+     }
+ 
+     /// The current key phase bit (0 or 1)
+-    package var currentKeyPhase: UInt8 {
++    public var currentKeyPhase: UInt8 {
+         keyPhase
+     }
+ 
+     /// Number of key updates performed
+-    package var updateCount: UInt64 {
++    public var updateCount: UInt64 {
+         keyUpdateCount
+     }
+ 
+     /// Whether keys are available for a given level
+-    package func hasKeys(for level: EncryptionLevel) -> Bool {
++    public func hasKeys(for level: EncryptionLevel) -> Bool {
+         clientKeys[level] != nil && serverKeys[level] != nil
+     }
+ 
+@@ -228,7 +228,7 @@
+     /// Per RFC 9001 Section 4.9, keys should be discarded when:
+     /// - Initial keys: After receiving Handshake packet
+     /// - Handshake keys: After handshake confirmed
+-    package mutating func discardKeys(for level: EncryptionLevel) {
++    public mutating func discardKeys(for level: EncryptionLevel) {
+         clientSecrets.removeValue(forKey: level)
+         serverSecrets.removeValue(forKey: level)
+         clientKeys.removeValue(forKey: level)
+diff -ruN 1/Sources/QUICCrypto/TLS/MockTLSProvider.swift 2/Sources/QUICCrypto/TLS/MockTLSProvider.swift
+--- 1/Sources/QUICCrypto/TLS/MockTLSProvider.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/TLS/MockTLSProvider.swift	2026-09-30 00:56:23
+@@ -23,7 +23,7 @@
+ ///
+ /// - Warning: This class is only available in DEBUG builds.
+ ///   Never use MockTLSProvider in production code.
+-package final class MockTLSProvider: TLS13Provider, Sendable {
++public final class MockTLSProvider: TLS13Provider, Sendable {
+     /// Internal state
+     private let state: Mutex<MockTLSState>
+ 
+@@ -43,7 +43,7 @@
+     ///   - configuration: TLS configuration
+     ///   - immediateCompletion: If true, handshake completes in one round trip
+     ///   - simulatedDelay: Optional delay to simulate network latency
+-    package init(
++    public init(
+         configuration: TLSConfiguration = TLSConfiguration(),
+         immediateCompletion: Bool = true,
+         simulatedDelay: Duration? = nil
+@@ -56,7 +56,7 @@
+ 
+     // MARK: - TLS13Provider Protocol
+ 
+-    package func startHandshake(isClient: Bool) async throws -> [TLSOutput] {
++    public func startHandshake(isClient: Bool) async throws -> [TLSOutput] {
+         if let delay = simulatedDelay {
+             try await Task.sleep(for: delay)
+         }
+@@ -115,7 +115,7 @@
+         }
+     }
+ 
+-    package func processHandshakeData(_ data: Data, at level: EncryptionLevel) async throws -> [TLSOutput] {
++    public func processHandshakeData(_ data: Data, at level: EncryptionLevel) async throws -> [TLSOutput] {
+         if let delay = simulatedDelay {
+             try await Task.sleep(for: delay)
+         }
+@@ -135,52 +135,52 @@
+         }
+     }
+ 
+-    package func getLocalTransportParameters() -> Data {
++    public func getLocalTransportParameters() -> Data {
+         state.withLock { state in
+             state.localTransportParameters ?? Data()
+         }
+     }
+ 
+-    package func setLocalTransportParameters(_ params: Data) throws {
++    public func setLocalTransportParameters(_ params: Data) throws {
+         state.withLock { state in
+             state.localTransportParameters = params
+         }
+     }
+ 
+-    package func getPeerTransportParameters() -> Data? {
++    public func getPeerTransportParameters() -> Data? {
+         state.withLock { state in
+             state.peerTransportParameters
+         }
+     }
+ 
+-    package var isHandshakeComplete: Bool {
++    public var isHandshakeComplete: Bool {
+         state.withLock { $0.handshakeComplete }
+     }
+ 
+-    package var isClient: Bool {
++    public var isClient: Bool {
+         state.withLock { $0.isClient }
+     }
+ 
+-    package var negotiatedALPN: String? {
++    public var negotiatedALPN: String? {
+         state.withLock { $0.negotiatedALPN }
+     }
+ 
+-    package func configureResumption(ticket: SessionTicketData, attemptEarlyData: Bool) throws {
++    public func configureResumption(ticket: SessionTicketData, attemptEarlyData: Bool) throws {
+         state.withLock { state in
+             state.resumptionTicket = ticket
+             state.attemptEarlyData = attemptEarlyData
+         }
+     }
+ 
+-    package var is0RTTAccepted: Bool {
++    public var is0RTTAccepted: Bool {
+         state.withLock { $0.is0RTTAccepted }
+     }
+ 
+-    package var is0RTTAttempted: Bool {
++    public var is0RTTAttempted: Bool {
+         state.withLock { $0.is0RTTAttempted }
+     }
+ 
+-    package func requestKeyUpdate() async throws -> [TLSOutput] {
++    public func requestKeyUpdate() async throws -> [TLSOutput] {
+         state.withLock { state in
+             state.keyUpdateCount += 1
+ 
+@@ -202,7 +202,7 @@
+         }
+     }
+ 
+-    package func exportKeyingMaterial(
++    public func exportKeyingMaterial(
+         label: String,
+         context: Data?,
+         length: Int
+@@ -215,7 +215,7 @@
+     // MARK: - Mock Specific Methods
+ 
+     /// Sets peer transport parameters (for testing)
+-    package func setPeerTransportParameters(_ params: Data) {
++    public func setPeerTransportParameters(_ params: Data) {
+         state.withLock { state in
+             state.peerTransportParameters = params
+         }
+@@ -228,7 +228,7 @@
+     /// 1. `isHandshakeComplete` returns true
+     /// 2. `getPeerTransportParameters()` returns valid encoded parameters
+     /// 3. Stream limits are properly configured (initialMaxStreamsBidi = 100, etc.)
+-    package func forceComplete() {
++    public func forceComplete() {
+         state.withLock { state in
+             state.handshakeComplete = true
+             // Set peer transport parameters with RFC-compliant encoding
+@@ -241,7 +241,7 @@
+     }
+ 
+     /// Resets the mock state
+-    package func reset() {
++    public func reset() {
+         state.withLock { state in
+             state = MockTLSState()
+         }
+@@ -531,8 +531,8 @@
+ /// fatal error if somehow called.
+ ///
+ /// - Warning: This type should never be instantiated in release builds.
+-package final class MockTLSProvider: TLS13Provider, Sendable {
+-    package init(
++public final class MockTLSProvider: TLS13Provider, Sendable {
++    public init(
+         configuration: TLSConfiguration = TLSConfiguration(),
+         immediateCompletion: Bool = true,
+         simulatedDelay: Duration? = nil
+@@ -540,68 +540,68 @@
+         fatalError("MockTLSProvider is not available in release builds. Configure a real TLS provider using QUICConfiguration.production() or QUICConfiguration.development().")
+     }
+ 
+-    package func startHandshake(isClient: Bool) async throws -> [TLSOutput] {
++    public func startHandshake(isClient: Bool) async throws -> [TLSOutput] {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func processHandshakeData(_ data: Data, at level: EncryptionLevel) async throws -> [TLSOutput] {
++    public func processHandshakeData(_ data: Data, at level: EncryptionLevel) async throws -> [TLSOutput] {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func getLocalTransportParameters() -> Data {
++    public func getLocalTransportParameters() -> Data {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func setLocalTransportParameters(_ params: Data) throws {
++    public func setLocalTransportParameters(_ params: Data) throws {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func getPeerTransportParameters() -> Data? {
++    public func getPeerTransportParameters() -> Data? {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package var isHandshakeComplete: Bool {
++    public var isHandshakeComplete: Bool {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package var isClient: Bool {
++    public var isClient: Bool {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package var negotiatedALPN: String? {
++    public var negotiatedALPN: String? {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func configureResumption(ticket: SessionTicketData, attemptEarlyData: Bool) throws {
++    public func configureResumption(ticket: SessionTicketData, attemptEarlyData: Bool) throws {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package var is0RTTAccepted: Bool {
++    public var is0RTTAccepted: Bool {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package var is0RTTAttempted: Bool {
++    public var is0RTTAttempted: Bool {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func requestKeyUpdate() async throws -> [TLSOutput] {
++    public func requestKeyUpdate() async throws -> [TLSOutput] {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func exportKeyingMaterial(label: String, context: Data?, length: Int) throws -> Data {
++    public func exportKeyingMaterial(label: String, context: Data?, length: Int) throws -> Data {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+     // Mock-specific methods that will fail in release builds
+-    package func setPeerTransportParameters(_ params: Data) {
++    public func setPeerTransportParameters(_ params: Data) {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func forceComplete() {
++    public func forceComplete() {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ 
+-    package func reset() {
++    public func reset() {
+         fatalError("MockTLSProvider is not available in release builds")
+     }
+ }
+diff -ruN 1/Sources/QUICCrypto/TLS/ServerStateMachine.swift 2/Sources/QUICCrypto/TLS/ServerStateMachine.swift
+--- 1/Sources/QUICCrypto/TLS/ServerStateMachine.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/TLS/ServerStateMachine.swift	2026-09-30 00:56:23
+@@ -11,7 +11,7 @@
+ // MARK: - Server State Machine
+ 
+ /// Server-side TLS 1.3 state machine
+-package final class ServerStateMachine: Sendable {
++public final class ServerStateMachine: Sendable {
+ 
+     private let state = Mutex<ServerState>(ServerState())
+     private let configuration: TLSConfiguration
+@@ -32,7 +32,7 @@
+     ///   - configuration: TLS configuration (will be resolved to load certificates if needed)
+     ///   - sessionTicketStore: Optional session ticket store for resumption
+     /// - Throws: `PEMLoader.PEMError` if PEM file loading fails
+-    package init(configuration: TLSConfiguration, sessionTicketStore: SessionTicketStore? = nil) throws {
++    public init(configuration: TLSConfiguration, sessionTicketStore: SessionTicketStore? = nil) throws {
+         // Resolve configuration by loading certificates from paths if needed
+         self.configuration = try configuration.withLoadedCertificates()
+         self.sessionTicketStore = sessionTicketStore
+@@ -44,7 +44,7 @@
+     }
+ 
+     /// Process ClientHello and generate server response
+-    package func processClientHello(
++    public func processClientHello(
+         _ data: Data,
+         transportParameters: Data
+     ) throws -> (response: ClientHelloResponse, outputs: [TLSOutput]) {
+@@ -475,7 +475,7 @@
+     ///
+     /// RFC 8446 Section 4.4.2: Client sends Certificate in response to CertificateRequest.
+     /// The certificate_request_context MUST match what was sent in CertificateRequest.
+-    package func processClientCertificate(_ data: Data) throws -> [TLSOutput] {
++    public func processClientCertificate(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             guard state.handshakeState == .waitClientCertificate else {
+                 throw TLSHandshakeError.unexpectedMessage("Unexpected client Certificate")
+@@ -590,7 +590,7 @@
+     ///
+     /// RFC 8446 Section 4.4.3: Verifies client's signature over the transcript.
+     /// The signature context is "TLS 1.3, client CertificateVerify".
+-    package func processClientCertificateVerify(_ data: Data) throws -> [TLSOutput] {
++    public func processClientCertificateVerify(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             guard state.handshakeState == .waitClientCertificateVerify else {
+                 throw TLSHandshakeError.unexpectedMessage("Unexpected client CertificateVerify")
+@@ -645,7 +645,7 @@
+     }
+ 
+     /// Process client Finished message
+-    package func processClientFinished(_ data: Data) throws -> [TLSOutput] {
++    public func processClientFinished(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             guard state.handshakeState == .waitFinished else {
+                 throw TLSHandshakeError.unexpectedMessage("Unexpected client Finished")
+@@ -695,7 +695,7 @@
+ 
+     /// Generate a NewSessionTicket for the client
+     /// Call this after handshake completion to enable session resumption
+-    package func generateNewSessionTicket(
++    public func generateNewSessionTicket(
+         maxEarlyDataSize: UInt32 = 0,
+         lifetime: UInt32 = 86400
+     ) throws -> (ticket: NewSessionTicket, data: Data) {
+@@ -737,37 +737,37 @@
+     }
+ 
+     /// Negotiated ALPN protocol
+-    package var negotiatedALPN: String? {
++    public var negotiatedALPN: String? {
+         state.withLock { $0.context.negotiatedALPN }
+     }
+ 
+     /// Peer transport parameters
+-    package var peerTransportParameters: Data? {
++    public var peerTransportParameters: Data? {
+         state.withLock { $0.context.peerTransportParameters }
+     }
+ 
+     /// Whether handshake is complete
+-    package var isConnected: Bool {
++    public var isConnected: Bool {
+         state.withLock { $0.handshakeState == .connected }
+     }
+ 
+     /// Exporter master secret (available after handshake completion)
+-    package var exporterMasterSecret: SymmetricKey? {
++    public var exporterMasterSecret: SymmetricKey? {
+         state.withLock { $0.context.exporterMasterSecret }
+     }
+ 
+     /// Whether PSK was used for authentication
+-    package var pskUsed: Bool {
++    public var pskUsed: Bool {
+         state.withLock { $0.context.pskUsed }
+     }
+ 
+     /// Resumption master secret (available after handshake completion)
+-    package var resumptionMasterSecret: SymmetricKey? {
++    public var resumptionMasterSecret: SymmetricKey? {
+         state.withLock { $0.context.resumptionMasterSecret }
+     }
+ 
+     /// Peer certificates (raw DER data, leaf certificate first)
+-    package var peerCertificates: [Data]? {
++    public var peerCertificates: [Data]? {
+         state.withLock { $0.context.peerCertificates }
+     }
+ 
+@@ -775,22 +775,22 @@
+     ///
+     /// This contains the value returned by `TLSConfiguration.certificateValidator`
+     /// after successful certificate validation (e.g., application-specific peer identity).
+-    package var validatedPeerInfo: (any Sendable)? {
++    public var validatedPeerInfo: (any Sendable)? {
+         state.withLock { $0.context.validatedPeerInfo }
+     }
+ 
+     /// Client certificates received from peer (server-side, for mTLS).
+-    package var clientCertificates: [Data]? {
++    public var clientCertificates: [Data]? {
+         state.withLock { $0.context.clientCertificates }
+     }
+ 
+     /// Parsed client leaf certificate (server-side, for mTLS).
+-    package var clientCertificate: X509Certificate? {
++    public var clientCertificate: X509Certificate? {
+         state.withLock { $0.context.clientCertificate }
+     }
+ 
+     /// Parsed peer leaf certificate
+-    package var peerCertificate: X509Certificate? {
++    public var peerCertificate: X509Certificate? {
+         state.withLock { $0.context.peerCertificate }
+     }
+ 
+@@ -798,7 +798,7 @@
+     ///
+     /// Available after `processClientCertificate()` succeeds with `verifyPeer == true`.
+     /// Used by `TLS13Handler` to perform async revocation checks.
+-    package var validatedChain: ValidatedChain? {
++    public var validatedChain: ValidatedChain? {
+         state.withLock { $0.context.validatedChain }
+     }
+ 
+@@ -806,7 +806,7 @@
+     ///
+     /// This ensures the revocation check is performed exactly once per
+     /// certificate processing — the chain is consumed on first access.
+-    package func takeValidatedChain() -> ValidatedChain? {
++    public func takeValidatedChain() -> ValidatedChain? {
+         state.withLock { state in
+             let chain = state.context.validatedChain
+             state.context.validatedChain = nil
+@@ -819,7 +819,7 @@
+ 
+ extension CipherSuite {
+     /// Converts TLS CipherSuite to QUICCipherSuite for packet protection
+-    package var toQUICCipherSuite: QUICCipherSuite {
++    public var toQUICCipherSuite: QUICCipherSuite {
+         switch self {
+         case .tls_chacha20_poly1305_sha256:
+             return .chacha20Poly1305Sha256
+diff -ruN 1/Sources/QUICCrypto/TLS/StateMachine/ClientStateMachine.swift 2/Sources/QUICCrypto/TLS/StateMachine/ClientStateMachine.swift
+--- 1/Sources/QUICCrypto/TLS/StateMachine/ClientStateMachine.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/TLS/StateMachine/ClientStateMachine.swift	2026-09-30 00:56:23
+@@ -10,7 +10,7 @@
+ // MARK: - Client State Machine
+ 
+ /// Client-side TLS 1.3 state machine
+-package final class ClientStateMachine: Sendable {
++public final class ClientStateMachine: Sendable {
+ 
+     private let state = Mutex<ClientState>(ClientState())
+ 
+@@ -22,7 +22,7 @@
+ 
+     // MARK: - Initialization
+ 
+-    package init() {}
++    public init() {}
+ 
+     // MARK: - Start Handshake
+ 
+@@ -33,7 +33,7 @@
+     ///   - sessionTicket: Optional session ticket for resumption
+     ///   - attemptEarlyData: Whether to attempt 0-RTT early data
+     /// - Returns: The ClientHello message and any TLS outputs
+-    package func startHandshake(
++    public func startHandshake(
+         configuration: TLSConfiguration,
+         transportParameters: Data,
+         sessionTicket: SessionTicketData? = nil,
+@@ -249,7 +249,7 @@
+     /// Process a ServerHello message
+     /// - Parameter data: The ServerHello message content (without handshake header)
+     /// - Returns: TLS outputs (keys available, etc.)
+-    package func processServerHello(_ data: Data) throws -> [TLSOutput] {
++    public func processServerHello(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             // Accept ServerHello in waitServerHello or waitServerHelloRetry states
+             guard state.handshakeState == .waitServerHello ||
+@@ -489,7 +489,7 @@
+     /// Process an EncryptedExtensions message
+     /// - Parameter data: The EncryptedExtensions message content
+     /// - Returns: TLS outputs
+-    package func processEncryptedExtensions(_ data: Data) throws -> [TLSOutput] {
++    public func processEncryptedExtensions(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             guard state.handshakeState == .waitEncryptedExtensions else {
+                 throw TLSHandshakeError.unexpectedMessage("Unexpected EncryptedExtensions")
+@@ -548,7 +548,7 @@
+     /// Client stores the context and will send Certificate + CertificateVerify after receiving Finished.
+     /// - Parameter data: The CertificateRequest message content
+     /// - Returns: TLS outputs
+-    package func processCertificateRequest(_ data: Data) throws -> [TLSOutput] {
++    public func processCertificateRequest(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             // CertificateRequest comes after EncryptedExtensions, before server's Certificate
+             guard state.handshakeState == .waitCertificateOrCertificateRequest else {
+@@ -577,7 +577,7 @@
+     /// Process a Certificate message
+     /// - Parameter data: The Certificate message content
+     /// - Returns: TLS outputs
+-    package func processCertificate(_ data: Data) throws -> [TLSOutput] {
++    public func processCertificate(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             // Accept Certificate from either waiting state
+             guard state.handshakeState == .waitCertificate ||
+@@ -665,7 +665,7 @@
+     /// Process a CertificateVerify message
+     /// - Parameter data: The CertificateVerify message content
+     /// - Returns: TLS outputs
+-    package func processCertificateVerify(_ data: Data) throws -> [TLSOutput] {
++    public func processCertificateVerify(_ data: Data) throws -> [TLSOutput] {
+         return try state.withLock { state in
+             guard state.handshakeState == .waitCertificateVerify else {
+                 throw TLSHandshakeError.unexpectedMessage("Unexpected CertificateVerify")
+@@ -744,7 +744,7 @@
+     /// Process a server Finished message
+     /// - Parameter data: The Finished message content
+     /// - Returns: TLS outputs including application keys and client Finished
+-    package func processServerFinished(_ data: Data) throws -> (outputs: [TLSOutput], clientFinished: Data) {
++    public func processServerFinished(_ data: Data) throws -> (outputs: [TLSOutput], clientFinished: Data) {
+         return try state.withLock { state in
+             // SECURITY: Only accept Finished in .waitFinished state.
+             //
+@@ -913,7 +913,7 @@
+     /// Process a NewSessionTicket message (received post-handshake)
+     /// - Parameter data: The NewSessionTicket message content
+     /// - Returns: The derived session ticket data for future use
+-    package func processNewSessionTicket(_ data: Data) throws -> SessionTicketData {
++    public func processNewSessionTicket(_ data: Data) throws -> SessionTicketData {
+         return try state.withLock { state in
+             guard state.handshakeState == .connected else {
+                 throw TLSHandshakeError.unexpectedMessage("NewSessionTicket received before handshake complete")
+@@ -963,52 +963,52 @@
+     // MARK: - Accessors
+ 
+     /// Current handshake state
+-    package var handshakeState: ClientHandshakeState {
++    public var handshakeState: ClientHandshakeState {
+         state.withLock { $0.handshakeState }
+     }
+ 
+     /// Whether the handshake is complete
+-    package var isConnected: Bool {
++    public var isConnected: Bool {
+         state.withLock { $0.handshakeState == .connected }
+     }
+ 
+     /// Negotiated ALPN protocol
+-    package var negotiatedALPN: String? {
++    public var negotiatedALPN: String? {
+         state.withLock { $0.context.negotiatedALPN }
+     }
+ 
+     /// Peer transport parameters
+-    package var peerTransportParameters: Data? {
++    public var peerTransportParameters: Data? {
+         state.withLock { $0.context.peerTransportParameters }
+     }
+ 
+     /// Exporter master secret (available after handshake completion)
+-    package var exporterMasterSecret: SymmetricKey? {
++    public var exporterMasterSecret: SymmetricKey? {
+         state.withLock { $0.context.exporterMasterSecret }
+     }
+ 
+     /// Whether PSK was used in this handshake
+-    package var pskUsed: Bool {
++    public var pskUsed: Bool {
+         state.withLock { $0.context.pskUsed }
+     }
+ 
+     /// Whether early data (0-RTT) was accepted by the server
+-    package var earlyDataAccepted: Bool {
++    public var earlyDataAccepted: Bool {
+         state.withLock { $0.context.earlyDataState.earlyDataAccepted }
+     }
+ 
+     /// Resumption master secret (for deriving new session tickets)
+-    package var resumptionMasterSecret: SymmetricKey? {
++    public var resumptionMasterSecret: SymmetricKey? {
+         state.withLock { $0.context.resumptionMasterSecret }
+     }
+ 
+     /// Peer certificates (raw DER data, leaf certificate first)
+-    package var peerCertificates: [Data]? {
++    public var peerCertificates: [Data]? {
+         state.withLock { $0.context.peerCertificates }
+     }
+ 
+     /// Parsed peer leaf certificate
+-    package var peerCertificate: X509Certificate? {
++    public var peerCertificate: X509Certificate? {
+         state.withLock { $0.context.peerCertificate }
+     }
+ 
+@@ -1016,7 +1016,7 @@
+     ///
+     /// This contains the value returned by `TLSConfiguration.certificateValidator`
+     /// after successful certificate validation (e.g., application-specific peer identity).
+-    package var validatedPeerInfo: (any Sendable)? {
++    public var validatedPeerInfo: (any Sendable)? {
+         state.withLock { $0.context.validatedPeerInfo }
+     }
+ 
+diff -ruN 1/Sources/QUICCrypto/TLS/TLS13Handler.swift 2/Sources/QUICCrypto/TLS/TLS13Handler.swift
+--- 1/Sources/QUICCrypto/TLS/TLS13Handler.swift	2026-09-30 00:56:23
++++ 2/Sources/QUICCrypto/TLS/TLS13Handler.swift	2026-09-30 00:56:23
+@@ -11,7 +11,7 @@
+ // MARK: - TLS 1.3 Handler
+ 
+ /// Pure Swift TLS 1.3 implementation for QUIC
+-package final class TLS13Handler: TLS13Provider, Sendable {
++public final class TLS13Handler: TLS13Provider, Sendable {
+ 
+     /// Maximum size for handshake message buffers (64KB per level)
+     private static let maxBufferSize = 65536
+@@ -60,13 +60,13 @@
+     /// loaded lazily when the server processes the first ClientHello.
+     ///
+     /// - Parameter configuration: TLS configuration
+-    package init(configuration: TLSConfiguration = TLSConfiguration()) {
++    public init(configuration: TLSConfiguration = TLSConfiguration()) {
+         self.configuration = configuration
+     }
+ 
+     // MARK: - TLS13Provider Protocol
+ 
+-    package func startHandshake(isClient: Bool) async throws -> [TLSOutput] {
++    public func startHandshake(isClient: Bool) async throws -> [TLSOutput] {
+         return try state.withLock { state in
+             state.isClientMode = isClient
+ 
+@@ -96,7 +96,7 @@
+         }
+     }
+ 
+-    package func processHandshakeData(_ data: Data, at level: EncryptionLevel) async throws -> [TLSOutput] {
++    public func processHandshakeData(_ data: Data, at level: EncryptionLevel) async throws -> [TLSOutput] {
+         // Phase 1: Synchronous message processing (inside lock).
+         // Returns outputs and a flag indicating whether a certificate message
+         // was processed (so we can perform async revocation checking outside the lock).
+@@ -168,42 +168,42 @@
+         return outputs
+     }
+ 
+-    package func getLocalTransportParameters() -> Data {
++    public func getLocalTransportParameters() -> Data {
+         state.withLock { $0.localTransportParams ?? Data() }
+     }
+ 
+-    package func setLocalTransportParameters(_ params: Data) throws {
++    public func setLocalTransportParameters(_ params: Data) throws {
+         state.withLock { $0.localTransportParams = params }
+     }
+ 
+-    package func getPeerTransportParameters() -> Data? {
++    public func getPeerTransportParameters() -> Data? {
+         state.withLock { $0.peerTransportParams }
+     }
+ 
+-    package var isHandshakeComplete: Bool {
++    public var isHandshakeComplete: Bool {
+         state.withLock { $0.handshakeComplete }
+     }
+ 
+-    package var isClient: Bool {
++    public var isClient: Bool {
+         state.withLock { $0.isClientMode }
+     }
+ 
+-    package var negotiatedALPN: String? {
++    public var negotiatedALPN: String? {
+         state.withLock { $0.negotiatedALPN }
+     }
+ 
+-    package func configureResumption(ticket: SessionTicketData, attemptEarlyData: Bool) throws {
++    public func configureResumption(ticket: SessionTicketData, attemptEarlyData: Bool) throws {
+         state.withLock { state in
+             state.resumptionTicket = ticket
+             state.attemptEarlyData = attemptEarlyData
+         }
+     }
+ 
+-    package var is0RTTAccepted: Bool {
++    public var is0RTTAccepted: Bool {
+         state.withLock { $0.is0RTTAccepted }
+     }
+ 
+-    package var is0RTTAttempted: Bool {
++    public var is0RTTAttempted: Bool {
+         state.withLock { $0.is0RTTAttempted }
+     }
+ 
+@@ -211,7 +211,7 @@
+     /// Available after receiving peer's Certificate message.
+     /// For client mode: returns server's certificates
+     /// For server mode (mTLS): returns client's certificates
+-    package var peerCertificates: [Data]? {
++    public var peerCertificates: [Data]? {
+         state.withLock { state -> [Data]? in
+             if state.isClientMode {
+                 return state.clientStateMachine?.peerCertificates
+@@ -227,7 +227,7 @@
+     /// Available after receiving peer's Certificate message.
+     /// For client mode: returns server's certificate
+     /// For server mode (mTLS): returns client's certificate
+-    package var peerCertificate: X509Certificate? {
++    public var peerCertificate: X509Certificate? {
+         state.withLock { state -> X509Certificate? in
+             if state.isClientMode {
+                 return state.clientStateMachine?.peerCertificate
+@@ -242,7 +242,7 @@
+     ///
+     /// This contains the value returned by `TLSConfiguration.certificateValidator`
+     /// after successful certificate validation (e.g., application-specific peer identity).
+-    package var validatedPeerInfo: (any Sendable)? {
++    public var validatedPeerInfo: (any Sendable)? {
+         state.withLock { state in
+             if state.isClientMode {
+                 return state.clientStateMachine?.validatedPeerInfo
+@@ -310,7 +310,7 @@
+         }
+     }
+ 
+-    package func requestKeyUpdate() async throws -> [TLSOutput] {
++    public func requestKeyUpdate() async throws -> [TLSOutput] {
+         // Key update implementation (RFC 9001 Section 6 for QUIC)
+         return try state.withLock { state in
+             guard state.handshakeComplete else {
+@@ -350,11 +350,11 @@
+     }
+ 
+     /// Current key phase (0 or 1, toggles with each key update)
+-    package var keyPhase: UInt8 {
++    public var keyPhase: UInt8 {
+         state.withLock { $0.keyPhase }
+     }
+ 
+-    package func exportKeyingMaterial(
++    public func exportKeyingMaterial(
+         label: String,
+         context: Data?,
+         length: Int

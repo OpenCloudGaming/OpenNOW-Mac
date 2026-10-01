@@ -112,6 +112,47 @@ jobs:
             App GFN Model OPN View ViewModel Tests
         shell: bash
 
+  vendor:
+    name: Verify Vendored Quiver
+    runs-on: blacksmith-12vcpu-macos-26
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Fails when Vendor/Quiver differs from the pinned commit plus the committed
+      # patch series, i.e. when someone edits the tree without adding a patch.
+      - name: Verify the vendor tree reproduces from pin + patches
+        run: scripts/vendor-quiver.sh
+        shell: bash
+
+      - name: Detect Vendor/Quiver changes
+        id: changed
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || ! git rev-parse --quiet --verify "$base" >/dev/null; then
+            echo "vendor=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$base" HEAD -- Vendor/Quiver; then
+            echo "vendor=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "vendor=true" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
+      # Runs upstream Quiver's own suite against our patched sources.
+      - name: Run upstream Quiver tests against the patched tree
+        if: steps.changed.outputs.vendor == 'true'
+        run: scripts/vendor-quiver-tests.sh
+        shell: bash
+
   app-build:
     name: Build macOS App
     runs-on: blacksmith-6vcpu-macos-26

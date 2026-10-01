@@ -11,7 +11,7 @@ public struct ConnectionID: Hashable, Sendable {
     public let bytes: Data
 
     /// Maximum length of a connection ID
-    public static let maxLength = 20
+    public static let maxLength = ProtocolLimits.maxConnectionIDLength
 
     /// An empty connection ID (zero length)
     public static let empty = ConnectionID(uncheckedBytes: Data())

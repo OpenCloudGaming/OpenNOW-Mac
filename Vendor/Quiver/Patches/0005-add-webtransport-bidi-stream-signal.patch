@@ -1,0 +1,49 @@
+# Why: Write the draft-ietf-webtrans-http3 4.4 signal (0x41) before the session ID on outgoing bidirectional WebTransport streams; upstream omits it and only interoperates with itself.
+# Applied by scripts/vendor-quiver.sh in filename order. See VENDORING.md.
+diff -ruN 4/Sources/HTTP3/HTTP3Connection+Streams.swift 5/Sources/HTTP3/HTTP3Connection+Streams.swift
+--- 4/Sources/HTTP3/HTTP3Connection+Streams.swift	2026-09-30 00:56:23
++++ 5/Sources/HTTP3/HTTP3Connection+Streams.swift	2026-09-30 00:51:01
+@@ -398,10 +398,18 @@
+             return
+         }
+ 
+-        // Try to decode the first varint — this is either a WT session ID
+-        // or an HTTP/3 frame type
++        // Try to decode the first varint — this is either the nominal WT_STREAM signal (0x41) or, from
++        // a peer that predates the signal, the session ID directly. HTTP/3 frame types are the other
++        // possibility, which is why the catch falls through to request handling.
+         do {
+-            let (varint, consumed) = try Varint.decode(from: firstData)
++            var (varint, consumed) = try Varint.decode(from: firstData)
++            // A spec-compliant peer (Chrome, and this library's own client) opens a bidirectional
++            // WebTransport stream with the 0x41 signal before the session ID.
++            if varint.value == kWebTransportBidiSignal {
++                let (sessionVarint, sessionConsumed) = try Varint.decode(from: Data(firstData.dropFirst(consumed)))
++                varint = sessionVarint
++                consumed += sessionConsumed
++            }
+             let candidateSessionID = varint.value
+ 
+             // Check if this matches a known WebTransport session
+diff -ruN 4/Sources/HTTP3/WebTransport/WebTransportStream.swift 5/Sources/HTTP3/WebTransport/WebTransportStream.swift
+--- 4/Sources/HTTP3/WebTransport/WebTransportStream.swift	2026-09-30 00:56:23
++++ 5/Sources/HTTP3/WebTransport/WebTransportStream.swift	2026-09-30 00:51:01
+@@ -70,6 +70,10 @@
+ /// unidirectional stream, followed by the session ID.
+ public let kWebTransportUniStreamType: UInt64 = 0x54
+ 
++/// The signal value that opens a bidirectional WebTransport stream
++/// (draft-ietf-webtrans-http3 §4.4). Both directions send it before the session ID.
++public let kWebTransportBidiSignal: UInt64 = 0x41
++
+ // MARK: - Stream Direction
+ 
+ /// The direction of a WebTransport stream.
+@@ -319,6 +323,7 @@
+         sessionID: UInt64
+     ) async throws {
+         var header = Data()
++        Varint(kWebTransportBidiSignal).encode(to: &header)
+         Varint(sessionID).encode(to: &header)
+         try await stream.write(header)
+     }

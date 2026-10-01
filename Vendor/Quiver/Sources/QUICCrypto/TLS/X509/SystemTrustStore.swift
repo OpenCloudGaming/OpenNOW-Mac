@@ -254,7 +254,7 @@ public enum SystemTrustStore: Sendable {
 
         throw SystemTrustStoreError.noRootsFound(
             "No CA certificate bundle or directory found. " +
-            "Install the ca-certificates public (e.g., `apt install ca-certificates` " +
+            "Install the ca-certificates package (e.g., `apt install ca-certificates` " +
             "or `yum install ca-certificates`)."
         )
     }

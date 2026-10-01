@@ -1,0 +1,17 @@
+# Why: Bound the peer-supplied legacy_session_id and reject an oversized value as a protocol error before the ClientHello initializer traps on it.
+# Applied by scripts/vendor-quiver.sh in filename order. See VENDORING.md.
+diff -ruN 2/Sources/QUICCrypto/TLS/Messages/ClientHello.swift 3/Sources/QUICCrypto/TLS/Messages/ClientHello.swift
+--- 2/Sources/QUICCrypto/TLS/Messages/ClientHello.swift	2026-09-30 00:56:23
++++ 3/Sources/QUICCrypto/TLS/Messages/ClientHello.swift	2026-09-30 00:56:23
+@@ -114,6 +114,11 @@
+ 
+         // legacy_session_id
+         let legacySessionID = try reader.readVector8()
++        // A network-supplied ClientHello is untrusted, and the initializer below traps on an
++        // oversized value. Reject it as a protocol error instead of reaching that trap.
++        guard legacySessionID.count <= TLSConstants.sessionIDMaxLength else {
++            throw TLSDecodeError.invalidFormat("Legacy session ID exceeds \(TLSConstants.sessionIDMaxLength) bytes")
++        }
+ 
+         // cipher_suites
+         let cipherSuiteData = try reader.readVector16()

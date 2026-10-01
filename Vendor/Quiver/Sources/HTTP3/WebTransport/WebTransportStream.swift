@@ -159,6 +159,10 @@ public struct WebTransportStream: Sendable {
     /// on the first `read()` call before reading more from the QUIC stream.
     private let _initialDataBuffer: InitialDataBuffer
 
+    /// One-shot notification delivered when this stream reaches a terminal
+    /// state (FIN observed, reset, or a local unidirectional FIN).
+    private let _terminationNotifier: StreamTerminationNotifier?
+
     /// Creates a WebTransport stream wrapper.
     ///
     /// This initializer is used internally by `WebTransportSession`.
@@ -180,7 +184,8 @@ public struct WebTransportStream: Sendable {
         direction: WebTransportStreamDirection,
         isLocal: Bool,
         priority: StreamPriority? = nil,
-        initialData: Data = Data()
+        initialData: Data = Data(),
+        onTerminated: (@Sendable () -> Void)? = nil
     ) {
         self.quicStream = quicStream
         self.sessionID = sessionID
@@ -190,6 +195,7 @@ public struct WebTransportStream: Sendable {
             ? .webTransportBidi
             : .webTransportUni)
         self._initialDataBuffer = InitialDataBuffer(initialData)
+        self._terminationNotifier = onTerminated.map(StreamTerminationNotifier.init)
     }
 
     // MARK: - Stream Identity
@@ -228,7 +234,16 @@ public struct WebTransportStream: Sendable {
         if let buffered = _initialDataBuffer.drain() {
             return buffered
         }
-        return try await quicStream.read()
+        do {
+            let data = try await quicStream.read()
+            if data.isEmpty {
+                _terminationNotifier?.notify()
+            }
+            return data
+        } catch {
+            _terminationNotifier?.notify()
+            throw error
+        }
     }
 
     /// Reads up to a maximum number of bytes from the stream.
@@ -241,7 +256,16 @@ public struct WebTransportStream: Sendable {
         if let buffered = _initialDataBuffer.drain(maxBytes: maxBytes) {
             return buffered
         }
-        return try await quicStream.read(maxBytes: maxBytes)
+        do {
+            let data = try await quicStream.read(maxBytes: maxBytes)
+            if data.isEmpty {
+                _terminationNotifier?.notify()
+            }
+            return data
+        } catch {
+            _terminationNotifier?.notify()
+            throw error
+        }
     }
 
     // MARK: - Write Operations
@@ -263,6 +287,9 @@ public struct WebTransportStream: Sendable {
     /// - Throws: If closing fails
     public func closeWrite() async throws {
         try await quicStream.closeWrite()
+        if direction == .unidirectional {
+            _terminationNotifier?.notify()
+        }
     }
 
     // MARK: - Reset Operations
@@ -276,6 +303,7 @@ public struct WebTransportStream: Sendable {
     public func reset(applicationErrorCode: UInt32 = 0) async {
         let http3Code = WebTransportStreamErrorCode.toHTTP3ErrorCode(applicationErrorCode)
         await quicStream.reset(errorCode: http3Code)
+        _terminationNotifier?.notify()
     }
 
     /// Signals that no more data will be read from this stream.
@@ -394,6 +422,30 @@ public enum WebTransportStreamFraming {
 // MARK: - HTTP/3 Stream Type Classification Extension
 
 // MARK: - Initial Data Buffer
+
+/// Thread-safe one-shot notifier for a stream reaching a terminal state.
+private final class StreamTerminationNotifier: @unchecked Sendable {
+    private let onTerminated: @Sendable () -> Void
+    private let lock = NSLock()
+    private var isFired = false
+
+    init(_ onTerminated: @Sendable @escaping () -> Void) {
+        self.onTerminated = onTerminated
+    }
+
+    func notify() {
+        guard markFired() else { return }
+        onTerminated()
+    }
+
+    private func markFired() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isFired else { return false }
+        isFired = true
+        return true
+    }
+}
 
 /// Thread-safe buffer for initial data read during stream routing.
 ///

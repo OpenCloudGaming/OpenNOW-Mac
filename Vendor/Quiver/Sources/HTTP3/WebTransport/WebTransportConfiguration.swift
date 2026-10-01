@@ -66,6 +66,11 @@ public struct WebTransportConfiguration: Sendable {
     /// - Default: 1
     public var maxSessions: UInt64
 
+    /// Maximum number of concurrently tracked streams per WebTransport session; `0` disables it.
+    ///
+    /// Defaults to 64. QUIC re-grants stream credit as streams complete, so a session needs its own bound.
+    public var maxStreamsPerSession: UInt64
+
     /// Additional HTTP headers to include in the Extended CONNECT request.
     ///
     /// Use this for authentication tokens, origin headers, etc.
@@ -99,6 +104,7 @@ public struct WebTransportConfiguration: Sendable {
     /// - Parameters:
     ///   - quic: The QUIC transport configuration (TLS, flow control, etc.)
     ///   - maxSessions: Max concurrent WebTransport sessions (default: 1)
+    ///   - maxStreamsPerSession: Max tracked streams per session, 0 = unbounded (default: 64)
     ///   - headers: Additional HTTP headers for CONNECT (default: [])
     ///   - http3Settings: HTTP/3 settings overrides (default: literal-only QPACK)
     ///   - connectionReadyTimeout: SETTINGS exchange timeout (default: 10s)
@@ -106,6 +112,7 @@ public struct WebTransportConfiguration: Sendable {
     public init(
         quic: QUICConfiguration,
         maxSessions: UInt64 = 1,
+        maxStreamsPerSession: UInt64 = WebTransportSession.defaultMaxStreamsPerSession,
         headers: [(String, String)] = [],
         http3Settings: HTTP3Settings = HTTP3Settings(),
         connectionReadyTimeout: Duration = .seconds(10),
@@ -113,6 +120,7 @@ public struct WebTransportConfiguration: Sendable {
     ) {
         self.quic = quic
         self.maxSessions = maxSessions
+        self.maxStreamsPerSession = maxStreamsPerSession
         self.headers = headers
         self.http3Settings = http3Settings
         self.connectionReadyTimeout = connectionReadyTimeout

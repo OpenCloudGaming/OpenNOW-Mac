@@ -62,11 +62,6 @@ public enum ProtocolLimits {
     /// (``minimumMaximumDatagramSize``) minus header overhead.
     public static let maxInitialTokenLength = minimumMaximumDatagramSize
 
-    /// Maximum packet payload length
-    /// Based on maximum UDP datagram size minus headers
-    /// 65535 (max UDP) - 8 (UDP header) - 20 (IP header minimum)
-    public static let maxPacketPayloadLength = 65507
-
     /// Maximum Long Header length field value
     /// Length field includes packet number (1-4 bytes) and encrypted payload
     /// We use a practical limit to prevent memory exhaustion
@@ -109,11 +104,6 @@ public enum ProtocolLimits {
     /// Most parameters are varints (8 bytes max), but some like
     /// preferred_address are larger
     public static let maxTransportParameterLength = 65535
-
-    /// Maximum length of preferred_address parameter
-    /// IPv6 address (16) + port (2) + CID length (1) + CID (20) + token (16) = 55
-    /// Plus IPv4 components
-    public static let maxPreferredAddressLength = 128
 
     // MARK: - Retry (RFC 9000 Section 17.2.5)
 

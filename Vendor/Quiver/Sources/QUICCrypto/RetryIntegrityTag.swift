@@ -317,16 +317,19 @@ extension RetryIntegrityTag {
         // Must have at least: first byte + 4 bytes version + 1 dcid len + 1 scid len + 16 tag
         guard data.count >= 23 else { return false }
 
+        // `Data` slices may have a non-zero startIndex, so index from the start of this slice.
+        let base = data.startIndex
+
         // Check long header format (first bit = 1)
-        guard (data[0] & 0x80) != 0 else { return false }
+        guard (data[base] & 0x80) != 0 else { return false }
 
         // Check version is not 0 (that's Version Negotiation)
-        let version = UInt32(data[1]) << 24 | UInt32(data[2]) << 16 |
-                      UInt32(data[3]) << 8 | UInt32(data[4])
+        let version = UInt32(data[base + 1]) << 24 | UInt32(data[base + 2]) << 16 |
+                      UInt32(data[base + 3]) << 8 | UInt32(data[base + 4])
         guard version != 0 else { return false }
 
         // Check packet type is Retry (type bits = 11)
-        let packetType = (data[0] >> 4) & 0x03
+        let packetType = (data[base] >> 4) & 0x03
         return packetType == 0x03
     }
 }

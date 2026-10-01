@@ -125,6 +125,7 @@ public final class RemoteCoOpBrowserEgress: @unchecked Sendable {
                                                             allowedPaths: [RemoteCoOpBrowserProtocol.mediaPath])
         )
         await server.onRequest { context in
+            for await _ in context.body.stream() {}
             try await context.respond(status: 200,
                                       headers: [("content-type", "text/plain")],
                                       Data("OpenNOW Remote Co-Op WebTransport".utf8))
