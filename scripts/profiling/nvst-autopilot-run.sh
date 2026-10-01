@@ -1,5 +1,5 @@
 #!/bin/zsh
-# scripts/nvst-autopilot-run.sh <cmsId> <shortName> <seconds> [defaults key=value ...]
+# scripts/profiling/nvst-autopilot-run.sh <cmsId> <shortName> <seconds> [defaults key=value ...]
 # Drives one "OpenNOW Dev" session with nobody at the keyboard: writes a .gfnpc shortcut, opens the
 # Debug build with OPN_NVST_AUTOPILOT_SECONDS (auto End Stream + quit) and OPN_NVST_AUTOPILOT_SCRIPT
 # (`<s>:key36`, `<s>:click0.5,0.5`, `<s>:padA` (pad 0 button tap: A/B/X/Y/Start/Select/LB/RB/Up/Down/
