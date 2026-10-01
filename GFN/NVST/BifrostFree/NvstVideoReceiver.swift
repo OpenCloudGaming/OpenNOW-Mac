@@ -134,20 +134,13 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// thousand packets. At the measured ~8,500 packets/s that is ~140 ms of worst-case wait
     /// before an unrepairable gap falls back to the keyframe path.
     public static let fecRepairReorderWindow = 1200
-    /// Every wait bounded in time: a gap is loss once it has been open this long, whichever packet
-    /// window applies. A packet window lasts longer the lighter the scene: at ~700 packets/s the
-    /// 1200 packets held every frame behind one lost packet for 1.7 s, and at ~120 packets/s in a
+    /// Every wait bounded in time: a gap is loss once it has been open this long, whenever FEC is
+    /// not armed to repair it. A packet window lasts longer the lighter the scene: at ~700 packets/s
+    /// the 1200 packets held every frame behind one lost packet for 1.7 s, and at ~120 packets/s in a
     /// menu even the plain 32-packet reorder window held ten frames for 260 ms.
-    ///
-    /// This is the bound whenever FEC is not armed, so a gap nothing can repair still falls back to
-    /// the keyframe path in bounded time.
     public static let fecRepairMaximumWaitNanoseconds: UInt64 = 100_000_000
-    /// The armed bound: a block's parity trails an early-frame hole by up to `fecRepairReorderWindow`
-    /// packets, which is ~140 ms at the ~8,500 packets/s a busy 5K stream arrives at. Applying the
-    /// flat bound there finalized a repairable gap roughly 40 ms before its parity could arrive,
-    /// costing the frame and a keyframe round trip. The packet window is itself capped in wall-clock
-    /// because it takes seconds to fill in a calm scene, and waiting it out is the freeze the flat
-    /// bound exists to remove.
+    /// The armed bound. The packet repair window is ~140 ms at 5K's ~8,500 packets/s, so the flat
+    /// bound cut a repairable gap off early — and the packet window alone freezes a calm scene.
     public static let fecRepairMaximumWaitCeilingNanoseconds: UInt64 = 250_000_000
 
     public enum ReceiverError: LocalizedError, Equatable, Sendable {
@@ -659,23 +652,12 @@ extension NvstVideoReceiver {
             stats.outOfOrderPackets += 1
             if openGap?.index != expected { openGap = (expected, uptimeNanoseconds()) }
         }
-        let gapOutlivedWait = index > expected && gapOutlivedFecRepair()
-        if index - expected >= UInt64(reorderWindow) || gapOutlivedWait,
-           // With FEC armed, a gap must outlive the chance of repair before it is loss: the
-           // block's parity packets arrive after all of its sources, which at 5K is up to ~1000
-           // packets after an early-frame hole — far past the plain reorder window. Holding the
-           // gap costs one frame a few milliseconds of delivery delay; finalizing it early costs
-           // the frame, a keyframe round trip, and the seat's frame-rate knock. The armed check
-           // runs only while a gap is already open, so the hot path never takes the extra lock.
-           // `gapOutlivedWait` carries the wall-clock ceiling that keeps the window from being
-           // waited out in a scene light enough for it to take seconds (see the constants above).
-           !(index - expected < UInt64(Self.fecRepairReorderWindow) && !gapOutlivedWait && fecRecovery.snapshot.isArmed) {
-            // The gap has aged past the reorder window: whatever is still missing below the first
-            // buffered packet is finalized loss, and only that range is skipped. The buffered
-            // packets arrived intact and are delivered below — flushing the whole buffer here
-            // turned one lost packet into 32: the up-to-31 successors it head-of-line-blocked were
-            // destroyed uncounted, taking their frames (and the decoder's reference chain) with
-            // them. A later gap among the survivors finalizes the same way on a later packet.
+        // Armed FEC holds a gap past the plain reorder window: a block's parity trails an early-frame
+        // hole by up to `fecRepairReorderWindow` packets, so only the wall-clock bound ends it.
+        let isPastFecWait = index > expected && isPastFecRepairWait()
+        if isGapFinalized(depth: index - expected, isPastFecWait: isPastFecWait) {
+            // Only the missing range below the first buffered packet is skipped: those packets arrived
+            // intact, and flushing the whole buffer here destroyed the frames they were holding up.
             let firstAvailable = reorder.keys.min() ?? index
             recordRecovery(first: expected, last: firstAvailable - 1, events: &events)
             nextIndex = firstAvailable
@@ -730,12 +712,15 @@ extension NvstVideoReceiver {
         return after.frameIndex == before.frameIndex &+ 1 && after.isStartOfFrame
     }
 
-    /// Whether the open gap has outlived its chance of repair, in wall-clock time.
-    ///
-    /// Unarmed FEC cannot repair anything, so the flat bound applies. Armed FEC gets the packet
-    /// window — but only up to the ceiling, so a scene light enough for that window to take
-    /// seconds still falls back to the keyframe path in a bounded time.
-    private func gapOutlivedFecRepair() -> Bool {
+    /// Whether a packet `depth` past the expected index ends the open gap as loss.
+    private func isGapFinalized(depth: UInt64, isPastFecWait: Bool) -> Bool {
+        guard !isPastFecWait else { return true }
+        guard depth >= UInt64(reorderWindow) else { return false }
+        return depth >= UInt64(Self.fecRepairReorderWindow) || !fecRecovery.snapshot.isArmed
+    }
+
+    /// Whether the open gap has outlived its wall-clock chance of repair.
+    private func isPastFecRepairWait() -> Bool {
         guard let openGap else { return false }
         let bound = fecRecovery.snapshot.isArmed
             ? Self.fecRepairMaximumWaitCeilingNanoseconds

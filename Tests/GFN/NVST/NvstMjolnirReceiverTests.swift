@@ -408,10 +408,8 @@ struct NvstMjolnirReceiverTests {
 /// and what happens when that parity arrives — or never does.
 @Suite(.serialized)
 struct NvstFecRepairWaitTests {
-    /// One FEC block exactly as the seat sends it: `sourceCount` source packets plus `percentage`%
-    /// parity, every shard zero-padded to the block's uniform size. Two sources at 50% is the small
-    /// block the arming loop verifies; a 250-source block is what makes a repair trail the hole it
-    /// repairs far enough for the wait to matter.
+    /// One FEC block as the seat sends it: `sourceCount` sources plus `percentage`% parity, every
+    /// shard zero-padded to the block's uniform size.
     private func fecBlock(frameIndex: UInt32,
                           baseSequence: UInt16,
                           sourceCount: UInt32,
@@ -457,9 +455,8 @@ struct NvstFecRepairWaitTests {
         #expect(receiver.fecFindings.isArmed)
     }
 
-    /// With FEC armed the repair window governs, not the flat bound: a block's parity can trail an
-    /// early-frame hole past 100 ms, so the gap is still held there. The wall-clock ceiling still
-    /// finalizes it, so a scene light enough for the packet window to take seconds cannot freeze.
+    /// With FEC armed the repair window governs, not the flat bound, so the gap is still held past
+    /// 100 ms — and the wall-clock ceiling still finalizes it, so a calm scene cannot freeze.
     @Test func anOpenGapOutlivesTheFlatBoundWhileFecRepairMayStillArrive() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
@@ -482,10 +479,8 @@ struct NvstFecRepairWaitTests {
         #expect(receiver.snapshot.finalizedLossPackets == 20)
     }
 
-    /// The repair for an early-frame hole trails it by most of its block, so at a packet rate where
-    /// a 250-source block takes longer than the flat bound the parity lands after it. With FEC armed
-    /// the gap is held and the parity repairs it; the flat bound alone would have finalized the loss
-    /// and asked for a keyframe.
+    /// A block's parity trails an early-frame hole by most of the block, so at a rate where that
+    /// takes longer than the flat bound, the held gap is repaired instead of escalating.
     @Test func aRepairableFecGapIsRepairedAfterTheFlatTimeBound() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
@@ -512,10 +507,8 @@ struct NvstFecRepairWaitTests {
         #expect(receiver.snapshot.finalizedLossPackets == 0)
     }
 
-    /// The repair window is measured in packets, so its wall-clock length depends on the rate: the
-    /// 1,200-packet window is ~140 ms at the ~8,500 packets/s a busy 5K stream arrives at — past the
-    /// flat bound. An armed gap is therefore still held at 100 ms and only finalized once the window
-    /// itself expires.
+    /// The repair window is measured in packets, so its wall-clock length depends on the rate: at
+    /// ~8,500 packets/s the 1,200-packet window is ~140 ms, and an armed gap waits it out.
     @Test func theFecRepairWindowGovernsAtAHighPacketRate() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
         let clock = OSAllocatedUnfairLock(initialState: UInt64(0))

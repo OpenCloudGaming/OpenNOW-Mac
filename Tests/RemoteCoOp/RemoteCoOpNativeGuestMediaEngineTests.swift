@@ -1,6 +1,5 @@
-//  The native guest's media engine. Audio and video share one UDP port, but they must not share one
-//  serial queue: a hardware decode runs to completion on the calling thread, so a single queue puts
-//  every audio chunk behind a frame's decode time.
+//  The native guest's media engine. Audio and video share one UDP port but must not share one serial
+//  queue: a decode runs to completion on the calling thread, putting every audio chunk behind it.
 //
 
 import Foundation

@@ -43,10 +43,8 @@ final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
     /// Video: reassembly and the VideoToolbox decode. Serial because the decoder is, and because a
     /// decode now runs to completion on the calling thread (`NvstVideoToolboxDecoder.decode`).
     private let queue: DispatchQueue
-    /// Audio, deliberately *not* `queue`. Sharing one serial queue meant a datagram could only be
-    /// handled once the hardware decode in front of it had finished, so every decoded frame
-    /// underran the guest's playout buffer by its own decode time. Audio is a few PCM samples and
-    /// must never wait behind a frame.
+    /// Audio, deliberately not `queue`: a decode runs to completion on that one, so sharing it put
+    /// every audio chunk behind a frame's decode time.
     private let audioQueue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.native-guest-audio",
                                            qos: .userInteractive)
     private let reassembler = OPNRemoteCoOpCompressedVideoReassembler()
@@ -90,32 +88,29 @@ final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
         windowBytes = 0
         windowDecoded = 0
         counterLock.unlock()
-        audioQueue.async {
-            self.audioDevice?.stop()
-            self.audioDevice = nil
-            self.audioBuffer.reset()
-            self.didAnnounceAudio = false
-        }
-        queue.async {
-            self.decoder = nil
-            self.decoderCodec = nil
-        }
+        audioQueue.async { self.teardownAudio() }
+        queue.async { self.releaseDecoder() }
     }
 
     func stop() {
         reporter?.cancel()
         reporter = nil
-        // Audio is torn down on its own queue and synchronously, so the speaker is quiet when this
-        // returns; video is not awaited, because a decode runs to completion on that queue.
-        audioQueue.sync {
-            self.audioDevice?.stop()
-            self.audioDevice = nil
-            self.audioBuffer.reset()
-        }
-        queue.async {
-            self.decoder = nil
-            self.decoderCodec = nil
-        }
+        // Audio stops synchronously, so the speaker is quiet when this returns. The video queue is
+        // not awaited: a decode runs to completion there and would block the caller for a frame.
+        audioQueue.sync { self.teardownAudio() }
+        queue.async { self.releaseDecoder() }
+    }
+
+    private func teardownAudio() {
+        audioDevice?.stop()
+        audioDevice = nil
+        audioBuffer.reset()
+        didAnnounceAudio = false
+    }
+
+    private func releaseDecoder() {
+        decoder = nil
+        decoderCodec = nil
     }
 
     /// Audio chunks accepted onto the playout buffer. The 1 Hz stats reporter is too coarse for a
