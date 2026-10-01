@@ -154,3 +154,170 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_COMPILATION_MODE=singlefile
         shell: bash
+
+  # The benchmark harness (`swift run OpenNOWBenchmarks all`) measures what the test suite
+  # deliberately does not assert on, so it is published rather than gated:
+  #
+  # - Non-blocking. Timings on a shared runner move run to run, so a threshold here would fail PRs
+  #   for runner noise. `continue-on-error` keeps the workflow run green when this job fails, so a
+  #   benchmark crash never blocks a merge. It becomes a gate only once a stable baseline exists
+  #   (Phase 0, P0-2), together with a threshold the harness can actually enforce.
+  # - No write credentials. This job compiles and executes the PR's Swift, so its token stays
+  #   read-only; the job that posts the PR comment below holds the write scope and runs no PR code.
+  # - Same SwiftPM cache as `packages`, and `needs: packages` so the cache it restores is the graph
+  #   that job just built. The benchmark run itself is roughly 35 s.
+  benchmarks:
+    name: Run Benchmarks
+    continue-on-error: true
+    needs: packages
+    runs-on: blacksmith-12vcpu-macos-26
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Cache SwiftPM build graph
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            !.build/shared/artifacts
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-v2-${{ github.event.repository.name }}-${{ hashFiles('Package.resolved', '**/Package.swift', '**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-v2-${{ github.event.repository.name }}-
+
+      # OPENNOW_PERF_AUDIT_OUTPUT writes each audit's report to a file instead of relying on the
+      # JSON that happens to be on stdout. Under `all` the runner writes one file per audit, so no
+      # report is lost and the artifact needs no stdout scraping.
+      - name: Run benchmark suite
+        run: |
+          set -euo pipefail
+          mkdir -p benchmarks
+          OPENNOW_PERF_AUDIT_OUTPUT=benchmarks/benchmark.json \
+            swift run --scratch-path .build/shared OpenNOWBenchmarks all
+        shell: bash
+
+      - name: Upload benchmark JSON
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: opennow-benchmarks
+          path: benchmarks/*.json
+          if-no-files-found: warn
+
+  # Publishes the numbers as one PR comment, updated in place on every run for the current revision.
+  #
+  # Fork and restricted-permission PRs: a fork's GITHUB_TOKEN is read-only whatever this file
+  # declares, so a comment write would fail with 403. The `head.repo.full_name` guard skips those PRs
+  # entirely and CI stays green; they keep the `Run benchmark suite` job log and the
+  # `opennow-benchmarks` artifact as the fallback, both of which carry the full JSON. The same
+  # fallback covers a run whose artifact never appeared (benchmark job failed or was skipped).
+  benchmark-comment:
+    name: Publish Benchmark Summary
+    needs: benchmarks
+    if: >-
+      always() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+
+    concurrency:
+      group: benchmark-summary-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Download benchmark JSON
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: opennow-benchmarks
+          path: benchmarks
+
+      - name: Create or update benchmark summary comment
+        if: steps.download.outcome == 'success'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const marker = '<!-- opennow-benchmarks -->';
+            const artifactDir = 'benchmarks';
+            const { owner, repo } = context.repo;
+            const pull = context.payload.pull_request;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            const files = fs.existsSync(artifactDir)
+              ? fs.readdirSync(artifactDir).filter((file) => file.endsWith('.json')).sort()
+              : [];
+            const measurements = files.flatMap((file) => {
+              const report = JSON.parse(fs.readFileSync(path.join(artifactDir, file), 'utf8'));
+              return report.measurements ?? [];
+            });
+
+            if (measurements.length === 0) {
+              core.info('No benchmark measurements in the artifact; leaving any existing summary comment untouched.');
+              return;
+            }
+
+            const milliseconds = (value) => (typeof value === 'number' ? value.toFixed(3) : 'n/a');
+            const rows = measurements.map((measurement) =>
+              `| \`${measurement.package}\` | \`${measurement.operation}\` | ${measurement.modelCount ?? 'n/a'} | ` +
+              `${measurement.iterations} | ${milliseconds(measurement.meanMilliseconds)} | ` +
+              `${milliseconds(measurement.minMilliseconds)} | ${milliseconds(measurement.maxMilliseconds)} |`
+            );
+
+            const body = [
+              marker,
+              '## OpenNOW benchmark results',
+              '',
+              `\`swift run OpenNOWBenchmarks all\` on \`${pull.head.ref}\` at \`${pull.head.sha.slice(0, 12)}\`.`,
+              '',
+              '> **Informational only, not a merge gate.** These timings come from a shared CI runner and move',
+              '> between runs, so this comment claims no regression: there is no stable baseline to compare',
+              '> against yet. Gating starts only once that baseline exists (Phase 0, P0-2).',
+              '',
+              '| Package | Operation | N | Iterations | Mean (ms) | Min (ms) | Max (ms) |',
+              '| --- | --- | ---: | ---: | ---: | ---: | ---: |',
+              ...rows,
+              '',
+              `Full JSON: [\`opennow-benchmarks\` artifact in this workflow run](${runUrl}) — one file per audit`,
+              '(`benchmark-catalog.json`, `benchmark-stream-preferences.json`). The same JSON is printed in the',
+              '`Run benchmark suite` job log, which outlives the artifact.',
+              '',
+              '<sub>Updated in place on every benchmark run for this PR.</sub>',
+            ].join('\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(
+              (comment) => comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              core.info(`Updated benchmark summary comment ${existing.id}.`);
+            } else {
+              const created = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: context.issue.number,
+                body,
+              });
+              core.info(`Created benchmark summary comment ${created.data.id}.`);
+            }
