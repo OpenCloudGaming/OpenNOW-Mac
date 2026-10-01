@@ -75,7 +75,8 @@ public enum OPNStreamPreferences {
     public static let presentationModeOptions = [
         OPNStreamPresentationModeOption(label: "Balanced", value: 0),
         OPNStreamPresentationModeOption(label: "Smooth", value: 1),
-        OPNStreamPresentationModeOption(label: "Lowest Latency", value: 2)
+        OPNStreamPresentationModeOption(label: "Lowest Latency", value: 2),
+        OPNStreamPresentationModeOption(label: "VRR", value: 3)
     ]
     /// The VSync trio, in the official client's own order (Off, On, Adaptive — the third being
     /// what the captured ANNOUNCE baseline and every official streaming preset use). Values are

@@ -55,11 +55,17 @@ public protocol NvstBundleReserving: Sendable {
     /// `microphoneOfferedOnBundle` is the seat's DESCRIBE verdict on bundle mic carriage: the
     /// bundle builds its mic send section only under that offer, because announcing bundle mic
     /// to a legacy seat makes it withhold the game audio.
-    func bundleIdentity(for handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation?
+    ///
+    /// `audioLayout` is the Opus layout ANNOUNCE will ask for, which the bundle's decoder must match.
+    func bundleIdentity(for handoff: NVSTVideoHandoff,
+                        microphoneOfferedOnBundle: Bool,
+                        audioLayout: NvstOpusMultistreamLayout) async -> NvstBundleReservation?
 }
 
 public extension NvstBundleReserving {
-    func bundleIdentity(for handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? { nil }
+    func bundleIdentity(for handoff: NVSTVideoHandoff,
+                        microphoneOfferedOnBundle: Bool,
+                        audioLayout: NvstOpusMultistreamLayout) async -> NvstBundleReservation? { nil }
 }
 
 public enum NvstRtspNegotiationError: LocalizedError, Equatable, Sendable {
