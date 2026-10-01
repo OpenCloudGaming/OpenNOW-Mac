@@ -426,7 +426,7 @@ public actor NativeNVSTStreamingPath {
         cancelStartTask = nil
     }
 
-    private func stopSessionIfCancelled(_ session: StreamSessionDescriptor, isResume: Bool) async throws {
+    private func stopSessionOnCancellation(_ session: StreamSessionDescriptor, isResume: Bool) async throws {
         guard Task.isCancelled else { return }
         await transport.disconnect()
         // Cancelling a resume must leave the reclaimed session alive: it belongs to whichever
@@ -499,7 +499,7 @@ extension NativeNVSTStreamingPath {
                                   progress: (@Sendable (StreamProgress) async -> Void)?,
                                   trace: StreamStartTrace) async throws {
         trace.begin(.prepareTransport)
-        try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
+        try await stopSessionOnCancellation(allocation.session, isResume: allocation.isResume)
         try await publishProgress(configuration: configuration, step: .prepareTransport, message: "Preparing native NVST transport...", progress: progress)
         try validate(allocation: allocation)
     }
@@ -511,7 +511,7 @@ extension NativeNVSTStreamingPath {
         trace.begin(.connectTransport)
         try await publishProgress(configuration: configuration, step: .connectTransport, message: "Connecting native NVST secure RTSP transport...", progress: progress)
         _ = try await transport.connect(allocation: allocation, mediaReceiver: mediaSession)
-        try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
+        try await stopSessionOnCancellation(allocation.session, isResume: allocation.isResume)
     }
 
     /// Releases a seat whose start failed, and rethrows the failure the caller must see.
