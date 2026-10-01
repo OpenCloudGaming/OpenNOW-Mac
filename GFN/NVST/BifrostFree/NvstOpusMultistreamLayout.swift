@@ -49,26 +49,19 @@ public struct NvstOpusMultistreamLayout: Equatable, Sendable {
             .compactMap { NvstOpusMultistreamLayout(surroundParams: $0.trimmingCharacters(in: .whitespaces)) }
     }
 
-    /// The widest surround layout the seat offered within the request, or stereo: a count the seat
-    /// did not describe cannot be decoded, and multistream Opus fed to a stereo decoder plays as a
-    /// muffled smear rather than failing.
+    /// The widest surround layout the seat offered that the request, the output device and this
+    /// macOS can all carry, or stereo — a layout nobody can decode plays as a muffled smear.
     ///
-    /// Two capabilities bound the choice, not just the request: the output device has to be able to
-    /// carry the count, and this macOS has to be able to build a decoder for it. The layout returned
-    /// is the one ANNOUNCE carries and the one the decoder is built for, so the seat can never send
-    /// a count either side cannot handle — and on a macOS whose Opus decoder has no multistream
-    /// support the session negotiates stereo instead of six channels nobody can decode.
-    ///
-    /// - Parameter canDecode: whether a layout can be decoded here. Injected so the negotiation can
-    ///   be tested independently of the running macOS's Opus support.
+    /// - Parameter isDecodable: whether this machine can decode a layout. Injected so the
+    ///   negotiation is testable independently of the running macOS's Opus support.
     public static func negotiated(requestedChannels: Int,
                                   offered: [NvstOpusMultistreamLayout],
-                                  canDecode: (NvstOpusMultistreamLayout) -> Bool = { NvstOpusDecoder.canDecode(layout: $0) })
+                                  isDecodable: (NvstOpusMultistreamLayout) -> Bool = { NvstOpusDecoder.isDecodable(layout: $0) })
         -> NvstOpusMultistreamLayout {
         offered
             .filter { $0.isSurround && $0.channels <= requestedChannels
                 && NvstCoreAudioFormat.supportedPlayoutChannelCount($0.channels) == $0.channels
-                && canDecode($0) }
+                && isDecodable($0) }
             .max { $0.channels < $1.channels } ?? .stereo
     }
 

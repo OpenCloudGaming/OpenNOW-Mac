@@ -378,18 +378,17 @@ public final class NvstNativeBundle: @unchecked Sendable {
         let layout = audioLayout
         let device = NvstCoreAudioDevice(playoutChannelCount: layout.channels,
                                          preferredInputDeviceUID: microphoneSetup?.deviceUniqueID)
-        // The layout and its mixer are read together, once per render, so a decoder fallback that
-        // lands between two renders cannot pair one width with the other's matrix. The device stays
-        // as wide as it was opened — a fallback just leaves its other speakers silent.
+        // Layout and mixer are read together, once per render, so a fallback landing between two
+        // renders cannot pair one width with the other's matrix.
         device.fillPlayout = { [weak self, weak device] destination, sampleCount in
             guard let self, let pipeline = self.receivePipeline,
                   let speakers = device?.playoutSpeakers, !speakers.isEmpty else {
                 destination.update(repeating: 0, count: sampleCount)
                 return
             }
-            let (decode, mixer) = playoutLock.withLock { (playout.layout, playout.mixer) }
+            let (decodeLayout, mixer) = playoutLock.withLock { (playout.layout, playout.mixer) }
             let frames = sampleCount / speakers.count
-            mixer.render(pipeline.pull(sampleCount: frames * decode.channels), frames: frames, speakers: speakers, into: destination)
+            mixer.render(pipeline.pull(sampleCount: frames * decodeLayout.channels), frames: frames, speakers: speakers, into: destination)
             let written = frames * speakers.count
             if written < sampleCount { destination.advanced(by: written).update(repeating: 0, count: sampleCount - written) }
         }
@@ -553,12 +552,11 @@ extension NvstNativeBundle {
 }
 
 
-/// The decode width the render thread is placing, and the matrix that places it. They move
-/// together: when the decoder proves it cannot decode the negotiated layout the pipeline rebuilds as
-/// stereo, and rendering a new width with the old matrix would read every sample at the wrong stride.
+/// The decode width the render thread is placing and the matrix that places it, held as one value:
+/// a new width rendered with the old matrix would read every sample at the wrong stride.
 private struct NvstBundlePlayout {
-    var layout: NvstOpusMultistreamLayout
-    var mixer: NvstPlayoutMixer
+    let layout: NvstOpusMultistreamLayout
+    let mixer: NvstPlayoutMixer
 
     init(layout: NvstOpusMultistreamLayout) {
         self.layout = layout
@@ -576,10 +574,8 @@ extension NvstNativeBundle {
     /// as the track count on this transport.
     public var remoteAudioTrackCount: Int { audioChannelCount }
 
-    /// Adopts the layout the receive pipeline actually ended up decoding. Called from the CoreAudio
-    /// render thread through the pipeline's fallback hook, so it does the two things that cannot
-    /// wait — swap the state the next render reads, and leave one line in the log explaining why
-    /// this session is in stereo — and nothing else.
+    /// Adopts the layout the receive pipeline ended up decoding. Runs on the CoreAudio render thread,
+    /// so it swaps the state the next render reads and leaves one log line, and does nothing else.
     private func adoptPlayout(layout: NvstOpusMultistreamLayout) {
         playoutLock.withLock { playout = NvstBundlePlayout(layout: layout) }
         logger?("NVST audio decoder could not decode the negotiated layout; the session continues in \(layout.summary)")

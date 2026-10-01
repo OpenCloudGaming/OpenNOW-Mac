@@ -151,16 +151,16 @@ struct NvstSurroundAudioDecodeTests {
 
     @Test func negotiationPicksTheWidestDescribedLayoutWithinTheRequest() {
         let offered = NvstOpusMultistreamLayout.offered(inDescribe: Self.describeOffer)
-        // The decoder probe is injected so this pins the negotiation itself on every macOS, rather
-        // than the running macOS's multistream support.
+        // The probe is injected so this pins the negotiation itself on every macOS, not the running
+        // macOS's multistream support.
         let decodable: (NvstOpusMultistreamLayout) -> Bool = { _ in true }
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: offered, canDecode: decodable).channels == 6)
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 8, offered: offered, canDecode: decodable).channels == 6)
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 2, offered: offered, canDecode: decodable) == .stereo)
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: [], canDecode: decodable) == .stereo)
-        // A macOS that cannot build the decoder gets stereo however wide the seat offers: ANNOUNCE
-        // and the decoder take the same value, so the seat never sends a count nobody can decode.
-        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 8, offered: offered, canDecode: { _ in false }) == .stereo)
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: offered, isDecodable: decodable).channels == 6)
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 8, offered: offered, isDecodable: decodable).channels == 6)
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 2, offered: offered, isDecodable: decodable) == .stereo)
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 6, offered: [], isDecodable: decodable) == .stereo)
+        // A macOS that cannot build the decoder gets stereo however wide the seat offers, because
+        // ANNOUNCE and the decoder take the same value.
+        #expect(NvstOpusMultistreamLayout.negotiated(requestedChannels: 8, offered: offered, isDecodable: { _ in false }) == .stereo)
     }
 
     @Test func theDecoderCookieCarriesTheStreamTable() throws {

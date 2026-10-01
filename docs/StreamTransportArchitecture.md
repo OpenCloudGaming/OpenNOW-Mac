@@ -315,17 +315,17 @@ Two format decisions exist because the native path owns Opus directly where libw
   decoder only accepts a multistream (family 1) `OpusHead` from macOS 27: on 15–26
   `AudioConverterNew` refuses the six-channel stream format and the cookie is rejected with
   `kAudioConverterErr_FormatNotSupported` (`fmt?`), while the same build succeeds on macOS 27.
-  `NvstOpusDecoder.canDecode` is therefore one of the bounds `negotiated` applies, next to the
+  `NvstOpusDecoder.isDecodable` is therefore one of the bounds `negotiated` applies, next to the
   request and the output device's channel count — the seat's offer is not evidence that the audio
   can be decoded on this Mac. On a macOS without multistream support the session announces and
   plays stereo, and the minimum macOS for 5.1 and 7.1 is stated in the README.
 - **A decoder that cannot decode the negotiated layout is replaced with a stereo one.** A seat that
   describes `nv-audio-surround-opus-params` and then sends stereo makes the family 1 decoder reject
   every packet with `bada`, and `AudioConverter` reports that through its counters rather than by
-  throwing — so `NvstAudioReceivePipeline` reads the decoder's own health instead of its return
-  value. Once a surround decoder has consumed `NvstOpusDecoder.unproductivePacketLimit` packets
-  (20, i.e. 100 ms) without producing a single frame, the pipeline rebuilds itself with a stereo
-  decoder and calls `onLayoutFallback`; `NvstNativeBundle` swaps the layout and its
+  throwing — so `NvstAudioReceivePipeline` reads those counters instead of the decoder's return
+  value. Once a surround decoder has consumed `packetsWithoutFramesLimit` packets (20, i.e. 100 ms)
+  without producing a single frame, the pipeline rebuilds itself with a stereo decoder and calls
+  `onLayoutFallback`; `NvstNativeBundle` swaps the layout and its
   `NvstPlayoutMixer` together, because the render thread must never place a new width with the old
   matrix. The device stays as wide as it was opened — the extra speakers simply stay silent — and
   the session continues in stereo with no Settings visit.

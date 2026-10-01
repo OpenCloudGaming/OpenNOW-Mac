@@ -423,13 +423,13 @@ private struct StubReserver: NvstBundleReserving {
                                  audioChannelCount: audioChannelCount)
     }
 
-    /// The decoder probe is injected as "yes" so this pins the negotiation itself on every macOS,
-    /// rather than the running macOS's multistream Opus support.
+    /// The decode probe is injected as "yes" so this pins the negotiation itself on every macOS, not
+    /// the running macOS's multistream Opus support.
     private static func negotiator(_ connection: any NvstRtspControlChannel,
                                    audioLayouts: AudioLayoutProbe,
-                                   canDecodeSurround: @escaping @Sendable (NvstOpusMultistreamLayout) -> Bool = { _ in true }) -> NvstRtspNegotiator {
+                                   isDecodable: @escaping @Sendable (NvstOpusMultistreamLayout) -> Bool = { _ in true }) -> NvstRtspNegotiator {
         NvstRtspNegotiator(reserver: StubReserver(reservation: reservation, audioLayouts: audioLayouts),
-                           canDecodeSurround: canDecodeSurround,
+                           isDecodable: isDecodable,
                            connectionFactory: { _, _, _ in connection })
     }
 
@@ -460,7 +460,7 @@ private struct StubReserver: NvstBundleReserving {
         let offer = "\r\na=nv-audio-surround-opus-params: 20000000000;32102100000;42201230000;53204123000;64204123500;"
         let seat = Self.seat(describeBody: NvstRtspSdpTests.describeBody + offer)
         let probe = AudioLayoutProbe()
-        let negotiator = Self.negotiator(seat, audioLayouts: probe, canDecodeSurround: { _ in false })
+        let negotiator = Self.negotiator(seat, audioLayouts: probe, isDecodable: { _ in false })
         _ = try await negotiator.negotiate(Self.input(audioChannelCount: 6))
         let announce = await seat.requests("ANNOUNCE").first?.body ?? ""
         #expect(!announce.contains("x-nv-audio.surround.enable"))
