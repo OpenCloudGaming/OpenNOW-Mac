@@ -46,6 +46,22 @@ struct NativeNVSTStreamingPathTests {
         #expect(await transport.disconnectCount == 1)
     }
 
+    @Test("a session-limit failure releases the seat and reports the session holding it")
+    func sessionLimitFailureReportsTheBlockingSession() async {
+        let blocker = StreamSessionConflict(sessionID: "blocker", applicationID: "100", serverAddress: "seat.invalid", isResumable: true)
+        let provider = RecordingNativeSessionProvider(conflict: blocker)
+        let transport = RecordingNativeTransport(connectionError: .sessionLimitReached)
+        let path = NativeNVSTStreamingPath(sessionProvider: provider, transport: transport)
+
+        await #expect(throws: OPNStreamSessionError.self) {
+            _ = try await path.start(configuration: configuration)
+        }
+
+        #expect(await provider.conflictLookupExclusions == ["native-session"])
+        #expect(await provider.finishedReasons == [.failed])
+        #expect(await transport.disconnectCount == 1)
+    }
+
     @Test("cancelling allocation forwards through the retained cancellation contract")
     func cancellingAllocationForwardsToProvider() async {
         let provider = RecordingNativeSessionProvider(isAllocationSuspended: true)
@@ -82,17 +98,20 @@ private actor NativeLaunchProgressRecorder {
     }
 }
 
-private actor RecordingNativeSessionProvider: NativeNVSTSessionProvider, StreamSessionStartCancellable {
+actor RecordingNativeSessionProvider: NativeNVSTSessionProvider, StreamSessionStartCancellable {
     private let isResume: Bool
     private let isAllocationSuspended: Bool
+    private let conflict: StreamSessionConflict?
     private let allocationStarted = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
     private var allocationContinuation: CheckedContinuation<NativeNVSTSessionAllocation, Error>?
     private(set) var finishedReasons: [StreamEndReason] = []
     private(set) var cancellationCount = 0
+    private(set) var conflictLookupExclusions: [String] = []
 
-    init(isResume: Bool = false, isAllocationSuspended: Bool = false) {
+    init(isResume: Bool = false, isAllocationSuspended: Bool = false, conflict: StreamSessionConflict? = nil) {
         self.isResume = isResume
         self.isAllocationSuspended = isAllocationSuspended
+        self.conflict = conflict
     }
 
     func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
@@ -131,9 +150,14 @@ private actor RecordingNativeSessionProvider: NativeNVSTSessionProvider, StreamS
     func finishSession(_ session: StreamSessionDescriptor, reason: StreamEndReason) async throws {
         finishedReasons.append(reason)
     }
+
+    func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict? {
+        conflictLookupExclusions.append(sessionID)
+        return conflict
+    }
 }
 
-private actor RecordingNativeTransport: NativeNVSTTransport {
+actor RecordingNativeTransport: NativeNVSTTransport {
     private let connectionError: NativeNVSTError?
     private(set) var connectedSessionIDs: [String] = []
     private(set) var disconnectCount = 0
