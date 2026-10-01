@@ -75,6 +75,9 @@ public actor NativeNVSTStreamingPath {
     /// once the decoder is back. A window cannot span the rebuild.
     private var replayBufferConfiguration: StreamReplayBufferConfiguration?
     private var reportContinuations: [UUID: AsyncStream<StreamReport>.Continuation] = [:]
+    /// Where the stream-start timeline is emitted. Defaults to the app's stream telemetry sink; a
+    /// caller injects one to observe a start without touching process-wide state.
+    private let traceSink: (any StreamTelemetrySink)?
 
     /// How many reconnects to the same cloud session are attempted before the stream is declared
     /// lost, and the window they are counted in. A Wi-Fi roam or a sleeping router comes back in
@@ -89,11 +92,13 @@ public actor NativeNVSTStreamingPath {
     public init(sessionProvider: any NativeNVSTSessionProvider,
                 transport: any NativeNVSTTransport,
                 mediaSession: NativeNVSTMediaSession = NativeNVSTMediaSession(),
-                automaticRecovery: NativeNVSTAutomaticRecovery = .disabled) {
+                automaticRecovery: NativeNVSTAutomaticRecovery = .disabled,
+                traceSink: (any StreamTelemetrySink)? = nil) {
         self.sessionProvider = sessionProvider
         self.transport = transport
         self.mediaSession = mediaSession
         self.automaticRecovery = automaticRecovery
+        self.traceSink = traceSink
     }
 
     public func currentState() -> StreamingPathState {
@@ -135,8 +140,11 @@ public actor NativeNVSTStreamingPath {
 
     private func startStreaming(configuration: StreamLaunchConfiguration,
                                 progress: (@Sendable (StreamProgress) async -> Void)?) async throws -> StreamSessionDescriptor {
+        let trace = StreamStartTrace(applicationID: configuration.applicationID, sink: traceSink)
+        defer { trace.finish() }
         OPNStreamTelemetry.capture("nvst.path.start", level: .info, message: "Starting native NVST streaming path.", attributes: ["configurationId": configuration.id.uuidString, "applicationID": configuration.applicationID])
 
+        trace.begin(.checkNetworkRoute)
         try Task.checkCancellation()
         try await publishProgress(configuration: configuration, step: .checkNetworkRoute, message: "Checking native NVST runtime...", progress: progress)
         do {
@@ -146,6 +154,7 @@ public actor NativeNVSTStreamingPath {
             throw error
         }
 
+        trace.begin(.allocateCloudSession)
         try Task.checkCancellation()
         try await publishProgress(configuration: configuration, step: .allocateCloudSession, message: "Allocating native NVST cloud session...", progress: progress)
         let allocation: NativeNVSTSessionAllocation
@@ -157,10 +166,37 @@ public actor NativeNVSTStreamingPath {
             throw error
         }
 
+        try await prepareAndConnectTransport(allocation: allocation, configuration: configuration, progress: progress, trace: trace)
+
+        trace.begin(.connected)
+        activeSession = allocation.session
+        activeAllocation = allocation
+        launchConfiguration = configuration
+        startedAt = .now
+        recoveryAttempts = 0
+        recoveryWindowStartedAt = nil
+        state = .running(allocation.session)
+        monitorTransportTermination()
+        OPNMemoryFootprint.record(.streamConnected)
+        try await publishProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true, progress: progress)
+        OPNStreamTelemetry.capture("nvst.path.connected", level: .info, message: "Native NVST streaming path connected.", attributes: ["sessionId": allocation.session.id, "applicationID": allocation.session.applicationID])
+        trace.markConnected()
+        return allocation.session
+    }
+
+    /// Prepares and connects the transport for a freshly allocated seat, and releases that seat when
+    /// any of it fails. Timed as two steps: `prepareTransport` is validation, `connectTransport` is
+    /// the RTSP negotiation.
+    private func prepareAndConnectTransport(allocation: NativeNVSTSessionAllocation,
+                                            configuration: StreamLaunchConfiguration,
+                                            progress: (@Sendable (StreamProgress) async -> Void)?,
+                                            trace: StreamStartTrace) async throws {
         do {
+            trace.begin(.prepareTransport)
             try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
             try await publishProgress(configuration: configuration, step: .prepareTransport, message: "Preparing native NVST transport...", progress: progress)
             try validate(allocation: allocation)
+            trace.begin(.connectTransport)
             try await publishProgress(configuration: configuration, step: .connectTransport, message: "Connecting native NVST secure RTSP transport...", progress: progress)
             _ = try await transport.connect(allocation: allocation, mediaReceiver: mediaSession)
             try await stopSessionIfCancelled(allocation.session, isResume: allocation.isResume)
@@ -190,19 +226,6 @@ public actor NativeNVSTStreamingPath {
             OPNStreamTelemetry.capture("nvst.path.transport.error", level: .error, message: Self.message(for: error), attributes: ["sessionId": allocation.session.id])
             throw error
         }
-
-        activeSession = allocation.session
-        activeAllocation = allocation
-        launchConfiguration = configuration
-        startedAt = .now
-        recoveryAttempts = 0
-        recoveryWindowStartedAt = nil
-        state = .running(allocation.session)
-        monitorTransportTermination()
-        OPNMemoryFootprint.record(.streamConnected)
-        try await publishProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true, progress: progress)
-        OPNStreamTelemetry.capture("nvst.path.connected", level: .info, message: "Native NVST streaming path connected.", attributes: ["sessionId": allocation.session.id, "applicationID": allocation.session.applicationID])
-        return allocation.session
     }
 
     public func send(_ event: UserInputEvent) async throws {

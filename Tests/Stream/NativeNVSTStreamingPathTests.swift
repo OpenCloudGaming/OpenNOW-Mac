@@ -82,7 +82,7 @@ private actor NativeLaunchProgressRecorder {
     }
 }
 
-private actor RecordingNativeSessionProvider: NativeNVSTSessionProvider, StreamSessionStartCancellable {
+actor RecordingNativeSessionProvider: NativeNVSTSessionProvider, StreamSessionStartCancellable {
     private let isResume: Bool
     private let isAllocationSuspended: Bool
     private let allocationStarted = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
@@ -133,7 +133,7 @@ private actor RecordingNativeSessionProvider: NativeNVSTSessionProvider, StreamS
     }
 }
 
-private actor RecordingNativeTransport: NativeNVSTTransport {
+actor RecordingNativeTransport: NativeNVSTTransport {
     private let connectionError: NativeNVSTError?
     private(set) var connectedSessionIDs: [String] = []
     private(set) var disconnectCount = 0
