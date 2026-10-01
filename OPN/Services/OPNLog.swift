@@ -33,6 +33,7 @@ enum OPNLog {
         case cache = "Cache"
         case catalog = "Catalog"
         case launch = "Launch"
+        case memory = "Memory"
         case shortcut = "GFNShortcut"
         case stream = "Stream"
         case controller = "Controller"

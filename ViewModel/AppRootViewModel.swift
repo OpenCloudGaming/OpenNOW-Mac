@@ -57,6 +57,9 @@ final class AppRootViewModel: ObservableObject {
         bind(login: login)
         guard !didBootstrap else { return }
         didBootstrap = true
+        // The root view's first task run is the app's first frame, and it precedes the catalog
+        // bootstrap that the catalog-visible milestone measures.
+        OPNMemoryFootprint.record(.firstFrame)
         syncModelState()
         login.bootstrap()
         drainOpenedFiles()

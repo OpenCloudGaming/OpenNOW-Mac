@@ -45,6 +45,7 @@ enum OPNStartupTrace {
         guard contentReadyAt == nil else { return }
         contentReadyAt = ContinuousClock.now
         self.gate = gate
+        OPNMemoryFootprint.record(.catalogVisible)
         if let contentInterval {
             signposter.endInterval("StartupToContent", contentInterval)
             self.contentInterval = nil
