@@ -15,15 +15,20 @@ public struct NvstRtspNegotiator: Sendable {
 
     let reserver: any NvstBundleReserving
     let logger: (@Sendable (String) -> Void)?
+    /// Whether this macOS can build a decoder for a multistream layout: a surround layout is only
+    /// announced when it can, so the seat is never asked for audio the decoder cannot produce.
+    private let isDecodable: @Sendable (NvstOpusMultistreamLayout) -> Bool
     private let connectionFactory: @Sendable (NvstRtspEndpoints.Target, Duration, (@Sendable (String) -> Void)?) -> any NvstRtspControlChannel
 
     public init(reserver: any NvstBundleReserving,
                 logger: (@Sendable (String) -> Void)? = nil,
+                isDecodable: @escaping @Sendable (NvstOpusMultistreamLayout) -> Bool = { NvstOpusDecoder.isDecodable(layout: $0) },
                 connectionFactory: @escaping @Sendable (NvstRtspEndpoints.Target, Duration, (@Sendable (String) -> Void)?) -> any NvstRtspControlChannel = { target, timeout, logger in
                     NvstRtspConnection(target: target, timeout: timeout, logger: logger)
                 }) {
         self.reserver = reserver
         self.logger = logger
+        self.isDecodable = isDecodable
         self.connectionFactory = connectionFactory
     }
 
@@ -72,6 +77,8 @@ public struct NvstRtspNegotiator: Sendable {
         /// client only ever echoes this flag, and production seats offer legacy mic transport
         /// instead, so a bundle mic m-section is built only under this offer.
         var microphoneOfferedOnBundle = false
+        /// The multistream layouts the seat describes in `nv-audio-surround-opus-params`.
+        var surroundLayouts: [NvstOpusMultistreamLayout] = []
     }
 
     /// The accepted video SETUP, and the request forms that got it accepted.
@@ -231,8 +238,22 @@ extension NvstRtspNegotiator {
                                reservation: NvstBundleReservation,
                                input: NvstRtspNegotiationInput,
                                steps: inout [String]) async throws {
+        let audioLayout = NvstOpusMultistreamLayout.negotiated(requestedChannels: input.audioChannelCount,
+                                                               offered: described.surroundLayouts,
+                                                               isDecodable: isDecodable)
+        logger?("NVST audio layout requested=\(input.audioChannelCount)"
+                + " offered=\(described.surroundLayouts.map { String($0.channels) }.joined(separator: ","))"
+                + " negotiated=\(audioLayout.summary)")
+        if input.audioChannelCount > 2, !audioLayout.isSurround {
+            // Names which bound refused the surround count, so a log with "no 5.1" in it explains
+            // itself: an offer the seat never made, a narrow device, or this macOS's decoder.
+            logger?("NVST surround was requested but the session runs in stereo"
+                    + " (seatOffered=\(described.surroundLayouts.map { String($0.channels) }.joined(separator: ","))"
+                    + " multistreamDecodable=\(described.surroundLayouts.contains { isDecodable($0) }))")
+        }
         let bundleIdentity = await reserver.bundleIdentity(for: resolved.handoff,
-                                                           microphoneOfferedOnBundle: described.microphoneOfferedOnBundle)
+                                                           microphoneOfferedOnBundle: described.microphoneOfferedOnBundle,
+                                                           audioLayout: audioLayout)
         let bundlePort = bundleIdentity?.bundlePort ?? reservation.bundlePort
         let fingerprint = bundleIdentity?.dtlsFingerprint ?? reservation.dtlsFingerprint
         let localAddress = bundleIdentity?.localAddress ?? reservation.localAddress
@@ -249,6 +270,7 @@ extension NvstRtspNegotiator {
         }
 
         let options = announceOptions(input: input,
+                                      audioChannelCount: audioLayout.channels,
                                       described: described,
                                       resolved: resolved,
                                       reservation: reservation,
@@ -352,7 +374,8 @@ extension NvstRtspNegotiator {
             pingVersion: describedPingVersion,
             disablePlay: NvstRtspSdp.attribute(body, "general.disablePlay"),
             officialCloudPath: officialCloudPath,
-            microphoneOfferedOnBundle: microphoneOfferedOnBundle
+            microphoneOfferedOnBundle: microphoneOfferedOnBundle,
+            surroundLayouts: NvstOpusMultistreamLayout.offered(inDescribe: body)
         )
         logger?("NVST DESCRIBE ok (session=\(sessionIdentifier), videoControl=\(videoControl), hmac=\(described.hmacSeed != nil), describedKey=\(describedKey != nil), official=\(officialCloudPath)\(advertisesCloudPath && input.forcesLegacyPath ? " (cloud path advertised, legacy forced)" : ""), pingVersion=\(describedPingVersion ?? "absent"), micOnBundleOffered=\(microphoneOfferedOnBundle), remoteFingerprintBytes=\(described.remoteFingerprint?.count ?? 0))")
         // The seat's audio/mic configuration is otherwise invisible after the fact: the bundle mic
@@ -505,6 +528,7 @@ extension NvstRtspNegotiator {
     }
 
     private func announceOptions(input: NvstRtspNegotiationInput,
+                                 audioChannelCount: Int,
                                  described: DescribedSession,
                                  resolved: ResolvedHandoff,
                                  reservation: NvstBundleReservation,
@@ -520,7 +544,7 @@ extension NvstRtspNegotiator {
             prefilterModel: input.prefilterModel,
             bitDepth: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).bitDepth },
             chromaFormat: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).chromaFormat },
-            audioChannelCount: input.audioChannelCount,
+            audioChannelCount: audioChannelCount,
             encryptionKey: described.encryptionKey,
             iceCredentials: resolved.localIce,
             videoPort: resolved.handoff.videoPeerPort,

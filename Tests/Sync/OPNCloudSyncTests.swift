@@ -42,6 +42,9 @@ import Testing
         for key in OPNCloudSyncSettingsRegistry.deniedKeys {
             #expect(!OPNCloudSyncSettingsRegistry.isSyncable(key), "\(key) must never sync")
         }
+        // Which reader a pad is read through depends on the hardware attached to *this* Mac, so it
+        // must not be switched on another one that never touched the setting.
+        #expect(!OPNCloudSyncSettingsRegistry.isSyncable(ControllerInputBackendPreference.key))
         #expect(!OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.RemoteCoOp.AblyKeyName"))
         #expect(!OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Catalog.Favorites.abc"))
         #expect(!OPNCloudSyncSettingsRegistry.isSyncable("AppleLanguages"))

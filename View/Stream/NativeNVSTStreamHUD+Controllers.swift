@@ -18,6 +18,15 @@ extension NativeNVSTMediaStreamSurface {
                 onToggle: { model.toggleHUDSection(.controllers) }
             ) {
                 nativeHUDTileGrid(nativeHUDControllerTiles)
+                if model.controllerInput.isDiagnosticsVisible {
+                    ForEach(model.controllerInput.statusRows) { status in
+                        StreamHUDControllerInputRow(label: status.label,
+                                                    controllerName: status.controllerName,
+                                                    sourceLabel: status.source.label,
+                                                    isRaw: status.source == .gamepadAPI,
+                                                    stickOutput: status.stickOutput)
+                    }
+                }
                 ForEach(model.controllerBatteries) { battery in
                     StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, isCharging: battery.charging)
                 }

@@ -20,6 +20,13 @@ extension NativeStreamView {
         }
     }
 
+    /// Raw counts pushed by the HID reader as each report lands, instead of waiting for the next
+    /// AppKit motion event.
+    private func emitPushedRawMotion(_ delta: OPNRawMouseDelta) {
+        guard rawMouseInputEnabled, isPointerLocked else { return }
+        emitScaledMouseMove(deltaX: CGFloat(delta.x), deltaY: CGFloat(delta.y))
+    }
+
     /// What the raw HID reader has for this motion event. `.unavailable` whenever raw capture is
     /// off, unusable or has nothing to do with this movement — that is the whole fallback, and it
     /// is why a missing Input Monitoring grant costs acceleration rather than the mouse.
@@ -71,6 +78,9 @@ extension NativeStreamView {
         guard rawMouseInputEnabled else { return }
         switch OPNRawMouseHIDMonitor.shared.start() {
         case .started, .alreadyRunning:
+            OPNRawMouseHIDMonitor.shared.setPushHandler { [weak self] delta in
+                self?.emitPushedRawMotion(delta)
+            }
             OPNStreamTelemetry.capture("webrtc.input.raw_mouse", level: .info, message: "Reading unaccelerated mouse counts.", attributes: ["raw": "true"])
         case .failed(let reason):
             // Not an error: the stream keeps its mouse, it just keeps the accelerated one. The

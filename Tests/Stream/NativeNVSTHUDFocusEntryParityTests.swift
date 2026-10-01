@@ -53,7 +53,11 @@ struct NativeNVSTHUDFocusEntryParityTests {
         let (surface, model) = makeHUDSurface()
         #expect(focusIDs(in: "controllers", on: model).isEmpty)
         model.controllerBatteries = [ControllerBatteryInfo(id: "pad", label: "P1", level: 80, charging: false)]
-        #expect(focusIDs(in: "controllers", on: model) == surface.nativeHUDControllerTiles.map(\.id))
+        let tiles = surface.nativeHUDControllerTiles
+        #expect(focusIDs(in: "controllers", on: model) == tiles.map(\.id))
+        // The panel gained a third tile, so assert it still fits one row. These entries exist only
+        // with a pad connected, which is why the assertion lives here, not in the wrap test.
+        #expect(tiles.count <= 4, "controllers needs a second row")
     }
 
     /// The seat's live timer replaces the window recorded at connect, so an extended or shortened

@@ -24,6 +24,9 @@ struct OPNApp: App {
 
     init() {
         OPNSentry.clearDiagnosticsLogForNewRun()
+        // The floor every later footprint is read against: after the clear that would truncate this
+        // line, and before Sentry's initialisation so the SDK's cost lands in the first-frame delta.
+        OPNMemoryFootprint.record(.preMain)
         OPNSentry.initializeSentry()
         Task.detached(priority: .userInitiated) {
             OPNUIFont.prepare()

@@ -199,6 +199,7 @@ public actor NativeNVSTStreamingPath {
         recoveryWindowStartedAt = nil
         state = .running(allocation.session)
         monitorTransportTermination()
+        OPNMemoryFootprint.record(.streamConnected)
         try await publishProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true, progress: progress)
         OPNStreamTelemetry.capture("nvst.path.connected", level: .info, message: "Native NVST streaming path connected.", attributes: ["sessionId": allocation.session.id, "applicationID": allocation.session.applicationID])
         return allocation.session
