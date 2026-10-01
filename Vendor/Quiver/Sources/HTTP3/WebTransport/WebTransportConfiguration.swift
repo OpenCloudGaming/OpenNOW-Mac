@@ -66,12 +66,9 @@ public struct WebTransportConfiguration: Sendable {
     /// - Default: 1
     public var maxSessions: UInt64
 
-    /// Maximum number of concurrently tracked streams per WebTransport session.
+    /// Maximum number of concurrently tracked streams per WebTransport session; `0` disables it.
     ///
-    /// Bounds a single session's stream table, since QUIC re-grants stream
-    /// credit as streams complete. `0` disables the bound.
-    ///
-    /// - Default: 64
+    /// Defaults to 64. QUIC re-grants stream credit as streams complete, so a session needs its own bound.
     public var maxStreamsPerSession: UInt64
 
     /// Additional HTTP headers to include in the Extended CONNECT request.

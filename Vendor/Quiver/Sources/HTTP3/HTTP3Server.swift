@@ -113,12 +113,9 @@ public struct WebTransportOptions: Sendable {
     /// If empty (default), all paths are accepted.
     public var allowedPaths: [String]
 
-    /// Maximum number of concurrently tracked streams per WebTransport session.
+    /// Maximum number of concurrently tracked streams per WebTransport session; `0` disables it.
     ///
-    /// Bounds the streams a single session can hold open, since QUIC re-grants
-    /// stream credit as streams complete. `0` disables the bound.
-    ///
-    /// - Default: 64
+    /// Defaults to 64. QUIC re-grants stream credit as streams complete, so a session needs its own bound.
     public var maxStreamsPerSession: UInt64
 
     /// Creates WebTransport options.

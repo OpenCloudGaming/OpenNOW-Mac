@@ -68,7 +68,7 @@ diff -ruN 8/Sources/QUICCrypto/RetryIntegrityTag.swift 9/Sources/QUICCrypto/Retr
  }
 diff -ruN 8/Sources/QUICCrypto/TLS/ServerStateMachine.swift 9/Sources/QUICCrypto/TLS/ServerStateMachine.swift
 --- 8/Sources/QUICCrypto/TLS/ServerStateMachine.swift	2026-09-30 00:53:27
-+++ 9/Sources/QUICCrypto/TLS/ServerStateMachine.swift	2026-09-30 00:54:14
++++ 9/Sources/QUICCrypto/TLS/ServerStateMachine.swift	2026-10-01 10:08:07
 @@ -141,6 +141,11 @@
                  let clientHelloMessage = HandshakeCodec.encode(type: .clientHello, content: data)
                  let bindersSize = offeredPsks.bindersSize
@@ -81,29 +81,34 @@ diff -ruN 8/Sources/QUICCrypto/TLS/ServerStateMachine.swift 9/Sources/QUICCrypto
                  let truncatedTranscript = clientHelloMessage.prefix(truncatedLength)
  
                  // Try each offered PSK identity
-@@ -201,8 +206,10 @@
+@@ -201,8 +206,9 @@
                  // Check if client offered early_data and session allows it
                  if clientHello.earlyData && session.maxEarlyDataSize > 0 {
                      // Check replay protection if configured (RFC 8446 Section 8)
 -                    // 0-RTT data can be replayed, so servers should track ticket usage
 -                    var acceptEarlyData = true
-+                    // 0-RTT data can be replayed, so servers MUST track ticket usage. Refuse
-+                    // early data unless replay protection is wired in, rather than accepting
-+                    // unguarded by default.
++                    // 0-RTT data can be replayed, so refuse early data unless replay
++                    // protection is wired in rather than accepting it unguarded.
 +                    var acceptEarlyData = false
                      if let replayProtection = configuration.replayProtection {
                          // Create ticket identifier from ticket nonce (unique per ticket)
                          let ticketIdentifier = ReplayProtection.createIdentifier(from: session.ticketNonce)
-@@ -244,8 +251,10 @@
+@@ -244,12 +250,14 @@
              guard let clientALPN = clientHello.alpn else {
                  throw TLSHandshakeError.noALPNMatch
              }
 -            if let common = configuration.alpnProtocols.isEmpty ? clientALPN.protocols.first :
 -                ALPNExtension(protocols: configuration.alpnProtocols).negotiate(with: clientALPN) {
+-                state.context.negotiatedALPN = common
+-            } else {
 +            guard !configuration.alpnProtocols.isEmpty else {
+                 throw TLSHandshakeError.noALPNMatch
+             }
++            guard let negotiatedALPN = ALPNExtension(protocols: configuration.alpnProtocols)
++                .negotiate(with: clientALPN) else {
 +                throw TLSHandshakeError.noALPNMatch
 +            }
-+            if let common = ALPNExtension(protocols: configuration.alpnProtocols).negotiate(with: clientALPN) {
-                 state.context.negotiatedALPN = common
-             } else {
-                 throw TLSHandshakeError.noALPNMatch
++            state.context.negotiatedALPN = negotiatedALPN
+ 
+             var messages: [(Data, EncryptionLevel)] = []
+             var outputs: [TLSOutput] = []

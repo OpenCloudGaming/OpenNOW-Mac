@@ -425,23 +425,25 @@ public enum WebTransportStreamFraming {
 
 /// Thread-safe one-shot notifier for a stream reaching a terminal state.
 private final class StreamTerminationNotifier: @unchecked Sendable {
-    private let handler: @Sendable () -> Void
+    private let onTerminated: @Sendable () -> Void
     private let lock = NSLock()
-    private var fired = false
+    private var isFired = false
 
-    init(_ handler: @Sendable @escaping () -> Void) {
-        self.handler = handler
+    init(_ onTerminated: @Sendable @escaping () -> Void) {
+        self.onTerminated = onTerminated
     }
 
     func notify() {
+        guard markFired() else { return }
+        onTerminated()
+    }
+
+    private func markFired() -> Bool {
         lock.lock()
-        if fired {
-            lock.unlock()
-            return
-        }
-        fired = true
-        lock.unlock()
-        handler()
+        defer { lock.unlock() }
+        guard !isFired else { return false }
+        isFired = true
+        return true
     }
 }
 

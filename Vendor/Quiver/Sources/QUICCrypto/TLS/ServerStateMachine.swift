@@ -206,9 +206,8 @@ public final class ServerStateMachine: Sendable {
                 // Check if client offered early_data and session allows it
                 if clientHello.earlyData && session.maxEarlyDataSize > 0 {
                     // Check replay protection if configured (RFC 8446 Section 8)
-                    // 0-RTT data can be replayed, so servers MUST track ticket usage. Refuse
-                    // early data unless replay protection is wired in, rather than accepting
-                    // unguarded by default.
+                    // 0-RTT data can be replayed, so refuse early data unless replay
+                    // protection is wired in rather than accepting it unguarded.
                     var acceptEarlyData = false
                     if let replayProtection = configuration.replayProtection {
                         // Create ticket identifier from ticket nonce (unique per ticket)
@@ -254,11 +253,11 @@ public final class ServerStateMachine: Sendable {
             guard !configuration.alpnProtocols.isEmpty else {
                 throw TLSHandshakeError.noALPNMatch
             }
-            if let common = ALPNExtension(protocols: configuration.alpnProtocols).negotiate(with: clientALPN) {
-                state.context.negotiatedALPN = common
-            } else {
+            guard let negotiatedALPN = ALPNExtension(protocols: configuration.alpnProtocols)
+                .negotiate(with: clientALPN) else {
                 throw TLSHandshakeError.noALPNMatch
             }
+            state.context.negotiatedALPN = negotiatedALPN
 
             var messages: [(Data, EncryptionLevel)] = []
             var outputs: [TLSOutput] = []

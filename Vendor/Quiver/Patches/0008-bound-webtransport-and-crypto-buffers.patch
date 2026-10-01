@@ -48,9 +48,9 @@ diff -ruN 7/Sources/HTTP3/WebTransport/WebTransportCapsule.swift 8/Sources/HTTP3
              return "Truncated capsule data: \(context)"
          }
 diff -ruN 7/Sources/HTTP3/WebTransport/WebTransportSession.swift 8/Sources/HTTP3/WebTransport/WebTransportSession.swift
---- 7/Sources/HTTP3/WebTransport/WebTransportSession.swift	2026-09-30 00:51:53
-+++ 8/Sources/HTTP3/WebTransport/WebTransportSession.swift	2026-09-30 00:53:27
-@@ -158,6 +158,30 @@
+--- 7/Sources/HTTP3/WebTransport/WebTransportSession.swift	2026-10-01 10:08:57
++++ 8/Sources/HTTP3/WebTransport/WebTransportSession.swift	2026-10-01 10:08:57
+@@ -157,6 +157,29 @@
      /// The default per-session stream bound used when none is configured.
      public static let defaultMaxStreamsPerSession: UInt64 = 64
  
@@ -72,16 +72,15 @@ diff -ruN 7/Sources/HTTP3/WebTransport/WebTransportSession.swift 8/Sources/HTTP3
 +        public var capsules = 0
 +    }
 +
-+    /// Events dropped because a consumer did not keep up with an event stream.
++    /// Events dropped because a consumer did not keep up with a bounded event stream.
 +    ///
-+    /// The four event streams are bounded, so a peer that outruns the consumer
-+    /// loses its excess events here instead of growing the buffers unboundedly.
++    /// A peer that outruns the consumer loses its excess events here rather than growing memory.
 +    public private(set) var droppedEvents = DroppedEventCounts()
 +
      /// The current session state.
      public private(set) var state: WebTransportSessionState = .connecting
  
-@@ -253,39 +277,44 @@
+@@ -252,39 +275,44 @@
          connectStream: any QUICStreamProtocol,
          connection: HTTP3Connection,
          role: Role,
@@ -131,53 +130,61 @@ diff -ruN 7/Sources/HTTP3/WebTransport/WebTransportSession.swift 8/Sources/HTTP3
              capsuleCont = cont
          }
          self.capsuleEventContinuation = capsuleCont
-@@ -644,7 +673,9 @@
+@@ -637,7 +665,7 @@
              return
          }
  
 -        incomingDatagramContinuation?.yield(data)
-+        if let result = incomingDatagramContinuation?.yield(data), case .dropped = result {
-+            droppedEvents.datagrams += 1
-+        }
++        recordDroppedEvent(incomingDatagramContinuation?.yield(data), counting: \.datagrams)
      }
  
      // MARK: - Incoming Stream Delivery
-@@ -692,7 +723,9 @@
+@@ -685,7 +713,7 @@
              await connection.registerActiveResponseStream(quicStream.id, priority: priority)
          }
  
 -        incomingBidiContinuation?.yield(wtStream)
-+        if let result = incomingBidiContinuation?.yield(wtStream), case .dropped = result {
-+            droppedEvents.bidirectionalStreams += 1
-+        }
++        recordDroppedEvent(incomingBidiContinuation?.yield(wtStream), counting: \.bidirectionalStreams)
  
          Self.logger.trace(
              "Delivered incoming bidi stream",
-@@ -748,7 +781,9 @@
+@@ -741,7 +769,7 @@
              await connection.registerActiveResponseStream(quicStream.id, priority: priority)
          }
  
 -        incomingUniContinuation?.yield(wtStream)
-+        if let result = incomingUniContinuation?.yield(wtStream), case .dropped = result {
-+            droppedEvents.unidirectionalStreams += 1
-+        }
++        recordDroppedEvent(incomingUniContinuation?.yield(wtStream), counting: \.unidirectionalStreams)
  
          Self.logger.trace(
              "Delivered incoming uni stream",
-@@ -1055,7 +1090,9 @@
+@@ -841,6 +869,15 @@
+         )
+     }
+ 
++    /// Counts an event a bounded stream dropped because the consumer fell behind.
++    private func recordDroppedEvent<Element>(
++        _ result: AsyncStream<Element>.Continuation.YieldResult?,
++        counting dropped: WritableKeyPath<DroppedEventCounts, Int>
++    ) {
++        guard let result, case .dropped = result else { return }
++        droppedEvents[keyPath: dropped] += 1
++    }
++
+     // MARK: - Priority Management (RFC 9218)
+ 
+     /// Sets the priority of a WebTransport stream.
+@@ -1063,7 +1100,7 @@
          )
  
          // Deliver to the capsule events stream
 -        capsuleEventContinuation?.yield(capsule)
-+        if let result = capsuleEventContinuation?.yield(capsule), case .dropped = result {
-+            droppedEvents.capsules += 1
-+        }
++        recordDroppedEvent(capsuleEventContinuation?.yield(capsule), counting: \.capsules)
  
          switch capsule {
          case .close(let info):
 diff -ruN 7/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift 8/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift
 --- 7/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift	2026-09-30 00:51:53
-+++ 8/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift	2026-09-30 00:53:27
++++ 8/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift	2026-10-01 10:08:07
 @@ -4,6 +4,12 @@
  
  import Foundation
@@ -191,14 +198,13 @@ diff -ruN 7/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift 8/Sources/QUICCry
  /// Internal buffer for ordered CRYPTO data reassembly
  struct CryptoBuffer: Sendable {
      /// Segments stored as (offset, data), not necessarily sorted or contiguous
-@@ -12,14 +18,25 @@
+@@ -12,31 +18,43 @@
      /// Total bytes stored in the buffer
      private(set) var totalBytes: Int = 0
  
 +    /// Maximum number of non-contiguous segments this buffer will hold.
 +    ///
-+    /// Every insert linear-scans and merges the segment list, so an uncapped
-+    /// segment count is quadratic work reachable pre-authentication.
++    /// Every insert scans and merges the segment list, so an uncapped count is quadratic work.
 +    let maxSegments: Int
 +
      /// Creates an empty CryptoBuffer
@@ -218,10 +224,15 @@ diff -ruN 7/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift 8/Sources/QUICCry
 +    mutating func insert(offset: UInt64, data: Data) throws {
          guard !data.isEmpty else { return }
  
-         // Find insertion point
-@@ -31,12 +48,21 @@
-             }
-         }
+-        // Find insertion point
+-        var insertIndex = segments.count
+-        for (index, segment) in segments.enumerated() {
+-            if offset < segment.offset {
+-                insertIndex = index
+-                break
+-            }
+-        }
++        let insertIndex = segments.firstIndex { offset < $0.offset } ?? segments.count
  
 +        let previousSegments = segments
 +        let previousTotalBytes = totalBytes
@@ -243,7 +254,7 @@ diff -ruN 7/Sources/QUICCrypto/CryptoStream/CryptoBuffer.swift 8/Sources/QUICCry
      /// Merges overlapping and adjacent segments
 diff -ruN 7/Sources/QUICCrypto/CryptoStream/CryptoStream.swift 8/Sources/QUICCrypto/CryptoStream/CryptoStream.swift
 --- 7/Sources/QUICCrypto/CryptoStream/CryptoStream.swift	2026-09-30 00:51:53
-+++ 8/Sources/QUICCrypto/CryptoStream/CryptoStream.swift	2026-09-30 00:53:27
++++ 8/Sources/QUICCrypto/CryptoStream/CryptoStream.swift	2026-10-01 10:08:07
 @@ -11,6 +11,8 @@
      case bufferExceeded(currentSize: Int, maxSize: Int)
      /// Invalid offset (negative or overflow)

@@ -379,12 +379,8 @@ extension HTTP3Connection {
     /// Routes an incoming bidirectional stream to either WebTransport or
     /// HTTP/3 request handling.
     ///
-    /// Per draft-ietf-webtrans-http3, a WebTransport bidirectional stream
-    /// begins with the 0x41 signal varint followed by the session ID. A peer
-    /// that predates the signal sends the session ID alone, and an HTTP/3
-    /// request stream starts with a frame type. The two varints may straddle
-    /// STREAM frames, so reads continue until both are complete or the framing
-    /// cap is reached.
+    /// The 0x41 signal and session ID may straddle STREAM frames, so reads continue until both
+    /// are complete or the framing cap is reached. A peer that predates the signal sends the ID alone.
     func handleIncomingBidiStream(_ stream: any QUICStreamProtocol) async {
         guard !webTransportSessions.isEmpty else {
             await handleIncomingRequestStream(stream)
@@ -412,10 +408,8 @@ extension HTTP3Connection {
             }
 
             if firstVarint.value != kWebTransportBidiSignal {
-                // Without the signal, the first varint is either the session ID from a peer that
-                // predates it or an HTTP/3 frame type. The lowest frame types overlap the lowest
-                // session IDs (0 = DATA, 4 = SETTINGS), so a valid frame type is request framing
-                // and never a WebTransport session.
+                // Without the signal the first varint is an older peer's session ID or an HTTP/3
+                // frame type; a valid frame type is request framing, never a session.
                 guard HTTP3FrameType(rawValue: firstVarint.value) == nil,
                       let session = webTransportSessions[firstVarint.value] else {
                     await handleIncomingRequestStreamWithBuffer(stream, initialBuffer: buffer)
@@ -437,9 +431,8 @@ extension HTTP3Connection {
                 continue
             }
 
-            // The signal is present, so the stream is unambiguously WebTransport. An unknown
-            // session ID is reset rather than rerouted to request handling, which would silently
-            // lose the stream.
+            // The signal makes this unambiguously WebTransport, so an unknown session ID is
+            // reset rather than rerouted to request handling.
             guard let session = webTransportSessions[sessionVarint.value] else {
                 await stream.reset(errorCode: HTTP3ErrorCode.messageError.rawValue)
                 return

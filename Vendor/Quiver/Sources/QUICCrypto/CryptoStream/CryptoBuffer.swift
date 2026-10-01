@@ -20,8 +20,7 @@ struct CryptoBuffer: Sendable {
 
     /// Maximum number of non-contiguous segments this buffer will hold.
     ///
-    /// Every insert linear-scans and merges the segment list, so an uncapped
-    /// segment count is quadratic work reachable pre-authentication.
+    /// Every insert scans and merges the segment list, so an uncapped count is quadratic work.
     let maxSegments: Int
 
     /// Creates an empty CryptoBuffer
@@ -39,14 +38,7 @@ struct CryptoBuffer: Sendable {
     mutating func insert(offset: UInt64, data: Data) throws {
         guard !data.isEmpty else { return }
 
-        // Find insertion point
-        var insertIndex = segments.count
-        for (index, segment) in segments.enumerated() {
-            if offset < segment.offset {
-                insertIndex = index
-                break
-            }
-        }
+        let insertIndex = segments.firstIndex { offset < $0.offset } ?? segments.count
 
         let previousSegments = segments
         let previousTotalBytes = totalBytes

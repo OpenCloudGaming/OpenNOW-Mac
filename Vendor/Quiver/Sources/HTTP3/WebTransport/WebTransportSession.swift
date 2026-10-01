@@ -149,10 +149,9 @@ public actor WebTransportSession {
     /// The role of this endpoint.
     public let role: Role
 
-    /// Upper bound on concurrently tracked streams for this session.
+    /// Upper bound on concurrently tracked streams for this session; `0` disables the bound.
     ///
-    /// QUIC re-grants stream credit as streams complete, so without this
-    /// bound a peer can churn streams indefinitely.
+    /// QUIC re-grants stream credit as streams complete, so a peer could otherwise churn forever.
     public let maxStreamsPerSession: UInt64
 
     /// The default per-session stream bound used when none is configured.
@@ -176,10 +175,9 @@ public actor WebTransportSession {
         public var capsules = 0
     }
 
-    /// Events dropped because a consumer did not keep up with an event stream.
+    /// Events dropped because a consumer did not keep up with a bounded event stream.
     ///
-    /// The four event streams are bounded, so a peer that outruns the consumer
-    /// loses its excess events here instead of growing the buffers unboundedly.
+    /// A peer that outruns the consumer loses its excess events here rather than growing memory.
     public private(set) var droppedEvents = DroppedEventCounts()
 
     /// The current session state.
@@ -490,11 +488,8 @@ public actor WebTransportSession {
         guard state == .established else {
             throw WebTransportError.sessionNotEstablished
         }
-        guard maxStreamsPerSession == 0 || activeStreamCount < Int(maxStreamsPerSession) else {
-            throw WebTransportError.internalError(
-                "Per-session WebTransport stream limit reached",
-                underlying: nil
-            )
+        guard isStreamCapacityAvailable else {
+            throw streamLimitError()
         }
 
         let quicStream = try await connection.quicConnection.openStream()
@@ -560,11 +555,8 @@ public actor WebTransportSession {
         guard state == .established else {
             throw WebTransportError.sessionNotEstablished
         }
-        guard maxStreamsPerSession == 0 || activeStreamCount < Int(maxStreamsPerSession) else {
-            throw WebTransportError.internalError(
-                "Per-session WebTransport stream limit reached",
-                underlying: nil
-            )
+        guard isStreamCapacityAvailable else {
+            throw streamLimitError()
         }
 
         let quicStream = try await connection.quicConnection.openUniStream()
@@ -673,9 +665,7 @@ public actor WebTransportSession {
             return
         }
 
-        if let result = incomingDatagramContinuation?.yield(data), case .dropped = result {
-            droppedEvents.datagrams += 1
-        }
+        recordDroppedEvent(incomingDatagramContinuation?.yield(data), counting: \.datagrams)
     }
 
     // MARK: - Incoming Stream Delivery
@@ -702,7 +692,7 @@ public actor WebTransportSession {
             return
         }
 
-        guard reserveStreamSlot(for: quicStream, direction: "bidirectional") else { return }
+        guard reserveStreamSlot(for: quicStream, direction: .bidirectional) else { return }
 
         let priority = StreamPriority.webTransportBidi
         let wtStream = WebTransportStream(
@@ -723,9 +713,7 @@ public actor WebTransportSession {
             await connection.registerActiveResponseStream(quicStream.id, priority: priority)
         }
 
-        if let result = incomingBidiContinuation?.yield(wtStream), case .dropped = result {
-            droppedEvents.bidirectionalStreams += 1
-        }
+        recordDroppedEvent(incomingBidiContinuation?.yield(wtStream), counting: \.bidirectionalStreams)
 
         Self.logger.trace(
             "Delivered incoming bidi stream",
@@ -760,7 +748,7 @@ public actor WebTransportSession {
             return
         }
 
-        guard reserveStreamSlot(for: quicStream, direction: "unidirectional") else { return }
+        guard reserveStreamSlot(for: quicStream, direction: .unidirectional) else { return }
 
         let priority = StreamPriority.webTransportUni
         let wtStream = WebTransportStream(
@@ -781,9 +769,7 @@ public actor WebTransportSession {
             await connection.registerActiveResponseStream(quicStream.id, priority: priority)
         }
 
-        if let result = incomingUniContinuation?.yield(wtStream), case .dropped = result {
-            droppedEvents.unidirectionalStreams += 1
-        }
+        recordDroppedEvent(incomingUniContinuation?.yield(wtStream), counting: \.unidirectionalStreams)
 
         Self.logger.trace(
             "Delivered incoming uni stream",
@@ -799,15 +785,12 @@ public actor WebTransportSession {
 
     /// Enforces the per-session stream bound at the delivery point.
     ///
-    /// - Parameters:
-    ///   - quicStream: The stream that would exceed the bound
-    ///   - direction: A label for diagnostics only
-    /// - Returns: `true` when a slot is available
+    /// Resets the stream when the session already holds its maximum streams.
     private func reserveStreamSlot(
         for quicStream: any QUICStreamProtocol,
-        direction: String
+        direction: WebTransportStreamDirection
     ) -> Bool {
-        guard maxStreamsPerSession == 0 || activeStreamCount < Int(maxStreamsPerSession) else {
+        guard isStreamCapacityAvailable else {
             Self.logger.warning(
                 "WebTransport per-session stream limit reached",
                 metadata: [
@@ -866,6 +849,33 @@ public actor WebTransportSession {
     /// The total number of active streams (bidi + uni).
     var activeStreamCount: Int {
         activeBidiStreams.count + activeUniStreams.count
+    }
+
+    /// Whether this session enforces a stream bound.
+    private var isStreamLimitEnabled: Bool {
+        maxStreamsPerSession > 0
+    }
+
+    /// Whether another stream may be tracked for this session.
+    private var isStreamCapacityAvailable: Bool {
+        !isStreamLimitEnabled || activeStreamCount < Int(maxStreamsPerSession)
+    }
+
+    /// The error thrown when a locally-opened stream exceeds the bound.
+    private func streamLimitError() -> WebTransportError {
+        WebTransportError.internalError(
+            "Per-session WebTransport stream limit reached",
+            underlying: nil
+        )
+    }
+
+    /// Counts an event a bounded stream dropped because the consumer fell behind.
+    private func recordDroppedEvent<Element>(
+        _ result: AsyncStream<Element>.Continuation.YieldResult?,
+        counting dropped: WritableKeyPath<DroppedEventCounts, Int>
+    ) {
+        guard let result, case .dropped = result else { return }
+        droppedEvents[keyPath: dropped] += 1
     }
 
     // MARK: - Priority Management (RFC 9218)
@@ -1090,9 +1100,7 @@ public actor WebTransportSession {
         )
 
         // Deliver to the capsule events stream
-        if let result = capsuleEventContinuation?.yield(capsule), case .dropped = result {
-            droppedEvents.capsules += 1
-        }
+        recordDroppedEvent(capsuleEventContinuation?.yield(capsule), counting: \.capsules)
 
         switch capsule {
         case .close(let info):
@@ -1152,9 +1160,8 @@ public actor WebTransportSession {
         capsuleEventContinuation?.finish()
         capsuleEventContinuation = nil
 
-        // Unregister all active streams from the HTTP/3 scheduler, then reset the
-        // underlying QUIC streams so orphaned children do not keep the connection's
-        // open-stream count high.
+        // Release scheduler registrations and reset the child streams, so orphans do not
+        // keep the connection's open-stream count high.
         let orphanedStreams = Array(activeBidiStreams.values) + Array(activeUniStreams.values)
         let allStreamIDs = Array(activeBidiStreams.keys) + Array(activeUniStreams.keys)
         Task {
