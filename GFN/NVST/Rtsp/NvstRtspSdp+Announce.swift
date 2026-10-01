@@ -53,8 +53,8 @@ extension NvstRtspSdp {
     /// Strips key material out of a single SDP line so the ANNOUNCE body can still be diffed against
     /// a vendor capture from the logs. The SRTP master key is the sole confidentiality and integrity
     /// root for the whole video stream, and the ICE passwords authenticate the connectivity checks;
-    /// the sinks behind the negotiator's logger (`~/Library/Logs`, the unified log, Sentry, the
-    /// uploadable diagnostics bundle) all outlive the session, so neither may reach them.
+    /// the sinks behind the negotiator's logger (`~/Library/Logs`, the unified log, the uploadable
+    /// diagnostics bundle) all outlive the session, so neither may reach them.
     /// The key *ID* and the ICE *ufrag* are not secret and stay readable.
     public static func redactedForLog(_ line: String) -> String {
         guard let colon = line.firstIndex(of: ":") else { return line }

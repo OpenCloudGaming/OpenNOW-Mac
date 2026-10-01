@@ -10,7 +10,6 @@
 		7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7729CE922FE1000000D5C9D5 /* AppIntents.framework */; };
 		A00000000000000000000001 /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* Resources */; };
 		A00000000000000000000003 /* OPNApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* OPNApp.swift */; };
-		A00000000000000000000401 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000403 /* Sentry */; };
 		A00000000000000000000404 /* Ably in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000406 /* Ably */; };
 		A00000000000000000000411 /* HTTP3 in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000412 /* HTTP3 */; };
 		A00000000000000000000413 /* QUIC in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000414 /* QUIC */; };
@@ -100,7 +99,6 @@
 				7729CE912FE1000000D5C9D5 /* AppIntents.framework in Frameworks */,
 				D00000000000000000000002 /* Vendor/OpenSSL.xcframework in Frameworks */,
 				D00000000000000000000005 /* Vendor/usrsctp.xcframework in Frameworks */,
-				A00000000000000000000401 /* Sentry in Frameworks */,
 				A00000000000000000000404 /* Ably in Frameworks */,
 				A00000000000000000000411 /* HTTP3 in Frameworks */,
 				A00000000000000000000413 /* QUIC in Frameworks */,
@@ -174,7 +172,6 @@
 			);
 			name = OpenNOW;
 			packageProductDependencies = (
-				A00000000000000000000403 /* Sentry */,
 				A00000000000000000000406 /* Ably */,
 				A00000000000000000000412 /* HTTP3 */,
 				A00000000000000000000414 /* QUIC */,
@@ -241,7 +238,6 @@
 			mainGroup = 7729CE6D2FDEDAB300D5C9D5;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A00000000000000000000402 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 				A00000000000000000000405 /* XCRemoteSwiftPackageReference "ably-cocoa" */,
 				A00000000000000000000410 /* XCLocalSwiftPackageReference "Vendor/Quiver" */,
 			);
@@ -465,7 +461,6 @@
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 0.0.0;
 				OPN_ICLOUD_ENVIRONMENT = Development;
-				OPN_SENTRY_DSN = "";
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow.dev;
 				PRODUCT_MODULE_NAME = OpenNOW;
 				PRODUCT_NAME = "OpenNOW Dev";
@@ -515,7 +510,6 @@
 				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				MARKETING_VERSION = 0.0.0;
 				OPN_ICLOUD_ENVIRONMENT = Production;
-				OPN_SENTRY_DSN = "";
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.opencloudgaming.opennow;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -631,14 +625,6 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		A00000000000000000000402 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
-			requirement = {
-				kind = exactVersion;
-				version = 9.18.0;
-			};
-		};
 		A00000000000000000000405 /* XCRemoteSwiftPackageReference "ably-cocoa" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ably/ably-cocoa.git";
@@ -650,11 +636,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		A00000000000000000000403 /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A00000000000000000000402 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
-		};
 		A00000000000000000000406 /* Ably */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A00000000000000000000405 /* XCRemoteSwiftPackageReference "ably-cocoa" */;

@@ -107,8 +107,6 @@
 			<string>Any</string>
 		</dict>
 	</dict>
-	<key>OPNSentryDSN</key>
-	<string>$(OPN_SENTRY_DSN)</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

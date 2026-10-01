@@ -2,18 +2,6 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-@Test func telemetryDisabledPreferenceRoundTrips() throws {
-    let suiteName = "OpenNOWTelemetryTests.telemetryDisabled.\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-
-    #expect(OPNSentry.telemetryDisabled(defaults: defaults) == false)
-    OPNSentry.setTelemetryDisabled(true, defaults: defaults)
-    #expect(OPNSentry.telemetryDisabled(defaults: defaults) == true)
-    OPNSentry.setTelemetryDisabled(false, defaults: defaults)
-    #expect(OPNSentry.telemetryDisabled(defaults: defaults) == false)
-}
-
 @Test func diagnosticsUploadAcceptsCreatedPasteResponse() async throws {
     try await networkTestIsolationLock.withLock {
         let host = "diagnostics-created.example.test"
@@ -23,7 +11,7 @@ import Testing
         defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
         let uploadURL = try #require(URL(string: "https://\(host)"))
-        let result = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
+        let result = try await OPNDiagnostics.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
 
         #expect(result.absoluteString == "https://paste.c-net.org/created")
         let bodies = DiagnosticsUploadURLProtocol.recordedBodies(host: host)
@@ -43,9 +31,9 @@ import Testing
         let uploadURL = try #require(URL(string: "https://\(host)"))
 
         do {
-            _ = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
+            _ = try await OPNDiagnostics.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
             Issue.record("Expected partial paste response to fail")
-        } catch OPNSentryDiagnosticsUploadError.partialUpload {
+        } catch OPNDiagnosticsUploadError.partialUpload {
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
@@ -63,9 +51,9 @@ import Testing
         let uploadURL = try #require(URL(string: "https://\(host)"))
 
         do {
-            _ = try await OPNSentry.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
+            _ = try await OPNDiagnostics.uploadDiagnosticsLog("diagnostic line", session: diagnosticsUploadSession(), uploadURL: uploadURL)
             Issue.record("Expected service failure to throw")
-        } catch OPNSentryDiagnosticsUploadError.serviceUnavailable(let status) {
+        } catch OPNDiagnosticsUploadError.serviceUnavailable(let status) {
             #expect(status == 500)
         } catch {
             Issue.record("Unexpected error: \(error)")
@@ -83,7 +71,7 @@ import Testing
 
         let uploadURL = try #require(URL(string: "https://\(host)"))
         let oversizedLog = String(repeating: "diagnostic line serverIp=10.1.2.3 token=secret-value\n", count: 12_000)
-        let result = try await OPNSentry.uploadDiagnosticsLog(oversizedLog, session: diagnosticsUploadSession(), uploadURL: uploadURL)
+        let result = try await OPNDiagnostics.uploadDiagnosticsLog(oversizedLog, session: diagnosticsUploadSession(), uploadURL: uploadURL)
 
         #expect(result.absoluteString == "https://paste.c-net.org/oversized")
         let body = try #require(DiagnosticsUploadURLProtocol.recordedBodies(host: host).first)
@@ -193,7 +181,7 @@ private final class DiagnosticsUploadURLProtocol: URLProtocol, @unchecked Sendab
         defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
         let uploadURL = try #require(URL(string: "https://\(host)"))
-        let result = try await OPNSentry.uploadDiagnosticsLog("diagnostic line",
+        let result = try await OPNDiagnostics.uploadDiagnosticsLog("diagnostic line",
                                                              session: diagnosticsUploadSession(),
                                                              uploadURL: uploadURL)
         #expect(result.absoluteString == "https://paste.c-net.org/ok-response")
@@ -212,7 +200,7 @@ private final class DiagnosticsUploadURLProtocol: URLProtocol, @unchecked Sendab
             defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
 
             let uploadURL = try #require(URL(string: "https://\(host)"))
-            let result = try await OPNSentry.uploadDiagnosticsLog("line",
+            let result = try await OPNDiagnostics.uploadDiagnosticsLog("line",
                                                                  session: diagnosticsUploadSession(),
                                                                  uploadURL: uploadURL)
             #expect(result.absoluteString == "https://paste.c-net.org/s\(status)")
@@ -232,11 +220,11 @@ private final class DiagnosticsUploadURLProtocol: URLProtocol, @unchecked Sendab
 
         let uploadURL = try #require(URL(string: "https://\(host)"))
         do {
-            _ = try await OPNSentry.uploadDiagnosticsLog("line",
+            _ = try await OPNDiagnostics.uploadDiagnosticsLog("line",
                                                         session: diagnosticsUploadSession(),
                                                         uploadURL: uploadURL)
             Issue.record("Expected a non-paste body to fail")
-        } catch OPNSentryDiagnosticsUploadError.invalidResponse {
+        } catch OPNDiagnosticsUploadError.invalidResponse {
         } catch {
             Issue.record("Unexpected error: \(error)")
         }

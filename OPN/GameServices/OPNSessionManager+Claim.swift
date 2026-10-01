@@ -7,7 +7,7 @@
 extension OPNSessionManager {
     func claimSession(sessionId: String, serverIp: String, appId: String, settings: [String: Any], recoveryMode: Bool, completion: @escaping (Bool, [String: Any], String) -> Void) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
-            OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Refusing claim with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines))) sessionId=\(escapedLogString(sessionId))"))
+            OPNDiagnostics.logWarningMessage(OPNDiagnostics.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Refusing claim with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines))) sessionId=\(escapedLogString(sessionId))"))
             completion(false, [:], "This game does not include a launchable GeForce NOW app id.")
             return
         }
@@ -24,11 +24,11 @@ extension OPNSessionManager {
         let clientId = UUID().uuidString.lowercased()
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
         let headers = CloudMatchClientHeaders.streamSession()
-        guard var validationRequest = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, timeoutInterval: 30, headers: headers) else {
+        guard let validationRequest = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, timeoutInterval: 30, headers: headers) else {
             completion(false, [:], "Invalid validation URL")
             return
         }
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) transport=nvst resolution=\(string(settings["resolution"])) fps=\(int(settings["fps"], fallback: 60)) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "ClaimSession", message: "Starting claim sessionId=\(sessionId) serverIp=\(serverIp) appId=\(launchAppId.stringValue) transport=nvst resolution=\(string(settings["resolution"])) fps=\(int(settings["fps"], fallback: 60)) codec=\(string(settings["codec"])) color=\(string(settings["colorQuality"])) bitrate=\(int(settings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(settings["enableL4S"]) ? "on" : "off") recovery=\(recoveryMode)"))
         nonisolated(unsafe) let completion = completion
         nonisolated(unsafe) let context = ClaimContext(sessionId: sessionId,
                                                        serverIp: serverIp,
@@ -39,10 +39,10 @@ extension OPNSessionManager {
                                                        token: token,
                                                        appId: launchAppId,
                                                        settings: settings)
-        let validationNetworkStart = OPNNetworkLog.start(&validationRequest, operation: "cloudmatch.validateSessionClaim")
+        let validationNetworkStart = OPNNetworkLog.start(validationRequest, operation: "cloudmatch.validateSessionClaim")
         let tracedValidationRequest = validationRequest
         OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedValidationRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedValidationRequest, operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
+            OPNNetworkLog.finish(operation: "cloudmatch.validateSessionClaim", startedAt: validationNetworkStart, data: data, response: response, error: error)
             guard let self else { return }
             self.handleClaimValidation(data: data, response: response, error: error, context: context, completion: completion)
         }.resume()
@@ -71,7 +71,7 @@ extension OPNSessionManager {
         var preClaimStatus = 0
         var validatedSession: [String: Any]?
         if let error {
-            OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
+            OPNDiagnostics.logWarningMessage(OPNDiagnostics.formattedLogMessage(level: "warning", area: "ClaimSession", message: "Validation request failed error=\(error.localizedDescription)"))
         } else if let data {
             validatedSession = CloudMatchResponseParser.jsonDictionary(data)?["session"] as? [String: Any]
             preClaimStatus = int(validatedSession?["status"])
@@ -170,16 +170,15 @@ extension OPNSessionManager {
         }
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
         let headers = CloudMatchClientHeaders.streamSession()
-        guard var request = CloudMatchRequestFactory.claimSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData, headers: headers) else {
+        guard let request = CloudMatchRequestFactory.claimSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, keyboardLayout: layout, languageCode: language, body: bodyData, headers: headers) else {
             completion(false, [:], "Invalid claim URL")
             return
         }
         nonisolated(unsafe) let completion = completion
         let target = ClaimPollTarget(sessionId: sessionId, serverIp: serverIp, deviceId: deviceId, clientId: clientId, headers: headers, initialProfile: initialProfile)
-        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.claimSession")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.claimSession", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.claimSession")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(operation: "cloudmatch.claimSession", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             self.handleClaimResponse(data: data, response: response, error: error, target: target, completion: completion)
         }.resume()

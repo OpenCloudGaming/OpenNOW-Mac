@@ -67,7 +67,6 @@ jobs:
       - name: Build OpenNOW
         env:
           DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
-          OPN_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
           set -euo pipefail
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
@@ -87,7 +86,6 @@ jobs:
             -destination 'platform=macOS' \
             -derivedDataPath DerivedData \
             "${VERSION_OVERRIDES[@]}" \
-            OPN_SENTRY_DSN="${OPN_SENTRY_DSN}" \
             DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM}" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO

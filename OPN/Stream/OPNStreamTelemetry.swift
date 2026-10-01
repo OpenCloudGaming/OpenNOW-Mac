@@ -7,12 +7,6 @@ public enum StreamTelemetryLevel: String, Sendable {
     case error
 }
 
-public enum StreamTelemetryMetricKind: String, Sendable {
-    case counter
-    case gauge
-    case distribution
-}
-
 public struct StreamTelemetryEvent: Sendable {
     public let name: String
     public let level: StreamTelemetryLevel
@@ -40,33 +34,12 @@ public struct StreamTelemetryEvent: Sendable {
     }
 }
 
-public struct StreamTelemetryMetric: Sendable {
-    public let key: String
-    public let kind: StreamTelemetryMetricKind
-    public let value: Double
-    public let unit: String?
-    public let attributes: [String: String]
-
-    public init(key: String,
-                kind: StreamTelemetryMetricKind,
-                value: Double,
-                unit: String? = nil,
-                attributes: [String: String] = [:]) {
-        self.key = key
-        self.kind = kind
-        self.value = value
-        self.unit = unit
-        self.attributes = attributes
-    }
-}
-
+/// A stream telemetry sink. `capture` is the whole surface: it used to also carry counters, gauges
+/// and distributions straight into Sentry metrics, and there is no metric sink left (NEC-47).
+/// Numbers that were only ever metrics are now part of a log line's message — see
+/// `StreamStartTrace` and `NativeNVSTHostViewModel.recordNativeNetworkTelemetry`.
 public protocol StreamTelemetrySink: Sendable {
     func capture(_ event: StreamTelemetryEvent)
-    func record(_ metric: StreamTelemetryMetric)
-}
-
-public extension StreamTelemetrySink {
-    func record(_ metric: StreamTelemetryMetric) {}
 }
 
 public enum OPNStreamTelemetry {
@@ -90,14 +63,6 @@ public enum OPNStreamTelemetry {
         } else if level != .debug {
             NSLog("%@", "[Stream][\(level.rawValue)] \(name): \(message)")
         }
-    }
-
-    public static func record(_ key: String,
-                              kind: StreamTelemetryMetricKind,
-                              value: Double,
-                              unit: String? = nil,
-                              attributes: [String: String] = [:]) {
-        currentSink()?.record(StreamTelemetryMetric(key: key, kind: kind, value: value, unit: unit, attributes: attributes))
     }
 
     private static func currentSink() -> (any StreamTelemetrySink)? {

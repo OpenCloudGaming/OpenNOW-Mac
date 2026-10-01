@@ -188,14 +188,13 @@ extension OPNStreamPreferences {
             Task { @MainActor in completion(cached) }
             return
         }
-        guard var request = cloudVariablesRequest(token: token, locale: currentCloudVariablesLocale(), userId: userId, idpId: idpId) else {
+        guard let request = cloudVariablesRequest(token: token, locale: currentCloudVariablesLocale(), userId: userId, idpId: idpId) else {
             Task { @MainActor in completion(cached) }
             return
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "stream.cloudVariables")
-        let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "stream.cloudVariables", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "stream.cloudVariables")
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(operation: "stream.cloudVariables", startedAt: networkStart, data: data, response: response, error: error)
             var result = cached
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if error == nil, let data, (200..<300).contains(status), let json = String(data: data, encoding: .utf8) {

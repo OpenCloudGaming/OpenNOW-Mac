@@ -31,8 +31,8 @@ These facts are verifiable from the source tree itself.
    are Swift from top to bottom.
 
 2. **No vendor libraries are bundled or linked.** The application links only `WebRTC.framework`
-   (Google's WebRTC, BSD 3-Clause) and the system `AppIntents.framework`; Sentry and Ably arrive
-   via Swift Package Manager. There is no NVIDIA `.framework`, `.dylib`, static archive, or binary
+   (Google's WebRTC, BSD 3-Clause) and the system `AppIntents.framework`; Ably arrives via Swift
+   Package Manager. There is no NVIDIA `.framework`, `.dylib`, static archive, or binary
    `bundle` in the repository or the application bundle.
 
 3. **The native transport loads no vendor library.** OpenNOW's native NVST path — RTSP control
@@ -41,9 +41,9 @@ These facts are verifiable from the source tree itself.
    with no NVIDIA libraries, on OpenNOW's own RTSP control plane and raw-SRTP Mjolnir receiver.
 
 4. **Third-party code that *is* incorporated is separately licensed and attributed.** WebRTC
-   (BSD 3-Clause), the Hanken Grotesk font (SIL OFL 1.1), ably-js / ably-cocoa / delta-codec-cocoa
-   / msgpack-objective-C (Apache-2.0), and sentry-cocoa (MIT) are all listed with full license
-   texts in `Resources/Licenses/THIRD_PARTY_NOTICES.md`, which ships inside the application bundle.
+   (BSD 3-Clause), the Hanken Grotesk font (SIL OFL 1.1), and ably-js / ably-cocoa /
+   delta-codec-cocoa / msgpack-objective-C (Apache-2.0) are all listed with full license texts in
+   `Resources/Licenses/THIRD_PARTY_NOTICES.md`, which ships inside the application bundle.
 
 5. **Game artwork and storefront imagery are fetched at runtime, not bundled.** Cover art, hero
    images, and login-wall tiles are requested from the vendor's content delivery network while the

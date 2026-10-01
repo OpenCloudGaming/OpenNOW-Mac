@@ -115,29 +115,16 @@ public struct OPNTelemetryEvent: Equatable, Sendable {
     private nonisolated(unsafe) static let timestampFormatter = ISO8601DateFormatter()
 }
 
+/// Records a vendor-shaped event as a local diagnostics log line.
+///
+/// It used to be a Sentry metric plus a Sentry log; with the SDK gone (NEC-47) the log line is the
+/// whole event. It is written for every run — the retired telemetry preference no longer gates it —
+/// and nothing leaves the Mac with it.
 public enum OPNTelemetryRecorder {
     @discardableResult
     public static func record(_ event: OPNTelemetryEvent, commonData: OPNTelemetryCommonData = OPNTelemetryCommonData()) -> Bool {
-        guard OPNSentry.isTelemetryEnabled() else { return false }
-        let attributes = sentryAttributes(event: event, commonData: commonData)
-        _ = OPNSentry.recordCounterMetric(key: "opn.telemetry.events.count", value: 1, attributes: attributes)
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Telemetry", message: logMessage(event: event, commonData: commonData)))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "Telemetry", message: logMessage(event: event, commonData: commonData)))
         return true
-    }
-
-    static func sentryAttributes(event: OPNTelemetryEvent, commonData: OPNTelemetryCommonData) -> [String: Any] {
-        var attributes: [String: Any] = [
-            "opn.event": event.name.rawValue,
-            "opn.privacy_level": event.privacyLevel.rawValue,
-            "opn.personalization": event.personalization.rawValue,
-        ]
-        for (key, value) in commonData.dictionary {
-            attributes["opn.common.\(key)"] = sanitizedTelemetryValue(key: key, value: value)
-        }
-        for (key, value) in event.parameters where !key.isEmpty {
-            attributes["opn.parameter.\(OPNSentry.sanitizedLogMessage(key))"] = sanitizedTelemetryValue(key: key, value: value)
-        }
-        return attributes.filter { !$0.key.isEmpty }
     }
 
     static func logMessage(event: OPNTelemetryEvent, commonData: OPNTelemetryCommonData) -> String {
@@ -148,13 +135,13 @@ public enum OPNTelemetryRecorder {
 
     private static func sortedPairs(_ dictionary: [String: String]) -> String {
         let pairs = dictionary.keys.sorted().map { key in
-            "\(OPNSentry.sanitizedLogMessage(key))=\(sanitizedTelemetryValue(key: key, value: dictionary[key] ?? ""))"
+            "\(OPNDiagnostics.sanitizedLogMessage(key))=\(sanitizedTelemetryValue(key: key, value: dictionary[key] ?? ""))"
         }
         return pairs.isEmpty ? "[]" : "[\(pairs.joined(separator: ","))]"
     }
 
     private static func sanitizedTelemetryValue(key: String, value: String) -> String {
         if key.localizedCaseInsensitiveContains("version") { return value }
-        return OPNSentry.sanitizedLogMessage(value)
+        return OPNDiagnostics.sanitizedLogMessage(value)
     }
 }

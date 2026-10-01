@@ -23,7 +23,7 @@ enum OPNLog {
         }
 
         var redacted: String {
-            isRedacted ? text : OPNSentry.sanitizedLogMessage(text)
+            isRedacted ? text : OPNDiagnostics.sanitizedLogMessage(text)
         }
     }
 
@@ -46,12 +46,12 @@ enum OPNLog {
         // The level check comes first here, unlike the other levels: debug is off by default, and
         // redacting a line nothing will read cost 40 µs a call — on the HID report path, that is per
         // controller report, on the thread carrying input.
-        guard OPNSentry.shouldLogDebug() else { return }
+        guard OPNDiagnostics.shouldLogDebug() else { return }
         // Scrubbed once, then framed: the frame is a fixed prefix, so scrubbing before or after it
         // gives the same text, and both sinks used to pay for the scrub separately.
         let sanitized = message.redacted
         logger(for: category).debug("\(sanitized, privacy: .public)")
-        OPNSentry.logDebugMessage(OPNSentry.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "debug", message: sanitized)))
+        OPNDiagnostics.logDebugMessage(OPNDiagnostics.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "debug", message: sanitized)))
     }
 
     static func info(_ category: Category, _ message: Message) {
@@ -59,7 +59,7 @@ enum OPNLog {
         // gives the same text, and both sinks used to pay for the scrub separately.
         let sanitized = message.redacted
         logger(for: category).info("\(sanitized, privacy: .public)")
-        OPNSentry.logInfoMessage(OPNSentry.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "info", message: sanitized)))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "info", message: sanitized)))
     }
 
     static func warning(_ category: Category, _ message: Message) {
@@ -67,7 +67,7 @@ enum OPNLog {
         // gives the same text, and both sinks used to pay for the scrub separately.
         let sanitized = message.redacted
         logger(for: category).warning("\(sanitized, privacy: .public)")
-        OPNSentry.logWarningMessage(OPNSentry.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "warning", message: sanitized)))
+        OPNDiagnostics.logWarningMessage(OPNDiagnostics.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "warning", message: sanitized)))
     }
 
     static func error(_ category: Category, _ message: Message) {
@@ -75,7 +75,7 @@ enum OPNLog {
         // gives the same text, and both sinks used to pay for the scrub separately.
         let sanitized = message.redacted
         logger(for: category).error("\(sanitized, privacy: .public)")
-        OPNSentry.logErrorMessage(OPNSentry.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "error", message: sanitized)))
+        OPNDiagnostics.logErrorMessage(OPNDiagnostics.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "error", message: sanitized)))
     }
 
     static func fatal(_ category: Category, _ message: Message) {
@@ -83,7 +83,7 @@ enum OPNLog {
         // gives the same text, and both sinks used to pay for the scrub separately.
         let sanitized = message.redacted
         logger(for: category).fault("\(sanitized, privacy: .public)")
-        OPNSentry.logFatalMessage(OPNSentry.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "fatal", message: sanitized)))
+        OPNDiagnostics.logFatalMessage(OPNDiagnostics.SanitizedLogMessage(alreadySanitized: formattedMessage(category: category, level: "fatal", message: sanitized)))
     }
 
     static func debug(_ category: Category, _ message: String) {
@@ -107,7 +107,7 @@ enum OPNLog {
     }
 
     private static func formattedMessage(category: Category, level: String, message: String) -> String {
-        OPNSentry.formattedLogMessage(level: level, area: category.rawValue, message: message)
+        OPNDiagnostics.formattedLogMessage(level: level, area: category.rawValue, message: message)
     }
 
     /// One `Logger` per category rather than one per call. `Logger(subsystem:category:)` is cheap

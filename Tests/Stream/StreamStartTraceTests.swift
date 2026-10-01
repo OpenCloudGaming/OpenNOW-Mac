@@ -1,6 +1,7 @@
 //  The per-step stream-start timings are asserted through the injectable telemetry sink, so the five
 //  steps, the total, and the step an aborted launch stopped in are all pinned without touching the
-//  process-wide sink the app configures.
+//  process-wide sink the app configures. The durations ride in the timeline log line's message: they
+//  used to be Sentry distribution metrics as well, and that sink is gone with the SDK (NEC-47).
 
 import Foundation
 import Testing
@@ -9,31 +10,21 @@ import Testing
 private final class RecordingStreamStartSink: StreamTelemetrySink, @unchecked Sendable {
     private let lock = NSLock()
     private var events: [StreamTelemetryEvent] = []
-    private var metrics: [StreamTelemetryMetric] = []
 
     func capture(_ event: StreamTelemetryEvent) {
         lock.withLock { events.append(event) }
     }
 
-    func record(_ metric: StreamTelemetryMetric) {
-        lock.withLock { metrics.append(metric) }
-    }
-
     var captured: [StreamTelemetryEvent] { lock.withLock { events } }
-    var recorded: [StreamTelemetryMetric] { lock.withLock { metrics } }
 
     var timeline: StreamTelemetryEvent? {
         captured.first { $0.name == StreamStartTrace.timelineEventName }
     }
 
+    /// The steps the timeline reports a duration for, in launch order.
     var stepNames: [String] {
-        recorded
-            .filter { $0.key == StreamStartTrace.stepMetricKey }
-            .compactMap { $0.attributes["step"] }
-    }
-
-    var totals: [StreamTelemetryMetric] {
-        recorded.filter { $0.key == StreamStartTrace.totalMetricKey }
+        guard let message = timeline?.message else { return [] }
+        return StreamLaunchStep.allCases.map(\.traceKey).filter { message.contains("\($0)=") }
     }
 }
 
@@ -49,8 +40,6 @@ struct StreamStartTraceTests {
         trace.finish()
 
         #expect(sink.stepNames == StreamLaunchStep.allCases.map(\.traceKey))
-        #expect(sink.totals.count == 1)
-        #expect(sink.totals.first?.unit == "millisecond")
         #expect(sink.timeline?.level == .info)
         #expect(sink.timeline?.attributes["outcome"] == StreamStartOutcome.connected.rawValue)
         #expect(sink.timeline?.attributes["failedStep"] == nil)
@@ -72,7 +61,6 @@ struct StreamStartTraceTests {
         #expect(sink.timeline?.level == .warning)
         #expect(sink.timeline?.attributes["outcome"] == StreamStartOutcome.failed.rawValue)
         #expect(sink.timeline?.attributes["failedStep"] == "connect-transport")
-        #expect(sink.totals.first?.attributes["failedStep"] == "connect-transport")
     }
 
     @Test("a start stopped before its first step still emits a total")
@@ -83,7 +71,7 @@ struct StreamStartTraceTests {
         trace.finish()
 
         #expect(sink.stepNames.isEmpty)
-        #expect(sink.totals.count == 1)
+        #expect(sink.timeline?.message.contains("total=") == true)
         #expect(sink.timeline?.attributes["outcome"] == StreamStartOutcome.failed.rawValue)
         #expect(sink.timeline?.attributes["failedStep"] == nil)
     }
@@ -116,7 +104,6 @@ struct StreamStartTraceTests {
 
         #expect(sink.captured.filter { $0.name == StreamStartTrace.timelineEventName }.count == 1)
         #expect(sink.stepNames == ["check-network-route"])
-        #expect(sink.totals.count == 1)
     }
 
     @Test("a native launch emits a step per launch step and one total")
@@ -131,7 +118,7 @@ struct StreamStartTraceTests {
         _ = try await path.start(configuration: launchConfiguration)
 
         #expect(sink.stepNames == StreamLaunchStep.allCases.map(\.traceKey))
-        #expect(sink.totals.count == 1)
+        #expect(sink.timeline?.message.contains("total=") == true)
         #expect(sink.timeline?.attributes["outcome"] == StreamStartOutcome.connected.rawValue)
         #expect(sink.timeline?.attributes["applicationID"] == "100")
     }

@@ -58,7 +58,7 @@ extension OPNSessionManager {
         let toggle = OPNStreamPreferences.loadPersistInGameSettings()
         let entitled = OPNStreamPreferences.loadEntitledInGameSettingsPersistence()
         let sent = bool(settings["enablePersistingInGameSettings"])
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "In-game settings persistence sent=\(sent ? "on" : "off") toggle=\(toggle ? "on" : "off") membership=\(entitled ? "entitled" : "not-entitled")"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "SessionManager", message: "In-game settings persistence sent=\(sent ? "on" : "off") toggle=\(toggle ? "on" : "off") membership=\(entitled ? "entitled" : "not-entitled")"))
     }
 
     func rawSessionJSON(_ session: [String: Any]) -> String {
@@ -296,7 +296,7 @@ extension OPNSessionManager {
             summary += " queue=\(queuePosition) \(OPNSessionJSONParser.queuePositionDiagnostic(from: session as NSDictionary))"
         }
         if let adState = info["adState"] as? [String: Any], bool(adState["isAdsRequired"]) { summary += " ads=required" }
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "PollSession", message: summary))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "PollSession", message: summary))
     }
 
     func storePersistedActiveSessionId(_ sessionId: String) {
@@ -305,7 +305,7 @@ extension OPNSessionManager {
         guard current != sessionId else { return }
         OPNAppPreferenceStorage.standard.set(sessionId, forKey: Self.persistedActiveSessionIdKey)
         OPNAppPreferenceStorage.standard.synchronize()
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Persisted active sessionId=\(sessionId)"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "SessionManager", message: "Persisted active sessionId=\(sessionId)"))
     }
 
     func clearPersistedActiveSessionId(_ sessionId: String) {
@@ -313,6 +313,6 @@ extension OPNSessionManager {
         guard !current.isEmpty, sessionId.isEmpty || current == sessionId else { return }
         OPNAppPreferenceStorage.standard.removeObject(forKey: Self.persistedActiveSessionIdKey)
         OPNAppPreferenceStorage.standard.synchronize()
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Cleared persisted active sessionId=\(current)"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "SessionManager", message: "Cleared persisted active sessionId=\(current)"))
     }
 }

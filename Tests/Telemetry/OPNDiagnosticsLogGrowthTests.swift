@@ -12,13 +12,13 @@ import Testing
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
     let logURL = directory.appendingPathComponent("OpenNOW-diagnostics-current.log")
-    try Data(repeating: UInt8(ascii: "x"), count: OPNSentry.maxDiagnosticsLogBytes + 4096).write(to: logURL)
+    try Data(repeating: UInt8(ascii: "x"), count: OPNDiagnostics.maxDiagnosticsLogBytes + 4096).write(to: logURL)
 
-    OPNSentry.trimDiagnosticsLogIfNeeded(url: logURL, writtenBytes: OPNSentry.maxDiagnosticsLogBytes + 4096)
+    OPNDiagnostics.trimDiagnosticsLogIfNeeded(url: logURL, writtenBytes: OPNDiagnostics.maxDiagnosticsLogBytes + 4096)
 
     let trimmed = try Data(contentsOf: logURL)
-    #expect(trimmed.count == OPNSentry.trimmedDiagnosticsLogBytes)
-    #expect(trimmed.count < OPNSentry.maxDiagnosticsLogBytes)
+    #expect(trimmed.count == OPNDiagnostics.trimmedDiagnosticsLogBytes)
+    #expect(trimmed.count < OPNDiagnostics.maxDiagnosticsLogBytes)
 }
 
 @Test func diagnosticsTrimLeavesAFileUnderTheCeilingAlone() throws {
@@ -31,7 +31,7 @@ import Testing
     let contents = Data(repeating: UInt8(ascii: "x"), count: 1024)
     try contents.write(to: logURL)
 
-    OPNSentry.trimDiagnosticsLogIfNeeded(url: logURL, writtenBytes: contents.count)
+    OPNDiagnostics.trimDiagnosticsLogIfNeeded(url: logURL, writtenBytes: contents.count)
 
     #expect(try Data(contentsOf: logURL).count == contents.count)
 }
@@ -40,8 +40,8 @@ import Testing
 /// running it twice must not corrupt the text — the sinks rely on it being safe to repeat.
 @Test func sanitizingAnAlreadySanitizedMessageChangesNothing() {
     let message = "auth Bearer abcdefghijklmnop ip=192.168.1.24 note=keep-me"
-    let once = OPNSentry.sanitizedLogMessage(message)
-    let twice = OPNSentry.sanitizedLogMessage(once)
+    let once = OPNDiagnostics.sanitizedLogMessage(message)
+    let twice = OPNDiagnostics.sanitizedLogMessage(once)
 
     #expect(once == twice)
     #expect(once.contains("keep-me"))

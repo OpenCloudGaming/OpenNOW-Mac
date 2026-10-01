@@ -208,10 +208,9 @@ extension OPNGameService {
         }
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
-        let networkStart = OPNNetworkLog.start(&request, operation: "static.publicGames")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "static.publicGames", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "static.publicGames")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(operation: "static.publicGames", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             Self.workQueue.async {
                 guard error == nil,

@@ -21,7 +21,7 @@ the diagnostics log a user can already send:
 
 | Milestone token | Taken at |
 |---|---|
-| `pre-main` | `OPNApp.init()`, the first statement after the diagnostics log is cleared for the run, and before Sentry is initialised |
+| `pre-main` | `OPNApp.init()`, the first statement after the diagnostics log is cleared for the run |
 | `first-frame` | `AppRootViewModel.bootstrapIfNeeded`, the root view's first task run - AppKit has built the window and SwiftUI has built the view tree, and the catalog bootstrap has not started |
 | `catalog-visible` | `OPNStartupTrace.recordContentReady`, when the splash's hold ends with content |
 | `stream-connected` | `NativeNVSTStreamingPath`, once the transport is running and the session is published |

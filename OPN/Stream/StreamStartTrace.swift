@@ -40,8 +40,6 @@ final class StreamStartTrace {
     static let totalSignpostName: StaticString = "StreamStart.total"
     /// One log line per start carrying every step, so a diagnostics log has the breakdown too.
     static let timelineEventName = "nvst.path.start.timeline"
-    static let stepMetricKey = "nvst.path.start.step_ms"
-    static let totalMetricKey = "nvst.path.start.total_ms"
     static let signpostCategory = "Stream"
 
     private struct OpenStep {
@@ -142,29 +140,12 @@ final class StreamStartTrace {
         }
     }
 
+    /// The per-step and total durations ride in the log line's message. They were Sentry
+    /// distribution metrics too; with the SDK gone (NEC-47) the message is the only carrier, and the
+    /// signposts above are the Instruments side of the same measurement.
     private func emitTimeline(outcome: StreamStartOutcome, failedStep: StreamLaunchStep?, total: Duration) {
         let steps = measuredSteps()
         let attributes = timelineAttributes(outcome: outcome, failedStep: failedStep)
-        for measured in steps {
-            sink.record(StreamTelemetryMetric(
-                key: Self.stepMetricKey,
-                kind: .distribution,
-                value: Self.milliseconds(measured.duration),
-                unit: "millisecond",
-                attributes: [
-                    "step": measured.step.traceKey,
-                    "outcome": outcome.rawValue,
-                    "applicationID": applicationID
-                ]
-            ))
-        }
-        sink.record(StreamTelemetryMetric(
-            key: Self.totalMetricKey,
-            kind: .distribution,
-            value: Self.milliseconds(total),
-            unit: "millisecond",
-            attributes: attributes
-        ))
         sink.capture(StreamTelemetryEvent(
             name: Self.timelineEventName,
             level: timelineLevel(for: outcome),
@@ -211,16 +192,6 @@ struct OPNStreamStartTraceSink: StreamTelemetrySink {
             message: event.message,
             attributes: event.attributes,
             isRedacted: event.isRedacted
-        )
-    }
-
-    func record(_ metric: StreamTelemetryMetric) {
-        OPNStreamTelemetry.record(
-            metric.key,
-            kind: metric.kind,
-            value: metric.value,
-            unit: metric.unit,
-            attributes: metric.attributes
         )
     }
 }

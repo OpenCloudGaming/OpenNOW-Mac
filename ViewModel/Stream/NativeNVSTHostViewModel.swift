@@ -425,7 +425,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
                 // file gets the redacted text: it used to receive the raw message while only the
                 // telemetry path was scrubbed, which put anything secret-shaped in a log the user
                 // is invited to share.
-                let sanitized = OPNSentry.sanitizedLogMessage(message)
+                let sanitized = OPNDiagnostics.sanitizedLogMessage(message)
                 OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
                 diagnosticLog.append(sanitized)
             },

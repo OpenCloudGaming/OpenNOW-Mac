@@ -11,7 +11,6 @@ let package = Package(
         .library(name: "OpenNOW", targets: ["OpenNOW"])
     ],
     dependencies: [
-        .package(url: "https://github.com/getsentry/sentry-cocoa.git", exact: "9.18.0"),
         // Layering lint (see docs/MVVMMigrationPlan.md). Ships SwiftLint as a prebuilt binary
         // artifact rather than building it from source, so resolving costs seconds, not minutes.
         // Wired as a *command* plugin only — deliberately not attached to the OpenNOW target as a
@@ -24,9 +23,9 @@ let package = Package(
         // Vendored, patched Quiver (QUIC + HTTP/3 + WebTransport) for the browser Co-Op egress.
         // See Vendor/Quiver/VENDORING.md.
         .package(path: "Vendor/Quiver"),
-        // Hosted signaling (see RemoteCoOp/hosted-signaling-plan.md). Pinned exactly, like Sentry:
-        // this carries the signaling for a live session, and an unattended minor bump is not
-        // something to discover mid-stream.
+        // Hosted signaling (see RemoteCoOp/hosted-signaling-plan.md). Pinned exactly: this carries
+        // the signaling for a live session, and an unattended minor bump is not something to
+        // discover mid-stream.
         .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.4.0")
     ],
     targets: [
@@ -38,7 +37,6 @@ let package = Package(
         .target(
             name: "OpenNOW",
             dependencies: [
-                .product(name: "Sentry", package: "sentry-cocoa"),
                 .product(name: "Ably", package: "ably-cocoa"),
                 .product(name: "HTTP3", package: "Quiver"),
                 .product(name: "QUIC", package: "Quiver"),
