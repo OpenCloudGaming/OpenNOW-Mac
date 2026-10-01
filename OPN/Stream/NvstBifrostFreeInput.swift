@@ -40,22 +40,19 @@ extension NvstBifrostFreeTransport {
             }
             let sequence = (gamepadSequences[UInt16(padIndex)] ?? 0) &+ 1
             gamepadSequences[UInt16(padIndex)] = sequence
-            // Resting analog sticks are not exactly centred (~2% drift, seen jittering every poll).
-            // A real XInput pad drifts too and the game applies XINPUT_*_THUMB_DEADZONE; this title
-            // does not, so the drift reads as a held direction and the jitter floods on-change
-            // sends. Apply the standard radial deadzone here instead.
-            let (lx, ly) = Self.deadzoned(state.leftStickX, state.leftStickY, Self.leftStickDeadzone)
-            let (rx, ry) = Self.deadzoned(state.rightStickX, state.rightStickY, Self.rightStickDeadzone)
+            // Resting sticks drift ~2%, and this title applies no XINPUT_*_THUMB_DEADZONE of its
+            // own, so the drift reads as held. Only a genuinely raw pad is exempt from the filter.
+            let sticks = Self.wireSticks(state, source: state.inputSource)
             let packet = NvstGamepadPacket(
                 sequence: sequence,
                 timestampMicroseconds: sessionElapsedMicroseconds(),
                 buttons: Self.wireButtons(state.buttons),
                 leftTrigger: NvstGamepadPacket.trigger(state.leftTrigger),
                 rightTrigger: NvstGamepadPacket.trigger(state.rightTrigger),
-                leftStickX: NvstGamepadPacket.axis(lx),
-                leftStickY: NvstGamepadPacket.axis(ly),
-                rightStickX: NvstGamepadPacket.axis(rx),
-                rightStickY: NvstGamepadPacket.axis(ry),
+                leftStickX: NvstGamepadPacket.axis(sticks.leftX),
+                leftStickY: NvstGamepadPacket.axis(sticks.leftY),
+                rightStickX: NvstGamepadPacket.axis(sticks.rightX),
+                rightStickY: NvstGamepadPacket.axis(sticks.rightY),
                 gamepadIndex: UInt16(padIndex),
                 connectedBitmap: bitmap
             )
@@ -389,8 +386,17 @@ extension NvstBifrostFreeTransport {
     static let leftStickDeadzone: Float = 0.2395
     static let rightStickDeadzone: Float = 0.2651
 
-    /// A radial deadzone: inside `deadzone` the stick reads centred; outside, the remaining range is
-    /// rescaled to the full 0...1 so the edge still reaches the extremes.
+    /// A radial deadzone: inside `deadzone` the stick reads centred, outside the rest of the range
+    /// is rescaled to 0...1 so the edge still reaches the extremes.
+    static func wireSticks(_ state: GamepadState, source: ControllerInputSource) -> (leftX: Float, leftY: Float, rightX: Float, rightY: Float) {
+        guard source.isClientDeadzoneRequired else {
+            return (state.leftStickX, state.leftStickY, state.rightStickX, state.rightStickY)
+        }
+        let (leftX, leftY) = deadzoned(state.leftStickX, state.leftStickY, leftStickDeadzone)
+        let (rightX, rightY) = deadzoned(state.rightStickX, state.rightStickY, rightStickDeadzone)
+        return (leftX, leftY, rightX, rightY)
+    }
+
     static func deadzoned(_ x: Float, _ y: Float, _ deadzone: Float) -> (Float, Float) {
         let magnitude = (x * x + y * y).squareRoot()
         guard magnitude > deadzone else { return (0, 0) }

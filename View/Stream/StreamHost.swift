@@ -105,6 +105,7 @@ struct NativeNVSTMediaStreamSurface: View {
             model.startIfNeeded()
         }
         .task { await model.pollControllerBatteries() }
+        .task { await model.pollControllerInputStatus() }
         .onDisappear { model.stopStream() }
         .sheet(isPresented: $model.showingControllerMapping) {
             ControllerMappingView(

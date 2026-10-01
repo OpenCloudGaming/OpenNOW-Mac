@@ -59,6 +59,19 @@ struct GenericControllerInputSnapshot: Equatable {
 
     init() {}
 
+    init(snapshot: ControllerInputSnapshot) {
+        buttons = snapshot.buttons
+        leftTrigger = snapshot.leftTrigger
+        rightTrigger = snapshot.rightTrigger
+        leftStickX = snapshot.leftStickX
+        leftStickY = snapshot.leftStickY
+        rightStickX = snapshot.rightStickX
+        rightStickY = snapshot.rightStickY
+        touchpad = snapshot.touchpad.map {
+            ControllerTouchpadState(x: $0.x, y: $0.y, touched: $0.touched, pressed: $0.pressed)
+        }
+    }
+
     init(gamepad: GCExtendedGamepad) {
         buttons = NativeGamepadMonitor.buttons(from: gamepad)
         leftTrigger = gamepad.leftTrigger.value
@@ -95,8 +108,13 @@ final class GenericControllerTestModel: ObservableObject {
     private var controller: GCController?
     private var pollTask: Task<Void, Never>?
 
+    deinit {
+        GamepadHIDMonitor.shared.release(ObjectIdentifier(self))
+    }
+
     func start() {
         stop()
+        GamepadHIDMonitor.shared.acquire(ObjectIdentifier(self))
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 self?.refreshSnapshot()
@@ -108,6 +126,7 @@ final class GenericControllerTestModel: ObservableObject {
     func stop() {
         pollTask?.cancel()
         pollTask = nil
+        GamepadHIDMonitor.shared.release(ObjectIdentifier(self))
         controller = nil
         isConnected = false
         deviceName = ""
@@ -141,8 +160,10 @@ final class GenericControllerTestModel: ObservableObject {
 
     private func refreshSnapshot() {
         guard let controller, let gamepad = controller.extendedGamepad else { return }
-        let next = GenericControllerInputSnapshot(gamepad: gamepad)
-        if next != snapshot { snapshot = next }
+        let rawSnapshot = GamepadHIDMonitor.shared.snapshots()[ObjectIdentifier(controller)]
+        let nextSnapshot = rawSnapshot.map(GenericControllerInputSnapshot.init(snapshot:))
+            ?? GenericControllerInputSnapshot(gamepad: gamepad)
+        if nextSnapshot != snapshot { snapshot = nextSnapshot }
         refreshBattery(controller)
     }
 

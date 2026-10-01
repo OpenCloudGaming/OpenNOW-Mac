@@ -137,6 +137,7 @@ extension NativeNVSTHostViewModel {
         [
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "controllers", columns: 4, action: { [weak self] in self?.showingControllerMapping = true }),
             StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "controllers", columns: 4, action: { [weak self] in self?.showingControllerOrder = true }),
+            StreamHUDFocusEntry(id: "controller-api", isDisabled: false, group: "controllers", columns: 4, action: toggleControllerInputBackend),
             StreamHUDFocusEntry(id: "rumble-intensity", isDisabled: false, action: cycleRumbleIntensity),
         ]
     }

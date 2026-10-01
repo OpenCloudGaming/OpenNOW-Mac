@@ -12,6 +12,7 @@ struct InputSettingsPage: View {
     @State private var showingControllerTest = false
     @State private var showingControllerMapping = false
     @State private var showingControllerOrder = false
+    @State private var controllerInputBackend = ControllerInputBackendPreference.load()
 
     private var isAnyControllerConnected: Bool { model.isAnyControllerConnected }
 
@@ -22,12 +23,14 @@ struct InputSettingsPage: View {
             mouseCard
             modeCard
             controlsCard
+            controllerInputCard
             controllerToolsCard
             perGameMappingsCard
         }
         .onAppear {
             model.steamNavigator.start()
             inputMonitoringGranted = Self.isInputMonitoringGranted
+            controllerInputBackend = ControllerInputBackendPreference.load()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             inputMonitoringGranted = Self.isInputMonitoringGranted
@@ -146,6 +149,26 @@ struct InputSettingsPage: View {
             }
         }
         .settingsSection("controls")
+    }
+
+    private var controllerInputCard: some View {
+        SettingsCard(title: "Controller Input", uiScale: uiScale) {
+            SettingsOptionRow(
+                title: "Controller API",
+                subtitle: "Apple Framework reads controllers through GameController and adds a stick deadzone before sending. Gamepad API reads DualSense, DualShock 4 and Bluetooth Xbox controllers from their raw HID reports and sends every controller's sticks untouched, so only the game's deadzone applies. Other controllers are still read through Apple Framework.",
+                options: ControllerInputBackend.allCases.map(\.label),
+                selectedIndex: ControllerInputBackend.allCases.firstIndex(of: controllerInputBackend) ?? 0,
+                uiScale: uiScale,
+                action: setControllerInputBackend
+            )
+        }
+        .settingsSection("controller-input")
+    }
+
+    private func setControllerInputBackend(_ index: Int) {
+        guard ControllerInputBackend.allCases.indices.contains(index) else { return }
+        controllerInputBackend = ControllerInputBackend.allCases[index]
+        GamepadHIDMonitor.shared.applyPreference(controllerInputBackend)
     }
 
     private var mappingRow: some View {
@@ -283,6 +306,7 @@ extension InputSettingsPage {
         SettingsSection("mouse", "Mouse & Keyboard"),
         SettingsSection("mode", "Controller Mode"),
         SettingsSection("controls", "Controls"),
+        SettingsSection("controller-input", "Controller Input"),
         SettingsSection("controller-tools", "Controller Tools"),
         SettingsSection("per-game-mappings", "Per-Game Controller Mapping")
     ]

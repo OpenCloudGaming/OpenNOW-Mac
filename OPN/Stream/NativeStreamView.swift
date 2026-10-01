@@ -382,6 +382,7 @@ public final class NativeStreamView: NSView {
     var lastEmittedAbsoluteMouseEvent: NativeNVSTAbsoluteMouseEvent?
     var hidesLocalCursorOverVideo = false
     var activeGamepadStates: [Int: GamepadState] = [:]
+    public private(set) var latestGamepadStates: [Int: GamepadState] = [:]
     var streamContentSize = CGSize.zero
     let videoSurface = NativeVideoSurfaceView(frame: .zero)
     let nativeNVSTCompositionBar = NativeNVSTCompositionBarView(frame: .zero)
@@ -462,6 +463,7 @@ public final class NativeStreamView: NSView {
     /// Remote input disabled means a local overlay owns the pad: hand the
     /// state to the host for HUD/quit-menu navigation instead of the stream.
     private func routeGamepadState(_ state: GamepadState) {
+        latestGamepadStates[state.playerIndex] = state
         if remoteInputEnabled {
             receiveGamepadState(state)
         } else {
@@ -596,6 +598,10 @@ public final class NativeStreamView: NSView {
 
     public var gamepadTopology: StreamGamepadTopology {
         gamepadMonitor.topology
+    }
+
+    public func controllerInputPaths() -> [ControllerInputPath] {
+        gamepadMonitor.inputPaths()
     }
 
     public func playHaptic(_ command: NativeNVSTHapticCommand) {

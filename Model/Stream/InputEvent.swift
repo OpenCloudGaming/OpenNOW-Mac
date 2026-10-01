@@ -176,6 +176,8 @@ public struct GamepadState: Codable, Equatable, Hashable, Sendable {
     public let rightStickX: Float
     public let rightStickY: Float
     public let timestamp: MediaTimestamp
+    /// How this pad is being read, so the wire deadzone decision is made per pad.
+    public let inputSource: ControllerInputSource
 
     public init(deviceID: InputDeviceID,
                 playerIndex: Int,
@@ -186,7 +188,8 @@ public struct GamepadState: Codable, Equatable, Hashable, Sendable {
                 leftStickY: Float = 0,
                 rightStickX: Float = 0,
                 rightStickY: Float = 0,
-                timestamp: MediaTimestamp) {
+                timestamp: MediaTimestamp,
+                inputSource: ControllerInputSource = .appleFramework) {
         self.deviceID = deviceID
         self.playerIndex = max(0, playerIndex)
         self.buttons = buttons
@@ -197,6 +200,7 @@ public struct GamepadState: Codable, Equatable, Hashable, Sendable {
         self.rightStickX = Self.clampSignedUnit(rightStickX)
         self.rightStickY = Self.clampSignedUnit(rightStickY)
         self.timestamp = timestamp
+        self.inputSource = inputSource
     }
 
     private static func clampUnit(_ value: Float) -> Float {

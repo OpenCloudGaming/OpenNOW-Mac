@@ -219,6 +219,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     @Published var cursorPolicyIndex = OPNCursorPolicy.auto.rawValue
     /// The rumble ceiling (`ControllerRumblePreference`), mirrored for the HUD's slider.
     @Published var rumbleIntensityPercent = ControllerRumblePreference.loadIntensityPercent()
+    @Published var controllerInput = ControllerInputHUDState()
     @Published var upscalingSharpness = 10
     @Published var upscalingDenoise = 0
     @Published var nativeStreamResolutionText = ""

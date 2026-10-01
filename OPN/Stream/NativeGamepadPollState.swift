@@ -16,6 +16,7 @@ final class NativeGamepadPollState {
     private var pendingCommands: [KeybindingAction] = []
     private var mappingSessions: [ObjectIdentifier: ControllerMappingSession] = [:]
     var lastBatteryLevels: [ObjectIdentifier: Int] = [:]
+    var hidSnapshots: () -> [ObjectIdentifier: ControllerInputSnapshot] = { GamepadHIDMonitor.shared.snapshots() }
     private var timer: DispatchSourceTimer?
 
     func takePendingEvents() -> [UserInputEvent] {
@@ -83,12 +84,13 @@ final class NativeGamepadPollState {
         // poll. The per-controller `controllerSlots[id]` lookup below already skips anything unslotted.
         var events: [UserInputEvent] = []
         var batteryChanges: [ControllerBatteryInfo] = []
+        let rawSnapshots = hidSnapshots()
         for controller in cachedControllers {
             guard let gamepad = controller.extendedGamepad,
                   let playerIndex = controllerSlots[ObjectIdentifier(controller)] else { continue }
             let identifier = ObjectIdentifier(controller)
             guard var session = mappingSessions[identifier] else { continue }
-            let snapshot = ControllerInputSnapshot(gamepad: gamepad)
+            let snapshot = rawSnapshots[identifier] ?? ControllerInputSnapshot(gamepad: gamepad)
             let result = session.process(snapshot, now: .now,
                                          timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds))
             events.append(contentsOf: result.events)
