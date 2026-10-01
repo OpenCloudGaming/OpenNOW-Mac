@@ -178,6 +178,47 @@ struct NvstVideoToolboxDecoderTests {
         #expect(decoded.first?.keyframe == true)
     }
 
+    @Test func hevcTierChangeKeepsTheDecoderSession() throws {
+        guard VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) else { return }
+        let units = encodeAnnexB(codec: kCMVideoCodecType_HEVC, frameCount: 2)
+        try #require(units.count == 2)
+        let retiered = flippingHevcTier(units[0])
+        #expect(NvstElementaryStream.parameterSets(in: retiered, codec: .hevc) != NvstElementaryStream.parameterSets(in: units[0], codec: .hevc))
+
+        let decoder = NvstVideoToolboxDecoder(codec: .hevc)
+        try decoder.decode(accessUnit(units[0], index: 0, codec: .hevc))
+        #expect(decoder.decodedFrameCount == 1)
+        try decoder.decode(accessUnit(units[1], index: 1, codec: .hevc))
+        try decoder.decode(accessUnit(retiered, index: 2, codec: .hevc))
+        decoder.drain()
+
+        #expect(decoder.sessionCreationCount == 1)
+        #expect(decoder.decodedFrameCount == 3)
+        #expect(decoder.failedFrameCount == 0)
+    }
+
+    /// The same keyframe with the tier flag of its VPS and SPS profile_tier_level inverted, which
+    /// is how the seat re-sends parameter sets mid-stream.
+    private func flippingHevcTier(_ unit: Data) -> Data {
+        var bytes = [UInt8](unit)
+        var index = 0
+        while index + 3 < bytes.count {
+            guard bytes[index] == 0, bytes[index + 1] == 0, bytes[index + 2] == 1 else {
+                index += 1
+                continue
+            }
+            let header = index + 3
+            let tierOffset: Int? = switch (bytes[header] >> 1) & 0x3F {
+            case 32: 6
+            case 33: 3
+            default: nil
+            }
+            if let tierOffset, header + tierOffset < bytes.count { bytes[header + tierOffset] ^= 0x20 }
+            index = header
+        }
+        return Data(bytes)
+    }
+
     @Test func hardwareEncodedHevcRoundTripsBackToPixelBuffers() throws {
         guard VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC) else { return }
         let units = encodeAnnexB(codec: kCMVideoCodecType_HEVC, frameCount: 2)

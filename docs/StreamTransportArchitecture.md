@@ -714,6 +714,32 @@ resolver, HUD, announce and surround-info tests in that file stay.
 `WebRTC` package/project dependency and `Vendor/WebRTC.xcframework` are therefore *not* part of this
 deletion. Only the stream-side bundle and its exclusive audio device go.
 
+### Video stutter fixes, 2026-09-30
+
+Streams that played smoothly in the official client stuttered here: frames dropped every few
+seconds, VideoToolbox rejected frames, and the receiver reset itself and asked for a keyframe over
+and over. One 120 fps HEVC 3440×1440 session logged 15 decode errors and 465 recoveries; after these
+changes the same setup ran with none. Five causes, each fixed separately:
+
+- **Parity-only gaps were treated as loss.** Losing only the FEC repair packets of a block whose
+  source packets all arrived loses nothing: the frame is already complete. The receiver still
+  declared the gap lost, reset reassembly and requested a keyframe, every few seconds.
+  `NvstVideoReceiver` now steps over such gaps and counts them as `parityLoss`.
+- **Gap waits were bounded only in packets.** A gap waited up to 1,200 packets for FEC repair, which
+  in light scenes held every frame behind one lost packet for up to 1.7 s; even the plain 32-packet
+  reorder window held ten frames for 260 ms in a menu streaming ~120 packets a second. A gap is now
+  also declared lost once it has been open for 100 ms. Busy scenes reach the packet windows long
+  before that, so they are unchanged.
+- **Asynchronous decode held frames.** `NvstVideoToolboxDecoder` asked VideoToolbox for
+  asynchronous decompression, which queued frames inside the decoder. It now decodes synchronously,
+  as the official client does (decode flags 0), and each frame comes back as soon as it is done.
+- **Parameter-set changes rebuilt the decoder.** The seat flips the HEVC tier flag mid-stream, and
+  every flip destroyed and recreated the decompression session, dropping frames. The session is now
+  kept whenever `VTDecompressionSessionCanAcceptFormatDescription` accepts the new format.
+- **Zero padding read as a NAL unit.** Trailing zero bytes between start codes reached VideoToolbox
+  as an empty NAL unit, which it rejects with `-12909` (bad data). `NvstElementaryStream` and
+  `NvstAnnexB` trim trailing zeros (H.264 §7.4.1, H.265 §7.4.2) and skip empty units.
+
 ### Verification gates
 
 - Xcode build/tests establish that the single host path compiles and the native lifecycle,

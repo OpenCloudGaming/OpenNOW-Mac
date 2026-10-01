@@ -5,6 +5,19 @@ import Testing
 @Suite(.serialized)
 struct NvstAnnexBTests {
 
+    /// The seat pads some access units with zeros before a start code (seen live ahead of a
+    /// parameter-set change). Taken as a unit, `00 00` is an invalid NAL header and VideoToolbox
+    /// rejected the whole frame as bad data.
+    @Test func zeroPaddingBetweenStartCodesIsNotANalUnit() {
+        let slice: [UInt8] = [0x02, 0x01, 0xd4, 0x60, 0x8a]
+        let accessUnit = Data([0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01] + slice + [0x00, 0x00])
+        let units = NvstAnnexB.nalUnits(accessUnit)
+        #expect(units.count == 1)
+        #expect(units.first?.length == slice.count)
+        let sample = NvstElementaryStream.prepare(accessUnit, codec: .hevc).sample
+        #expect(sample == Data([0x00, 0x00, 0x00, UInt8(slice.count)] + slice))
+    }
+
     @Test func findStartCodeFindsFourByteFirst() {
         let data = Data([0x00, 0x00, 0x00, 0x01, 0x65])
         let found = NvstAnnexB.findStartCode(data)

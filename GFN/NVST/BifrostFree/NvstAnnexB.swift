@@ -42,6 +42,12 @@ public enum NvstAnnexB {
     public static func nalUnits(_ bytes: Data) -> [(offset: Int, length: Int)] {
         let buffer = [UInt8](bytes)
         var units: [(offset: Int, length: Int)] = []
+        // Trailing zeros are byte-stream padding, never part of a NAL unit.
+        func appendTrimmed(start: Int, end: Int) {
+            var end = end
+            while end > start, buffer[end - 1] == 0 { end -= 1 }
+            if end > start { units.append((start, end - start)) }
+        }
         var cursor = 0
         var currentStart: Int?
         while cursor <= buffer.count - 3 {
@@ -52,15 +58,11 @@ public enum NvstAnnexB {
                 continue
             }
             let prefixLength = isFour ? 4 : 3
-            if let start = currentStart, cursor > start {
-                units.append((start, cursor - start))
-            }
+            if let start = currentStart { appendTrimmed(start: start, end: cursor) }
             currentStart = cursor + prefixLength
             cursor += prefixLength
         }
-        if let start = currentStart, start < buffer.count {
-            units.append((start, buffer.count - start))
-        }
+        if let start = currentStart { appendTrimmed(start: start, end: buffer.count) }
         return units
     }
 

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import OpenNOW
 
@@ -336,6 +337,204 @@ struct NvstMjolnirReceiverTests {
         #expect(receiver.snapshot.finalizedLossPackets == 0)
     }
 
+    /// A light scene sends few packets, so the repair window measured in packets could hold every
+    /// later frame for seconds. Once repair has had its time, the gap becomes loss.
+    /// A menu can run at ~120 packets/s, where 32 packets take a quarter of a second: the gap is
+    /// loss once it has waited out the time bound, however few packets arrived behind it.
+    @Test func aGapInALightStreamBecomesLossAfterTheTimeBoundNotThePacketWindow() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 32)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        func frame(_ sequence: UInt16) throws -> Data {
+            try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07,
+                                                                      media: [0x00, 0x00, 0x00, 0x01, 0x41, UInt8(sequence)]),
+                                          sequence: sequence, handoff: handoff)
+        }
+        _ = receiver.process(datagram: try frame(1))
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(3))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitNanoseconds - 1 }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(4))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitNanoseconds }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(5))) == 1)
+        #expect(receiver.snapshot.finalizedLossPackets == 1)
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try frame(6))) == 0)
+    }
+
+    /// Losing only a block's repair packet loses nothing: the frame already completed, so the next
+    /// frame is delivered at once instead of waiting on the gap and then asking for a keyframe.
+    @Test func aLostParityPacketOfACompleteBlockIsSteppedOver() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let receiver = try NvstVideoReceiver(handoff: handoff)
+
+        func fecWord(index: UInt32) -> UInt32 { (50 << 4) | (index << 12) | (2 << 22) }
+        func blockPackets(frameIndex: UInt32, baseSequence: UInt16, seed: UInt8) -> [(UInt16, Data)] {
+            let sof = NvstReceiverFixtures.packet(sequence: baseSequence, frameIndex: frameIndex, flags: 0x05,
+                             media: [0x00, 0x00, 0x00, 0x01, 0x65, seed], fecWord: fecWord(index: 0))
+            let eof = NvstReceiverFixtures.packet(sequence: baseSequence + 1, frameIndex: frameIndex, flags: 0x03,
+                             media: [0xbb, seed, 0xcc], fecWord: fecWord(index: 1))
+            let size = max(sof.count, eof.count)
+            let shards = [sof, eof].map { source -> [UInt8] in
+                let bytes = [UInt8](source)
+                return bytes.count == size ? bytes : bytes + [UInt8](repeating: 0, count: size - bytes.count)
+            }
+            let parity = NvstReedSolomon.encode(data: shards, parityCount: 1, size: size)!
+            let parityHeader = NvstReceiverFixtures.packet(sequence: baseSequence + 2, frameIndex: frameIndex, flags: 0x00,
+                                      media: [], fecWord: fecWord(index: 2))
+            return [(baseSequence, sof), (baseSequence + 1, eof),
+                    (baseSequence + 2, parityHeader + Data(parity[0][NvstFecRecovery.headerLength...]))]
+        }
+        var emitted = 0
+        var recoveries = 0
+        let frameCount = NvstFecRecovery.verificationTarget + 3
+        for round in 0..<frameCount {
+            let packets = blockPackets(frameIndex: UInt32(round + 1), baseSequence: UInt16(round * 3 + 1), seed: UInt8(round))
+            let lossy = round == NvstFecRecovery.verificationTarget
+            for (position, (sequence, plain)) in packets.enumerated() where !(lossy && position == 2) {
+                let events = receiver.process(datagram: try NvstReceiverFixtures.seal(plain, sequence: sequence, handoff: handoff))
+                emitted += NvstReceiverFixtures.frames(events).count
+                recoveries += NvstReceiverFixtures.recoveries(events)
+            }
+        }
+        #expect(receiver.fecFindings.isArmed)
+        #expect(emitted == frameCount)
+        #expect(recoveries == 0)
+        #expect(receiver.snapshot.finalizedLossPackets == 0)
+        #expect(receiver.snapshot.parityOnlyLossPackets == 1)
+    }
+
+}
+
+/// The armed FEC repair wait: how long an open gap is held for parity that is still in flight,
+/// and what happens when that parity arrives — or never does.
+@Suite(.serialized)
+struct NvstFecRepairWaitTests {
+    /// One FEC block as the seat sends it: `sourceCount` sources plus `percentage`% parity, every
+    /// shard zero-padded to the block's uniform size.
+    private func fecBlock(frameIndex: UInt32,
+                          baseSequence: UInt16,
+                          sourceCount: UInt32,
+                          percentage: UInt32,
+                          seed: UInt8) -> [(UInt16, Data)] {
+        func fecWord(index: UInt32) -> UInt32 { (percentage << 4) | (index << 12) | (sourceCount << 22) }
+        let sources = (0..<Int(sourceCount)).map { index -> Data in
+            var flags: UInt8 = 0x01
+            if index == 0 { flags |= 0x04 }
+            if index == Int(sourceCount) - 1 { flags |= 0x02 }
+            let media: [UInt8] = index == 0
+                ? [0x00, 0x00, 0x00, 0x01, 0x65, seed]
+                : [0xbb, UInt8(truncatingIfNeeded: index), seed]
+            return NvstReceiverFixtures.packet(sequence: baseSequence + UInt16(index), frameIndex: frameIndex,
+                                               flags: flags, media: media, fecWord: fecWord(index: UInt32(index)))
+        }
+        let size = sources.map(\.count).max() ?? 0
+        let shards = sources.map { source -> [UInt8] in
+            let bytes = [UInt8](source)
+            return bytes.count == size ? bytes : bytes + [UInt8](repeating: 0, count: size - bytes.count)
+        }
+        let parityCount = (Int(sourceCount) * Int(percentage) + 99) / 100
+        guard let parity = NvstReedSolomon.encode(data: shards, parityCount: parityCount, size: size) else { return [] }
+        var packets = sources.enumerated().map { (baseSequence + UInt16($0.offset), $0.element) }
+        for (offset, shard) in parity.enumerated() {
+            let index = sourceCount + UInt32(offset)
+            let header = NvstReceiverFixtures.packet(sequence: baseSequence + UInt16(index), frameIndex: frameIndex,
+                                                     flags: 0x00, media: [], fecWord: fecWord(index: index))
+            packets.append((baseSequence + UInt16(index), header + Data(shard[NvstFecRecovery.headerLength...])))
+        }
+        return packets
+    }
+
+    /// Arms FEC the way the seat does: `verificationTarget` complete blocks whose re-encoded parity
+    /// matches byte for byte. Until then recovery is inert and the armed repair window never applies.
+    private func armFec(receiver: NvstVideoReceiver, handoff: NVSTVideoHandoff) throws {
+        for round in 0..<NvstFecRecovery.verificationTarget {
+            for (sequence, plain) in fecBlock(frameIndex: UInt32(round + 1), baseSequence: UInt16(round * 3 + 1),
+                                              sourceCount: 2, percentage: 50, seed: UInt8(round)) {
+                _ = receiver.process(datagram: try NvstReceiverFixtures.seal(plain, sequence: sequence, handoff: handoff))
+            }
+        }
+        #expect(receiver.fecFindings.isArmed)
+    }
+
+    /// With FEC armed the repair window governs, not the flat bound, so the gap is still held past
+    /// 100 ms — and the wall-clock ceiling still finalizes it, so a calm scene cannot freeze.
+    @Test func anOpenGapOutlivesTheFlatBoundWhileFecRepairMayStillArrive() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        try armFec(receiver: receiver, handoff: handoff)
+
+        let base = UInt16(NvstFecRecovery.verificationTarget * 3 + 1)
+        func farPacket(_ offset: UInt16) throws -> Data {
+            try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: base + offset, frameIndex: 99, flags: 0x05,
+                                                                      media: [0x00, 0x00, 0x00, 0x01, 0x65]),
+                                          sequence: base + offset, handoff: handoff)
+        }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try farPacket(20))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitNanoseconds }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try farPacket(21))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitCeilingNanoseconds - 1 }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try farPacket(22))) == 0)
+        clock.withLock { $0 = NvstVideoReceiver.fecRepairMaximumWaitCeilingNanoseconds }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try farPacket(23))) == 1)
+        #expect(receiver.snapshot.finalizedLossPackets == 20)
+    }
+
+    /// A block's parity trails an early-frame hole by most of the block, so at a rate where that
+    /// takes longer than the flat bound, the held gap is repaired instead of escalating.
+    @Test func aRepairableFecGapIsRepairedAfterTheFlatTimeBound() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        try armFec(receiver: receiver, handoff: handoff)
+
+        let base = UInt16(NvstFecRecovery.verificationTarget * 3 + 1)
+        let block = fecBlock(frameIndex: 500, baseSequence: base, sourceCount: 250, percentage: 2, seed: 9)
+        #expect(block.count == 255)
+        let perPacket = UInt64(1_000_000_000 / 1_600)
+        var recoveries = 0
+        var frames = 0
+        // One source of the block is lost; the block's own parity is what has to put it back.
+        for (sequence, plain) in block where sequence != base + 1 {
+            clock.withLock { $0 &+= perPacket }
+            let events = receiver.process(datagram: try NvstReceiverFixtures.seal(plain, sequence: sequence, handoff: handoff))
+            recoveries += NvstReceiverFixtures.recoveries(events)
+            frames += NvstReceiverFixtures.frames(events).count
+        }
+        #expect(clock.withLock { $0 } > NvstVideoReceiver.fecRepairMaximumWaitNanoseconds)
+        #expect(recoveries == 0)
+        #expect(frames == 1)
+        #expect(receiver.fecFindings.recoveredPackets == 1)
+        #expect(receiver.snapshot.finalizedLossPackets == 0)
+    }
+
+    /// The repair window is measured in packets, so its wall-clock length depends on the rate: at
+    /// ~8,500 packets/s the 1,200-packet window is ~140 ms, and an armed gap waits it out.
+    @Test func theFecRepairWindowGovernsAtAHighPacketRate() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        try armFec(receiver: receiver, handoff: handoff)
+
+        let base = UInt16(NvstFecRecovery.verificationTarget * 3 + 1)
+        let perPacket = UInt64(1_000_000_000 / 8_500)
+        func packet(_ offset: UInt16) throws -> Data {
+            try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: base + offset, frameIndex: 99, flags: 0x05,
+                                                                      media: [0x00, 0x00, 0x00, 0x01, 0x65]),
+                                          sequence: base + offset, handoff: handoff)
+        }
+        _ = receiver.process(datagram: try packet(0))
+        var recoveries = 0
+        // 1,199 packets behind the hole: ~141 ms, past the flat bound and inside the repair window.
+        for offset in UInt16(2)...UInt16(NvstVideoReceiver.fecRepairReorderWindow) {
+            clock.withLock { $0 &+= perPacket }
+            recoveries += NvstReceiverFixtures.recoveries(receiver.process(datagram: try packet(offset)))
+        }
+        #expect(clock.withLock { $0 } > NvstVideoReceiver.fecRepairMaximumWaitNanoseconds)
+        #expect(recoveries == 0)
+        #expect(receiver.snapshot.finalizedLossPackets == 0)
+        clock.withLock { $0 &+= perPacket }
+        #expect(NvstReceiverFixtures.recoveries(receiver.process(datagram: try packet(UInt16(NvstVideoReceiver.fecRepairReorderWindow + 1)))) == 1)
+    }
 }
 
 @Suite struct NvstInboundCounterTests {
