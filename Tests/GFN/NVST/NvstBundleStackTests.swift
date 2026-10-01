@@ -155,14 +155,14 @@ import Testing
         let withMicrophoneSocket = try LoopbackDatagramSocket()
         let withMicrophone = NvstNativeBundle(handoff: Self.seatHandoff(peerPort: withMicrophoneSocket.port), identity: try NvstDtlsIdentity())
         defer { withMicrophone.close() }
-        _ = try await withMicrophone.prepare(microphone: .init(volume: 1, initiallyEnabled: true), audioChannelCount: 2)
+        _ = try await withMicrophone.prepare(microphone: .init(volume: 1, initiallyEnabled: true), audioLayout: .stereo)
         #expect(withMicrophone.microphoneNegotiation.negotiated)
         #expect(withMicrophone.microphoneNegotiation.senderSsrc == NvstAudioSendPipeline.microphoneSSRC)
 
         let withoutMicrophoneSocket = try LoopbackDatagramSocket()
         let withoutMicrophone = NvstNativeBundle(handoff: Self.seatHandoff(peerPort: withoutMicrophoneSocket.port), identity: try NvstDtlsIdentity())
         defer { withoutMicrophone.close() }
-        _ = try await withoutMicrophone.prepare(microphone: nil, audioChannelCount: 2)
+        _ = try await withoutMicrophone.prepare(microphone: nil, audioLayout: .stereo)
         #expect(!withoutMicrophone.microphoneNegotiation.negotiated)
         #expect(withoutMicrophone.microphoneNegotiation.senderSsrc == nil)
     }
@@ -176,7 +176,7 @@ import Testing
         let audioTracks = AudioTrackBox()
         bundle.onRemoteAudio = { audioTracks.record($0) }
         bundle.setRemoteAudioMuted(true)
-        let identity = try await bundle.prepare(microphone: microphone, audioChannelCount: 2)
+        let identity = try await bundle.prepare(microphone: microphone, audioLayout: .stereo)
         let seat = try startSeat(socket: serverSocket,
                                  identity: try NvstDtlsIdentity(),
                                  clientFingerprint: clientIdentity.fingerprint,

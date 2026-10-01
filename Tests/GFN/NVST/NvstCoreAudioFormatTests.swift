@@ -57,22 +57,31 @@ import Testing
         }
     }
 
+    private func rendered(_ samples: [Float], frames: Int, onto speakers: [AudioChannelLabel]) -> [Int16] {
+        var output = [Int16](repeating: -1, count: frames * speakers.count)
+        output.withUnsafeMutableBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            NvstSpeakerMatrix(from: NvstOpusMultistreamLayout.stereo.speakers, to: speakers).render(samples, frames: frames, into: base)
+        }
+        return output
+    }
+
     @Test func decodedStereoMapsOntoWhateverChannelCountTheDeviceCarries() {
         let stereo: [Float] = [0.5, -0.5, 0.25, 0]
-        #expect(NvstCoreAudioFormat.interleavedSamples(fromStereo: stereo, frames: 2, outputChannels: 2)
+        #expect(rendered(stereo, frames: 2, onto: NvstSpeakerMatrix.speakers(reported: [], channels: 2))
                 == [16384, -16384, 8192, 0])
         // A mono device averages the pair rather than dropping a side.
-        #expect(NvstCoreAudioFormat.interleavedSamples(fromStereo: stereo, frames: 2, outputChannels: 1)
+        #expect(rendered(stereo, frames: 2, onto: NvstSpeakerMatrix.speakers(reported: [], channels: 1))
                 == [0, 4096])
         // A wider layout keeps the pair in the front channels and leaves the rest silent, so the
         // stereo decode is never reinterpreted as interleaved surround.
-        #expect(NvstCoreAudioFormat.interleavedSamples(fromStereo: stereo, frames: 2, outputChannels: 6)
+        #expect(rendered(stereo, frames: 2, onto: NvstSpeakerMatrix.speakers(reported: [], channels: 6))
                 == [16384, -16384, 0, 0, 0, 0, 8192, 0, 0, 0, 0, 0])
         // A short decode is padded with silence instead of reading past its end.
-        #expect(NvstCoreAudioFormat.interleavedSamples(fromStereo: [1], frames: 2, outputChannels: 2)
+        #expect(rendered([1, 0], frames: 2, onto: NvstSpeakerMatrix.speakers(reported: [], channels: 2))
                 == [Int16.max, 0, 0, 0])
         // A non-finite sample saturates cleanly instead of trapping the render thread.
-        #expect(NvstCoreAudioFormat.interleavedSamples(fromStereo: [.infinity, -.infinity], frames: 1, outputChannels: 2)
+        #expect(rendered([.infinity, -.infinity], frames: 1, onto: NvstSpeakerMatrix.speakers(reported: [], channels: 2))
                 == [Int16.max, -Int16.max])
     }
 

@@ -102,6 +102,8 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     public private(set) var deviceOutputSampleRate: Double = NvstCoreAudioFormat.sampleRate
     public private(set) var deviceInputSampleRate: Double = NvstCoreAudioFormat.sampleRate
     public private(set) var outputChannels = 2
+    /// The speaker behind each playout channel, fixed while the playout unit runs.
+    public private(set) var playoutSpeakers = NvstSpeakerMatrix.speakers(reported: [], channels: 2)
     public private(set) var inputChannels = 1
     public private(set) var outputIOBufferDuration: TimeInterval = 0.01
     public private(set) var outputLatency: TimeInterval = 0
@@ -354,6 +356,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         var device = outputDevice
         AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &device, UInt32(MemoryLayout<AudioDeviceID>.size))
         applyOutputBufferFrameSize(unit: unit, device: outputDevice)
+        playoutSpeakers = NvstSpeakerMatrix.speakers(reported: preferredSpeakers(of: outputDevice), channels: outputChannels)
         var format = NvstCoreAudioFormat.linear16Format(sampleRate: outputSampleRate, channels: UInt32(outputChannels))
         AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &format, UInt32(MemoryLayout<AudioStreamBasicDescription>.size))
         var callback = AURenderCallbackStruct(inputProc: nvstPlayoutCallback, inputProcRefCon: Unmanaged.passUnretained(self).toOpaque())
@@ -533,6 +536,22 @@ extension NvstCoreAudioDevice {
         var channels: UInt32 = 0
         for buffer in UnsafeMutableAudioBufferListPointer(bufferList) { channels += buffer.mNumberChannels }
         return Int(channels)
+    }
+
+    private func preferredSpeakers(of device: AudioDeviceID) -> [AudioChannelLabel] {
+        guard device != AudioDeviceID(kAudioObjectUnknown) else { return [] }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyPreferredChannelLayout,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr,
+              Int(size) >= MemoryLayout<AudioChannelLayout>.size else { return [] }
+        let storage = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioChannelLayout>.alignment)
+        defer { storage.deallocate() }
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, storage) == noErr else { return [] }
+        return NvstSpeakerMatrix.labels(of: storage.assumingMemoryBound(to: AudioChannelLayout.self))
     }
 
     private func latency(for device: AudioDeviceID, scope: AudioObjectPropertyScope, sampleRate: Double) -> TimeInterval {
