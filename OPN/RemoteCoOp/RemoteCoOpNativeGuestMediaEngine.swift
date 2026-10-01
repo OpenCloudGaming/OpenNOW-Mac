@@ -40,7 +40,13 @@ final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
     /// Connection-state text for the UI.
     var onState: (@Sendable (String) -> Void)?
 
+    /// Video: reassembly and the VideoToolbox decode. Serial because the decoder is, and because a
+    /// decode now runs to completion on the calling thread (`NvstVideoToolboxDecoder.decode`).
     private let queue: DispatchQueue
+    /// Audio, deliberately not `queue`: a decode runs to completion on that one, so sharing it put
+    /// every audio chunk behind a frame's decode time.
+    private let audioQueue = DispatchQueue(label: "io.github.opencloudgaming.opennow.remote-coop.native-guest-audio",
+                                           qos: .userInteractive)
     private let reassembler = OPNRemoteCoOpCompressedVideoReassembler()
     private var decoder: NvstVideoToolboxDecoder?
     private var decoderCodec: NVSTVideoCodec?
@@ -60,7 +66,8 @@ final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
         startReporter()
     }
 
-    /// Feeds one datagram. Safe to call from any thread; the engine serializes on its own queue.
+    /// Feeds one datagram. Safe to call from any thread: audio and video each serialize on their own
+    /// queue.
     func ingest(_ datagram: Data) {
         counterLock.lock()
         windowDatagrams &+= 1
@@ -68,10 +75,10 @@ final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
         counters.datagrams &+= 1
         counterLock.unlock()
         if OPNRemoteCoOpAudioPacket.isAudioDatagram(datagram) {
-            queue.async { self.receiveAudio(datagram) }
-        } else {
-            queue.async { self.decode(datagram) }
+            audioQueue.async { self.receiveAudio(datagram) }
+            return
         }
+        queue.async { self.decode(datagram) }
     }
 
     func reset() {
@@ -81,24 +88,37 @@ final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
         windowBytes = 0
         windowDecoded = 0
         counterLock.unlock()
-        queue.async {
-            self.audioDevice?.stop()
-            self.audioDevice = nil
-            self.audioBuffer.reset()
-            self.didAnnounceAudio = false
-            self.decoder = nil
-            self.decoderCodec = nil
-        }
+        audioQueue.async { self.teardownAudio() }
+        queue.async { self.releaseDecoder() }
     }
 
     func stop() {
         reporter?.cancel()
         reporter = nil
-        queue.sync {
-            self.audioDevice?.stop()
-            self.audioDevice = nil
-            self.audioBuffer.reset()
-        }
+        // Audio stops synchronously, so the speaker is quiet when this returns. The video queue is
+        // not awaited: a decode runs to completion there and would block the caller for a frame.
+        audioQueue.sync { self.teardownAudio() }
+        queue.async { self.releaseDecoder() }
+    }
+
+    private func teardownAudio() {
+        audioDevice?.stop()
+        audioDevice = nil
+        audioBuffer.reset()
+        didAnnounceAudio = false
+    }
+
+    private func releaseDecoder() {
+        decoder = nil
+        decoderCodec = nil
+    }
+
+    /// Audio chunks accepted onto the playout buffer. The 1 Hz stats reporter is too coarse for a
+    /// test that needs to see audio make progress while the video queue is busy.
+    var audioChunkCount: UInt64 {
+        counterLock.lock()
+        defer { counterLock.unlock() }
+        return counters.audioChunks
     }
 
     private func receiveAudio(_ data: Data) {

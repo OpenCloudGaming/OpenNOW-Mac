@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-SOURCE=${1:?Usage: bash scripts/build-usrsctp.sh /path/to/usrsctp}
-ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+SOURCE=${1:?Usage: bash scripts/build/build-usrsctp.sh /path/to/usrsctp}
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 SOURCE=$(cd "$SOURCE" && pwd)
 REVISION=07f871bda23943c43c9e74cc54f25130459de830
 CMAKE=${CMAKE:-cmake}

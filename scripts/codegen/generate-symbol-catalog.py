@@ -5,7 +5,7 @@ Reads the symbol metadata that ships inside the system's SFSymbols framework and
 curated, self-contained JSON file to ``Resources/CollectionIcons/sf-symbols.json``. Run it
 when the deployment floor (and therefore the newest symbols the picker may offer) moves::
 
-    scripts/generate-symbol-catalog.py
+    scripts/codegen/generate-symbol-catalog.py
 
 The output is committed, so the app never reads the framework's private resources at runtime.
 Availability is capped at the SF Symbols release that ships with the macOS deployment floor
@@ -28,7 +28,7 @@ FRAMEWORK_RESOURCES = Path(
     "/System/Library/PrivateFrameworks/SFSymbols.framework/Versions/A/Resources"
 )
 GLYPHS_RESOURCES = FRAMEWORK_RESOURCES / "CoreGlyphs.bundle/Contents/Resources"
-OUTPUT = Path(__file__).resolve().parent.parent / "Resources/CollectionIcons/sf-symbols.json"
+OUTPUT = Path(__file__).resolve().parent.parent.parent / "Resources/CollectionIcons/sf-symbols.json"
 
 CATEGORY_TITLES = {
     "communication": "Communication",

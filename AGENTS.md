@@ -17,8 +17,8 @@ Execute every task in this order:
 - Run SwiftPM commands from the repository root unless a task explicitly requires otherwise.
 - Use `--scratch-path .build/shared` for SwiftPM commands that generate build state, including `swift build`, `swift test`, `swift run`, and relevant `swift package` commands.
 - Do not run package-local SwiftPM commands that create package-specific `.build` directories. Use the root `Package.swift` with the shared scratch path instead.
-- After SwiftPM-heavy tasks, run `scripts/report-spm-build-size.sh` to check generated build size and duplicated binary artifact extractions.
-- If generated SwiftPM files exceed the warning threshold or duplicate `artifacts/sentry-cocoa` directories appear, run `scripts/clean-spm-builds.sh`, then rerun builds/tests with `--scratch-path .build/shared`.
+- After SwiftPM-heavy tasks, run `scripts/build/report-spm-build-size.sh` to check generated build size and duplicated binary artifact extractions.
+- If generated SwiftPM files exceed the warning threshold or duplicate `artifacts/sentry-cocoa` directories appear, run `scripts/build/clean-spm-builds.sh`, then rerun builds/tests with `--scratch-path .build/shared`.
 - Never commit generated build artifacts.
 
 # Repository Identity
