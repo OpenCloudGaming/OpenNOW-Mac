@@ -49,7 +49,7 @@ user time, it returned 0.0 ms. `ps` agreed with `/usr/bin/time`. That is why the
 | Machine | Mac Studio (Mac14,14), Apple M2 Ultra, 24 cores (16P/8E), 64 GB unified memory |
 | OS | macOS 27.0 (build 26A428) |
 | Toolchain | Xcode 27.0 (27A266a), Apple Swift 6.4 |
-| Tree | `1a5bc7cb` (the change that adds this document touches `scripts/profiling/` and `docs/` only) |
+| Tree | `1a5bc7cb` (the app build measured; the change that adds this document changes no app behaviour) |
 | Configuration | **Debug** |
 | App | `OpenNOW Dev.app`, `io.github.opencloudgaming.opennow.dev` |
 | App binary fingerprint | `1d67d34797f7692f`, built 2026-10-01T01:37:23Z |
