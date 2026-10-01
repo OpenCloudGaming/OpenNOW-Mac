@@ -27,9 +27,9 @@ fingerprint, the display size, the app window's bounds, and the exact cursor anc
 
 Examples::
 
-    scripts/cpu-baseline.py --state all
-    scripts/cpu-baseline.py --state catalog-scroll --seconds 120 --runs 5
-    scripts/cpu-baseline.py --state stream-idle --cms-id 101729111 --json /tmp/cpu.json
+    scripts/profiling/cpu-baseline.py --state all
+    scripts/profiling/cpu-baseline.py --state catalog-scroll --seconds 120 --runs 5
+    scripts/profiling/cpu-baseline.py --state stream-idle --cms-id 101729111 --json /tmp/cpu.json
 
 The capture holds a ``caffeinate`` assertion for its whole run. Without it the display sleeps after
 its idle timeout and a window that is no longer on screen stops taking scroll events - a scroll run
@@ -39,6 +39,10 @@ looks like a number.
 Only ``stream-idle`` needs a signed-in GeForce NOW account and a launchable title; the two catalog
 states run against a signed-out catalog as well. Requires Xcode (for the built app and ``ps``) and,
 for synthetic input, Accessibility permission for the terminal running the script.
+
+Lives under ``scripts/profiling/`` because it measures the app rather than building or shipping it:
+``scripts/`` proper holds the build, release and codegen steps, and ``Benchmarks/`` is a SwiftPM
+executable target that cannot take a non-Swift file without an ``exclude`` entry in ``Package.swift``.
 """
 
 from __future__ import annotations
@@ -58,7 +62,7 @@ from pathlib import Path
 
 STATES = ("catalog-idle", "catalog-scroll", "stream-idle")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DIAGNOSTICS_LOG = Path.home() / "Library/Caches/OpenNOW/OpenNOW-diagnostics-current.log"
 DERIVED_DATA = Path.home() / "Library/Developer/Xcode/DerivedData"
 AUTOPILOT_DIR = Path.home() / "Library/Logs/OpenNOW/autopilot"
