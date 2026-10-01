@@ -106,7 +106,8 @@ public struct ControllerBindingEngine: Sendable {
             leftStickY: leftStickPassthrough ? snapshot.leftStickY : 0,
             rightStickX: Self.clampAxis(forwardedRightStickX + gyroOutput.stickX),
             rightStickY: Self.clampAxis(forwardedRightStickY + gyroOutput.stickY),
-            timestamp: timestamp
+            timestamp: timestamp,
+            inputSource: snapshot.inputSource
         )))
 
         return ControllerBindingResult(events: pass.events, nextReapplyDelay: pass.nextReapplyDelay, commands: pass.commands)

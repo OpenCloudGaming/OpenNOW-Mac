@@ -54,6 +54,12 @@ private func parsedState(_ report: [UInt8], previous: ControllerInputSnapshot = 
 }
 
 @Suite struct SteamControllerReportTests {
+    /// A Steam Controller's report carries no stick deadzone, so the wire must keep applying the
+    /// client one: the parsed values have to be labelled with the path that needs it.
+    @Test func aParsedSteamReportIsLabelledAsSteamHID() {
+        #expect(parsedState(inputReport(buttons: (0b1111_1100, 0, 0))).inputSource == .steamHID)
+    }
+
     @Test func mapsFaceAndShoulderButtons() {
         let snapshot = parsedState(inputReport(buttons: (0b1111_1100, 0, 0)))
         #expect(snapshot.buttons.contains(.south))

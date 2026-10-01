@@ -138,6 +138,7 @@ public final class NativeGamepadMonitor {
         pollingQueue.sync { pollState.stopPolling() }
         observerTokens.forEach(NotificationCenter.default.removeObserver)
         let consumerKey = ObjectIdentifier(self)
+        GamepadHIDMonitor.shared.release(consumerKey)
         Task { @MainActor in
             SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
             SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
@@ -208,6 +209,7 @@ public final class NativeGamepadMonitor {
 
     public func start() {
         pollingAllowed = true
+        GamepadHIDMonitor.shared.acquire(ObjectIdentifier(self))
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
         SteamControllerHIDMonitor.shared.beginInputCapture(self)
         SteamControllerHIDMonitor.shared.register(
@@ -225,6 +227,7 @@ public final class NativeGamepadMonitor {
 
     public func stop() {
         pollingAllowed = false
+        GamepadHIDMonitor.shared.release(ObjectIdentifier(self))
         SteamControllerHIDMonitor.shared.unregister(self)
         SteamControllerHIDMonitor.shared.endInputCapture(self)
         reapplyTasks.values.forEach { $0.cancel() }
@@ -321,6 +324,23 @@ public final class NativeGamepadMonitor {
 
     public func refreshInputState() {
         refreshControllerSlots()
+    }
+
+    public func inputPaths() -> [ControllerInputPath] {
+        let (controllerSlots, steamSlots, controllers) = pollingQueue.sync {
+            (pollState.controllerSlots, pollState.steamControllerSlots, pollState.cachedControllers)
+        }
+        let rawReadControllerIDs = GamepadHIDMonitor.shared.rawReadControllerIDs()
+        let nativePaths = controllers.compactMap { controller -> ControllerInputPath? in
+            let key = ObjectIdentifier(controller)
+            guard let slot = controllerSlots[key] else { return nil }
+            let source: ControllerInputSource = rawReadControllerIDs.contains(key) ? .gamepadAPI : .appleFramework
+            return ControllerInputPath(playerIndex: slot,
+                                       name: controller.vendorName ?? controller.productCategory,
+                                       source: source)
+        }
+        let steamPaths = steamSlots.values.map { ControllerInputPath(playerIndex: $0, name: "Steam Controller", source: .steamHID) }
+        return (nativePaths + steamPaths).sorted { $0.playerIndex < $1.playerIndex }
     }
 
     private func refreshControllerSlots() {

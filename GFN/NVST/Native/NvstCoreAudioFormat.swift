@@ -20,8 +20,7 @@ public enum NvstCoreAudioFormat {
     }
 
     /// What the device should ask the hardware for: a surround count is only used when the device can
-    /// actually carry it. libwebrtc cannot fold a surround decode down to fewer channels, so handing
-    /// a stereo device a six-channel count produces silence rather than a downmix.
+    /// actually carry it. A narrower device gets stereo, and `NvstSpeakerMatrix` folds the decode into it.
     public static func playoutChannelCount(requested: Int, deviceChannels: Int) -> Int {
         let supported = supportedPlayoutChannelCount(requested)
         guard supported > 2, deviceChannels >= supported else {
@@ -49,28 +48,7 @@ public enum NvstCoreAudioFormat {
         return stereo
     }
 
-    /// Places decoded stereo samples into an interleaved 16-bit buffer of `outputChannels` channels:
-    /// mono averages the pair, stereo keeps them, and any further channels stay silent so a hardware
-    /// layout wider than the decode never receives shifted samples. The decode here is always stereo,
-    /// so a surround device is filled from the front pair rather than misread as interleaved.
-    public static func interleavedSamples(fromStereo samples: [Float], frames: Int, outputChannels: Int) -> [Int16] {
-        let frameCount = max(0, frames)
-        let channels = max(1, outputChannels)
-        var output = [Int16](repeating: 0, count: frameCount * channels)
-        for frame in 0..<frameCount {
-            let left = frame * 2 < samples.count ? samples[frame * 2] : 0
-            let right = frame * 2 + 1 < samples.count ? samples[frame * 2 + 1] : 0
-            if channels == 1 {
-                output[frame] = clamped16((left + right) / 2)
-                continue
-            }
-            output[frame * channels] = clamped16(left)
-            output[frame * channels + 1] = clamped16(right)
-        }
-        return output
-    }
-
-    private static func clamped16(_ value: Float) -> Int16 {
+    static func clamped16(_ value: Float) -> Int16 {
         let bounded: Float = value.isFinite ? value : (value > 0 ? 1 : (value < 0 ? -1 : 0))
         let scaled = bounded * Float(Int16.max)
         if scaled <= Float(Int16.min) { return Int16.min }

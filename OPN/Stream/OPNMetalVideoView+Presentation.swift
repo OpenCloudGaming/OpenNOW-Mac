@@ -30,13 +30,72 @@ enum OPNVideoPresentationMode: Int, Sendable {
     /// Present as soon as a frame decodes, without waiting for the refresh (`displaySyncEnabled`
     /// off, the display link paused). Lowest latency; tearing is possible.
     case lowestLatency = 2
+    /// Draw as soon as a frame decodes, like `lowestLatency`, but present with vsync on, so a
+    /// variable-refresh display refreshes when the frame arrives instead of on the display link's
+    /// fixed tick. A frame that decodes while the previous present is still waiting for the glass
+    /// is drawn when that present lands, and a newer one replaces it rather than queueing.
+    case vrr = 3
 
     var label: String {
         switch self {
         case .balanced: "balanced"
         case .smooth: "smooth"
         case .lowestLatency: "lowest latency"
+        case .vrr: "vrr"
         }
+    }
+
+    var drawsOnDecode: Bool { self == .lowestLatency || self == .vrr }
+}
+
+/// When a decode-driven draw goes to the main actor. At most one draw is ever outstanding, and in
+/// `vrr` a draw also waits for the previous present to reach the glass: the main thread then never
+/// blocks in `nextDrawable()` behind vsync, and the frame drawn is always the newest one.
+struct OPNManualDrawGate: Sendable {
+    /// A present whose handler has not fired by then is treated as lost rather than waited on.
+    static let presentTimeoutSeconds: CFTimeInterval = 0.05
+
+    private(set) var isDrawQueued = false
+    private var isDrawDeferred = false
+    private var presentStartedAt: CFTimeInterval = 0
+
+    /// True when the caller should queue a draw now.
+    mutating func request(waitsForPresent: Bool, now: CFTimeInterval) -> Bool {
+        let presentPending = waitsForPresent && presentStartedAt > 0 && now - presentStartedAt < Self.presentTimeoutSeconds
+        guard isDrawQueued || presentPending else {
+            isDrawQueued = true
+            return true
+        }
+        if waitsForPresent { isDrawDeferred = true }
+        return false
+    }
+
+    mutating func presentStarted(at now: CFTimeInterval) {
+        presentStartedAt = now
+    }
+
+    /// True when a frame arrived while the present was in flight and should be drawn now.
+    mutating func presentCompleted() -> Bool {
+        presentStartedAt = 0
+        return takeDeferred()
+    }
+
+    /// True when a frame arrived during the draw and no present holds it back.
+    mutating func drawFinished() -> Bool {
+        isDrawQueued = false
+        return presentStartedAt == 0 && takeDeferred()
+    }
+
+    /// Forgets the present being waited on. A queued draw stays counted: it is still on its way.
+    mutating func forgetPresent() {
+        presentStartedAt = 0
+        isDrawDeferred = false
+    }
+
+    private mutating func takeDeferred() -> Bool {
+        guard isDrawDeferred, !isDrawQueued else { return false }
+        isDrawDeferred = false
+        return true
     }
 }
 
@@ -177,14 +236,17 @@ extension OPNMetalVideoView {
         presentationMode = mode
         pendingFrames.removeAll()
         os_unfair_lock_unlock(&frameLock)
+        os_unfair_lock_lock(&manualDrawLock)
+        manualDrawGate.forgetPresent()
+        os_unfair_lock_unlock(&manualDrawLock)
         guard previous != mode else { return }
         let metalLayer = metalView.layer as? CAMetalLayer
         switch mode {
-        case .lowestLatency:
-            // Our own draw() calls replace the display link; presenting no longer waits for vsync.
+        case .lowestLatency, .vrr:
+            // Our own draw() calls replace the display link; only `vrr` still presents on vsync.
             metalView.isPaused = true
             metalView.enableSetNeedsDisplay = false
-            metalLayer?.displaySyncEnabled = false
+            metalLayer?.displaySyncEnabled = mode == .vrr
         case .balanced, .smooth:
             metalLayer?.displaySyncEnabled = true
             metalView.enableSetNeedsDisplay = false
@@ -235,6 +297,22 @@ extension OPNMetalVideoView {
             self.lastPresentedAt = presentedAt
             os_unfair_lock_unlock(&self.presentLock)
         }
+    }
+
+    /// `vrr` only: holds further draws until the drawable about to be presented reaches the glass.
+    func holdDrawsUntilPresented() {
+        guard presentationMode == .vrr, let drawable = metalView.currentDrawable else { return }
+        os_unfair_lock_lock(&manualDrawLock)
+        manualDrawGate.presentStarted(at: CACurrentMediaTime())
+        os_unfair_lock_unlock(&manualDrawLock)
+        drawable.addPresentedHandler { [weak self] _ in self?.drawablePresented() }
+    }
+
+    nonisolated private func drawablePresented() {
+        os_unfair_lock_lock(&manualDrawLock)
+        let drawsAgain = manualDrawGate.presentCompleted()
+        os_unfair_lock_unlock(&manualDrawLock)
+        if drawsAgain { requestManualDraw(waitsForPresent: true) }
     }
 
     /// Drains the presented-time window into the diagnostics snapshot.

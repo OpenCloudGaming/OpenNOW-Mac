@@ -242,18 +242,34 @@ private actor RecordedSeat: NvstRtspControlChannel {
     func requests(_ method: String) -> [SentRequest] { sent.filter { $0.method == method } }
 }
 
+private final class AudioLayoutProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [NvstOpusMultistreamLayout] = []
+    var layouts: [NvstOpusMultistreamLayout] { lock.withLock { recorded } }
+    func record(_ layout: NvstOpusMultistreamLayout) { lock.withLock { recorded.append(layout) } }
+}
+
 private struct StubReserver: NvstBundleReserving {
     let reservation: NvstBundleReservation
     /// Stands in for the real ICE/DTLS bundle, which can only come up after SETUP.
     let lateIdentity: NvstBundleReservation?
+    let audioLayouts: AudioLayoutProbe
 
-    init(reservation: NvstBundleReservation, lateIdentity: NvstBundleReservation? = nil) {
+    init(reservation: NvstBundleReservation,
+         lateIdentity: NvstBundleReservation? = nil,
+         audioLayouts: AudioLayoutProbe = AudioLayoutProbe()) {
         self.reservation = reservation
         self.lateIdentity = lateIdentity
+        self.audioLayouts = audioLayouts
     }
 
     func reserveBundle() async throws -> NvstBundleReservation { reservation }
-    func bundleIdentity(for handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? { lateIdentity }
+    func bundleIdentity(for handoff: NVSTVideoHandoff,
+                        microphoneOfferedOnBundle: Bool,
+                        audioLayout: NvstOpusMultistreamLayout) async -> NvstBundleReservation? {
+        audioLayouts.record(audioLayout)
+        return lateIdentity
+    }
 }
 
 @Suite struct NvstRtspNegotiatorTests {
@@ -396,6 +412,60 @@ private struct StubReserver: NvstBundleReserving {
         #expect(handoff.iceCredentials?.localUsernameFragment == "abcd")
         #expect(handoff.iceCredentials?.remoteDTLSFingerprint?.count == 95)
         #expect(session.remoteIceUsernameFragment == "0999")
+    }
+
+    private static func input(audioChannelCount: Int) -> NvstRtspNegotiationInput {
+        NvstRtspNegotiationInput(sessionID: "session-1",
+                                 rtspsEndpoints: ["rtsps://seat.example.com:322"],
+                                 resolution: "2560x1440",
+                                 fps: 60,
+                                 codec: "HEVC",
+                                 audioChannelCount: audioChannelCount)
+    }
+
+    /// The decode probe is injected as "yes" so this pins the negotiation itself on every macOS, not
+    /// the running macOS's multistream Opus support.
+    private static func negotiator(_ connection: any NvstRtspControlChannel,
+                                   audioLayouts: AudioLayoutProbe,
+                                   isDecodable: @escaping @Sendable (NvstOpusMultistreamLayout) -> Bool = { _ in true }) -> NvstRtspNegotiator {
+        NvstRtspNegotiator(reserver: StubReserver(reservation: reservation, audioLayouts: audioLayouts),
+                           isDecodable: isDecodable,
+                           connectionFactory: { _, _, _ in connection })
+    }
+
+    @Test func surroundIsAnnouncedOnlyInALayoutTheSeatDescribed() async throws {
+        let offer = "\r\na=nv-audio-surround-opus-params: 20000000000;32102100000;42201230000;53204123000;64204123500;"
+        let offering = Self.seat(describeBody: NvstRtspSdpTests.describeBody + offer)
+        let probe = AudioLayoutProbe()
+        let negotiator = Self.negotiator(offering, audioLayouts: probe)
+        _ = try await negotiator.negotiate(Self.input(audioChannelCount: 8))
+        let surround = await offering.requests("ANNOUNCE").first?.body ?? ""
+        // 7.1 was asked for, but the seat only describes up to six channels.
+        #expect(surround.contains("a=x-nv-audio.surround.numChannels:6"))
+        #expect(probe.layouts.map(\.channels) == [6])
+        #expect(probe.layouts.first?.mapping == [0, 4, 1, 2, 3, 5])
+
+        let silent = Self.seat()
+        let silentProbe = AudioLayoutProbe()
+        let fallback = Self.negotiator(silent, audioLayouts: silentProbe)
+        _ = try await fallback.negotiate(Self.input(audioChannelCount: 6))
+        let stereo = await silent.requests("ANNOUNCE").first?.body ?? ""
+        #expect(!stereo.contains("x-nv-audio.surround.enable"))
+        #expect(silentProbe.layouts == [.stereo])
+    }
+
+    @Test func surroundIsNotAnnouncedWhenThisMacCannotDecodeIt() async throws {
+        // macOS 15–26 cannot build the family 1 decoder at all, so the seat must be asked for stereo
+        // rather than for audio nothing on this machine can decode.
+        let offer = "\r\na=nv-audio-surround-opus-params: 20000000000;32102100000;42201230000;53204123000;64204123500;"
+        let seat = Self.seat(describeBody: NvstRtspSdpTests.describeBody + offer)
+        let probe = AudioLayoutProbe()
+        let negotiator = Self.negotiator(seat, audioLayouts: probe, isDecodable: { _ in false })
+        _ = try await negotiator.negotiate(Self.input(audioChannelCount: 6))
+        let announce = await seat.requests("ANNOUNCE").first?.body ?? ""
+        #expect(!announce.contains("x-nv-audio.surround.enable"))
+        #expect(!announce.contains("a=x-nv-audio.surround.numChannels"))
+        #expect(probe.layouts == [.stereo])
     }
 
     @Test func aLateBundleIdentityOverridesTheAnnouncedPortAndFingerprint() async throws {

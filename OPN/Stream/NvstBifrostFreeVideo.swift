@@ -199,7 +199,9 @@ extension NvstBifrostFreeTransport {
                                                 deviceUniqueID: configuration.deviceUniqueID)
     }
 
-    func bringUpBundle(handoff: NVSTVideoHandoff, microphoneOfferedOnBundle: Bool) async -> NvstBundleReservation? {
+    func bringUpBundle(handoff: NVSTVideoHandoff,
+                       microphoneOfferedOnBundle: Bool,
+                       audioLayout: NvstOpusMultistreamLayout) async -> NvstBundleReservation? {
         let logger = self.logger
         self.microphoneOfferedOnBundle = microphoneOfferedOnBundle
         guard Self.usesWebRtcBundle else {
@@ -215,13 +217,10 @@ extension NvstBifrostFreeTransport {
             scheduleVideoHolePunch()
             return nil
         }
-        let bundle = NvstNativeBundle(handoff: handoff,
-                                      identity: identitySeed,
-                                      audioChannelCount: configuredAudioChannelCount,
-                                      logger: logger)
+        let bundle = NvstNativeBundle(handoff: handoff, identity: identitySeed, logger: logger)
         let sender = NvstFeedbackSender()
         do {
-            let identity = try await bundle.prepare(microphone: microphoneSetup, audioChannelCount: configuredAudioChannelCount)
+            let identity = try await bundle.prepare(microphone: microphoneSetup, audioLayout: audioLayout)
             scheduleVideoHolePunch()
             sender.configure(
                 channelWriter: { payload in _ = bundle.sendFeedback(payload) },

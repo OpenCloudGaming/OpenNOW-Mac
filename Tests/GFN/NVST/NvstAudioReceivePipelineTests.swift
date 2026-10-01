@@ -10,6 +10,28 @@ import Testing
     private static let framesPerPacket = 240
     private static let channels = 2
 
+    /// Records the fallback notifications the pipeline delivers on the pulling thread.
+    private final class LayoutLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [NvstOpusMultistreamLayout] = []
+        var layouts: [NvstOpusMultistreamLayout] { lock.withLock { values } }
+        func record(_ layout: NvstOpusMultistreamLayout) { lock.withLock { values.append(layout) } }
+    }
+
+    /// A decoder that consumes packets and never produces a frame, which is what the family 1 decoder
+    /// does when the seat sends stereo: every packet is rejected with 'bada'.
+    private final class UnproductiveDecoder: NvstOpusDecoding, @unchecked Sendable {
+        private let lock = NSLock()
+        private var consumedPackets = 0
+        let decodedFrames: UInt64 = 0
+        var decodedPackets: UInt64 { lock.withLock { UInt64(consumedPackets) } }
+        var failedPackets: UInt64 { lock.withLock { UInt64(consumedPackets) } }
+        func decode(_ packet: Data) throws -> [Float]? {
+            lock.withLock { consumedPackets += 1 }
+            return nil
+        }
+    }
+
     private func makeSrtp() throws -> NvstAudioSrtp {
         try NvstAudioSrtp(masterKey: Data((0..<32).map { UInt8($0 &* 5 &+ 3) }),
                           masterSalt: Data((0..<12).map { UInt8($0 &* 11 &+ 7) }),
@@ -59,6 +81,20 @@ import Testing
         let concealedSamples = Int(counters.concealedFrames) * Self.channels
         let total = decodedSamples + concealedSamples + tail.count
         #expect(total >= 5 * Self.framesPerPacket * Self.channels)
+    }
+
+    @Test func audioThatPiledUpBeforePlayoutStartedIsTrimmedToTheBacklogCeiling() throws {
+        let srtp = try makeSrtp()
+        let encoder = try NvstOpusEncoder(channels: 2, framesPerPacket: Self.framesPerPacket)
+        let pipeline = try NvstAudioReceivePipeline(srtp: srtp, framesPerPacket: Self.framesPerPacket)
+        for sequence in UInt16(0)..<40 {
+            pipeline.ingest(try protectedTonePacket(srtp: srtp, encoder: encoder, sequence: sequence, timestamp: UInt32(sequence) * 240))
+        }
+        let deviceBuffer = Self.framesPerPacket * Self.channels
+        #expect(pipeline.pull(sampleCount: deviceBuffer).count == deviceBuffer)
+        let backlog = pipeline.pull(sampleCount: 1_000_000)
+        #expect(backlog.count == NvstAudioReceivePipeline.maximumBacklogFrames * Self.channels)
+        #expect(pipeline.snapshot.trimmedFrames > 0)
     }
 
     @Test func aDatagramThatFailsItsTagIsDiscardedAndCounted() throws {
@@ -130,6 +166,88 @@ import Testing
         #expect(counters.malformedRedPackets == 0)
         #expect(counters.recoveredPackets == 1, "the repeat was not slotted back")
         #expect(counters.packetsLost == 0, "the repeat should have covered the loss")
+    }
+
+    /// A seat that describes `nv-audio-surround-opus-params` and then sends stereo. Without the
+    /// fallback the session plays silence for its whole length with no way back but a Settings visit.
+    @Test func aDecoderThatCannotDecodeTheNegotiatedLayoutIsRebuiltAsStereo() throws {
+        let srtp = try makeSrtp()
+        let encoder = try NvstOpusEncoder(channels: 2, framesPerPacket: Self.framesPerPacket)
+        let surround = try #require(NvstOpusMultistreamLayout(surroundParams: "64204123500"))
+        let pipeline = NvstAudioReceivePipeline(srtp: srtp,
+                                                framesPerPacket: Self.framesPerPacket,
+                                                layout: surround,
+                                                targetDepth: 0,
+                                                decoder: UnproductiveDecoder())
+        let fallbacks = LayoutLog()
+        pipeline.onLayoutFallback = { fallbacks.record($0) }
+
+        // Batched, so the stereo packets that arrive after the fallback are still ahead of it.
+        let batch = 5
+        var pcm: [Float] = []
+        for group in 0..<12 {
+            for offset in 0..<batch {
+                let sequence = UInt16(group * batch + offset)
+                pipeline.ingest(try protectedTonePacket(srtp: srtp, encoder: encoder,
+                                                       sequence: sequence, timestamp: UInt32(sequence) * 240))
+            }
+            pcm += pipeline.pull(sampleCount: Self.framesPerPacket * Self.channels)
+        }
+        pcm += pipeline.flush()
+
+        #expect(fallbacks.layouts == [.stereo], "the pipeline did not report a fallback")
+        #expect(pipeline.layout == .stereo)
+        #expect(pipeline.snapshot.decodeFailures >= UInt64(NvstAudioReceivePipeline.packetsWithoutFramesLimit))
+        let peak = pcm.map { abs($0) }.max() ?? 0
+        #expect(peak > 0.1, "the stereo packets the seat really sent were not decoded after the fallback (peak \(peak))")
+    }
+
+    /// The premise the fallback reads, against a real decoder: a 5.1 decoder handed stereo packets
+    /// consumes them and produces nothing. Skipped where no multistream decoder can be built at all.
+    @Test(.disabled(if: OpusSurroundTestGate.isUnavailable, Comment(rawValue: OpusSurroundTestGate.skipReason)))
+    func aSurroundDecoderProducesNoFramesWhenHandedStereoPackets() throws {
+        let surround = try #require(NvstOpusMultistreamLayout(surroundParams: "64204123500"))
+        let decoder = try NvstOpusDecoder(framesPerPacket: Self.framesPerPacket, layout: surround)
+        let encoder = try NvstOpusEncoder(channels: 2, framesPerPacket: Self.framesPerPacket)
+        let srtp = try makeSrtp()
+        for sequence in UInt16(0)..<UInt16(NvstAudioReceivePipeline.packetsWithoutFramesLimit) {
+            let packet = try protectedTonePacket(srtp: srtp, encoder: encoder, sequence: sequence, timestamp: UInt32(sequence) * 240)
+            _ = try decoder.decode(packet)
+        }
+        #expect(decoder.decodedFrames == 0)
+        #expect(decoder.decodedPackets >= UInt64(NvstAudioReceivePipeline.packetsWithoutFramesLimit))
+        #expect(decoder.failedPackets > 0, "a surround decoder fed stereo reported no rejected packet")
+    }
+
+    @Test func aBacklogInsideTheHysteresisBandIsLeftAlone() throws {
+        let srtp = try makeSrtp()
+        let encoder = try NvstOpusEncoder(channels: 2, framesPerPacket: Self.framesPerPacket)
+        let pipeline = try NvstAudioReceivePipeline(srtp: srtp, framesPerPacket: Self.framesPerPacket, targetDepth: 0)
+        let reference = try NvstAudioReceivePipeline(srtp: srtp, framesPerPacket: Self.framesPerPacket, targetDepth: 0)
+        for sequence in UInt16(0)..<40 {
+            let packet = try protectedTonePacket(srtp: srtp, encoder: encoder, sequence: sequence, timestamp: UInt32(sequence) * 240)
+            pipeline.ingest(packet)
+            reference.ingest(packet)
+        }
+        // The reference pipeline has no trim in its way, so the drained count is measured rather
+        // than assumed: the decoder's priming delay makes it not quite `packets * framesPerPacket`.
+        let available = reference.pull(sampleCount: 1_000_000).count / Self.channels
+        let ceiling = NvstAudioReceivePipeline.maximumBacklogFrames
+        let band = NvstAudioReceivePipeline.backlogTrimHysteresisFrames
+        try #require(available > ceiling + band * 2)
+
+        // One packet past the ceiling: inside the band, so nothing is dropped where a hard ceiling
+        // would have trimmed a frame — the recurring skip this band exists to remove.
+        _ = pipeline.pull(sampleCount: (available - ceiling - Self.framesPerPacket) * Self.channels)
+        #expect(pipeline.snapshot.trimmedFrames == 0)
+
+        // Past the band the backlog is still trimmed: drift has to be paid for somewhere.
+        let trimming = try NvstAudioReceivePipeline(srtp: srtp, framesPerPacket: Self.framesPerPacket, targetDepth: 0)
+        for sequence in UInt16(0)..<40 {
+            trimming.ingest(try protectedTonePacket(srtp: srtp, encoder: encoder, sequence: sequence, timestamp: UInt32(sequence) * 240))
+        }
+        _ = trimming.pull(sampleCount: (available - ceiling - band * 2) * Self.channels)
+        #expect(trimming.snapshot.trimmedFrames > 0)
     }
 
     @Test func aResetClearsTheOrderingState() throws {
