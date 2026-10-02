@@ -33,6 +33,7 @@ public struct ControllerBindingEngine: Sendable {
     private var flickStickProcessor = FlickStickProcessor()
     private var gyroActivation = GyroActivationState()
     private var previousReportInstant: ContinuousClock.Instant?
+    private var previousPointerTimestamp: MediaTimestamp?
 
     public init() {}
 
@@ -202,19 +203,20 @@ public struct ControllerBindingEngine: Sendable {
                                              deviceID: InputDeviceID,
                                              timestamp: MediaTimestamp) -> [UserInputEvent] {
         var events: [UserInputEvent] = []
+        let deltaTime = pointerDeltaTime(timestamp)
         if profile.family == .dualShock4 {
             events.append(contentsOf: Self.pointerEvents(
-                touchpadTranslator.translate(snapshot.touchpad ?? ControllerTrackpadState(), settings: profile.touchpad),
+                touchpadTranslator.translate(snapshot.touchpad ?? ControllerTrackpadState(), settings: profile.touchpad, deltaTime: deltaTime),
                 deviceID: deviceID, timestamp: timestamp
             ))
         }
         if profile.family == .steam {
             events.append(contentsOf: Self.pointerEvents(
-                leftPadTranslator.translate(snapshot.leftPad, settings: profile.leftPad),
+                leftPadTranslator.translate(snapshot.leftPad, settings: profile.leftPad, deltaTime: deltaTime),
                 deviceID: deviceID, timestamp: timestamp
             ))
             events.append(contentsOf: Self.pointerEvents(
-                rightPadTranslator.translate(snapshot.rightPad, settings: profile.rightPad),
+                rightPadTranslator.translate(snapshot.rightPad, settings: profile.rightPad, deltaTime: deltaTime),
                 deviceID: deviceID, timestamp: timestamp
             ))
         }
@@ -320,6 +322,18 @@ public struct ControllerBindingEngine: Sendable {
         guard let previous = previousReportInstant else { return Self.assumedReportInterval }
         let elapsed = now - previous
         let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        return Float(min(max(seconds, 1.0 / 1000.0), 0.05))
+    }
+
+    /// The pointer translators need a step for their smoothing filter. It is derived from the
+    /// report timestamp rather than the gyro's clock so the two paths do not consume each other's
+    /// "previous instant".
+    private mutating func pointerDeltaTime(_ timestamp: MediaTimestamp) -> Float {
+        defer { previousPointerTimestamp = timestamp }
+        guard let previous = previousPointerTimestamp, timestamp.nanoseconds > previous.nanoseconds else {
+            return Self.assumedReportInterval
+        }
+        let seconds = Double(timestamp.nanoseconds - previous.nanoseconds) / 1_000_000_000
         return Float(min(max(seconds, 1.0 / 1000.0), 0.05))
     }
 
