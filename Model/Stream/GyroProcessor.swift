@@ -22,49 +22,6 @@ public struct GyroMotionOutput: Equatable, Sendable {
     public static let none = GyroMotionOutput()
 }
 
-/// The 1-euro filter: a low-pass whose cutoff rises with the signal's own speed, so slow motion
-/// is smoothed hard and fast motion is not delayed. This is the filter Steam credits with
-/// "smoothed low level gyro noise without adding delay", and the reason a plain moving average
-/// is not used here — a moving average spends latency on exactly the fast flicks that must not
-/// be late.
-private struct OneEuroFilter: Sendable {
-    /// Cutoff at zero signal speed, in Hz.
-    var minCutoff: Float
-    var beta: Float = 0.02
-    var derivativeCutoff: Float = 1.0
-
-    private var filtered: Float?
-    private var filteredDerivative: Float = 0
-
-    init(minCutoff: Float) {
-        self.minCutoff = minCutoff
-    }
-
-    mutating func reset() {
-        filtered = nil
-        filteredDerivative = 0
-    }
-
-    private static func alpha(cutoff: Float, deltaTime: Float) -> Float {
-        let tau = 1 / (2 * Float.pi * max(cutoff, 0.0001))
-        return deltaTime / (deltaTime + tau)
-    }
-
-    mutating func filter(_ value: Float, deltaTime: Float) -> Float {
-        guard let previous = filtered else {
-            filtered = value
-            return value
-        }
-        let derivative = (value - previous) / max(deltaTime, 0.0001)
-        let smoothedDerivative = filteredDerivative + Self.alpha(cutoff: derivativeCutoff, deltaTime: deltaTime) * (derivative - filteredDerivative)
-        let cutoff = minCutoff + beta * abs(smoothedDerivative)
-        let next = previous + Self.alpha(cutoff: cutoff, deltaTime: deltaTime) * (value - previous)
-        filtered = next
-        filteredDerivative = smoothedDerivative
-        return next
-    }
-}
-
 /// Turns raw angular rates into camera input.
 ///
 /// The whole pipeline runs per inertial sample, in physical units, and is deliberately a plain
