@@ -46,6 +46,9 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     nonisolated(unsafe) var desiredOutputFormat: MTLPixelFormat = .bgra8Unorm
     nonisolated(unsafe) var desiredTransfer = OPNVideoTransferFunction.sdr
     nonisolated(unsafe) var appliedTransfer = OPNVideoTransferFunction.sdr
+    /// The drawable format the layer is configured for, guarded by `frameLock` like
+    /// `appliedTransfer`, so the render thread never reads `CAMetalLayer` to find out.
+    nonisolated(unsafe) var appliedOutputFormat: MTLPixelFormat = .bgra8Unorm
     nonisolated(unsafe) var framesReceived: UInt64 = 0
     nonisolated(unsafe) var framesDrawn: UInt64 = 0
     nonisolated(unsafe) var presentationMode = OPNVideoPresentationMode.balanced
@@ -334,6 +337,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     /// shaders, so the picture area is untouched and only the bar columns cost anything extra.
     nonisolated func configuredEnhancementSettings(enhancement: VideoEnhancement,
                                                sourceSize: CGSize,
+                                               drawableSize: CGSize,
                                                renderer: OPNVideoEnhancementRenderer) -> OPNVideoEnhancementSettings {
         let settings = enhancementSettings
         // Fill with upscaling off: borrow the spatial path in its cheapest form.
@@ -353,7 +357,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         settings.sharpness = isFillOnly ? 0 : Int(enhancement.sharpness)
         settings.denoise = isFillOnly ? 0 : Int(enhancement.denoise)
         settings.sourceSize = sourceSize
-        settings.drawableSize = metalLayer?.drawableSize ?? .zero
+        settings.drawableSize = drawableSize
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
         settings.lowCostSpatial = isFillOnly || adaptiveEnhancementPenalty > 0
         return settings
@@ -414,7 +418,10 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
 
     nonisolated private func renderEnhancedFrame(_ frame: OPNVideoFrame, into drawable: any CAMetalDrawable, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
         guard let enhancementRenderer else { return false }
-        let settings = configuredEnhancementSettings(enhancement: enhancement, sourceSize: sourceSize, renderer: enhancementRenderer)
+        let settings = configuredEnhancementSettings(enhancement: enhancement,
+                                                    sourceSize: sourceSize,
+                                                    drawableSize: CGSize(width: drawable.texture.width, height: drawable.texture.height),
+                                                    renderer: enhancementRenderer)
         let diagnosticsNow = CACurrentMediaTime()
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
 
@@ -454,7 +461,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         settings.sharpness = 0
         settings.denoise = 0
         settings.sourceSize = sourceSize
-        settings.drawableSize = metalLayer?.drawableSize ?? .zero
+        settings.drawableSize = CGSize(width: drawable.texture.width, height: drawable.texture.height)
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
         settings.captureEnhancedPixelBuffer = false
         settings.lowCostSpatial = true

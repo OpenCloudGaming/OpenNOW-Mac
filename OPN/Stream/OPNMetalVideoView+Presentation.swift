@@ -190,8 +190,10 @@ extension OPNMetalVideoView {
             : CGSize(width: Int(frame.width), height: Int(frame.height))
         let resolvedSource = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize : CGSize(width: Int(frame.width), height: Int(frame.height))
         os_unfair_lock_lock(&drawLock)
-        let settings = configuredEnhancementSettings(enhancement: localVideoEnhancement(), sourceSize: resolvedSource, renderer: enhancementRenderer)
-        settings.drawableSize = size
+        let settings = configuredEnhancementSettings(enhancement: localVideoEnhancement(),
+                                                    sourceSize: resolvedSource,
+                                                    drawableSize: size,
+                                                    renderer: enhancementRenderer)
         settings.captureEnhancedPixelBuffer = false
         if settings.configuredTier == .off || settings.configuredTier == .metalFX || settings.configuredTier == .temporal {
             settings.configuredTier = .spatial
@@ -325,6 +327,7 @@ extension OPNMetalVideoView {
         let previous = metalView.colorPixelFormat
         metalView.colorPixelFormat = format
         os_unfair_lock_lock(&frameLock)
+        appliedOutputFormat = format
         appliedTransfer = transfer
         os_unfair_lock_unlock(&frameLock)
         if let metalLayer = metalView.layer as? CAMetalLayer {

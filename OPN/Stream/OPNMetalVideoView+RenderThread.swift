@@ -276,6 +276,6 @@ extension OPNMetalVideoView {
     nonisolated private func outputFormatIsApplied(_ frame: OPNNextVideoFrame) -> Bool {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        return metalLayer?.pixelFormat == frame.outputFormat && appliedTransfer == frame.outputTransfer
+        return appliedOutputFormat == frame.outputFormat && appliedTransfer == frame.outputTransfer
     }
 }
