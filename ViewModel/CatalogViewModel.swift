@@ -613,10 +613,9 @@ final class CatalogViewModel {
             guard let self, !Task.isCancelled else { return }
             self.loadLibrary()
             self.loadFavorites()
-            // Every launch attach point has now run, so the prefetch is holding nothing this model
-            // still needs: it drops its duplicate of the panel and game-list graphs as soon as its
-            // last launch fetch lands.
-            CatalogLaunchPrefetch.shared.catalogDidAdoptLaunchResults()
+            // Every launch attach point has now run, so the prefetch's copy of the panels and the
+            // game lists is a duplicate from here on.
+            CatalogLaunchPrefetch.shared.recordLaunchResultsAdopted()
             self.loadAccount()
             self.loadStores()
         }

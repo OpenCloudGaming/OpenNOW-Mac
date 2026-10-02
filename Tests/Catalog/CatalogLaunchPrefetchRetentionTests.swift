@@ -1,90 +1,77 @@
-//  When the launch prefetch may drop the catalog graphs it retains for the home page. The
-//  sequencing is the whole risk: release too early and a deferred `loadLibrary()` /
-//  `loadFavorites()` attach finds nothing and re-requests what is already in flight, or a fetch
-//  that has not landed yet is dropped before the view model ever sees it.
+//  When the launch prefetch may drop the catalog graphs it retains for the home page. Releasing
+//  too early strands a rail: a deferred attach finds nothing, or a fetch is dropped unseen.
 //
 
 import Testing
 @testable import OpenNOW
 
 @Suite struct CatalogLaunchPrefetchRetentionTests {
-    @Test func aSettledHandoverIsOnlyReleasableOnceTheCatalogHasAdoptedIt() {
+    @Test func theGraphsStayUntilTheCatalogHasAdoptedTheLaunchResults() {
         var retention = CatalogLaunchPrefetchRetention()
-        retention.noteDeliveriesStarted(6)
-        for _ in 0..<6 { retention.noteDeliveryFinished() }
-        #expect(retention.canReleaseRetainedGraphs == false)
+        retention.recordDeliveriesStarted(6)
+        for _ in 0..<6 { retention.recordDeliveryFinished() }
+        #expect(retention.isReadyToReleaseRetainedGraphs == false)
 
-        retention.noteCatalogAdoptedLaunchResults()
-        #expect(retention.canReleaseRetainedGraphs)
+        retention.recordLaunchResultsAdopted()
+        #expect(retention.isReadyToReleaseRetainedGraphs)
     }
 
-    @Test func aDeliveryStillInFlightBlocksTheRelease() {
+    @Test func theGraphsStayWhileADeliveryIsStillInFlight() {
         var retention = CatalogLaunchPrefetchRetention()
-        retention.noteDeliveriesStarted(4)
-        retention.noteCatalogAdoptedLaunchResults()
-        for _ in 0..<3 { retention.noteDeliveryFinished() }
-        #expect(retention.canReleaseRetainedGraphs == false)
+        retention.recordDeliveriesStarted(4)
+        retention.recordLaunchResultsAdopted()
+        for _ in 0..<3 { retention.recordDeliveryFinished() }
+        #expect(retention.isReadyToReleaseRetainedGraphs == false)
 
-        retention.noteDeliveryFinished()
-        #expect(retention.canReleaseRetainedGraphs)
+        retention.recordDeliveryFinished()
+        #expect(retention.isReadyToReleaseRetainedGraphs)
     }
 
-    @Test func adoptionBeforeTheLastDeliveryStillReleasesAtThatDelivery() {
+    @Test func theGraphsGoAtTheLastDeliveryWhenAdoptionCameFirst() {
         var retention = CatalogLaunchPrefetchRetention()
-        retention.noteDeliveriesStarted(2)
-        retention.noteCatalogAdoptedLaunchResults()
-        retention.noteDeliveryFinished()
-        #expect(retention.canReleaseRetainedGraphs == false)
+        retention.recordDeliveriesStarted(2)
+        retention.recordLaunchResultsAdopted()
+        retention.recordDeliveryFinished()
+        #expect(retention.isReadyToReleaseRetainedGraphs == false)
 
-        retention.noteDeliveryFinished()
-        #expect(retention.canReleaseRetainedGraphs)
+        retention.recordDeliveryFinished()
+        #expect(retention.isReadyToReleaseRetainedGraphs)
     }
 
-    @Test func deliveriesStartedAfterAdoptionStillHoldTheRelease() {
+    @Test func theGraphsStayWhenADeliveryStartsAfterAdoption() {
         var retention = CatalogLaunchPrefetchRetention()
-        retention.noteCatalogAdoptedLaunchResults()
-        #expect(retention.canReleaseRetainedGraphs)
+        retention.recordLaunchResultsAdopted()
+        #expect(retention.isReadyToReleaseRetainedGraphs)
 
-        retention.noteDeliveriesStarted(2)
-        #expect(retention.canReleaseRetainedGraphs == false)
+        retention.recordDeliveriesStarted(2)
+        #expect(retention.isReadyToReleaseRetainedGraphs == false)
 
-        retention.noteDeliveryFinished()
-        retention.noteDeliveryFinished()
-        #expect(retention.canReleaseRetainedGraphs)
+        retention.recordDeliveryFinished()
+        retention.recordDeliveryFinished()
+        #expect(retention.isReadyToReleaseRetainedGraphs)
     }
 
-    @Test func aFinishedHandoverStopsThePrefetchHandingAnythingOver() {
+    @Test func aFinishedHandoverStaysFinished() {
         var retention = CatalogLaunchPrefetchRetention()
-        retention.noteCatalogAdoptedLaunchResults()
-        retention.noteHandoverFinished()
+        retention.recordHandoverFinished()
+        #expect(retention.isReadyToReleaseRetainedGraphs == false)
 
-        #expect(retention.didFinishHandover)
-        #expect(retention.canReleaseRetainedGraphs == false)
+        retention.recordDeliveriesStarted(4)
+        for _ in 0..<4 { retention.recordDeliveryFinished() }
+        retention.recordLaunchResultsAdopted()
+        #expect(retention.isReadyToReleaseRetainedGraphs == false)
     }
 
-    @Test func aFinishedHandoverCannotBeReopenedByALateDeliveryOrAdoption() {
+    @Test func aDeliveryThatNeverStartedDoesNotKeepTheGraphs() {
         var retention = CatalogLaunchPrefetchRetention()
-        retention.noteHandoverFinished()
-        retention.noteDeliveriesStarted(4)
-        for _ in 0..<4 { retention.noteDeliveryFinished() }
-        retention.noteCatalogAdoptedLaunchResults()
-
-        #expect(retention.didFinishHandover)
-        #expect(retention.canReleaseRetainedGraphs == false)
-    }
-
-    @Test func aDeliveryCountedWithoutAStartCannotUnsettleTheHandover() {
-        var retention = CatalogLaunchPrefetchRetention()
-        retention.noteDeliveryFinished()
-        retention.noteCatalogAdoptedLaunchResults()
-
-        #expect(retention.canReleaseRetainedGraphs)
+        retention.recordDeliveryFinished()
+        retention.recordLaunchResultsAdopted()
+        #expect(retention.isReadyToReleaseRetainedGraphs)
     }
 }
 
 /// The launch prefetch is a process-wide singleton, so the explicit-refresh path is exercised on
-/// the shared instance: `CatalogViewModel.refresh()` invalidates it and then expects every load to
-/// go to the network.
+/// the shared instance: `CatalogViewModel.refresh()` invalidates it and then loads from the network.
 @Suite(.serialized) @MainActor struct CatalogLaunchPrefetchHandoverTests {
     @Test func anInvalidatedPrefetchHandsNothingOver() {
         let prefetch = CatalogLaunchPrefetch.shared
