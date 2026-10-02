@@ -154,11 +154,24 @@ extension NvstBifrostFreeTransport {
             return NvstPacingIntervals(frameMicroseconds: sessionFrameMicroseconds,
                                        displayVsyncMicroseconds: displayVsyncMicroseconds)
         }
-        let refresh = Double(displayRefreshRate)
-        let variableRefreshMicroseconds = UInt32((1_000_000 / (refresh - refresh * refresh / variableRefreshMarginDivisor)).rounded())
+        guard let variableRefreshMicroseconds = variableRefreshIntervalMicroseconds(displayRefreshRate: displayRefreshRate) else {
+            return NvstPacingIntervals(frameMicroseconds: sessionFrameMicroseconds,
+                                       displayVsyncMicroseconds: displayVsyncMicroseconds)
+        }
         let cappedMicroseconds = max(sessionFrameMicroseconds, variableRefreshMicroseconds)
         return NvstPacingIntervals(frameMicroseconds: cappedMicroseconds,
                                    displayVsyncMicroseconds: cappedMicroseconds)
+    }
+
+    /// The interval the seat is asked for on a VRR display, or nil when the display's rate leaves
+    /// no positive margin to pace under — the margin is zero at 3600 Hz and negative above it.
+    private static func variableRefreshIntervalMicroseconds(displayRefreshRate: Int) -> UInt32? {
+        let refresh = Double(displayRefreshRate)
+        let variableRefreshRate = refresh - refresh * refresh / variableRefreshMarginDivisor
+        guard variableRefreshRate > 0, variableRefreshRate.isFinite else { return nil }
+        let microseconds = (1_000_000 / variableRefreshRate).rounded()
+        guard microseconds <= Double(UInt32.max) else { return nil }
+        return UInt32(microseconds)
     }
 
     private func makeVideoPipeline(handoff: NVSTVideoHandoff,
