@@ -236,6 +236,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// keyframe cadence, and the earlier ten-second verdict only ever ended the stream.
     static let stalledSamplesBeforeReconnect = 5
     @Published var controllerBatteries: [ControllerBatteryInfo] = []
+    @Published var couchCoopPads: [OPNCouchCoopPad] = []
+    @Published var isCouchCoopActive = false
+    @Published var couchCoopPressedPads: Set<String> = []
     var batteryAlertTracker = ControllerBatteryAlertTracker()
     @Published var showingControllerMapping = false
     @Published var showingControllerOrder = false

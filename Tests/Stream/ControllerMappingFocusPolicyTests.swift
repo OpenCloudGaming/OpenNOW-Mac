@@ -17,4 +17,15 @@ import Testing
             }
         }
     }
+
+    @Test func gamepadsBypassFocusInPictureInPictureOrCoOpOnly() {
+        #expect(!ControllerMappingFocusPolicy.allowsGamepadWithoutFocus(isPictureInPictureMode: false, isCouchCoopActive: false))
+        #expect(ControllerMappingFocusPolicy.allowsGamepadWithoutFocus(isPictureInPictureMode: true, isCouchCoopActive: false))
+        #expect(ControllerMappingFocusPolicy.allowsGamepadWithoutFocus(isPictureInPictureMode: false, isCouchCoopActive: true))
+    }
+
+    @Test func focusLossKeepsGamepadsHeldOnlyDuringCoOp() {
+        #expect(ControllerMappingFocusPolicy.releasesGamepadsOnFocusLoss(isCouchCoopActive: false))
+        #expect(!ControllerMappingFocusPolicy.releasesGamepadsOnFocusLoss(isCouchCoopActive: true))
+    }
 }

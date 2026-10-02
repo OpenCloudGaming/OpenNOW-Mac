@@ -25,9 +25,11 @@ extension SteamControllerHIDMonitor {
             disableLizardMode(for: context)
         }
         configureMotionReporting(for: context)
+        context.isCaptureConfigured = true
     }
 
     func restoreAfterCapture(for context: DeviceContext) {
+        context.isCaptureConfigured = false
         if context.isSeized {
             context.isSeized = false
             _ = reopenVendorDevice(context, seize: false)
@@ -101,7 +103,7 @@ extension SteamControllerHIDMonitor {
 
     func sendHeartbeats() {
         guard isInputCaptureActive else { return }
-        for context in devices.values where context.isActive && !context.isSeized {
+        for context in devices.values where context.isActive && !context.isSeized && ownsDevice(context) {
             sendFeatureReport(SteamControllerReport.lizardModeHeartbeatReport(model: context.model), to: context.device, attempts: 1)
         }
     }

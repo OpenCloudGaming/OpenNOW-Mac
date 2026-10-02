@@ -19,12 +19,29 @@ final class ControllerMappingDevices: ObservableObject {
     static let shared = ControllerMappingDevices()
     @Published private(set) var devices: [ControllerMappingDevice] = []
     @Published private(set) var playerOrder = ControllerPlayerOrder()
+    @Published private(set) var descriptors: [InputDeviceID: String] = [:]
+    @Published private(set) var ownedDeviceIDs: Set<InputDeviceID>?
     private let orderChanges = PassthroughSubject<Void, Never>()
 
     var orderChangesPublisher: AnyPublisher<Void, Never> { orderChanges.eraseToAnyPublisher() }
     var orderedDevices: [ControllerMappingDevice] {
         let byID = Dictionary(uniqueKeysWithValues: devices.map { ($0.id, $0) })
         return playerOrder.deviceIDs.compactMap { byID[$0] }
+    }
+
+    var streamOrder: ControllerPlayerOrder {
+        ownedDeviceIDs.map { playerOrder.restricted(to: $0) } ?? playerOrder
+    }
+
+    var streamDevices: [ControllerMappingDevice] {
+        guard let ownedDeviceIDs else { return orderedDevices }
+        return orderedDevices.filter { ownedDeviceIDs.contains($0.id) }
+    }
+
+    var assignableDescriptors: [String] {
+        let native = devices.filter { $0.family != .steam }.compactMap { descriptors[$0.id] }
+        let steam = devices.filter { $0.family == .steam }.compactMap { descriptors[$0.id] }
+        return OPNCouchCoopControllerAssignment.orderedDescriptors(native: native, steam: steam)
     }
 
     func move(_ id: InputDeviceID, direction: ControllerPlayerOrder.Direction) {
@@ -64,24 +81,45 @@ final class ControllerMappingDevices: ObservableObject {
 
     func refresh() {
         let native = NativeGamepadMonitor.availableNativeControllers()
+        let nativeDescriptors = OPNControllerOwnership.nativeDescriptors(for: GCController.controllers())
         nativeIDs = identities.update(native.map(ObjectIdentifier.init))
         controllers.removeAll()
+        var nextDescriptors: [InputDeviceID: String] = [:]
         var next = SteamControllerHIDMonitor.shared.activeDeviceIDs.enumerated().map { index, id in
-            ControllerMappingDevice(id: id, name: "Steam Controller \(index + 1)", family: .steam, hasTouchpad: false)
+            nextDescriptors[id] = id.rawValue
+            return ControllerMappingDevice(id: id, name: "Steam Controller \(index + 1)", family: .steam, hasTouchpad: false)
         }
         for (index, controller) in native.enumerated() {
             guard let gamepad = controller.extendedGamepad else { continue }
             let key = ObjectIdentifier(controller)
             guard let id = nativeIDs[key] else { continue }
             controllers[id] = controller
+            if let descriptor = nativeDescriptors[key] { nextDescriptors[id] = descriptor }
             let family: ControllerFamily = NativeGamepadShell(controller: controller, gamepad: gamepad) == .dualShock4 ? .dualShock4 : .generic
             next.append(ControllerMappingDevice(id: id, name: "\(controller.vendorName ?? controller.productCategory) · \(index + 1)",
                                                 family: family, hasTouchpad: gamepad is GCDualShockGamepad))
         }
         if devices != next { devices = next }
+        if descriptors != nextDescriptors { descriptors = nextDescriptors }
+        refreshOwnedDeviceIDs()
         var order = playerOrder
         order.update(connectedIDs: next.map(\.id))
         if order != playerOrder { playerOrder = order }
+    }
+
+    func ownershipDidChange() {
+        let previous = ownedDeviceIDs
+        refreshOwnedDeviceIDs()
+        guard previous != ownedDeviceIDs else { return }
+        orderChanges.send()
+    }
+
+    private func refreshOwnedDeviceIDs() {
+        let ownership = OPNControllerOwnership.shared
+        let next: Set<InputDeviceID>? = ownership.isCouchCoopActive
+            ? Set(devices.map(\.id).filter { id in descriptors[id].map(ownership.owns(descriptor:)) ?? false })
+            : nil
+        if ownedDeviceIDs != next { ownedDeviceIDs = next }
     }
 
     func id(for controller: GCController) -> InputDeviceID? { nativeIDs[ObjectIdentifier(controller)] }

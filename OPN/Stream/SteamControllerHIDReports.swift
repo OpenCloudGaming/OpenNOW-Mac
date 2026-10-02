@@ -31,7 +31,7 @@ extension SteamControllerHIDMonitor {
         switch event {
         case .connected:
             setActive(true, for: context)
-            if isInputCaptureActive {
+            if isInputCaptureActive, ownsDevice(context) {
                 disableLizardMode(for: context)
             }
         case .disconnected:

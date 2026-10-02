@@ -6,7 +6,7 @@ extension NativeNVSTMediaStreamSurface {
     /// One row per physical controller with a battery gauge; absent when nothing is connected.
     @ViewBuilder
     var nativeHUDControllersPanel: some View {
-        if !model.controllerBatteries.isEmpty {
+        if !model.controllerBatteries.isEmpty || model.showsCouchCoopControllers {
             let tiles = nativeHUDControllerTiles
             StreamHUDSection(
                 label: OPNStreamHUDSection.controllers.title,
@@ -18,6 +18,18 @@ extension NativeNVSTMediaStreamSurface {
                 onToggle: { model.toggleHUDSection(.controllers) }
             ) {
                 nativeHUDTileGrid(nativeHUDControllerTiles)
+                if model.showsCouchCoopControllers {
+                    ForEach(model.couchCoopPads) { pad in
+                        StreamHUDCouchCoopPadRow(
+                            pad: pad,
+                            isPressed: model.couchCoopPressedPads.contains(pad.descriptor),
+                            isAssignFocused: model.hudFocusID == NativeNVSTHostViewModel.couchCoopPadAssignFocusPrefix + pad.descriptor,
+                            isIdentifyFocused: model.hudFocusID == NativeNVSTHostViewModel.couchCoopPadIdentifyFocusPrefix + pad.descriptor,
+                            onAssign: { model.cycleCouchCoopPad(pad.descriptor) },
+                            onIdentify: { model.identifyCouchCoopPad(pad.descriptor) }
+                        )
+                    }
+                }
                 ForEach(model.controllerBatteries) { battery in
                     StreamHUDControllerRow(label: battery.label, name: battery.name, level: battery.level, isCharging: battery.charging)
                 }

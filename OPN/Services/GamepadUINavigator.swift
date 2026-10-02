@@ -17,8 +17,17 @@ final class GamepadUINavigator: ObservableObject {
     private var lastButtons: [InputDeviceID: GamepadButtons] = [:]
     private var thumbstickRepeatState: [ControllerInputDirection: Date] = [:]
     private var isCapturingInput = false
+    nonisolated(unsafe) private var ownershipObserver: NSObjectProtocol?
 
-    init() {}
+    init() {
+        ownershipObserver = NotificationCenter.default.addObserver(forName: .opnControllerOwnershipDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshConnectedState() }
+        }
+    }
+
+    private var ownedActiveDeviceIDs: [InputDeviceID] {
+        SteamControllerHIDMonitor.shared.activeDeviceIDs.filter(OPNControllerOwnership.shared.owns(steamDeviceID:))
+    }
 
     /// Pass `capturingInput: true` when the navigator should drive UI navigation:
     /// processSnapshot drops every report unless a capture lease is held, and
@@ -56,6 +65,7 @@ final class GamepadUINavigator: ObservableObject {
     }
 
     deinit {
+        if let ownershipObserver { NotificationCenter.default.removeObserver(ownershipObserver) }
         let consumerKey = ObjectIdentifier(self)
         Task { @MainActor in
             SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
@@ -64,7 +74,7 @@ final class GamepadUINavigator: ObservableObject {
     }
 
     private func seedInitialButtonStates() {
-        for deviceID in SteamControllerHIDMonitor.shared.activeDeviceIDs {
+        for deviceID in ownedActiveDeviceIDs {
             if let snapshot = SteamControllerHIDMonitor.shared.snapshot(for: deviceID) {
                 lastButtons[deviceID] = snapshot.buttons
             }
@@ -72,7 +82,7 @@ final class GamepadUINavigator: ObservableObject {
     }
 
     private func refreshConnectedState() {
-        let activeIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
+        let activeIDs = ownedActiveDeviceIDs
         let isConnected = !activeIDs.isEmpty
         isSteamControllerConnected = isConnected
         connectedDeviceName = isConnected ? Self.steamControllerDeviceName : ""
@@ -88,7 +98,7 @@ final class GamepadUINavigator: ObservableObject {
     }
 
     func processSnapshot(deviceID: InputDeviceID, snapshot: ControllerInputSnapshot, isActiveOverride: Bool? = nil) {
-        let activeIDs = SteamControllerHIDMonitor.shared.activeDeviceIDs
+        let activeIDs = ownedActiveDeviceIDs
         let isActive = isActiveOverride ?? activeIDs.contains(deviceID)
         defer { lastButtons[deviceID] = snapshot.buttons }
 

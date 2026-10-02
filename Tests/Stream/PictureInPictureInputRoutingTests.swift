@@ -21,4 +21,15 @@ import Testing
         #expect(!NativeNVSTHostViewModel.acceptsWhileNotFrontmost(keyboard, isPictureInPictureMode: false))
         #expect(!NativeNVSTHostViewModel.acceptsWhileNotFrontmost(mouse, isPictureInPictureMode: false))
     }
+
+    @Test func couchCoOpLetsOnlyTheGamepadPassWithoutFocus() {
+        let gamepad = UserInputEvent.gamepad(GamepadState(deviceID: "pad", playerIndex: 0, timestamp: timestamp))
+        let keyboard = UserInputEvent.keyboard(KeyboardEvent(deviceID: "keyboard", keyCode: 0, scanCode: 0, isPressed: true, timestamp: timestamp))
+        let mouse = UserInputEvent.mouse(.button(deviceID: "mouse", button: .left, isPressed: true, timestamp: timestamp))
+
+        #expect(NativeNVSTHostViewModel.acceptsWhileNotFrontmost(gamepad, isPictureInPictureMode: false, isCouchCoopActive: true))
+        #expect(!NativeNVSTHostViewModel.acceptsWhileNotFrontmost(keyboard, isPictureInPictureMode: false, isCouchCoopActive: true))
+        #expect(!NativeNVSTHostViewModel.acceptsWhileNotFrontmost(mouse, isPictureInPictureMode: false, isCouchCoopActive: true))
+        #expect(!NativeNVSTHostViewModel.acceptsWhileNotFrontmost(gamepad, isPictureInPictureMode: false, isCouchCoopActive: false))
+    }
 }

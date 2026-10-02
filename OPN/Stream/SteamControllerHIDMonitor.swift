@@ -104,6 +104,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         var mergedSnapshot = ControllerInputSnapshot()
         var isActive: Bool
         var isSeized = false
+        var isCaptureConfigured = false
         var batteryLevel: UInt8?
         var gamepadDevice: IOHIDDevice?
         var gamepadReportBuffer: UnsafeMutablePointer<UInt8>?
@@ -202,10 +203,26 @@ public final class SteamControllerHIDMonitor: ObservableObject {
 
     /// Re-applies the capture configuration after the active mapping profile changes, so
     /// editing trackpad behavior mid-stream takes effect immediately.
+    func ownsDevice(_ context: DeviceContext) -> Bool {
+        OPNControllerOwnership.shared.owns(steamDeviceID: context.deviceID)
+    }
+
+    func applyOwnership() {
+        guard isInputCaptureActive else { return }
+        for context in devices.values {
+            if ownsDevice(context), !context.isCaptureConfigured {
+                configureCapture(for: context)
+            } else if !ownsDevice(context), context.isCaptureConfigured {
+                restoreAfterCapture(for: context)
+            }
+        }
+        if !devices.isEmpty { startHeartbeatIfNeeded() }
+    }
+
     public func refreshCaptureConfiguration() {
         guard isInputCaptureActive else { return }
         let wantsRawTrackpadCapture = mappingProvider.requiresRawSteamTrackpads
-        for context in devices.values {
+        for context in devices.values where ownsDevice(context) {
             // Ahead of the trackpad branch, which can `continue`: toggling gyro in the settings must
             // reach every connected pad, not only the ones whose trackpads changed behaviour.
             configureMotionReporting(for: context)
@@ -267,7 +284,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
         isInputCaptureActive = shouldCapture
         OPNLog.info(.controller, "Input capture \(shouldCapture ? "began" : "ended")")
         if shouldCapture {
-            for context in devices.values {
+            for context in devices.values where ownsDevice(context) {
                 configureCapture(for: context)
             }
             if !devices.isEmpty {
@@ -280,7 +297,7 @@ public final class SteamControllerHIDMonitor: ObservableObject {
             // stream that ends mid-vibration used to leave both the motors and the loop running for
             // the life of the app — the pad only stopped when it was unplugged.
             stopAllRumble()
-            for context in devices.values {
+            for context in devices.values where context.isCaptureConfigured {
                 restoreAfterCapture(for: context)
             }
         }
@@ -445,7 +462,7 @@ public nonisolated static func resetInputMonitoringPermissionViaTccUtil(thenRela
         for context in devices.values {
             cancelPowerOffCombo(for: context)
             emitNeutralStateIfNeeded(for: context)
-            if isInputCaptureActive {
+            if isInputCaptureActive, context.isCaptureConfigured {
                 enableLizardMode(for: context)
             }
             closeGamepadDevice(for: context)

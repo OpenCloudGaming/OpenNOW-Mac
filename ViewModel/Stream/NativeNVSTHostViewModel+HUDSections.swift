@@ -137,6 +137,9 @@ extension NativeNVSTHostViewModel {
         [
             StreamHUDFocusEntry(id: "controller-mapping", isDisabled: false, group: "controllers", columns: 4, action: { [weak self] in self?.showingControllerMapping = true }),
             StreamHUDFocusEntry(id: "controller-order", isDisabled: false, group: "controllers", columns: 4, action: { [weak self] in self?.showingControllerOrder = true }),
+        ]
+        + couchCoopControllerFocusEntries
+        + [
             StreamHUDFocusEntry(id: "rumble-intensity", isDisabled: false, action: cycleRumbleIntensity),
         ]
     }
@@ -193,7 +196,7 @@ extension NativeNVSTHostViewModel {
     /// absent from a session with no controller or no Co-Op enabled.
     func isHUDSectionPresent(_ section: OPNStreamHUDSection) -> Bool {
         switch section {
-        case .controllers: return !controllerBatteries.isEmpty
+        case .controllers: return !controllerBatteries.isEmpty || showsCouchCoopControllers
         case .coop: return remoteCoOpPreferences.isEnabled
         // The history survives the feature being switched off, so the panel is gated on the flag
         // that offers the feature, not on the trigger toggle: a reader who turned capture off can

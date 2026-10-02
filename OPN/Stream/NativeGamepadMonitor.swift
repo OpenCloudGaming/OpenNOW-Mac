@@ -203,7 +203,7 @@ public final class NativeGamepadMonitor {
 
     public nonisolated static func connectedGamepadCount() -> Int {
         let nativeCount = availableNativeControllers().count
-        return min(4, nativeCount + SteamControllerHIDMonitor.connectedControllerCount)
+        return OPNControllerOwnership.shared.connectedGamepadCount(unfiltered: min(4, nativeCount + SteamControllerHIDMonitor.connectedControllerCount))
     }
 
     public func start() {
@@ -330,11 +330,11 @@ public final class NativeGamepadMonitor {
         let nativeIDs = registry.devices.reduce(into: [InputDeviceID: ObjectIdentifier]()) { result, device in
             if let controller = registry.controller(for: device.id) { result[device.id] = ObjectIdentifier(controller) }
         }
-        let assignments = ControllerSlotAssignments(order: registry.playerOrder,
+        let assignments = ControllerSlotAssignments(order: registry.streamOrder,
                                                     steamIDs: Set(SteamControllerHIDMonitor.shared.activeDeviceIDs), nativeIDs: nativeIDs)
         let newSteamSlots = assignments.steam
         let newControllerSlots = assignments.native
-        let cachedControllers = registry.orderedDevices.compactMap { registry.controller(for: $0.id) }
+        let cachedControllers = registry.streamDevices.compactMap { registry.controller(for: $0.id) }
             .filter { newControllerSlots[ObjectIdentifier($0)] != nil }
         if newSteamSlots != previousSteamSlots || newControllerSlots != pollState.controllerSlots {
             prepareForControllerSlotChange()
@@ -446,8 +446,9 @@ public final class NativeGamepadMonitor {
             return
         }
         onScreenKeyboardCapturedDevices.remove(deviceID)
-        applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot, includePointerMotion: !snapshot.buttons.contains(.mode))
-        if snapshot.buttons.contains(.mode) {
+        let injectsLocalCursor = !OPNControllerOwnership.shared.isCouchCoopActive
+        applyBindingEngine(deviceID: deviceID, playerIndex: playerIndex, snapshot: snapshot, includePointerMotion: !injectsLocalCursor || !snapshot.buttons.contains(.mode))
+        if injectsLocalCursor, snapshot.buttons.contains(.mode) {
             let isRisingEdge = localCursorModeHeld.insert(deviceID).inserted
             if isRisingEdge, !SteamControllerLocalCursorInjector.hasAccessibilityPermission, !accessibilityPromptShown {
                 accessibilityPromptShown = true

@@ -285,6 +285,7 @@ extension NativeNVSTHostViewModel {
             showNativeTransientStreamMessage(message)
         }
         controllerBatteries = batteries
+        refreshCouchCoopControllers()
     }
 
     func showNativeTransientStreamMessage(_ message: String, duration: Duration = .seconds(2)) {

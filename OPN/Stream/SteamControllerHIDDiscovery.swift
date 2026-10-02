@@ -63,7 +63,7 @@ extension SteamControllerHIDMonitor {
 
         openVendorDevice(device, context: context)
         if isInputCaptureActive {
-            configureCapture(for: context)
+            if ownsDevice(context) { configureCapture(for: context) }
             startHeartbeatIfNeeded()
         }
         publishActiveCount()

@@ -35,6 +35,12 @@ struct ControllerPlayerOrder: Equatable, Sendable {
         isCustom = true
     }
 
+    func restricted(to ids: Set<InputDeviceID>) -> ControllerPlayerOrder {
+        var order = self
+        order.deviceIDs = deviceIDs.filter(ids.contains)
+        return order
+    }
+
     mutating func reset(connectedIDs: [InputDeviceID]) {
         isCustom = false
         update(connectedIDs: connectedIDs)

@@ -529,6 +529,7 @@ public final class NativeStreamView: NSView {
             removeKeyEquivalentMonitor()
             gamepadMonitor.stop()
             handleFocusLoss()
+            releasePressedInputs()
             updateCompositionBar()
             removePointerLockNotifications()
         } else {

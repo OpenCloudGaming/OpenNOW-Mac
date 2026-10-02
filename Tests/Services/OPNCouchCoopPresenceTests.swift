@@ -29,6 +29,21 @@ struct OPNCouchCoopPresenceTests {
         #expect(OPNCouchCoopAnnouncement(userInfo: announcement.userInfo) == announcement)
     }
 
+    @Test func anAnnouncementCarriesItsAssignmentOverrides() {
+        let overrides: [String: OPNCouchCoopPadTarget] = ["Xbox#0": .instance(2), "steam-controller-9": .off]
+        let announcement = OPNCouchCoopAnnouncement(instanceNumber: 1, processIdentifier: 7, screenIdentifier: nil, assignmentRevision: 4, assignmentOverrides: overrides)
+        #expect(OPNCouchCoopAnnouncement(userInfo: announcement.userInfo)?.assignmentOverrides == overrides)
+    }
+
+    @Test func anAnnouncementWithoutOverridesOmitsTheKey() {
+        let announcement = OPNCouchCoopAnnouncement(instanceNumber: 1, processIdentifier: 7, screenIdentifier: nil, assignmentRevision: 0)
+        #expect(announcement.userInfo[OPNCouchCoopAnnouncement.assignmentsKey] == nil)
+    }
+
+    @Test func theAssignmentRequestNameFollowsTheBundleIdentifier() {
+        #expect(OPNCouchCoopPresence.assignmentRequestName(bundleIdentifier: bundle).rawValue == "\(bundle).couchCoop.assignmentRequest")
+    }
+
     @Test func anAnnouncementWithoutAScreenKeepsItNil() {
         let announcement = OPNCouchCoopAnnouncement(instanceNumber: 1, processIdentifier: 7, screenIdentifier: nil, assignmentRevision: 0)
         #expect(announcement.userInfo[OPNCouchCoopAnnouncement.screenKey] == nil)

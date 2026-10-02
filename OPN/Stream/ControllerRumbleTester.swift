@@ -52,6 +52,17 @@ public enum ControllerRumbleTester {
         return result
     }
 
+    @discardableResult
+    public static func pulseController(_ deviceID: InputDeviceID) -> Bool {
+        let scaled = ControllerRumblePreference.scaled(amplitude)
+        if deviceID.rawValue.hasPrefix(OPNCouchCoopControllerAssignment.steamDescriptorPrefix) {
+            pulseSteamController(deviceID, left: scaled, right: scaled)
+            return true
+        }
+        guard let haptics = ControllerMappingDevices.shared.controller(for: deviceID)?.haptics else { return false }
+        return pulse(haptics: haptics, amplitude: scaled)
+    }
+
     /// One Steam Controller, either or both motors, then off after the pulse.
     public static func pulseSteamController(_ deviceID: InputDeviceID, left: UInt16, right: UInt16) {
         SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: left, rightAmplitude: right)

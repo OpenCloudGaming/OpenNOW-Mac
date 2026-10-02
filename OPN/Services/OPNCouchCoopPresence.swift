@@ -6,17 +6,24 @@ struct OPNCouchCoopAnnouncement: Equatable, Sendable {
     static let processKey = "pid"
     static let screenKey = "screen"
     static let revisionKey = "revision"
+    static let assignmentsKey = "assignments"
 
     let instanceNumber: Int
     let processIdentifier: Int32
     let screenIdentifier: UInt32?
     let assignmentRevision: Int
+    let assignmentOverrides: [String: OPNCouchCoopPadTarget]
 
-    init(instanceNumber: Int, processIdentifier: Int32, screenIdentifier: UInt32?, assignmentRevision: Int) {
+    init(instanceNumber: Int,
+         processIdentifier: Int32,
+         screenIdentifier: UInt32?,
+         assignmentRevision: Int,
+         assignmentOverrides: [String: OPNCouchCoopPadTarget] = [:]) {
         self.instanceNumber = instanceNumber
         self.processIdentifier = processIdentifier
         self.screenIdentifier = screenIdentifier
         self.assignmentRevision = assignmentRevision
+        self.assignmentOverrides = assignmentOverrides
     }
 
     init?(userInfo: [AnyHashable: Any]?) {
@@ -30,15 +37,19 @@ struct OPNCouchCoopAnnouncement: Equatable, Sendable {
         self.processIdentifier = processIdentifier
         self.assignmentRevision = assignmentRevision
         screenIdentifier = (userInfo[Self.screenKey] as? Int).flatMap { UInt32(exactly: $0) }
+        assignmentOverrides = OPNCouchCoopControllerAssignment.overrides(fromPayload: userInfo[Self.assignmentsKey] as? String)
     }
 
-    var userInfo: [String: Int] {
-        var values = [
+    var userInfo: [String: Any] {
+        var values: [String: Any] = [
             Self.instanceKey: instanceNumber,
             Self.processKey: Int(processIdentifier),
             Self.revisionKey: assignmentRevision,
         ]
         if let screenIdentifier { values[Self.screenKey] = Int(screenIdentifier) }
+        if !assignmentOverrides.isEmpty {
+            values[Self.assignmentsKey] = OPNCouchCoopControllerAssignment.payload(from: assignmentOverrides)
+        }
         return values
     }
 }
@@ -75,6 +86,7 @@ final class OPNCouchCoopPresence: NSObject, ObservableObject {
 
     @Published private(set) var isActive = false
     @Published private(set) var roster = OPNCouchCoopRoster()
+    @Published private(set) var assignmentOverrides: [String: OPNCouchCoopPadTarget] = [:]
     private(set) var assignmentRevision = 0
 
     private let bundleIdentifier: String
@@ -104,6 +116,10 @@ final class OPNCouchCoopPresence: NSObject, ObservableObject {
         Notification.Name("\(bundleIdentifier).couchCoop.presence")
     }
 
+    static func assignmentRequestName(bundleIdentifier: String) -> Notification.Name {
+        Notification.Name("\(bundleIdentifier).couchCoop.assignmentRequest")
+    }
+
     static func screenIdentifier(of screen: NSScreen?) -> UInt32? {
         (screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
     }
@@ -131,6 +147,13 @@ final class OPNCouchCoopPresence: NSObject, ObservableObject {
             object: nil,
             suspensionBehavior: .deliverImmediately
         )
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(receiveAssignmentRequest(_:)),
+            name: Self.assignmentRequestName(bundleIdentifier: bundleIdentifier),
+            object: nil,
+            suspensionBehavior: .deliverImmediately
+        )
         refresh()
         announce()
     }
@@ -144,6 +167,30 @@ final class OPNCouchCoopPresence: NSObject, ObservableObject {
         }
         workspaceObservers.removeAll()
         DistributedNotificationCenter.default().removeObserver(self)
+    }
+
+    var primaryAssignmentOverrides: [String: OPNCouchCoopPadTarget] {
+        if instance.isPrimary { return assignmentOverrides }
+        return roster.announcement(forInstance: OPNAppInstance.primaryNumber)?.assignmentOverrides ?? [:]
+    }
+
+    func setAssignmentOverrides(_ overrides: [String: OPNCouchCoopPadTarget]) {
+        guard instance.isPrimary, overrides != assignmentOverrides else { return }
+        assignmentOverrides = overrides
+        bumpAssignmentRevision()
+    }
+
+    func requestAssignmentOverrides(_ overrides: [String: OPNCouchCoopPadTarget]) {
+        if instance.isPrimary {
+            setAssignmentOverrides(overrides)
+            return
+        }
+        DistributedNotificationCenter.default().postNotificationName(
+            Self.assignmentRequestName(bundleIdentifier: bundleIdentifier),
+            object: nil,
+            userInfo: [OPNCouchCoopAnnouncement.assignmentsKey: OPNCouchCoopControllerAssignment.payload(from: overrides)],
+            deliverImmediately: true
+        )
     }
 
     func bumpAssignmentRevision() {
@@ -168,7 +215,8 @@ final class OPNCouchCoopPresence: NSObject, ObservableObject {
             instanceNumber: instance.number,
             processIdentifier: ownProcessIdentifier,
             screenIdentifier: Self.screenIdentifier(of: OPNMainWindow.existing()?.screen),
-            assignmentRevision: assignmentRevision
+            assignmentRevision: assignmentRevision,
+            assignmentOverrides: instance.isPrimary ? assignmentOverrides : [:]
         )
     }
 
@@ -186,6 +234,12 @@ final class OPNCouchCoopPresence: NSObject, ObservableObject {
         if pruned != roster { roster = pruned }
         let active = Self.isActive(isFlagEnabled: OPNLabs.isCouchCoopEnabled, livingProcessIdentifiers: living)
         if active != isActive { isActive = active }
+    }
+
+    @objc private func receiveAssignmentRequest(_ notification: Notification) {
+        guard instance.isPrimary else { return }
+        let payload = notification.userInfo?[OPNCouchCoopAnnouncement.assignmentsKey] as? String
+        setAssignmentOverrides(OPNCouchCoopControllerAssignment.overrides(fromPayload: payload))
     }
 
     @objc private func receiveAnnouncement(_ notification: Notification) {

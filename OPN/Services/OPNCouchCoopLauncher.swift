@@ -25,6 +25,7 @@ enum OPNCouchCoopLauncher {
     static func prepare() {
         guard OPNLabs.isCouchCoopEnabled else { return }
         OPNCouchCoopPresence.shared.start()
+        OPNCouchCoopControllerCoordinator.shared.start()
     }
 
     static func startSecondInstance() {

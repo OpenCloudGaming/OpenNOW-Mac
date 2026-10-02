@@ -56,6 +56,76 @@ struct NativeNVSTHUDFocusEntryParityTests {
         #expect(focusIDs(in: "controllers", on: model) == surface.nativeHUDControllerTiles.map(\.id))
     }
 
+    private func couchCoopPad(_ descriptor: String, target: OPNCouchCoopPadTarget) -> OPNCouchCoopPad {
+        OPNCouchCoopPad(descriptor: descriptor, deviceID: InputDeviceID("native-\(descriptor)"), name: descriptor, target: target)
+    }
+
+    @Test func swapTileAppearsOnlyWhileCoOpIsActive() {
+        let (surface, model) = makeHUDSurface()
+        model.controllerBatteries = [ControllerBatteryInfo(id: "pad", label: "P1", level: 80, charging: false)]
+        model.couchCoopPads = [couchCoopPad("Xbox#0", target: .instance(1))]
+        #expect(!surface.nativeHUDControllerTiles.map(\.id).contains(NativeNVSTHostViewModel.couchCoopSwapFocusID))
+        #expect(!focusIDs(in: "controllers", on: model).contains(NativeNVSTHostViewModel.couchCoopSwapFocusID))
+        model.isCouchCoopActive = true
+        #expect(surface.nativeHUDControllerTiles.map(\.id).contains(NativeNVSTHostViewModel.couchCoopSwapFocusID))
+        #expect(focusIDs(in: "controllers", on: model) == surface.nativeHUDControllerTiles.map(\.id))
+    }
+
+    @Test func swapTileDisabledStateMatchesItsFocusEntry() {
+        let (surface, model) = makeHUDSurface()
+        model.controllerBatteries = [ControllerBatteryInfo(id: "pad", label: "P1", level: 80, charging: false)]
+        model.isCouchCoopActive = true
+        let disabledByID = Dictionary(uniqueKeysWithValues: model.hudFocusEntries.map { ($0.id, $0.isDisabled) })
+        for tile in surface.nativeHUDControllerTiles {
+            #expect(disabledByID[tile.id] == tile.isDisabled, "\(tile.id) disabled state drifted")
+        }
+        model.couchCoopPads = [couchCoopPad("Xbox#0", target: .instance(1))]
+        let enabledByID = Dictionary(uniqueKeysWithValues: model.hudFocusEntries.map { ($0.id, $0.isDisabled) })
+        #expect(enabledByID[NativeNVSTHostViewModel.couchCoopSwapFocusID] == false)
+    }
+
+    @Test func everyCoOpPadHasAnAssignAndIdentifyEntryInOneRow() {
+        let (_, model) = makeHUDSurface()
+        model.isCouchCoopActive = true
+        let pads = [couchCoopPad("Xbox#0", target: .instance(1)), couchCoopPad("steam-controller-9", target: .instance(2))]
+        model.couchCoopPads = pads
+        for pad in pads {
+            let group = NativeNVSTHostViewModel.couchCoopPadGroup(for: pad)
+            #expect(focusIDs(in: group, on: model) == [
+                NativeNVSTHostViewModel.couchCoopPadAssignFocusPrefix + pad.descriptor,
+                NativeNVSTHostViewModel.couchCoopPadIdentifyFocusPrefix + pad.descriptor,
+            ])
+            #expect(model.hudFocusEntries.filter { $0.group == group }.allSatisfy { $0.columns == 2 })
+        }
+    }
+
+    @Test func coOpRowsSitBetweenTheTilesAndTheRumbleRow() {
+        let (_, model) = makeHUDSurface()
+        model.isCouchCoopActive = true
+        model.couchCoopPads = [couchCoopPad("Xbox#0", target: .instance(1))]
+        let ids = model.hudFocusEntries.map(\.id)
+        let order = ["controller-order", NativeNVSTHostViewModel.couchCoopSwapFocusID, NativeNVSTHostViewModel.couchCoopPadAssignFocusPrefix + "Xbox#0", "rumble-intensity"]
+        #expect(order.compactMap { ids.firstIndex(of: $0) } == order.compactMap { ids.firstIndex(of: $0) }.sorted())
+        #expect(order.allSatisfy(ids.contains))
+    }
+
+    @Test func coOpEntriesAreAbsentWhenCoOpIsInactive() {
+        let (_, model) = makeHUDSurface()
+        model.controllerBatteries = [ControllerBatteryInfo(id: "pad", label: "P1", level: 80, charging: false)]
+        model.couchCoopPads = [couchCoopPad("Xbox#0", target: .instance(1))]
+        let ids = model.hudFocusEntries.map(\.id)
+        #expect(!ids.contains { $0.hasPrefix("coop-pad-") })
+        #expect(!ids.contains(NativeNVSTHostViewModel.couchCoopSwapFocusID))
+    }
+
+    @Test func theControllersSectionAppearsForCoOpPadsWithoutBatteries() {
+        let (_, model) = makeHUDSurface()
+        #expect(!model.isHUDSectionPresent(.controllers))
+        model.isCouchCoopActive = true
+        model.couchCoopPads = [couchCoopPad("Xbox#0", target: .instance(1))]
+        #expect(model.isHUDSectionPresent(.controllers))
+    }
+
     /// The seat's live timer replaces the window recorded at connect, so an extended or shortened
     /// limit no longer drifts from the seat's real deadline.
     @Test func theSeatTimerReplacesTheSessionLimit() throws {

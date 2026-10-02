@@ -147,10 +147,16 @@ final class ControllerInputRouter: NSObject, ObservableObject {
     private func installNotifications() {
         NotificationCenter.default.addObserver(self, selector: #selector(controllerDidConnectNotification(_:)), name: .GCControllerDidConnect, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(controllerDidDisconnectNotification(_:)), name: .GCControllerDidDisconnect, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(controllerOwnershipDidChangeNotification(_:)), name: .opnControllerOwnershipDidChange, object: nil)
+    }
+
+    @objc private func controllerOwnershipDidChangeNotification(_ notification: Notification) {
+        refreshControllers()
     }
 
     @objc private func controllerDidConnectNotification(_ notification: Notification) {
-        guard let controller = notification.object as? GCController else { return }
+        guard let controller = notification.object as? GCController,
+              OPNControllerOwnership.shared.owns(controller) else { return }
         controllerDidConnect(controller)
     }
 
@@ -166,7 +172,8 @@ final class ControllerInputRouter: NSObject, ObservableObject {
 
     private func refreshControllers() {
         clearConfiguredHandlers()
-        let controllers = GCController.controllers()
+        let allControllers = GCController.controllers()
+        let controllers = allControllers.filter { OPNControllerOwnership.shared.owns($0, among: allControllers) }
         isControllerConnected = !controllers.isEmpty
         activeController = controllers.first
         for controller in controllers {

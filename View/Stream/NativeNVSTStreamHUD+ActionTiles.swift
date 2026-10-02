@@ -90,6 +90,23 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeHUDControllerTiles: [NativeHUDTile] {
+        nativeHUDBaseControllerTiles + nativeHUDCouchCoopControllerTiles
+    }
+
+    private var nativeHUDCouchCoopControllerTiles: [NativeHUDTile] {
+        guard model.isCouchCoopActive else { return [] }
+        return [
+            NativeHUDTile(id: NativeNVSTHostViewModel.couchCoopSwapFocusID,
+                          title: "Swap Players",
+                          subtitle: "Trade the Player 1 and 2 pads",
+                          systemName: "arrow.left.arrow.right",
+                          isActive: false,
+                          isDisabled: model.couchCoopPads.isEmpty,
+                          action: model.swapCouchCoopPlayers),
+        ]
+    }
+
+    private var nativeHUDBaseControllerTiles: [NativeHUDTile] {
         [
             NativeHUDTile(id: "controller-mapping",
                           title: "Controller Mapping",
