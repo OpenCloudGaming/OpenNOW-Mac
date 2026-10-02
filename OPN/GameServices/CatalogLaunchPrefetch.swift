@@ -1,5 +1,45 @@
 import Foundation
 
+/// Decides when the launch prefetch may drop the catalog graphs it retains for the home page.
+///
+/// Those graphs duplicate what `CatalogViewModel` holds, so they are pure waste once the view
+/// model has adopted everything this prefetch can still hand over. Two things gate that:
+///
+/// - The view model has to have run every launch attach point. Clearing before that makes a
+///   deferred `loadLibrary()` or `loadFavorites()` attach find nothing and re-request lists this
+///   prefetch already has in flight.
+/// - Every delivery this prefetch owes has to have landed - the four launch fetches, plus the two
+///   panel cache reads `primeFromCache` starts. Clearing before that drops data the view model has
+///   not seen yet.
+struct CatalogLaunchPrefetchRetention {
+    private(set) var didAdoptLaunchResults = false
+    private(set) var didFinishHandover = false
+    private var pendingDeliveries = 0
+
+    var canReleaseRetainedGraphs: Bool {
+        !didFinishHandover && didAdoptLaunchResults && pendingDeliveries == 0
+    }
+
+    mutating func noteDeliveriesStarted(_ count: Int) {
+        guard !didFinishHandover else { return }
+        pendingDeliveries += count
+    }
+
+    mutating func noteDeliveryFinished() {
+        pendingDeliveries = max(0, pendingDeliveries - 1)
+    }
+
+    mutating func noteCatalogAdoptedLaunchResults() {
+        guard !didFinishHandover else { return }
+        didAdoptLaunchResults = true
+    }
+
+    mutating func noteHandoverFinished() {
+        didFinishHandover = true
+        pendingDeliveries = 0
+    }
+}
+
 /// Fetches everything the home screen needs at process launch, before the catalog view exists.
 ///
 /// Without this the first request cannot start until SwiftUI has built the scene, resolved the
@@ -57,6 +97,7 @@ final class CatalogLaunchPrefetch {
     private var gameLists: [GameListKind: [OPNCatalogGameObject]] = [:]
     private var gameListStates: [GameListKind: FetchState] = [:]
     private var observer: ((Event) -> Void)?
+    private var retention = CatalogLaunchPrefetchRetention()
     var startedAt: ContinuousClock.Instant?
     private var didPrefetchHeroImages = false
     private var didPrefetchRailImages = false
@@ -68,11 +109,13 @@ final class CatalogLaunchPrefetch {
     var isFetching: Bool { isActiveState(panelStates[.marquee]) || isActiveState(panelStates[.main]) }
 
     func start(accountIdentifier: String, accessToken: String, idToken: String) {
+        guard !retention.didFinishHandover else { return }
         guard (panelStates[.marquee] ?? .idle) == .idle, (panelStates[.main] ?? .idle) == .idle else { return }
         guard !accountIdentifier.isEmpty, !accessToken.isEmpty || !idToken.isEmpty else { return }
         self.accountIdentifier = accountIdentifier
         for kind in PanelKind.allCases { panelStates[kind] = .inFlight }
         for kind in GameListKind.allCases { gameListStates[kind] = .inFlight }
+        retention.noteDeliveriesStarted(PanelKind.allCases.count + GameListKind.allCases.count)
         startedAt = ContinuousClock.now
         StartupReadiness.shared.noteProgress()
         // Also prewarms the vpcId lookup, which every catalog query waits on.
@@ -99,6 +142,9 @@ final class CatalogLaunchPrefetch {
     /// Reports which kinds the caller can leave to this prefetch. A kind that already failed (or
     /// was never started) is not adopted, so the caller still fetches it itself.
     func attach(accountIdentifier: String, onEvent: @escaping (Event) -> Void) -> Attachment {
+        // A released prefetch holds nothing to replay and owns nothing in flight, so the caller
+        // fetches both shapes itself rather than adopting an empty handover.
+        guard !retention.didFinishHandover else { return Attachment() }
         guard !accountIdentifier.isEmpty, accountIdentifier == self.accountIdentifier else { return Attachment() }
         var attachment = Attachment()
         attachment.marquee = isActiveState(panelStates[.marquee])
@@ -135,11 +181,12 @@ final class CatalogLaunchPrefetch {
     func primeFromCache(accountIdentifier: String) {
         guard self.accountIdentifier.isEmpty || self.accountIdentifier == accountIdentifier else { return }
         guard !accountIdentifier.isEmpty else { return }
+        guard !retention.didFinishHandover else { return }
         self.accountIdentifier = accountIdentifier
+        retention.noteDeliveriesStarted(PanelKind.allCases.count)
         for kind in PanelKind.allCases {
             gameService.loadCachedPanels(cacheKind: kind.rawValue, accountIdentifier: accountIdentifier) { [weak self] cachedPanels in
-                guard let cachedPanels, !cachedPanels.isEmpty else { return }
-                let panels = cachedPanels.map(OPNCatalogPanelObject.init)
+                let panels = cachedPanels.map { $0.map(OPNCatalogPanelObject.init) } ?? []
                 Task { @MainActor in
                     self?.applyCachedPanels(panels, for: kind)
                 }
@@ -148,7 +195,9 @@ final class CatalogLaunchPrefetch {
     }
 
     private func applyCachedPanels(_ cached: [OPNCatalogPanelObject], for kind: PanelKind) {
-        guard (panels[kind] ?? []).isEmpty else { return }
+        defer { finishDelivery() }
+        guard !retention.didFinishHandover else { return }
+        guard !cached.isEmpty, (panels[kind] ?? []).isEmpty else { return }
         panels[kind] = cached
         StartupReadiness.shared.noteProgress()
         OPNLog.info(.catalog, "Launch panel prime from cache kind=\(kind.rawValue) sections=\(cached.flatMap(\.sections).count)")
@@ -160,21 +209,53 @@ final class CatalogLaunchPrefetch {
         observer = nil
     }
 
+    /// Tells this prefetch that the home catalog has run every launch attach point, so the graphs
+    /// it retains may go as soon as the last delivery lands.
+    ///
+    /// `CatalogViewModel` calls this once `loadPanels()`, `loadLibrary()` and `loadFavorites()`
+    /// have all attached. From then on the view model holds its own copy of everything this can
+    /// hand over, and a later attach is a post-launch reload that has to go to the network.
+    func catalogDidAdoptLaunchResults() {
+        retention.noteCatalogAdoptedLaunchResults()
+        releaseRetainedGraphsIfSettled()
+    }
+
     /// Drops everything so a later explicit refresh goes to the network instead
     /// of adopting launch-time results.
     func invalidate() {
-        observer = nil
+        dropRetainedGraphs()
         accountIdentifier = ""
-        panels = [:]
         panelStates = [:]
-        gameLists = [:]
         gameListStates = [:]
         startedAt = nil
         didPrefetchHeroImages = false
         didPrefetchRailImages = false
     }
 
+    /// Drops the panel and game-list graphs and ends the handover, so nothing retained can be
+    /// handed over again. The observer goes with them: a stale closure must not keep firing.
+    private func dropRetainedGraphs() {
+        retention.noteHandoverFinished()
+        panels = [:]
+        gameLists = [:]
+        observer = nil
+        OPNLog.info(.catalog, "Launch prefetch released the retained catalog graphs")
+    }
+
+    private func releaseRetainedGraphsIfSettled() {
+        guard retention.canReleaseRetainedGraphs else { return }
+        dropRetainedGraphs()
+    }
+
+    /// One launch delivery - a fetch or a panel cache read - has landed.
+    private func finishDelivery() {
+        retention.noteDeliveryFinished()
+        releaseRetainedGraphsIfSettled()
+    }
+
     private func handlePanels(kind: PanelKind, success: Bool, panels newPanels: [OPNCatalogPanelObject], error: String) {
+        defer { finishDelivery() }
+        guard !retention.didFinishHandover else { return }
         guard success, !newPanels.isEmpty else {
             let message = error.isEmpty ? "No \(kind.rawValue) panels returned." : error
             panelStates[kind] = .failed
@@ -195,6 +276,8 @@ final class CatalogLaunchPrefetch {
     // Unlike panels, an empty result is a legitimate outcome here (the account just has no
     // favorites, or owns nothing yet) rather than something to retry as a failure.
     private func handleGameList(kind: GameListKind, success: Bool, games: [OPNCatalogGameObject], error: String) {
+        defer { finishDelivery() }
+        guard !retention.didFinishHandover else { return }
         guard success else {
             gameListStates[kind] = .failed
             guard (gameLists[kind] ?? []).isEmpty else { return }
