@@ -496,7 +496,7 @@ extension OPNSentry {
     static func diagnosticsLogURL() -> URL {
         let manager = FileManager.default
         let base = manager.urls(for: .cachesDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent("OpenNOW-diagnostics-current.log")
+        return base.appendingPathComponent("OpenNOW", isDirectory: true).appendingPathComponent(OPNAppInstance.current.diagnosticsLogFileName)
     }
 
     static func clearDiagnosticsLog(at url: URL, fileManager manager: FileManager = .default) {

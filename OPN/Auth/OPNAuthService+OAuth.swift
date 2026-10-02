@@ -284,6 +284,6 @@ extension OPNAuthService {
             ? String(decoding: hostnameBuffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
             : "unknown"
         let user = ProcessInfo.processInfo.environment["USER"] ?? "unknown"
-        return SHA256.hash(data: Data("\(hostname):\(user):opennow-stable".utf8)).map { String(format: "%02x", $0) }.joined()
+        return SHA256.hash(data: Data("\(hostname):\(user):opennow-stable\(OPNAppInstance.current.deviceIdentitySeedSuffix)".utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }

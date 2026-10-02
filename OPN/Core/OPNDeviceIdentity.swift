@@ -14,10 +14,12 @@ public final class OPNDeviceIdentity: NSObject {
             return cachedCloudmatchDeviceId
         }
 
-        let supportDirectory = ("~/Library/Application Support/OpenNOW" as NSString).expandingTildeInPath
+        let instance = OPNAppInstance.current
+        let applicationSupport = URL(fileURLWithPath: ("~/Library/Application Support" as NSString).expandingTildeInPath, isDirectory: true)
+        let supportDirectory = instance.supportDirectory(under: applicationSupport).path
         let path = (supportDirectory as NSString).appendingPathComponent("device-id.plist")
         let legacyPath = ("~/Library/Application Support/com.nvidia.gfn-device-id" as NSString).expandingTildeInPath
-        let existing = NSDictionary(contentsOfFile: path) ?? NSDictionary(contentsOfFile: legacyPath)
+        let existing = NSDictionary(contentsOfFile: path) ?? (instance.isPrimary ? NSDictionary(contentsOfFile: legacyPath) : nil)
         let storedDeviceId = existing?["deviceId"] as? String
         let deviceId: String
         if let storedDeviceId, !storedDeviceId.isEmpty {

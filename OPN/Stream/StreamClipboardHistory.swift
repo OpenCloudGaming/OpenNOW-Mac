@@ -104,7 +104,7 @@ public struct StreamClipboardHistoryStore: Sendable {
         let supportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser
         return supportDirectory
-            .appendingPathComponent(OPNProductIdentity.releaseBundleIdentifier, isDirectory: true)
+            .appendingPathComponent(OPNAppInstance.current.clipboardHistoryDirectoryName, isDirectory: true)
             .appendingPathComponent("ClipboardHistory.json")
     }
 }

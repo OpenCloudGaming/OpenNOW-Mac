@@ -30,13 +30,22 @@ enum OPNLabs {
         since: "0.15"
     )
 
+    static let couchCoop = OPNLabsFlag(
+        id: "couchCoop",
+        title: "Couch Co-op",
+        summary: "Lets a second copy of OpenNOW run beside this one with its own account, so two people can play an online co-op game split screen, each on their own controller. Still being built: the second copy is started with --opn-instance 2.",
+        since: "0.16"
+    )
+
     /// Every trial in flight. Empty is the normal state, and the Settings rail drops the Labs
     /// destination while it is.
-    static let flags: [OPNLabsFlag] = [clipboardCapture]
+    static let flags: [OPNLabsFlag] = [clipboardCapture, couchCoop]
 
     /// Whether the in-stream clipboard history is switched on. Read at every point the feature is
     /// offered — the HUD panel, the Settings card, the binding and the capture path itself.
     static var isClipboardCaptureEnabled: Bool { isEnabled(clipboardCapture) }
+
+    static var isCouchCoopEnabled: Bool { isEnabled(couchCoop) }
 
     static var hasFlags: Bool { !flags.isEmpty }
 

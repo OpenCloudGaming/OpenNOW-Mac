@@ -12,7 +12,7 @@ extension OPNAuthService {
         if let suiteName = ProcessInfo.processInfo.environment["OPN_AUTH_USER_DEFAULTS_SUITE"], !suiteName.isEmpty {
             return UserDefaults(suiteName: suiteName) ?? .standard
         }
-        return .standard
+        return OPNAppInstance.current.defaults
     }
 
     func applicationSupportBasePath() -> String? {
@@ -24,7 +24,7 @@ extension OPNAuthService {
 
     func sessionStorageDirectory() -> String? {
         guard let basePath = applicationSupportBasePath(), !basePath.isEmpty else { return nil }
-        let directory = (basePath as NSString).appendingPathComponent("OpenNOW")
+        let directory = OPNAppInstance.current.supportDirectory(under: URL(fileURLWithPath: basePath, isDirectory: true)).path
         if !FileManager.default.fileExists(atPath: directory) {
             try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
@@ -32,6 +32,7 @@ extension OPNAuthService {
     }
 
     func legacySessionFilePath() -> String? {
+        guard OPNAppInstance.current.isPrimary else { return nil }
         guard let basePath = applicationSupportBasePath(), !basePath.isEmpty else { return nil }
         return ((basePath as NSString).appendingPathComponent("com.nvidia.geforcenow") as NSString).appendingPathComponent("session.plist")
     }

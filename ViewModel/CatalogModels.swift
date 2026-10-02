@@ -357,7 +357,7 @@ struct CatalogSubscriptionStatus: Equatable {
 }
 
 struct CatalogPreviousGameSession: Codable, Equatable {
-    private static let storageKey = "OpenNOW.Catalog.PreviousGameSession"
+    private static var storageKey: String { OPNAppInstance.current.scopedPreferenceKey("OpenNOW.Catalog.PreviousGameSession") }
 
     let title: String
     let appId: String

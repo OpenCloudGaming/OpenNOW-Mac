@@ -12,7 +12,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     var adStatesBySessionId: [String: [String: Any]] = [:]
 
     static let defaultBaseUrl = CloudMatch.productionBaseURLString
-    static let persistedActiveSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
+    static var persistedActiveSessionIdKey: String { OPNAppInstance.current.scopedPreferenceKey("OpenNOW.Stream.ActiveSessionId") }
 
     func setAccessToken(_ token: String) {
         lock.withLock { accessToken = token }

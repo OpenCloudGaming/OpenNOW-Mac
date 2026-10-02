@@ -83,14 +83,10 @@ struct OPNApp: App {
 
     /// The release build keeps the shared default store so existing installs keep their sessions;
     /// every other identity gets its own so two running copies cannot clobber each other's rows.
-    private static func authStoreURL(bundleIdentifier: String = Bundle.main.bundleIdentifier ?? "") -> URL? {
-        guard !bundleIdentifier.isEmpty,
-              bundleIdentifier != OPNProductIdentity.releaseBundleIdentifier else { return nil }
-        let directory = URL.applicationSupportDirectory
-            .appending(path: "OpenNOW", directoryHint: .isDirectory)
-            .appending(path: bundleIdentifier, directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appending(path: "auth.store", directoryHint: .notDirectory)
+    private static func authStoreURL(instance: OPNAppInstance = .current) -> URL? {
+        guard let url = instance.authStoreURL(under: URL.applicationSupportDirectory) else { return nil }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return url
     }
 
     private static func authStoreConfiguration(schema: Schema) -> ModelConfiguration {
@@ -212,7 +208,8 @@ struct OPNApp: App {
     // container so those saves never invalidate the auth @Query views (ContentView).
     nonisolated private static func makeImageCacheContainer() -> ModelContainer? {
         let schema = Schema([CatalogImageCacheEntry.self])
-        let storeURL = URL.applicationSupportDirectory.appending(path: "CatalogImageCache.store")
+        let storeURL = OPNAppInstance.current.imageCacheStoreURL(under: URL.applicationSupportDirectory)
+        try? FileManager.default.createDirectory(at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let configuration = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
         do {
             let container = try ModelContainer(for: schema, configurations: [configuration])

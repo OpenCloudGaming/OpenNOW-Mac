@@ -82,7 +82,7 @@ final class OPNStreamWindowPresenter {
         if presentedConfigurationID == configuration.id, let window, window.isVisible { return }
         dismiss()
 
-        let window = OPNStreamWindowFactory.make()
+        let window = OPNStreamWindowFactory.make(defaults: OPNAppInstance.current.defaults)
         let hostingView = NSHostingView(rootView: OPNStreamWindowRootView(configuration: configuration, viewModel: viewModel))
         window.contentView = hostingView
         // The game's title belongs to the window the game is in; the catalog window keeps its own.

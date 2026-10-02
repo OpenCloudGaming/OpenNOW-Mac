@@ -33,7 +33,7 @@ public enum GFNTokenStore {
 
     public static func save(_ tokens: Tokens, forIdentity identity: String, service override: String? = nil) {
         guard !identity.isEmpty, !tokens.isEmpty else { return }
-        let account = tokenKeyPrefix + identity
+        let account = accountName(forIdentity: identity)
         do {
             let data = try JSONEncoder().encode(tokens)
             upsert(data: data, account: account, service: override ?? service)
@@ -44,7 +44,7 @@ public enum GFNTokenStore {
 
     public static func load(forIdentity identity: String, service override: String? = nil) -> Tokens? {
         guard !identity.isEmpty else { return nil }
-        let account = tokenKeyPrefix + identity
+        let account = accountName(forIdentity: identity)
         guard let data = loadRaw(account: account, service: override ?? service) else { return nil }
         do {
             return try JSONDecoder().decode(Tokens.self, from: data)
@@ -56,14 +56,21 @@ public enum GFNTokenStore {
 
     public static func delete(forIdentity identity: String, service override: String? = nil) {
         guard !identity.isEmpty else { return }
-        let account = tokenKeyPrefix + identity
+        let account = accountName(forIdentity: identity)
         SecItemDelete(baseQuery(account: account, service: override ?? service) as CFDictionary)
     }
 
     /// A service-only delete is unreliable, so every account is removed by service and account.
     public static func deleteAll(service override: String? = nil) {
         let serviceName = override ?? service
-        delete(accountNames: storedAccountNames(service: serviceName), service: serviceName)
+        let ownedAccountNames = storedAccountNames(service: serviceName).filter {
+            OPNAppInstance.current.ownsKeychainAccount($0, tokenPrefix: tokenKeyPrefix)
+        }
+        delete(accountNames: ownedAccountNames, service: serviceName)
+    }
+
+    private static func accountName(forIdentity identity: String) -> String {
+        OPNAppInstance.current.keychainAccountName(prefix: tokenKeyPrefix, identity: identity)
     }
 
     private static func storedAccountNames(service serviceName: String) -> [String] {

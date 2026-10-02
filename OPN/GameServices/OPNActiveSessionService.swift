@@ -24,7 +24,7 @@ final class OPNActiveSessionObject {
 }
 
 enum OPNActiveSessionService {
-    private static let persistedSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
+    private static var persistedSessionIdKey: String { OPNAppInstance.current.scopedPreferenceKey("OpenNOW.Stream.ActiveSessionId") }
     private static let terminationPollLimit = 12
     private static let terminationPollDelay: TimeInterval = 0.25
 
