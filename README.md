@@ -70,6 +70,8 @@ Pick your shape, then your resolution - 16:9, 16:10, 21:9, or 32:9. The wide end
 
 ![Video settings: quality preset, aspect ratio, resolution and frame rate; codec, colour precision, HDR and colour space; maximum bitrate, with a measured per-frame decode budget for this Mac](docs/screenshots/streaming-quality.png)
 
+**On a 4K TV**, pick a scaled (HiDPI) mode in System Settings → Displays. OpenNOW tells the cloud PC your display's DPI from macOS's scaling, so a TV run at 1× gets a Windows desktop at 100% scale, with text too small to read; a scaled mode keeps the full 4K stream and enlarges the remote desktop to match.
+
 ### No more black bars
 
 GeForce NOW bakes pillarbox columns into 16:9-only titles - real black pixels, not window padding, so a wide monitor is stuck with them. OpenNOW detects those bars in the incoming frames and lets you decide what fills them:
