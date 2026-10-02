@@ -43,10 +43,9 @@ extension OPNGameService {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let networkStart = OPNNetworkLog.start(&request, operation: "als.sync")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "als.sync", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "als.sync")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(operation: "als.sync", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             if let error {
                 self.dispatchOwnership(completion, false, error.localizedDescription)
@@ -93,10 +92,9 @@ extension OPNGameService {
         var request = URLRequest(url: url, timeoutInterval: Self.accountLinkingRequestTimeoutSeconds)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
-        let networkStart = OPNNetworkLog.start(&request, operation: "als.loginUrl")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "als.loginUrl", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "als.loginUrl")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(operation: "als.loginUrl", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, statusCode == 200, let data else {

@@ -16,7 +16,6 @@ final class OPNHTTP: NSObject {
         for (key, value) in headers ?? [:] where !key.isEmpty && !value.isEmpty {
             request.setValue(value, forHTTPHeaderField: key)
         }
-        OPNSentry.addTraceHeaders(to: request)
         return request
     }
 
@@ -48,6 +47,8 @@ final class OPNHTTP: NSObject {
         }
     }
 
+    /// Validates a response and reports the reason through `errorMessage`. The outcome used to be a
+    /// Sentry metric too; with the SDK gone (NEC-47) the returned message is the whole report.
     @objc(validateResponse:data:error:expectedStatus:errorMessage:)
     static func validate(
         response: URLResponse?,
@@ -58,57 +59,24 @@ final class OPNHTTP: NSObject {
     ) -> Bool {
         if let error {
             setErrorMessage(errorMessage, error.localizedDescription.isEmpty ? "Network error" : error.localizedDescription)
-            recordHTTPMetric(response: response, error: error, expectedStatus: expectedStatus, outcome: "network_error")
             return false
         }
         guard let http = response as? HTTPURLResponse else {
             setErrorMessage(errorMessage, "Missing HTTP response")
-            recordHTTPMetric(response: response, error: nil, expectedStatus: expectedStatus, outcome: "missing_response")
             return false
         }
         guard http.statusCode == expectedStatus else {
             setErrorMessage(errorMessage, "HTTP \(http.statusCode)")
-            recordHTTPMetric(response: response, error: nil, expectedStatus: expectedStatus, outcome: "http_error")
             return false
         }
         guard data != nil else {
             setErrorMessage(errorMessage, "Empty response body")
-            recordHTTPMetric(response: response, error: nil, expectedStatus: expectedStatus, outcome: "empty_body")
             return false
         }
-        recordHTTPMetric(response: response, error: nil, expectedStatus: expectedStatus, outcome: "success")
         return true
     }
 
     private static func setErrorMessage(_ errorMessage: AutoreleasingUnsafeMutablePointer<NSString?>?, _ message: String) {
         errorMessage?.pointee = message as NSString
-    }
-
-    private static func httpStatusBucket(_ statusCode: Int) -> String {
-        statusCode < 100 ? "unknown" : "\(statusCode / 100)xx"
-    }
-
-    private static func httpMetricAttributes(response: URLResponse?, error: NSError?, expectedStatus: Int, outcome: String) -> [String: Any] {
-        let http = response as? HTTPURLResponse
-        var attributes: [String: Any] = [
-            "outcome": outcome.isEmpty ? "unknown" : outcome,
-            "method": "unknown",
-            "host": http?.url?.host?.isEmpty == false ? http?.url?.host ?? "unknown" : "unknown",
-            "expected_status": expectedStatus
-        ]
-        if let http {
-            attributes["status_code"] = http.statusCode
-            attributes["status_bucket"] = httpStatusBucket(http.statusCode)
-        }
-        if let error, !error.domain.isEmpty {
-            attributes["error_domain"] = error.domain
-            attributes["error_code"] = error.code
-        }
-        return attributes
-    }
-
-    private static func recordHTTPMetric(response: URLResponse?, error: NSError?, expectedStatus: Int, outcome: String) {
-        let attributes = httpMetricAttributes(response: response, error: error, expectedStatus: expectedStatus, outcome: outcome) as NSDictionary
-        _ = OPNSentry.recordCounterMetric(key: "opn.http.requests.count", value: 1, attributes: attributes as? [String: Any])
     }
 }

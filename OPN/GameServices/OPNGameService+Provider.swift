@@ -46,10 +46,9 @@ extension OPNGameService {
         var request = URLRequest(url: url, timeoutInterval: 10)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Self.gfnUserAgent, forHTTPHeaderField: "User-Agent")
-        let networkStart = OPNNetworkLog.start(&request, operation: "provider.serviceUrls")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { [weak self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "provider.serviceUrls", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "provider.serviceUrls")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { [weak self] data, response, error in
+            OPNNetworkLog.finish(operation: "provider.serviceUrls", startedAt: networkStart, data: data, response: response, error: error)
             guard let self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, let data, statusCode == 200 else {
@@ -206,10 +205,9 @@ extension OPNGameService {
         request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization")
         Self.applyClientHeaders(to: &request, includeBrowserHeaders: false)
         request.setValue(GFNClientMetadata.nativeWindowsUserAgent, forHTTPHeaderField: "User-Agent")
-        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.serverInfo")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.serverInfo", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.serverInfo")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(operation: "cloudmatch.serverInfo", startedAt: networkStart, data: data, response: response, error: error)
             guard error == nil, let data, (response as? HTTPURLResponse)?.statusCode == 200 else {
                 finish("GFN-PC", false)
                 return

@@ -5,7 +5,6 @@ import SwiftUI
 struct ProductSettingsPage: View {
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
-    @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
 
     static let sections: [SettingsSection] = [
         SettingsSection("product", "Product"),
@@ -39,14 +38,12 @@ struct ProductSettingsPage: View {
                     HStack(spacing: 8 * uiScale) {
                         AboutStatusPill(title: "Stream", value: "NVST", uiScale: uiScale)
                         AboutStatusPill(title: "Route", value: route.summary, uiScale: uiScale)
-                        AboutStatusPill(title: "Telemetry", value: telemetryDisabled ? "Off" : "On", uiScale: uiScale)
                     }
                 }
                 Spacer(minLength: 0)
             }
         }
         .settingsSection("product")
-        .onAppear { telemetryDisabled = OPNSentry.isTelemetryDisabled() }
     }
 
     private var route: SettingsRouteSnapshot {
@@ -175,28 +172,6 @@ struct UpdatesSettingsPage: View {
             return "Checks GitHub releases on launch and hourly while OpenNOW is running."
         }
         return "OpenNOW will not check for new releases automatically. Manual checks remain available."
-    }
-}
-
-struct PrivacySettingsPage: View {
-    let uiScale: CGFloat
-    @State private var telemetryDisabled = OPNSentry.isTelemetryDisabled()
-
-    static let sections: [SettingsSection] = [
-        SettingsSection("privacy", "Privacy"),
-    ]
-
-    var body: some View {
-        SettingsCard(title: "Privacy", uiScale: uiScale) {
-            SettingsToggleRow(title: "Disable Telemetry", subtitle: "Stops Sentry, trace headers, metrics, and automatic diagnostics logging.", isOn: telemetryDisabled, uiScale: uiScale, action: setTelemetryDisabled)
-        }
-        .settingsSection("privacy")
-        .onAppear { telemetryDisabled = OPNSentry.isTelemetryDisabled() }
-    }
-
-    private func setTelemetryDisabled(_ disabled: Bool) {
-        telemetryDisabled = disabled
-        OPNSentry.setTelemetryDisabled(disabled)
     }
 }
 

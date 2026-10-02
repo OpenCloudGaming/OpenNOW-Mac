@@ -43,7 +43,7 @@ public final class OPNAuthService: @unchecked Sendable {
 
     private static let uuidLock = NSLock()
     nonisolated(unsafe) private static var cachedUUID = ""
-    private let telemetry: JarvisTelemetry = OPNJarvisSentryTelemetry.shared
+    private let telemetry: JarvisTelemetry = OPNJarvisTelemetry.shared
     let jarvisAuthService: JarvisAuthService<JarvisURLSessionTransport>
     let starfleetService: StarfleetService<StarfleetURLSessionTransport>
     let deviceFlowStarfleetService: StarfleetService<StarfleetURLSessionTransport>
@@ -58,7 +58,7 @@ public final class OPNAuthService: @unchecked Sendable {
             configuration: Self.jarvisConfiguration,
             retryPolicy: .gfnPC,
             transport: JarvisURLSessionTransport(),
-            telemetry: OPNJarvisSentryTelemetry.shared,
+            telemetry: OPNJarvisTelemetry.shared,
             sessionStore: OPNJarvisSessionStore.shared,
             persistenceMode: .manual
         )
@@ -67,14 +67,14 @@ public final class OPNAuthService: @unchecked Sendable {
             refreshPolicy: .gfnPC,
             retryPolicy: .gfnPC,
             transport: StarfleetURLSessionTransport(),
-            telemetry: OPNStarfleetSentryTelemetry.shared
+            telemetry: OPNStarfleetTelemetry.shared
         )
         let deviceFlowStarfleetService = StarfleetService(
             configuration: .steamDeck,
             refreshPolicy: .gfnPC,
             retryPolicy: .gfnPC,
             transport: StarfleetURLSessionTransport(),
-            telemetry: OPNStarfleetSentryTelemetry.shared
+            telemetry: OPNStarfleetTelemetry.shared
         )
         self.jarvisAuthService = jarvisService
         self.starfleetService = starfleetService
@@ -293,11 +293,10 @@ public final class OPNAuthService: @unchecked Sendable {
             Task { @MainActor in completion(false, "Invalid logout URL") }
             return
         }
-        var request = URLRequest(url: url, timeoutInterval: 10)
-        let networkStart = OPNNetworkLog.start(&request, operation: "auth.serverLogout")
-        let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "auth.serverLogout", startedAt: networkStart, data: data, response: response, error: error)
+        let request = URLRequest(url: url, timeoutInterval: 10)
+        let networkStart = OPNNetworkLog.start(request, operation: "auth.serverLogout")
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(operation: "auth.serverLogout", startedAt: networkStart, data: data, response: response, error: error)
             Task { @MainActor in
                 self.clearSession()
                 if let error {

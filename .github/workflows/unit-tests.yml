@@ -170,9 +170,9 @@ jobs:
           xcodebuild -version
         shell: bash
 
-      # Xcode's package cache holds the repository clones and the downloaded binary artifacts
-      # (Sentry's XCFramework zip), so restoring it skips the github.com fetch that otherwise runs
-      # fresh on every build. Keyed on the resolved package set, so a dependency bump refreshes it.
+      # Xcode's package cache holds the repository clones and the downloaded binary artifacts, so
+      # restoring it skips the github.com fetch that otherwise runs fresh on every build. Keyed on
+      # the resolved package set, so a dependency bump refreshes it.
       - name: Cache Xcode package cache
         uses: actions/cache@v6
         with:

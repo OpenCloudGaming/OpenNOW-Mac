@@ -32,22 +32,22 @@ extension CatalogViewModel {
         guard !diagnosticsState.isWorking else { return }
         Task { @MainActor in
             diagnosticsState = .preparing
-            OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Preparing user-requested diagnostics upload"))
+            OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "Diagnostics", message: "Preparing user-requested diagnostics upload"))
             diagnosticsState = .readingLog
-            let logText = await OPNSentry.diagnosticsLogForUpload()
+            let logText = await OPNDiagnostics.diagnosticsLogForUpload()
             diagnosticsState = .uploading
             do {
-                let logURL = try await OPNSentry.uploadDiagnosticsLog(logText)
+                let logURL = try await OPNDiagnostics.uploadDiagnosticsLog(logText)
                 diagnosticsState = .copying
                 copyDiagnosticsToPasteboard(diagnosticsText(logURL: logURL, uploadError: "", inlineLog: ""))
                 diagnosticsState = .copied(logURL.absoluteString)
-                OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Diagnostics", message: "Uploaded sanitized diagnostics log url=\(logURL.absoluteString)"))
+                OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "Diagnostics", message: "Uploaded sanitized diagnostics log url=\(logURL.absoluteString)"))
             } catch {
                 let message = error.localizedDescription.isEmpty ? String(describing: error) : error.localizedDescription
                 diagnosticsState = .copying
                 copyDiagnosticsToPasteboard(diagnosticsText(logURL: nil, uploadError: message, inlineLog: logText))
                 diagnosticsState = .failed(message)
-                OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Diagnostics", message: "Diagnostics upload failed; copied local diagnostics with inline logs error=\(message)"))
+                OPNDiagnostics.logErrorMessage(OPNDiagnostics.formattedLogMessage(level: "error", area: "Diagnostics", message: "Diagnostics upload failed; copied local diagnostics with inline logs error=\(message)"))
             }
         }
     }

@@ -33,14 +33,13 @@ final class OPNPollClaimSessionContext: @unchecked Sendable {
             complete(false, [:], "Timeout polling for session ready")
             return
         }
-        guard var request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, headers: headers) else {
+        guard let request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: deviceId, headers: headers) else {
             complete(false, [:], "Invalid poll claim URL")
             return
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollClaimSession")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { [self] data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollClaimSession", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.pollClaimSession")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: request) { [self] data, response, error in
+            OPNNetworkLog.finish(operation: "cloudmatch.pollClaimSession", startedAt: networkStart, data: data, response: response, error: error)
             manager.pollClaimSessionRequestFinished(context: self, attempt: attempt, data: data, error: error)
         }.resume()
     }

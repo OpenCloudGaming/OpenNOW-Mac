@@ -48,14 +48,13 @@ enum OPNActiveSessionService {
             return
         }
         let base = normalizedBaseURL(streamingBaseUrl)
-        guard var request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        guard let request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             Task { @MainActor in completion(false, [], "Invalid sessions URL") }
             return
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.fetch")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "activeSession.fetch", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "activeSession.fetch")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(operation: "activeSession.fetch", startedAt: networkStart, data: data, response: response, error: error)
             Task { @MainActor in
             if let error {
                 completion(false, [], error.localizedDescription)
@@ -98,14 +97,13 @@ enum OPNActiveSessionService {
         }
         clearPersistedActiveSessionId(sessionId)
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: streamingBaseUrl, serverIP: serverIp)
-        guard var request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        guard let request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             Task { @MainActor in completion(false, "Invalid stop session URL") }
             return
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "activeSession.stop")
-        let tracedRequest = request
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "activeSession.stop", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "activeSession.stop")
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession(for: .session).dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(operation: "activeSession.stop", startedAt: networkStart, data: data, response: response, error: error)
             Task { @MainActor in
             if let error {
                 completion(false, error.localizedDescription)

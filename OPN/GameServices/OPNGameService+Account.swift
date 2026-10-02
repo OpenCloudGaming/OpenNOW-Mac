@@ -31,10 +31,9 @@ extension OPNGameService {
             request.setValue("GFNJWT \(token)", forHTTPHeaderField: "Authorization")
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             Self.applyClientHeaders(to: &request, includeBrowserHeaders: false)
-            let networkStart = OPNNetworkLog.start(&request, operation: "mes.subscriptions")
-            let tracedRequest = request
-            OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
-                OPNNetworkLog.finish(tracedRequest, operation: "mes.subscriptions", startedAt: networkStart, data: data, response: response, error: error)
+            let networkStart = OPNNetworkLog.start(request, operation: "mes.subscriptions")
+            OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { data, response, error in
+                OPNNetworkLog.finish(operation: "mes.subscriptions", startedAt: networkStart, data: data, response: response, error: error)
                 Self.workQueue.async {
                     if let error {
                         self.dispatchSubscription(completion, false, OPNSubscriptionInfo(), error.localizedDescription)
@@ -277,7 +276,7 @@ extension OPNGameService {
     /// Records what the membership entitled, so a missing persistence flag can be told apart from a
     /// parser that read the wrong nesting. Nothing but the entitlement leaves this call.
     func logSubscriptionShape(_ json: NSDictionary, featureCount: Int, entitled: Bool) {
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Account", message: "Membership features=\(featureCount) inGameSettingsPersistence=\(entitled ? "entitled" : "not-entitled")"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "Account", message: "Membership features=\(featureCount) inGameSettingsPersistence=\(entitled ? "entitled" : "not-entitled")"))
     }
 
     /// The `SUPPORTED_AUDIO_FORMATS` feature as a channel count, using the official client's own

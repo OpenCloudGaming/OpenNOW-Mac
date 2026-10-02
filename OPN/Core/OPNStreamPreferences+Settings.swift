@@ -12,10 +12,9 @@ extension OPNStreamPreferences {
         let baseUrl = providerStreamingBaseUrl.isEmpty ? defaultStreamingBaseUrl : providerStreamingBaseUrl
         var request = serverInfoRequest(baseUrl: baseUrl, token: token)
         request.timeoutInterval = 4
-        let networkStart = OPNNetworkLog.start(&request, operation: "stream.fetchRegions")
-        let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "stream.fetchRegions", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "stream.fetchRegions")
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(operation: "stream.fetchRegions", startedAt: networkStart, data: data, response: response, error: error)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, let data, status == 200, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 Task { @MainActor in completion(loadCachedRegions()) }

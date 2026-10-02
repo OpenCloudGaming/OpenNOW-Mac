@@ -24,7 +24,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
 
     func createSession(appId: String, internalTitle: String, settings: [String: Any]) async -> (Bool, [String: Any], String) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
-            OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
+            OPNDiagnostics.logWarningMessage(OPNDiagnostics.formattedLogMessage(level: "warning", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
             return (false, [:], "This game does not include a launchable GeForce NOW app id.")
         }
         let token = currentAccessToken()
@@ -42,7 +42,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         let hdrEnabled = bool(effectiveSettings["enableHdr"]) && capabilities.hdrDisplaySupported
         let selectedStore = string(effectiveSettings["selectedStore"]).isEmpty ? "unknown" : string(effectiveSettings["selectedStore"])
 
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) transport=nvst resolution=\(string(effectiveSettings["resolution"])) fps=\(int(effectiveSettings["fps"], fallback: 60)) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") profile=\(int(effectiveSettings["streamingQualityProfile"])) networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "SessionManager", message: "Creating cloud session appId=\(launchAppId.stringValue) base=\(baseUrl) transport=nvst resolution=\(string(effectiveSettings["resolution"])) fps=\(int(effectiveSettings["fps"], fallback: 60)) codec=\(string(effectiveSettings["codec"])) color=\(string(effectiveSettings["colorQuality"])) bitrate=\(int(effectiveSettings["maxBitrateMbps"], fallback: 50))Mbps l4s=\(bool(effectiveSettings["enableL4S"]) ? "on" : "off") profile=\(int(effectiveSettings["streamingQualityProfile"])) networkTestSessionId=\(escapedLogString(string(effectiveSettings["networkTestSessionId"])))"))
 
         let body: [String: Any] = [
             "sessionRequestData": sessionRequestData(launchAppId: launchAppId,
@@ -88,14 +88,14 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     /// One logged CloudMatch round trip. `errorMessage` is non-nil only when the transport itself
     /// failed, in which case the body is empty.
     func exchange(_ request: inout URLRequest, operation: String) async -> (data: Data, response: HTTPURLResponse?, errorMessage: String?) {
-        let networkStart = OPNNetworkLog.start(&request, operation: operation)
+        let networkStart = OPNNetworkLog.start(request, operation: operation)
         let traced = request
         do {
             let (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: traced, purpose: .session)
-            OPNNetworkLog.finish(traced, operation: operation, startedAt: networkStart, data: data, response: response, error: nil)
+            OPNNetworkLog.finish(operation: operation, startedAt: networkStart, data: data, response: response, error: nil)
             return (data, response as? HTTPURLResponse, nil)
         } catch {
-            OPNNetworkLog.finish(traced, operation: operation, startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: operation, startedAt: networkStart, data: nil, response: nil, error: error)
             return (Data(), nil, error.localizedDescription)
         }
     }
@@ -196,18 +196,17 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             return (false, [:], "Invalid session id for poll: \(escapedLogString(sessionId))")
         }
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        guard var request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        guard let request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             return (false, [:], "Invalid poll URL")
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.pollSession")
-        let tracedRequest = request
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.pollSession")
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: nil)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: request, purpose: .session)
+            OPNNetworkLog.finish(operation: "cloudmatch.pollSession", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.pollSession", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: "cloudmatch.pollSession", startedAt: networkStart, data: nil, response: nil, error: error)
             return (false, [:], error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -233,18 +232,17 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         }
         clearPersistedActiveSessionId(sessionId)
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        guard var request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        guard let request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             return (false, "Invalid stop session URL")
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.stopSession")
-        let tracedRequest = request
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.stopSession")
         let data: Data?
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: nil)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: request, purpose: .session)
+            OPNNetworkLog.finish(operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.stopSession", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: "cloudmatch.stopSession", startedAt: networkStart, data: nil, response: nil, error: error)
             return (false, error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -260,18 +258,17 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
             return (false, [], "No access token")
         }
         let base = currentStreamingBaseUrl()
-        guard var request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        guard let request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
             return (false, [], "Invalid sessions URL")
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.activeSessions")
-        let tracedRequest = request
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.activeSessions")
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: nil)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: request, purpose: .session)
+            OPNNetworkLog.finish(operation: "cloudmatch.activeSessions", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.activeSessions", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: "cloudmatch.activeSessions", startedAt: networkStart, data: nil, response: nil, error: error)
             return (false, [], error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
@@ -304,18 +301,17 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         } catch {
             return (false, [:], "Failed to encode ad update request")
         }
-        guard var request = CloudMatchRequestFactory.adUpdateRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: string(session["deviceId"]).isEmpty ? OPNDeviceIdentity.stableCloudmatchDeviceId() : string(session["deviceId"]), body: bodyData) else {
+        guard let request = CloudMatchRequestFactory.adUpdateRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: string(session["deviceId"]).isEmpty ? OPNDeviceIdentity.stableCloudmatchDeviceId() : string(session["deviceId"]), body: bodyData) else {
             return (false, [:], "Invalid ad update URL")
         }
-        let networkStart = OPNNetworkLog.start(&request, operation: "cloudmatch.reportSessionAd")
-        let tracedRequest = request
+        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.reportSessionAd")
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: tracedRequest, purpose: .session)
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: nil)
+            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: request, purpose: .session)
+            OPNNetworkLog.finish(operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
-            OPNNetworkLog.finish(tracedRequest, operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: "cloudmatch.reportSessionAd", startedAt: networkStart, data: nil, response: nil, error: error)
             return (false, [:], error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {

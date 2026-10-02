@@ -6,7 +6,7 @@ import Testing
 /// gated result is byte-for-byte what running every rule produces — a missed rule is a leaked
 /// credential, not a slow log line. These tests hold the gated path against the unconditional one.
 private func expectEquivalent(_ message: String, _ comment: Comment? = nil) {
-    #expect(OPNSentry.sanitizedMessage(message) == OPNSentry.exhaustivelySanitizedMessage(message), comment ?? "\(message)")
+    #expect(OPNDiagnostics.sanitizedMessage(message) == OPNDiagnostics.exhaustivelySanitizedMessage(message), comment ?? "\(message)")
 }
 
 @Test func gatedRedactionMatchesTheExhaustivePassOnKnownVectors() {
@@ -40,9 +40,9 @@ private func expectEquivalent(_ message: String, _ comment: Comment? = nil) {
 /// rule needs. The gate stops applying after the first rewrite; this is the case that proves it must.
 @Test func gatedRedactionKeepsTheCascadeBetweenRules() {
     let cascading = "&key=550e8400-e29b-41d4-a716-446655440000 ::1"
-    let sanitized = OPNSentry.sanitizedMessage(cascading)
+    let sanitized = OPNDiagnostics.sanitizedMessage(cascading)
 
-    #expect(sanitized == OPNSentry.exhaustivelySanitizedMessage(cascading))
+    #expect(sanitized == OPNDiagnostics.exhaustivelySanitizedMessage(cascading))
     #expect(!sanitized.contains("550e8400"))
 }
 
@@ -62,7 +62,7 @@ private func expectEquivalent(_ message: String, _ comment: Comment? = nil) {
 /// The gate must never be the reason something stays visible: whatever the rules redact today, the
 /// gated path still redacts.
 @Test func gatedRedactionStillRemovesEveryCredentialShape() {
-    let sanitized = OPNSentry.sanitizedMessage(
+    let sanitized = OPNDiagnostics.sanitizedMessage(
         "url=https://x/y?access_token=abc123 Bearer abcdefghijklmnop password=hunter2 ip=192.168.1.24"
     )
 
@@ -86,12 +86,12 @@ private func expectEquivalent(_ message: String, _ comment: Comment? = nil) {
         "COUNTRY: Japan\nLatitude: 35.6",
     ]
     for vector in vectors {
-        #expect(OPNSentry.sanitizedUploadLog(vector) == OPNSentry.exhaustivelySanitizedUploadLog(vector), "\(vector)")
+        #expect(OPNDiagnostics.sanitizedUploadLog(vector) == OPNDiagnostics.exhaustivelySanitizedUploadLog(vector), "\(vector)")
     }
 }
 
 @Test func gatedUploadRedactionStillRemovesLocation() {
-    let sanitized = OPNSentry.sanitizedUploadLog("city=London lat=51.5 host=eu-west.cloudmatch.example ip=192.168.1.24")
+    let sanitized = OPNDiagnostics.sanitizedUploadLog("city=London lat=51.5 host=eu-west.cloudmatch.example ip=192.168.1.24")
 
     #expect(!sanitized.contains("London"))
     #expect(!sanitized.contains("51.5"))

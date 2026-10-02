@@ -159,14 +159,14 @@ actor OPNGitHubUpdater {
         request.setValue("OpenNOW-Updater", forHTTPHeaderField: "User-Agent")
 
         logInfo("Requesting GitHub release data repository=\(owner)/\(repository) path=\(path) currentVersion=\(currentVersion)")
-        let networkStart = OPNNetworkLog.start(&request, operation: operation)
+        let networkStart = OPNNetworkLog.start(request, operation: operation)
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
-            OPNNetworkLog.finish(request, operation: operation, startedAt: networkStart, data: data, response: response, error: nil)
+            OPNNetworkLog.finish(operation: operation, startedAt: networkStart, data: data, response: response, error: nil)
         } catch {
-            OPNNetworkLog.finish(request, operation: operation, startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: operation, startedAt: networkStart, data: nil, response: nil, error: error)
             throw error
         }
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode), !data.isEmpty else {
@@ -184,7 +184,7 @@ actor OPNGitHubUpdater {
             throw UpdateError.invalidResponse("The release asset download URL is invalid.")
         }
 
-        var request = URLRequest(url: downloadURL)
+        let request = URLRequest(url: downloadURL)
         logInfo("Downloading update archive version=\(release.version) asset=\(release.assetName) bytes=\(release.assetByteCount)")
         let downloadLimit = OPNUpdateArchiveInspector.maximumArchiveByteCount
         guard release.assetByteCount == 0 || release.assetByteCount <= downloadLimit else {
@@ -198,14 +198,14 @@ actor OPNGitHubUpdater {
             maximumByteCount: downloadLimit,
             handler: progress
         )
-        let networkStart = OPNNetworkLog.start(&request, operation: "updater.archiveDownload")
+        let networkStart = OPNNetworkLog.start(request, operation: "updater.archiveDownload")
         let archiveURL: URL
         let response: URLResponse
         do {
             (archiveURL, response) = try await session.download(for: request, delegate: observer)
-            OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: response, error: nil)
+            OPNNetworkLog.finish(operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: response, error: nil)
         } catch {
-            OPNNetworkLog.finish(request, operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: "updater.archiveDownload", startedAt: networkStart, data: nil, response: nil, error: error)
             guard !observer.isByteLimitExceeded else {
                 throw UpdateError.downloadFailed("The update archive exceeded the \(downloadLimit / (1024 * 1024)) MB download limit.")
             }
@@ -299,11 +299,11 @@ actor OPNGitHubUpdater {
     }
 
     private func logInfo(_ message: String) {
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "Update", message: message))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "Update", message: message))
     }
 
     private func logError(_ message: String) {
-        OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "Update", message: message))
+        OPNDiagnostics.logErrorMessage(OPNDiagnostics.formattedLogMessage(level: "error", area: "Update", message: message))
     }
 
     private func summary(from json: [String: Any]) -> OPNReleaseSummary {

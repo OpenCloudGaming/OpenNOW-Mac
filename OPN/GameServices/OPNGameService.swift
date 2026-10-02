@@ -151,11 +151,9 @@ final class OPNGameService: @unchecked Sendable {
     }
 
     private func issueGraphQLRequest(_ request: URLRequest, operationName: String, queryHash: String, variables: NSDictionary?, retryAttempt: Int, completion: @escaping @Sendable (NSDictionary?, String) -> Void) {
-        var requestWithTrace = request
-        let networkStart = OPNNetworkLog.graphQLStart(&requestWithTrace, operationName: operationName, queryHash: queryHash, variables: variables)
-        let tracedRequest = requestWithTrace
+        let networkStart = OPNNetworkLog.graphQLStart(request, operationName: operationName, queryHash: queryHash, variables: variables)
         let variablesBox = variables.map(NSDictionaryBox.init)
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: tracedRequest) { data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { data, response, error in
             var payload: NSDictionary?
             var message = ""
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
@@ -173,7 +171,7 @@ final class OPNGameService: @unchecked Sendable {
                     message = "No data in GraphQL response"
                 }
             }
-            OPNNetworkLog.graphQLFinish(tracedRequest, operationName: operationName, queryHash: queryHash, startedAt: networkStart, data: data, response: response, error: error, responseMessage: message)
+            OPNNetworkLog.graphQLFinish(operationName: operationName, queryHash: queryHash, startedAt: networkStart, data: data, response: response, error: error, responseMessage: message)
             if error == nil, retryAttempt == 0, queryHash != "inline", Self.isPersistedQueryNotFound(statusCode: statusCode, data: data) {
                 Self.workQueue.asyncAfter(deadline: .now() + Self.persistedQueryNotFoundRetryDelay) {
                     self.issueGraphQLRequest(request, operationName: operationName, queryHash: queryHash, variables: variablesBox?.value, retryAttempt: 1, completion: completion)

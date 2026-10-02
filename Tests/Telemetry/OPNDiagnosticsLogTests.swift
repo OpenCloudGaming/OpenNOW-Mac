@@ -11,7 +11,7 @@ import Testing
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     try Data("previous-run-log".utf8).write(to: logURL)
 
-    OPNSentry.clearDiagnosticsLog(at: logURL)
+    OPNDiagnostics.clearDiagnosticsLog(at: logURL)
 
     let data = try Data(contentsOf: logURL)
     #expect(data.isEmpty)
@@ -24,7 +24,7 @@ import Testing
     defer { try? FileManager.default.removeItem(at: directory.deletingLastPathComponent()) }
 
     let logURL = directory.appendingPathComponent("OpenNOW-diagnostics-current.log")
-    OPNSentry.clearDiagnosticsLog(at: logURL)
+    OPNDiagnostics.clearDiagnosticsLog(at: logURL)
 
     let data = try Data(contentsOf: logURL)
     #expect(data.isEmpty)
@@ -32,10 +32,10 @@ import Testing
 
 /// Addresses and credentials are redacted; identifiers that make a log worth reading are not.
 /// `token=` used to survive this, which is how a live `id_token_hint` reached the diagnostics
-/// file, Sentry, and the paste service the upload path posts to.
+/// file and the paste service the upload path posts to.
 @Test func sanitizedLogMessageRedactsAddressesAndCredentials() {
     let message = "email=user@example.com phone=+1 555 123 4567 id=550E8400-E29B-41D4-A716-446655440000 token=abc.def.ghi ipv4=192.168.1.24 ipv6=2600:1702:7b40:6190:69ea:cb80:cf15:6289"
-    let sanitized = OPNSentry.sanitizedLogMessage(message)
+    let sanitized = OPNDiagnostics.sanitizedLogMessage(message)
 
     #expect(sanitized.contains("user@example.com"))
     #expect(sanitized.contains("+1 555 123 4567"))

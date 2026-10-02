@@ -329,7 +329,7 @@ swift test --scratch-path .build/shared --filter StreamRecording
 swift test --scratch-path .build/shared --filter GameServicesTests
 ```
 
-Avoid package-local build directories during normal development. Use the root package and shared scratch path so generated SwiftPM state stays in one place and large binary artifacts such as `sentry-cocoa` are not duplicated.
+Avoid package-local build directories during normal development. Use the root package and shared scratch path so generated SwiftPM state stays in one place and large binary artifacts are not duplicated.
 
 ```sh
 scripts/build/report-spm-build-size.sh   # audit generated SwiftPM disk usage

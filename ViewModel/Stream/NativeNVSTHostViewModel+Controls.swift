@@ -580,14 +580,25 @@ extension NativeNVSTHostViewModel {
         }
     }
 
+    /// The six network gauges here were Sentry metrics, sampled once a second. With the SDK gone
+    /// (NEC-47) they are one opt-in debug line instead: at stream cadence anything louder would be
+    /// the app's biggest log source, so the values stay available to a developer without a shipped
+    /// build paying for them.
     func recordNativeNetworkTelemetry(_ snapshot: NativeNVSTPerformanceSnapshot) {
-        let attributes = ["transport": "nvst", "applicationID": configuration.applicationID]
-        if snapshot.latencyMilliseconds >= 0 { OPNStreamTelemetry.record("nvst.network.latency_ms", kind: .gauge, value: snapshot.latencyMilliseconds, unit: "millisecond", attributes: attributes) }
-        if snapshot.jitterMilliseconds >= 0 { OPNStreamTelemetry.record("nvst.network.jitter_ms", kind: .gauge, value: snapshot.jitterMilliseconds, unit: "millisecond", attributes: attributes) }
-        if snapshot.bitrateMegabitsPerSecond >= 0 { OPNStreamTelemetry.record("nvst.network.bitrate_mbps", kind: .gauge, value: snapshot.bitrateMegabitsPerSecond, unit: "megabit/second", attributes: attributes) }
-        if snapshot.bandwidthUtilizationPercent >= 0 { OPNStreamTelemetry.record("nvst.network.bandwidth_utilization_percent", kind: .gauge, value: snapshot.bandwidthUtilizationPercent, unit: "percent", attributes: attributes) }
-        OPNStreamTelemetry.record("nvst.network.packet_loss", kind: .gauge, value: Double(snapshot.packetLoss), unit: "packet", attributes: attributes)
-        OPNStreamTelemetry.record("nvst.network.frame_loss", kind: .gauge, value: Double(snapshot.frameLoss), unit: "frame", attributes: attributes)
+        guard OPNDiagnostics.shouldLogDebug() else { return }
+        var parts: [String] = []
+        if snapshot.latencyMilliseconds >= 0 { parts.append("latencyMs=\(snapshot.latencyMilliseconds)") }
+        if snapshot.jitterMilliseconds >= 0 { parts.append("jitterMs=\(snapshot.jitterMilliseconds)") }
+        if snapshot.bitrateMegabitsPerSecond >= 0 { parts.append("bitrateMbps=\(snapshot.bitrateMegabitsPerSecond)") }
+        if snapshot.bandwidthUtilizationPercent >= 0 { parts.append("bandwidthUtilizationPercent=\(snapshot.bandwidthUtilizationPercent)") }
+        parts.append("packetLoss=\(snapshot.packetLoss)")
+        parts.append("frameLoss=\(snapshot.frameLoss)")
+        OPNStreamTelemetry.capture(
+            "nvst.network.snapshot",
+            level: .debug,
+            message: "Network snapshot " + parts.joined(separator: " "),
+            attributes: ["transport": "nvst", "applicationID": configuration.applicationID]
+        )
     }
 
     func startNetworkPathMonitoring() {

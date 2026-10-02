@@ -317,9 +317,9 @@ final class OPNReportIssuePresentation: ObservableObject {
     }
 
     private func uploadDiagnostics() async -> URL? {
-        let logText = await OPNSentry.diagnosticsLogForUpload()
+        let logText = await OPNDiagnostics.diagnosticsLogForUpload()
         do {
-            return try await OPNSentry.uploadDiagnosticsLog(logText)
+            return try await OPNDiagnostics.uploadDiagnosticsLog(logText)
         } catch {
             OPNLog.warning(.app, "Issue report diagnostics upload failed: \(error.localizedDescription)")
             return nil

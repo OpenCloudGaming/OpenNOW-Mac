@@ -24,7 +24,6 @@ own source is licensed separately under the MIT License (`LICENSE` in the source
 | xdelta3 | vendored inside delta-codec-cocoa | Apache-2.0 | statically linked via Ably |
 | cpp-btree | vendored inside delta-codec-cocoa | Apache-2.0 | statically linked via Ably |
 | msgpack-objective-C | 0.4.0 | Apache-2.0 | statically linked via Ably |
-| sentry-cocoa | 9.18.0 | MIT, plus bundled third-party | `Sentry.framework`, bundled |
 | Quiver | `d3b0cdc5`, vendored & patched | MIT | `Vendor/Quiver`, committed (source) |
 | SwiftLintPlugins | 0.65.1 | MIT | build-time command plugin only; never ships |
 
@@ -153,23 +152,6 @@ build systems — a framework search path alone is not enough.
 - Statically linked into the OpenNOW executable via Ably.
 - Full license text: appendix below.
 
-## Sentry
-
-### sentry-cocoa
-
-- Copyright (c) 2015 Sentry
-- Swift Package Manager dependency, pinned exactly to `9.18.0`
-- License: MIT License
-- Bundled as `Sentry.framework` in the application bundle. The framework itself carries no license
-  file, so the required notice is reproduced in the appendix below.
-
-`sentry-cocoa` also statically links third-party code of its own, including SentryCrash (a modified
-KSCrash, MIT, © 2012 Karl Stenerud), `__cxa_throw` swapping code derived from work by YANDEX LLC
-(MIT, © 2019), facebook/fishhook (BSD 3-Clause), and Apple-originated code under the Apple Public
-Source License 2.0. Those notices are maintained upstream and are reproduced verbatim in
-`Resources/Licenses/sentry-cocoa-notices.md`, which ships in the application bundle alongside this
-file.
-
 ## Build and development tooling
 
 ### SwiftLintPlugins (SimplyDanny/SwiftLintPlugins)
@@ -188,7 +170,7 @@ trademarks of Valve Corporation. Xbox is a trademark of Microsoft Corporation. U
 Connect are trademarks of Ubisoft Entertainment. Epic and Epic Games Store are trademarks of Epic
 Games, Inc. Battle.net and Blizzard are trademarks of Blizzard Entertainment. Gaijin is a trademark
 of Gaijin Entertainment. Twitch is a trademark of Twitch Interactive, Inc. Ably is a trademark of
-Ably Real-time Ltd. Sentry is a trademark of Functional Software, Inc.
+Ably Real-time Ltd.
 
 All trademarks are the property of their respective owners and are used for identification purposes
 only. Storefront icons in the account-connection settings are fetched at runtime from URLs returned
@@ -445,30 +427,3 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-### MIT License — sentry-cocoa
-
-~~~
-The MIT License (MIT)
-
-Copyright (c) 2015 Sentry
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-~~~
-
-For the third-party code Sentry statically links, see `sentry-cocoa-notices.md` in this directory.

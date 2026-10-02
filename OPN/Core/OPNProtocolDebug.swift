@@ -58,14 +58,14 @@ enum OPNProtocolDebugMapper {
         guard loggingEnabled() else { return }
         let payload = sanitizedJSONString(fromJSONObject: object)
         writeCapture(label: label, payload: payload)
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "\(label ?? "payload"): \(payload)"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "\(label ?? "payload"): \(payload)"))
     }
 
     static func logJSONData(label: String?, data: Data?) {
         guard loggingEnabled() else { return }
         let payload = sanitizedJSONString(from: data)
         writeCapture(label: label, payload: payload)
-        OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "\(label ?? "payload"): \(payload)"))
+        OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "\(label ?? "payload"): \(payload)"))
     }
 
     private static func environmentFlagEnabled(_ name: String) -> Bool {
@@ -127,9 +127,9 @@ enum OPNProtocolDebugMapper {
             let filename = captureFilename(label: label, sequence: sequence.next())
             let path = NSString(string: directory).appendingPathComponent(filename)
             try payload.write(toFile: path, atomically: true, encoding: .utf8)
-            OPNSentry.logInfoMessage(OPNSentry.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "Wrote sanitized capture path=\(path)"))
+            OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "ProtocolDebug", message: "Wrote sanitized capture path=\(path)"))
         } catch {
-            OPNSentry.logErrorMessage(OPNSentry.formattedLogMessage(level: "error", area: "ProtocolDebug", message: "Failed to write capture directory=\(directory) error=\(error.localizedDescription)"))
+            OPNDiagnostics.logErrorMessage(OPNDiagnostics.formattedLogMessage(level: "error", area: "ProtocolDebug", message: "Failed to write capture directory=\(directory) error=\(error.localizedDescription)"))
         }
     }
 }

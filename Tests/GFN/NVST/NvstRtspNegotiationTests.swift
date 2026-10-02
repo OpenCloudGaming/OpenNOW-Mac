@@ -128,8 +128,8 @@ import Testing
     }
 
     /// The ANNOUNCE body is logged line by line into sinks that outlive the session (a file in
-    /// `~/Library/Logs`, the unified log, Sentry, the uploadable diagnostics bundle). The SRTP
-    /// master key and the ICE passwords must never reach them; the key ID and ufrag are not secret.
+    /// `~/Library/Logs`, the unified log, the uploadable diagnostics bundle). The SRTP master key
+    /// and the ICE passwords must never reach them; the key ID and ufrag are not secret.
     @Test func announceLogRedactionStripsKeyMaterialButKeepsIdentifiers() {
         #expect(NvstRtspSdp.redactedForLog("a=x-nv-runtime.encryptionKey:8F3A2B1C4D5E6F708192A3B4C5D6E7F8")
             == "a=x-nv-runtime.encryptionKey:[redacted-secret]")

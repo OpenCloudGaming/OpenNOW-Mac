@@ -9,7 +9,6 @@ vendor/*
 # Vendored source dependency (patched Quiver). Deliberately checked in; see Vendor/Quiver/VENDORING.md.
 !Vendor/Quiver
 !Vendor/Quiver/**
-third_party/sentry-native/
 .vscode/settings.json
 tools/vendor-js/node_modules/
 
@@ -107,11 +106,6 @@ Testing/
 .cache/
 .opencode
 .playwright-mcp/
-
-# Local Sentry access config
-.sentryclirc
-.env.sentry
-sentry.properties
 
 # Remote Co-Op local service state and secrets
 

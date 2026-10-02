@@ -239,10 +239,9 @@ extension OPNStreamPreferences {
         let region = state.region(at: index)
         var request = serverInfoRequest(baseUrl: region.url, token: token)
         request.timeoutInterval = 4
-        let networkStart = OPNNetworkLog.start(&request, operation: "stream.measureRegion")
-        let tracedRequest = request
-        URLSession.shared.dataTask(with: tracedRequest) { data, response, error in
-            OPNNetworkLog.finish(tracedRequest, operation: "stream.measureRegion", startedAt: networkStart, data: data, response: response, error: error)
+        let networkStart = OPNNetworkLog.start(request, operation: "stream.measureRegion")
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            OPNNetworkLog.finish(operation: "stream.measureRegion", startedAt: networkStart, data: data, response: response, error: error)
             var updatedBest = bestLatencyMs
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if error == nil, status >= 200, status < 500 {
@@ -263,10 +262,10 @@ extension OPNStreamPreferences {
         let region = state.region(at: index)
         var request = serverInfoRequest(baseUrl: region.url, token: token)
         request.timeoutInterval = 4
-        let networkStart = OPNNetworkLog.start(&request, operation: "stream.measureRegion")
+        let networkStart = OPNNetworkLog.start(request, operation: "stream.measureRegion")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            OPNNetworkLog.finish(request, operation: "stream.measureRegion", startedAt: networkStart, data: data, response: response, error: nil)
+            OPNNetworkLog.finish(operation: "stream.measureRegion", startedAt: networkStart, data: data, response: response, error: nil)
             var updatedBest = bestLatencyMs
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if status >= 200, status < 500 {
@@ -278,7 +277,7 @@ extension OPNStreamPreferences {
                 await measureRegionAsync(state: state, index: index, token: token, attempt: attempt + 1, bestLatencyMs: updatedBest)
             }
         } catch {
-            OPNNetworkLog.finish(request, operation: "stream.measureRegion", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: "stream.measureRegion", startedAt: networkStart, data: nil, response: nil, error: error)
         }
     }
 

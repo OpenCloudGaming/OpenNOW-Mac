@@ -330,10 +330,10 @@ actor CatalogImageCache {
         request.timeoutInterval = 30
         if !eTag.isEmpty { request.setValue(eTag, forHTTPHeaderField: "If-None-Match") }
         if !lastModified.isEmpty { request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since") }
-        let networkStart = OPNNetworkLog.start(&request, operation: "catalog.image")
+        let networkStart = OPNNetworkLog.start(request, operation: "catalog.image")
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: data, response: response, error: nil)
+            OPNNetworkLog.finish(operation: "catalog.image", startedAt: networkStart, data: data, response: response, error: nil)
             guard let httpResponse = response as? HTTPURLResponse else {
                 await MainActor.run { OPNLog.warning(.cache, "Catalog image response was not HTTP url=\(url.absoluteString)") }
                 return nil
@@ -363,7 +363,7 @@ actor CatalogImageCache {
             let imageData = CatalogCachedImageData(sourceData: retainingSourceData ? data : nil, image: decoded.image, decodedByteCount: decoded.decodedByteCount)
             return (imageData, data, httpResponse)
         } catch {
-            OPNNetworkLog.finish(request, operation: "catalog.image", startedAt: networkStart, data: nil, response: nil, error: error)
+            OPNNetworkLog.finish(operation: "catalog.image", startedAt: networkStart, data: nil, response: nil, error: error)
             await MainActor.run { OPNLog.warning(.cache, "Catalog image download threw url=\(url.absoluteString) error=\(error.localizedDescription)") }
             return nil
         }

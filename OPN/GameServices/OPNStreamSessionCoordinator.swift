@@ -274,7 +274,7 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
             _ = try await service.fetchEndOfSessionReport(payload: payload, accessToken: accessToken)
             OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .udsEndOfSessionReport, parameters: ["status": "success", "reason": reason.rawValue]))
         } catch {
-            OPNSentry.logWarningMessage(OPNSentry.formattedLogMessage(level: "warning", area: "UDS", message: "End-of-session report failed reason=\(reason.rawValue) error=\(error.localizedDescription)"))
+            OPNDiagnostics.logWarningMessage(OPNDiagnostics.formattedLogMessage(level: "warning", area: "UDS", message: "End-of-session report failed reason=\(reason.rawValue) error=\(error.localizedDescription)"))
             OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .udsEndOfSessionReport, parameters: ["status": "failure", "reason": reason.rawValue, "error": error.localizedDescription]))
         }
     }
