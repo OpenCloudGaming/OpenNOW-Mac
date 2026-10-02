@@ -129,6 +129,20 @@ extension NvstBifrostFreeTransport {
         }
     }
 
+    /// `vrr` presentation lets the display follow the stream, so the seat is asked for frames a
+    /// little under the display's maximum refresh — the margin NVIDIA Reflex keeps under G-SYNC,
+    /// `refresh - refresh² / 3600` (116 fps at 120 Hz) — and the stream never meets the refresh
+    /// ceiling. Both intervals the pacing report carries are capped; neither gets shorter than the
+    /// session's own.
+    static func pacingIntervals(sessionFrameMicroseconds: UInt32, displayRefreshRate: Int,
+                                presentsWithVariableRefresh: Bool) -> (frame: UInt32, displayVsync: UInt32) {
+        let displayVsync = displayRefreshRate > 0 ? UInt32(1_000_000 / displayRefreshRate) : 16000
+        guard presentsWithVariableRefresh, displayRefreshRate > 0 else { return (sessionFrameMicroseconds, displayVsync) }
+        let refresh = Double(displayRefreshRate)
+        let capped = max(sessionFrameMicroseconds, UInt32((1_000_000 / (refresh - refresh * refresh / 3600)).rounded()))
+        return (capped, capped)
+    }
+
     private func makeVideoPipeline(handoff: NVSTVideoHandoff,
                                    decoder: NvstVideoToolboxDecoder,
                                    receiver: NvstMjolnirReceiver,
@@ -140,13 +154,18 @@ extension NvstBifrostFreeTransport {
         // the seat paces its own frame generation to whatever vsync interval the client reports —
         // this used to go out as a hardcoded 16000 us (~62.5 Hz) regardless of the real display.
         let displayRefreshRate = OPNStreamPreferences.loadDeviceCapabilities().maxDisplayRefreshRate
-        let displayVsyncMicroseconds = displayRefreshRate > 0 ? UInt32(1_000_000 / displayRefreshRate) : 16000
+        let pacing = Self.pacingIntervals(sessionFrameMicroseconds: sessionFrameTimeMicroseconds,
+                                          displayRefreshRate: displayRefreshRate,
+                                          presentsWithVariableRefresh: presentsWithVariableRefresh)
+        if presentsWithVariableRefresh {
+            logger?("NVST vrr pacing: seat asked for \(pacing.frame) us frames under a \(displayRefreshRate) Hz display")
+        }
         let nativeBroadcaster = remoteCoOpNativeBroadcaster
         return NvstVideoPipeline(
             decoder: decoder,
             clock: clock,
-            frameTimeMicroseconds: sessionFrameTimeMicroseconds,
-            displayVsyncMicroseconds: displayVsyncMicroseconds,
+            frameTimeMicroseconds: pacing.frame,
+            displayVsyncMicroseconds: pacing.displayVsync,
             vsyncMode: configuredVsyncMode ?? .adaptive,
             logger: logger,
             // Nothing on this transport consumes `videoFrames()` — we own the decoder — but the

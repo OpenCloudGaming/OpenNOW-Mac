@@ -98,7 +98,7 @@ struct ResolutionUpscalingSettingsPage: View {
         switch viewModel.streamProfile.presentationMode {
         case 1: "Queues one frame so bursts of two decoded frames per refresh both get shown. Even motion, about one frame more latency."
         case 2: "Presents each frame the moment it decodes, without waiting for the display refresh. Lowest latency; tearing is possible."
-        case 3: "Presents each frame the moment it decodes and lets a variable refresh rate display refresh to match. No tearing; needs a VRR display."
+        case 3: "Presents each frame the moment it decodes and lets a variable refresh rate display refresh to match. No tearing; needs a VRR display. With a mouse, also turn on Raw Mouse Input (Input → Mouse), or macOS's batched mouse movement shows as uneven camera motion."
         default: "Draws the newest decoded frame at each display refresh."
         }
     }

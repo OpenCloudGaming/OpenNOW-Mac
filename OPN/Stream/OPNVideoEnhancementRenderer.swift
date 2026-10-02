@@ -3,7 +3,6 @@ import CoreImage
 import CoreVideo
 import Foundation
 import Metal
-import MetalKit
 import QuartzCore
 #if canImport(MetalFX)
 import MetalFX
@@ -114,7 +113,6 @@ enum OPNVideoTransferFunction: Int {
 
 
 @objc(OPNVideoEnhancementRenderer)
-@MainActor
 final class OPNVideoEnhancementRenderer: NSObject {
     static let renderTargetPixelFormat: MTLPixelFormat = .bgra8Unorm
 
@@ -217,7 +215,7 @@ final class OPNVideoEnhancementRenderer: NSObject {
     /// Not `@objc`: the frame is a native value type, so this entry point is Swift-only.
     func renderFrame(
         _ frame: OPNVideoFrame?,
-        to view: MTKView?,
+        into drawable: (any CAMetalDrawable)?,
         settings: OPNVideoEnhancementSettings?,
         result: OPNVideoEnhancementResult?
     ) -> Bool {
@@ -228,12 +226,12 @@ final class OPNVideoEnhancementRenderer: NSObject {
         // each early bail into the plain spatial pass — puts the picture on screen untransformed,
         // so the pointer must not inherit geometry from a frame that took a different one.
         pillarboxFillCommit.clear()
-        guard let frame, let view, let settings, let result, settings.configuredTier != .off else {
+        guard let frame, let settings, let result, settings.configuredTier != .off else {
             result?.fallbackReason = "enhancement disabled"
             result?.enhancedPixelBuffer = nil
             return false
         }
-        guard let drawable = view.currentDrawable, let commandQueue, let ciContext else {
+        guard let drawable, let commandQueue, let ciContext else {
             result.fallbackReason = "enhancement renderer got empty drawable"
             recordDrop(in: result)
             return false
