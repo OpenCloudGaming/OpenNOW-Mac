@@ -7,6 +7,12 @@ import CoreMedia
 import CoreVideo
 import Foundation
 
+/// The frame and display intervals the seat's `0x203` pacing report carries, in microseconds.
+struct NvstPacingIntervals {
+    let frameMicroseconds: UInt32
+    let displayVsyncMicroseconds: UInt32
+}
+
 extension NvstBifrostFreeTransport {
     // MARK: - Video
 
@@ -129,18 +135,30 @@ extension NvstBifrostFreeTransport {
         }
     }
 
-    /// `vrr` presentation lets the display follow the stream, so the seat is asked for frames a
-    /// little under the display's maximum refresh — the margin NVIDIA Reflex keeps under G-SYNC,
-    /// `refresh - refresh² / 3600` (116 fps at 120 Hz) — and the stream never meets the refresh
-    /// ceiling. Both intervals the pacing report carries are capped; neither gets shorter than the
-    /// session's own.
-    static func pacingIntervals(sessionFrameMicroseconds: UInt32, displayRefreshRate: Int,
-                                presentsWithVariableRefresh: Bool) -> (frame: UInt32, displayVsync: UInt32) {
-        let displayVsync = displayRefreshRate > 0 ? UInt32(1_000_000 / displayRefreshRate) : 16000
-        guard presentsWithVariableRefresh, displayRefreshRate > 0 else { return (sessionFrameMicroseconds, displayVsync) }
+    /// The interval that stands in for a display whose refresh the client could not read.
+    static let fallbackVsyncMicroseconds: UInt32 = 16_000
+    /// The divisor of NVIDIA Reflex's margin under G-SYNC: `refresh - refresh² / 3600`.
+    static let variableRefreshMarginDivisor = 3600.0
+
+    /// `vrr` presentation lets the display follow the stream, so the seat is asked for frames just
+    /// under the display's maximum refresh. Every other mode keeps the session's own interval.
+    static func pacingIntervals(sessionFrameMicroseconds: UInt32,
+                                displayRefreshRate: Int,
+                                isVrrPresentation: Bool) -> NvstPacingIntervals {
+        guard displayRefreshRate > 0 else {
+            return NvstPacingIntervals(frameMicroseconds: sessionFrameMicroseconds,
+                                       displayVsyncMicroseconds: fallbackVsyncMicroseconds)
+        }
+        let displayVsyncMicroseconds = UInt32(1_000_000 / displayRefreshRate)
+        guard isVrrPresentation else {
+            return NvstPacingIntervals(frameMicroseconds: sessionFrameMicroseconds,
+                                       displayVsyncMicroseconds: displayVsyncMicroseconds)
+        }
         let refresh = Double(displayRefreshRate)
-        let capped = max(sessionFrameMicroseconds, UInt32((1_000_000 / (refresh - refresh * refresh / 3600)).rounded()))
-        return (capped, capped)
+        let variableRefreshMicroseconds = UInt32((1_000_000 / (refresh - refresh * refresh / variableRefreshMarginDivisor)).rounded())
+        let cappedMicroseconds = max(sessionFrameMicroseconds, variableRefreshMicroseconds)
+        return NvstPacingIntervals(frameMicroseconds: cappedMicroseconds,
+                                   displayVsyncMicroseconds: cappedMicroseconds)
     }
 
     private func makeVideoPipeline(handoff: NVSTVideoHandoff,
@@ -156,16 +174,16 @@ extension NvstBifrostFreeTransport {
         let displayRefreshRate = OPNStreamPreferences.loadDeviceCapabilities().maxDisplayRefreshRate
         let pacing = Self.pacingIntervals(sessionFrameMicroseconds: sessionFrameTimeMicroseconds,
                                           displayRefreshRate: displayRefreshRate,
-                                          presentsWithVariableRefresh: presentsWithVariableRefresh)
-        if presentsWithVariableRefresh {
-            logger?("NVST vrr pacing: seat asked for \(pacing.frame) us frames under a \(displayRefreshRate) Hz display")
+                                          isVrrPresentation: isVrrPresentation)
+        if isVrrPresentation {
+            logger?("NVST vrr pacing: seat asked for \(pacing.frameMicroseconds) us frames under a \(displayRefreshRate) Hz display")
         }
         let nativeBroadcaster = remoteCoOpNativeBroadcaster
         return NvstVideoPipeline(
             decoder: decoder,
             clock: clock,
-            frameTimeMicroseconds: pacing.frame,
-            displayVsyncMicroseconds: pacing.displayVsync,
+            frameTimeMicroseconds: pacing.frameMicroseconds,
+            displayVsyncMicroseconds: pacing.displayVsyncMicroseconds,
             vsyncMode: configuredVsyncMode ?? .adaptive,
             logger: logger,
             // Nothing on this transport consumes `videoFrames()` — we own the decoder — but the

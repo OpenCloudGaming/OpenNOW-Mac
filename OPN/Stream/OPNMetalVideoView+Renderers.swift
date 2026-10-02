@@ -39,9 +39,9 @@ struct RenderDiagnostics {
 }
 
 extension OPNMetalVideoView {
-    nonisolated func emitDiagnosticsIfNeeded(_ diagnostics: RenderDiagnostics, force: Bool) {
+    nonisolated func emitDiagnostics(_ diagnostics: RenderDiagnostics, isForced: Bool) {
         let now = CACurrentMediaTime()
-        guard force || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
+        guard isForced || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
         lastDiagnosticsUpdateTime = now
         var diagnostics = diagnostics
         populateDrawCadenceDiagnostics(&diagnostics)

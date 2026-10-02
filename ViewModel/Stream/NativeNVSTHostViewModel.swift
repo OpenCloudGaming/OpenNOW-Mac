@@ -498,17 +498,10 @@ extension NativeNVSTHostViewModel {
     /// Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir receiver +
     /// VideoToolbox decode, drawn on the shared Metal surface.
     func makeTransport(nativeView: NativeStreamView, settings resolvedStreamSettings: ResolvedStreamSettings) -> any NativeNVSTTransport {
-        // Experimental: OpenNOW's own session core (Phase 2) replaces the Geronimo
-        // transport when enabled. Geronimo/SDL2 are not loaded; video frames are counted but
-        // not decoded until Phase 2C, so the surface stays blank while HUD and input work.
-        // Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir
-        // receiver + VideoToolbox decode, drawn on the shared Metal surface. Input/audio still
-        // need the ICE/DTLS bundle, so this stays opt-in until that lands.
         let bifrostFreeSink = nativeView.attachNvstBifrostFreeRenderer(targetFps: Int32(max(30, resolvedStreamSettings.fps))).frameSink
         let launchPresentationMode = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID,
                                                                         capabilities: OPNStreamPreferences.loadDeviceCapabilities()).presentationMode
-        // The only transport. The vendored NVIDIA path has been removed; there is no fallback, so
-        // a failure surfaces as a failed stream instead of silently using the old libraries.
+        let isVrrPresentation = OPNVideoPresentationMode(rawValue: launchPresentationMode) == .vrr
         // The unified log purges info-level lines within minutes, which has already cost one
         // session's counter timeline mid-investigation; the diagnostic file is the durable copy.
         let diagnosticLog = NvstDiagnosticLog()
@@ -528,7 +521,7 @@ extension NativeNVSTHostViewModel {
             configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
             configuredColorQuality: resolvedStreamSettings.colorQuality,
             configuredVsyncMode: NvstVsyncMode(rawValue: resolvedStreamSettings.vsyncMode) ?? .adaptive,
-            presentsWithVariableRefresh: OPNVideoPresentationMode(rawValue: launchPresentationMode) == .vrr,
+            isVrrPresentation: isVrrPresentation,
             configuredAudioChannelCount: resolvedStreamSettings.audioChannelCount,
             // Auto resolves against the negotiated count, so it can never read as short-changed;
             // an explicit 5.1 or 7.1 ignores that argument and reports what was actually picked.
@@ -537,10 +530,8 @@ extension NativeNVSTHostViewModel {
                 deviceOutputChannels: resolvedStreamSettings.audioChannelCount
             ),
             logger: { message in
-                // Scrubbed here so both destinations share one pass, and so the durable session
-                // file gets the redacted text: it used to receive the raw message while only the
-                // telemetry path was scrubbed, which put anything secret-shaped in a log the user
-                // is invited to share.
+                // Scrubbed once for both destinations, so the durable session file never carries
+                // anything secret-shaped into a log the user is invited to share.
                 let sanitized = OPNDiagnostics.sanitizedLogMessage(message)
                 OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info, message: sanitized, isRedacted: true)
                 diagnosticLog.append(sanitized)
@@ -552,6 +543,13 @@ extension NativeNVSTHostViewModel {
         if let bifrostFree = transport as? NvstBifrostFreeTransport {
             attachSeatNotificationHandlers(bifrostFree, nativeView: nativeView)
         }
+        attachTransportHandlers(transport)
+        return transport
+    }
+
+    /// The HUD state a started transport publishes back, which is why these arrive as handlers
+    /// rather than being polled.
+    private func attachTransportHandlers(_ transport: any NativeNVSTTransport) {
         Task { [weak self] in
             await transport.setRecordingStatusHandler { status in
                 self?.handleRecordingStatusChanged(status)
@@ -559,8 +557,7 @@ extension NativeNVSTHostViewModel {
             await transport.setReplayBufferStateHandler { state in
                 self?.handleReplayBufferStateChanged(state)
             }
-            // The HUD's live mic meter and its "the device went away" notice. Both are published from
-            // the capture device, which is why they arrive as handlers rather than being polled.
+            // The HUD's live mic meter and its "the device went away" notice.
             await transport.setMicrophoneLevelHandler { level in
                 guard let self, !self.didEnd else { return }
                 // Published at 20 Hz, and every published change re-evaluates the HUD, so a step too
@@ -572,13 +569,12 @@ extension NativeNVSTHostViewModel {
                 guard let self, !self.didEnd else { return }
                 self.handleMicrophoneDeviceFallback(message)
             }
-            // A microphone plugged in mid-stream becomes a row straight away. Relabelling is also how
-            // a re-plugged device stops being called a fallback.
+            // A microphone plugged in mid-stream becomes a row straight away, which is also how a
+            // re-plugged device stops being called a fallback.
             await transport.setMicrophoneDeviceListHandler { [weak self] in
                 guard let self, !self.didEnd else { return }
                 self.refreshMicrophoneDeviceOptions()
             }
         }
-        return transport
     }
 }

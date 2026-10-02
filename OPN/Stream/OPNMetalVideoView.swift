@@ -196,13 +196,17 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
             if pendingFrames.count > 2 { pendingFrames.removeFirst(pendingFrames.count - 2) }
         }
         let thread = mode == .vrr ? renderThread : nil
-        if thread != nil { arrivalQueue.push((frame, frameSerial, receivedAt), arrivedAt: receivedAt) }
+        if thread != nil {
+            arrivalQueue.push(OPNArrivedVideoFrame(frame: frame, serial: frameSerial, receivedAt: receivedAt),
+                              arrivedAt: receivedAt)
+        }
         os_unfair_lock_unlock(&frameLock)
         if let thread {
             thread.signal()
-        } else if mode == .lowestLatency {
-            requestManualDraw()
+            return
         }
+        guard mode == .lowestLatency else { return }
+        requestManualDraw()
     }
 
     /// Kicks a `lowestLatency` draw from whatever thread decoded the frame.
@@ -228,9 +232,9 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     /// measured as the main thread sitting in `semaphore_timedwait_trap` for 98% of a sample.
     nonisolated func requestManualDraw() {
         os_unfair_lock_lock(&manualDrawLock)
-        let queuesDraw = manualDrawGate.request()
+        let shouldQueueDraw = manualDrawGate.request()
         os_unfair_lock_unlock(&manualDrawLock)
-        guard queuesDraw else { return }
+        guard shouldQueueDraw else { return }
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -250,8 +254,8 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         // wherever the caller happened to be.
         synchronizeDrawableSize()
 
-        guard let next = nextFrameToDraw(), next.frame.width > 0, next.frame.height > 0 else { return }
-        if applyOutputFormatIfNeeded(next.output.0, transfer: next.output.1) { return }
+        guard let next = nextFrameToDraw(), next.isRenderable else { return }
+        if applyOutputFormat(next.outputFormat, transfer: next.outputTransfer) { return }
         if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
         guard let drawable = view.currentDrawable else { return }
         os_unfair_lock_lock(&drawLock)
@@ -274,8 +278,8 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
 
         if enhancement.mode > 0,
            renderEnhancedFrame(frame, into: drawable, drawSerial: next.serial, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
-            captureDrawableIfRequested(drawable)
-            emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
+            captureRequestedDrawable(drawable)
+            emitDiagnostics(diagnostics, isForced: !diagnostics.fallback.isEmpty)
             return
         }
         // Enhancement off, or the enhanced pass declined the frame: the plain spatial pass still
@@ -283,12 +287,12 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         // NV12 through 10-bit 4:4:4 — and it applies whatever pillarbox fill is selected, so the
         // picture and its committed geometry stay correct on one path.
         if renderPlainFrame(frame, into: drawable, drawSerial: next.serial, sourceSize: sourceSize, diagnostics: &diagnostics) {
-            captureDrawableIfRequested(drawable)
-            emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
+            captureRequestedDrawable(drawable)
+            emitDiagnostics(diagnostics, isForced: !diagnostics.fallback.isEmpty)
             return
         }
         lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
-        emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
+        emitDiagnostics(diagnostics, isForced: !diagnostics.fallback.isEmpty)
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -335,7 +339,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         // Fill with upscaling off: borrow the spatial path in its cheapest form.
         // lowCostSpatial selects the plain-sample `fast_*` shaders, so the picture
         // area is untouched and only the bar columns cost anything extra.
-        let fillOnly = enhancement.mode == 0
+        let isFillOnly = enhancement.mode == 0
         switch enhancement.mode {
         case 4: settings.configuredTier = .temporal
         case 3: settings.configuredTier = .metalFX
@@ -346,12 +350,12 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         settings.pillarboxFillMode = Int(enhancement.pillarboxFillMode)
         settings.pillarboxFillDim = Float(enhancement.pillarboxFillDim) / 100.0
         settings.pillarboxFillColor = enhancement.pillarboxFillColor
-        settings.sharpness = fillOnly ? 0 : Int(enhancement.sharpness)
-        settings.denoise = fillOnly ? 0 : Int(enhancement.denoise)
+        settings.sharpness = isFillOnly ? 0 : Int(enhancement.sharpness)
+        settings.denoise = isFillOnly ? 0 : Int(enhancement.denoise)
         settings.sourceSize = sourceSize
         settings.drawableSize = metalLayer?.drawableSize ?? .zero
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
-        settings.lowCostSpatial = fillOnly || adaptiveEnhancementPenalty > 0
+        settings.lowCostSpatial = isFillOnly || adaptiveEnhancementPenalty > 0
         return settings
     }
 
@@ -399,12 +403,11 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     nonisolated private func budgetedEnhancement() -> VideoEnhancement {
         var enhancement = localVideoEnhancement()
         guard adaptiveEnhancementPenalty > 0, let enhancementRenderer else { return enhancement }
-        if enhancement.mode == 4 {
-            enhancement.mode = enhancementRenderer.isMetalFXAvailable ? 3 : 2
-        } else if enhancement.mode == 3, !enhancementRenderer.isMetalFXAvailable {
-            enhancement.mode = 2
-        } else if enhancement.mode == 2, adaptiveEnhancementPenalty > 1 {
-            enhancement.mode = 0
+        switch enhancement.mode {
+        case 4: enhancement.mode = enhancementRenderer.isMetalFXAvailable ? 3 : 2
+        case 3 where !enhancementRenderer.isMetalFXAvailable: enhancement.mode = 2
+        case 2 where adaptiveEnhancementPenalty > 1: enhancement.mode = 0
+        default: break
         }
         return enhancement
     }
@@ -416,12 +419,12 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
 
         let result = enhancementResult
-        let enhancedOK = enhancementRenderer.renderFrame(frame, into: drawable, settings: settings, result: result)
-        if !enhancedOK, enhancement.fillMode.needsCustomRenderPath, result.fallbackReason != lastLoggedFallbackReason {
+        let isEnhanced = enhancementRenderer.renderFrame(frame, into: drawable, settings: settings, result: result)
+        if !isEnhanced, enhancement.fillMode.needsCustomRenderPath, result.fallbackReason != lastLoggedFallbackReason {
             lastLoggedFallbackReason = result.fallbackReason
             OPNLog.info(.stream, "Pillarbox custom path FELL BACK: \(result.fallbackReason)")
         }
-        if enhancedOK {
+        if isEnhanced {
             applyEnhancementSuccess(result, drawSerial: drawSerial, targetFrameTimeMs: settings.targetFrameTimeMs, diagnostics: &diagnostics)
             return true
         }
@@ -484,15 +487,21 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
 
     nonisolated private func adaptEnhancementBudget(frameTimeMs: Double, targetFrameTimeMs: Double) {
         if frameTimeMs > targetFrameTimeMs * 1.15 {
-            enhancementOverBudgetCount += 1
-            if enhancementOverBudgetCount >= 10 {
-                adaptiveEnhancementPenalty = min(2, adaptiveEnhancementPenalty + 1)
-                enhancementOverBudgetCount = 0
-            }
-        } else if frameTimeMs > 0, frameTimeMs < targetFrameTimeMs * 0.72 {
-            enhancementOverBudgetCount = 0
-            if adaptiveEnhancementPenalty > 0 { adaptiveEnhancementPenalty -= 1 }
+            noteOverBudgetFrame()
+            return
         }
+        guard frameTimeMs > 0, frameTimeMs < targetFrameTimeMs * 0.72 else { return }
+        enhancementOverBudgetCount = 0
+        guard adaptiveEnhancementPenalty > 0 else { return }
+        adaptiveEnhancementPenalty -= 1
+    }
+
+    /// Steps the enhancement down one tier once ten frames in a row run over the target.
+    nonisolated private func noteOverBudgetFrame() {
+        enhancementOverBudgetCount += 1
+        guard enhancementOverBudgetCount >= 10 else { return }
+        adaptiveEnhancementPenalty = min(2, adaptiveEnhancementPenalty + 1)
+        enhancementOverBudgetCount = 0
     }
 
 }

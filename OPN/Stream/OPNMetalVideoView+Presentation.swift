@@ -30,12 +30,8 @@ enum OPNVideoPresentationMode: Int, Sendable {
     /// Present as soon as a frame decodes, without waiting for the refresh (`displaySyncEnabled`
     /// off, the display link paused). Lowest latency; tearing is possible.
     case lowestLatency = 2
-    /// Draw every frame on a dedicated render thread as soon as it decodes, in arrival order, and
-    /// present with vsync on, so a variable-refresh display refreshes when each frame arrives.
-    /// Three drawables keep two frames in flight: one in flight capped the rate at ~94 fps. The
-    /// seat is asked for frames just under the display's maximum (see
-    /// `NvstBifrostFreeTransport.pacingIntervals`); a stream that still reaches it keeps only its
-    /// newest frame (see `OPNVideoArrivalQueue`).
+    /// Draw every frame on a dedicated render thread as soon as it decodes, in arrival order, with
+    /// vsync on; three drawables keep two frames in flight. See `OPNVideoArrivalQueue`.
     case vrr = 3
 
     var label: String {
@@ -66,8 +62,17 @@ struct OPNManualDrawGate: Sendable {
     }
 }
 
-typealias OPNNextVideoFrame = (frame: OPNVideoFrame, serial: UInt64, sourceSize: CGSize,
-                               output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)
+/// The frame a draw should present, with the output format the drawable must be in.
+struct OPNNextVideoFrame {
+    let frame: OPNVideoFrame
+    let serial: UInt64
+    let sourceSize: CGSize
+    let outputFormat: MTLPixelFormat
+    let outputTransfer: OPNVideoTransferFunction
+    let receivedAt: CFTimeInterval
+
+    var isRenderable: Bool { frame.width > 0 && frame.height > 0 }
+}
 
 struct OPNVideoRenderDiagnosticsSnapshot: Equatable, Sendable {
     /// The decoded surface (`xf20/P010`, `420f/NV12`, ...).
@@ -115,7 +120,7 @@ extension OPNMetalVideoView {
     /// out on the same queue (so the copy runs after the render) and writes it once complete.
     /// The libwebrtc renderers use their own queue, so a capture taken on that path may read a
     /// frame that is still being drawn; the custom paths are exact.
-    nonisolated func captureDrawableIfRequested(_ drawable: any CAMetalDrawable) {
+    nonisolated func captureRequestedDrawable(_ drawable: any CAMetalDrawable) {
         os_unfair_lock_lock(&frameLock)
         let url = pendingRenderSnapshotURL
         pendingRenderSnapshotURL = nil
@@ -211,20 +216,20 @@ extension OPNMetalVideoView {
         arrivalQueue.removeAll()
         os_unfair_lock_unlock(&frameLock)
         guard previous != mode else { return }
-        let metalLayer = metalView.layer as? CAMetalLayer
+        let drawableLayer = metalView.layer as? CAMetalLayer
         switch mode {
         case .lowestLatency, .vrr:
             // Our own draw() calls replace the display link; only `vrr` still presents on vsync.
             metalView.isPaused = true
             metalView.enableSetNeedsDisplay = false
-            metalLayer?.displaySyncEnabled = mode == .vrr
+            drawableLayer?.displaySyncEnabled = mode == .vrr
         case .balanced, .smooth:
-            metalLayer?.displaySyncEnabled = true
+            drawableLayer?.displaySyncEnabled = true
             metalView.enableSetNeedsDisplay = false
             metalView.isPaused = false
         }
-        metalLayer?.maximumDrawableCount = mode == .vrr ? 3 : 2
-        metalLayer?.allowsNextDrawableTimeout = mode == .vrr
+        drawableLayer?.maximumDrawableCount = mode == .vrr ? 3 : 2
+        drawableLayer?.allowsNextDrawableTimeout = mode == .vrr
         updateRenderThread()
         resetDrawCadence()
         OPNLog.info(.stream, "Video presentation mode \(previous.label) -> \(mode.label)")
@@ -235,14 +240,23 @@ extension OPNMetalVideoView {
     func nextFrameToDraw() -> OPNNextVideoFrame? {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        let output = (desiredOutputFormat, desiredTransfer)
         if presentationMode == .smooth {
             guard !pendingFrames.isEmpty else { return nil }
             let next = pendingFrames.removeFirst()
-            return (next.frame, next.serial, sourceFrameSize, output, next.receivedAt)
+            return OPNNextVideoFrame(frame: next.frame,
+                                     serial: next.serial,
+                                     sourceSize: sourceFrameSize,
+                                     outputFormat: desiredOutputFormat,
+                                     outputTransfer: desiredTransfer,
+                                     receivedAt: next.receivedAt)
         }
         guard let frame = videoFrame, frameSerial > 0, frameSerial != lastDrawnFrameSerial else { return nil }
-        return (frame, frameSerial, sourceFrameSize, output, latestFrameReceivedAt)
+        return OPNNextVideoFrame(frame: frame,
+                                 serial: frameSerial,
+                                 sourceSize: sourceFrameSize,
+                                 outputFormat: desiredOutputFormat,
+                                 outputTransfer: desiredTransfer,
+                                 receivedAt: latestFrameReceivedAt)
     }
 
     /// Hooks the drawable every render path is about to present (MTKView hands the same one to
@@ -306,7 +320,7 @@ extension OPNMetalVideoView {
     /// Reconfigures the layer for a new output format. Returns true when it did, in which case the
     /// current draw is skipped: the drawable already vended for this pass has the old format, and
     /// the next display tick is a few milliseconds away.
-    func applyOutputFormatIfNeeded(_ format: MTLPixelFormat, transfer: OPNVideoTransferFunction) -> Bool {
+    func applyOutputFormat(_ format: MTLPixelFormat, transfer: OPNVideoTransferFunction) -> Bool {
         guard metalView.colorPixelFormat != format || appliedTransfer != transfer else { return false }
         let previous = metalView.colorPixelFormat
         metalView.colorPixelFormat = format

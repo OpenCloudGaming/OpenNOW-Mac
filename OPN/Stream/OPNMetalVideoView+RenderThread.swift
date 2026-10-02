@@ -3,103 +3,127 @@ import Foundation
 import Metal
 import QuartzCore
 
-typealias OPNArrivedVideoFrame = (frame: OPNVideoFrame, serial: UInt64, receivedAt: CFTimeInterval)
+/// A decoded frame on its way to the `vrr` render thread.
+struct OPNArrivedVideoFrame {
+    let frame: OPNVideoFrame
+    let serial: UInt64
+    let receivedAt: CFTimeInterval
+}
+
+/// A frame the render thread took from the arrival queue, with the queue state it was taken in.
+struct OPNQueuedFrameDraw {
+    let frame: OPNNextVideoFrame
+    let isAtDisplayCeiling: Bool
+    let queueDepth: Int
+}
+
+/// Tuning for `OPNVideoArrivalQueue`, which cannot hold static stored properties of its own.
+private enum OPNVideoArrivalQueueLimits {
+    static let capacity = 3
+    static let cadenceWindow = 60
+    static let ceilingEntryTolerance = 1.01
+    static let ceilingExitTolerance = 1.02
+}
 
 /// `vrr` only: decoded frames waiting for the render thread. Below the display's maximum refresh
-/// every frame is shown in arrival order. At the maximum the display cannot go faster, so only the
-/// newest is kept, as GeForce NOW does: queued frames would hold latency that never drains.
+/// every frame is shown in arrival order; at the maximum only the newest is kept, so a stream the
+/// display cannot follow never builds latency.
 struct OPNVideoArrivalQueue<Element> {
-    static var capacity: Int { 3 }
-    static var cadenceWindow: Int { 60 }
-
-    private(set) var elements: [Element] = []
+    private(set) var pendingElements: [Element] = []
     private(set) var isAtDisplayCeiling = false
     var displayRefreshInterval: CFTimeInterval = 0
-    private var arrivals: [CFTimeInterval] = []
+    private var arrivalTimes: [CFTimeInterval] = []
 
-    /// Returns how many older elements were dropped to stay within `capacity`.
+    /// Returns how many older elements were dropped to stay within the capacity.
     @discardableResult
     mutating func push(_ element: Element, arrivedAt time: CFTimeInterval) -> Int {
         noteArrival(at: time)
-        elements.append(element)
-        let excess = elements.count - Self.capacity
+        pendingElements.append(element)
+        let excess = pendingElements.count - OPNVideoArrivalQueueLimits.capacity
         guard excess > 0 else { return 0 }
-        elements.removeFirst(excess)
+        pendingElements.removeFirst(excess)
         return excess
     }
 
     mutating func next() -> Element? {
-        guard !elements.isEmpty else { return nil }
-        guard isAtDisplayCeiling else { return elements.removeFirst() }
-        let newest = elements.removeLast()
-        elements.removeAll()
+        guard !pendingElements.isEmpty else { return nil }
+        guard isAtDisplayCeiling else { return pendingElements.removeFirst() }
+        let newest = pendingElements.removeLast()
+        pendingElements.removeAll()
         return newest
     }
 
     mutating func removeAll() {
-        elements.removeAll()
-        arrivals.removeAll()
+        pendingElements.removeAll()
+        arrivalTimes.removeAll()
         isAtDisplayCeiling = false
     }
 
-    /// The stream is at the ceiling once its mean interval over the window is within 1% of the
-    /// display's fastest refresh, and leaves it past 2%, so a stream hovering at the boundary does
-    /// not flip between the two.
+    /// Enters the ceiling within 1% of the display's fastest refresh and leaves it past 2%, so a
+    /// stream hovering at the boundary does not flip between the two.
     private mutating func noteArrival(at time: CFTimeInterval) {
-        arrivals.append(time)
-        if arrivals.count > Self.cadenceWindow { arrivals.removeFirst(arrivals.count - Self.cadenceWindow) }
-        guard displayRefreshInterval > 0, arrivals.count >= Self.cadenceWindow / 2,
-              let first = arrivals.first, let last = arrivals.last else { return }
-        let meanInterval = (last - first) / Double(arrivals.count - 1)
-        if isAtDisplayCeiling {
-            if meanInterval > displayRefreshInterval * 1.02 { isAtDisplayCeiling = false }
-        } else if meanInterval < displayRefreshInterval * 1.01 {
-            isAtDisplayCeiling = true
+        arrivalTimes.append(time)
+        if arrivalTimes.count > OPNVideoArrivalQueueLimits.cadenceWindow {
+            arrivalTimes.removeFirst(arrivalTimes.count - OPNVideoArrivalQueueLimits.cadenceWindow)
         }
+        guard let meanInterval = meanArrivalInterval() else { return }
+        if isAtDisplayCeiling, meanInterval > displayRefreshInterval * OPNVideoArrivalQueueLimits.ceilingExitTolerance {
+            isAtDisplayCeiling = false
+            return
+        }
+        guard meanInterval < displayRefreshInterval * OPNVideoArrivalQueueLimits.ceilingEntryTolerance else { return }
+        isAtDisplayCeiling = true
+    }
+
+    /// The mean time between the arrivals in the window, or nil while the window is still filling.
+    private func meanArrivalInterval() -> CFTimeInterval? {
+        guard displayRefreshInterval > 0, arrivalTimes.count >= OPNVideoArrivalQueueLimits.cadenceWindow / 2,
+              let first = arrivalTimes.first, let last = arrivalTimes.last else { return nil }
+        return (last - first) / Double(arrivalTimes.count - 1)
     }
 }
 
 /// `vrr` at the display ceiling: how many frames may wait for the display. One shows the newest
-/// frame a refresh sooner; a frame submitted within 2 ms of the previous refresh made the next one
-/// in 99% of a traced session. If frames still drop with one, it goes back to two and waits twice
-/// as long before each retry.
+/// frame a refresh sooner; if frames still drop with one, it goes back to two and doubles the wait
+/// before each retry.
 struct OPNInFlightBudget {
-    static var dropWindow: Int { 60 }
-    static var tolerableDrops: Int { 4 }
-    static var lostPresentTimeout: CFTimeInterval { 0.05 }
+    static let dropWindow = 60
+    static let tolerableDrops = 4
+    static let lostPresentTimeout: CFTimeInterval = 0.05
 
-    private(set) var inFlight = 0
-    private(set) var allowsOneFrame = false
+    private(set) var framesInFlight = 0
+    private(set) var isLimitedToOneFrame = false
     private var lastSubmitAt: CFTimeInterval = 0
-    private var drops: [Int] = []
+    private var droppedFrameCounts: [Int] = []
     private var retryAt: CFTimeInterval = 0
     private var retryDelay: CFTimeInterval = 10
 
-    mutating func limit(atCeiling: Bool, now: CFTimeInterval) -> Int {
-        if inFlight > 0, now - lastSubmitAt > Self.lostPresentTimeout { inFlight = 0 }
-        let wantsOneFrame = atCeiling && now >= retryAt
-        if wantsOneFrame != allowsOneFrame {
-            allowsOneFrame = wantsOneFrame
-            drops.removeAll()
+    /// The frames that may be in flight right now.
+    mutating func inFlightLimit(isAtDisplayCeiling: Bool, now: CFTimeInterval) -> Int {
+        if framesInFlight > 0, now - lastSubmitAt > Self.lostPresentTimeout { framesInFlight = 0 }
+        let isOneFrameWanted = isAtDisplayCeiling && now >= retryAt
+        if isOneFrameWanted != isLimitedToOneFrame {
+            isLimitedToOneFrame = isOneFrameWanted
+            droppedFrameCounts.removeAll()
         }
-        return allowsOneFrame ? 1 : 2
+        return isLimitedToOneFrame ? 1 : 2
     }
 
     mutating func submitted(at time: CFTimeInterval, droppedBefore dropped: Int) {
-        inFlight += 1
+        framesInFlight += 1
         lastSubmitAt = time
-        guard allowsOneFrame else { return }
-        drops.append(dropped)
-        if drops.count > Self.dropWindow { drops.removeFirst(drops.count - Self.dropWindow) }
-        guard drops.reduce(0, +) > Self.tolerableDrops else { return }
-        allowsOneFrame = false
+        guard isLimitedToOneFrame else { return }
+        droppedFrameCounts.append(dropped)
+        if droppedFrameCounts.count > Self.dropWindow { droppedFrameCounts.removeFirst(droppedFrameCounts.count - Self.dropWindow) }
+        guard droppedFrameCounts.reduce(0, +) > Self.tolerableDrops else { return }
+        isLimitedToOneFrame = false
         retryAt = time + retryDelay
         retryDelay *= 2
-        drops.removeAll()
+        droppedFrameCounts.removeAll()
     }
 
     mutating func presented() {
-        inFlight = max(0, inFlight - 1)
+        framesInFlight = max(0, framesInFlight - 1)
     }
 }
 
@@ -108,14 +132,14 @@ struct OPNInFlightBudget {
 final class OPNVideoRenderThread: @unchecked Sendable {
     private let wake = DispatchSemaphore(value: 0)
     private let finished = DispatchSemaphore(value: 0)
-    private let lock = NSLock()
-    private var running = true
+    private let stateLock = NSLock()
+    private var isRunning = true
 
     init(drain: @escaping @Sendable () -> Void) {
         let thread = Thread { [self] in
-            while isRunning {
+            while isStillRunning {
                 wake.wait()
-                if isRunning { drain() }
+                if isStillRunning { drain() }
             }
             finished.signal()
         }
@@ -124,10 +148,10 @@ final class OPNVideoRenderThread: @unchecked Sendable {
         thread.start()
     }
 
-    private var isRunning: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return running
+    private var isStillRunning: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return isRunning
     }
 
     func signal() {
@@ -136,11 +160,11 @@ final class OPNVideoRenderThread: @unchecked Sendable {
 
     /// Waits up to `timeout` for the draw in progress to finish.
     func stop(timeout: CFTimeInterval) {
-        lock.lock()
-        running = false
-        lock.unlock()
+        stateLock.lock()
+        isRunning = false
+        stateLock.unlock()
         wake.signal()
-        _ = finished.wait(timeout: .now() + timeout)
+        _ = finished.wait(timeout: .now() + max(0, timeout))
     }
 }
 
@@ -148,23 +172,23 @@ extension OPNMetalVideoView {
     /// Runs the `vrr` render thread while the view is on screen in that mode, and gives the arrival
     /// queue the fastest refresh of the screen it is on.
     func updateRenderThread() {
-        let wantsThread = presentationMode == .vrr && window != nil
+        let isThreadWanted = presentationMode == .vrr && window != nil
         let refreshInterval = window?.screen?.minimumRefreshInterval ?? 0
         os_unfair_lock_lock(&frameLock)
         if refreshInterval > 0 { arrivalQueue.displayRefreshInterval = refreshInterval }
-        let running = renderThread
-        if !wantsThread {
+        let existingThread = renderThread
+        if !isThreadWanted {
             renderThread = nil
             arrivalQueue.removeAll()
         }
         os_unfair_lock_unlock(&frameLock)
-        guard wantsThread else {
+        guard isThreadWanted else {
             // Longer than `nextDrawable()`'s one-second timeout, so the thread has let go of the
             // view before teardown continues.
-            running?.stop(timeout: 1.1)
+            existingThread?.stop(timeout: 1.1)
             return
         }
-        guard running == nil else { return }
+        guard existingThread == nil else { return }
         os_unfair_lock_lock(&presentLock)
         inFlightBudget = OPNInFlightBudget()
         os_unfair_lock_unlock(&presentLock)
@@ -175,39 +199,44 @@ extension OPNMetalVideoView {
         os_unfair_lock_unlock(&frameLock)
     }
 
-    /// On the render thread: presents the queued frames as drawables free up. The frame is taken
-    /// once a drawable is in hand, so at the display ceiling it is the newest one, not one that
-    /// waited a refresh for the drawable.
+    /// On the render thread: presents queued frames as drawables free up. The frame is taken once a
+    /// drawable is in hand, so at the display ceiling it is the newest one, not one that waited.
     nonisolated func drawArrivedFrames() {
         while hasArrivedFrame(), mayPresentAnother(), let metalLayer, let drawable = metalLayer.nextDrawable() {
-            guard let taken = nextArrivedFrame() else { return }
-            let next = taken.frame
-            guard next.frame.width > 0, next.frame.height > 0 else { continue }
-            guard outputFormatIsApplied(next.output) else {
-                let output = next.output
-                DispatchQueue.main.async { [weak self] in
-                    MainActor.assumeIsolated { _ = self?.applyOutputFormatIfNeeded(output.0, transfer: output.1) }
-                }
+            guard let queued = takeNextArrivedFrame() else { return }
+            guard queued.frame.isRenderable else { continue }
+            guard outputFormatIsApplied(queued.frame) else {
+                requestOutputFormat(queued.frame)
                 continue
             }
             os_unfair_lock_lock(&presentLock)
-            inFlightBudget.submitted(at: CACurrentMediaTime(), droppedBefore: taken.atCeiling ? max(0, taken.depth - 1) : 0)
+            inFlightBudget.submitted(at: CACurrentMediaTime(),
+                                     droppedBefore: queued.isAtDisplayCeiling ? max(0, queued.queueDepth - 1) : 0)
             os_unfair_lock_unlock(&presentLock)
             drawable.addPresentedHandler { [weak self] _ in self?.notePresented() }
             os_unfair_lock_lock(&drawLock)
-            render(next, into: drawable)
+            render(queued.frame, into: drawable)
             os_unfair_lock_unlock(&drawLock)
+        }
+    }
+
+    /// Asks the main actor for the drawable format this frame needs; the next pass picks it up.
+    nonisolated private func requestOutputFormat(_ frame: OPNNextVideoFrame) {
+        let format = frame.outputFormat
+        let transfer = frame.outputTransfer
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { _ = self?.applyOutputFormat(format, transfer: transfer) }
         }
     }
 
     nonisolated private func mayPresentAnother() -> Bool {
         os_unfair_lock_lock(&frameLock)
-        let atCeiling = arrivalQueue.isAtDisplayCeiling
+        let isAtDisplayCeiling = arrivalQueue.isAtDisplayCeiling
         os_unfair_lock_unlock(&frameLock)
         os_unfair_lock_lock(&presentLock)
         defer { os_unfair_lock_unlock(&presentLock) }
-        let limit = inFlightBudget.limit(atCeiling: atCeiling, now: CACurrentMediaTime())
-        return inFlightBudget.inFlight < limit
+        let limit = inFlightBudget.inFlightLimit(isAtDisplayCeiling: isAtDisplayCeiling, now: CACurrentMediaTime())
+        return inFlightBudget.framesInFlight < limit
     }
 
     /// From the presented handler: frees the frame's place in the budget and wakes the render
@@ -225,21 +254,28 @@ extension OPNMetalVideoView {
     nonisolated private func hasArrivedFrame() -> Bool {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        return presentationMode == .vrr && !arrivalQueue.elements.isEmpty
+        return presentationMode == .vrr && !arrivalQueue.pendingElements.isEmpty
     }
 
-    nonisolated private func nextArrivedFrame() -> (frame: OPNNextVideoFrame, atCeiling: Bool, depth: Int)? {
+    nonisolated private func takeNextArrivedFrame() -> OPNQueuedFrameDraw? {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        let atCeiling = arrivalQueue.isAtDisplayCeiling
-        let depth = arrivalQueue.elements.count
-        guard presentationMode == .vrr, let next = arrivalQueue.next() else { return nil }
-        return ((next.frame, next.serial, sourceFrameSize, (desiredOutputFormat, desiredTransfer), next.receivedAt), atCeiling, depth)
+        guard presentationMode == .vrr else { return nil }
+        let isAtDisplayCeiling = arrivalQueue.isAtDisplayCeiling
+        let queueDepth = arrivalQueue.pendingElements.count
+        guard let arrived = arrivalQueue.next() else { return nil }
+        let frame = OPNNextVideoFrame(frame: arrived.frame,
+                                      serial: arrived.serial,
+                                      sourceSize: sourceFrameSize,
+                                      outputFormat: desiredOutputFormat,
+                                      outputTransfer: desiredTransfer,
+                                      receivedAt: arrived.receivedAt)
+        return OPNQueuedFrameDraw(frame: frame, isAtDisplayCeiling: isAtDisplayCeiling, queueDepth: queueDepth)
     }
 
-    nonisolated private func outputFormatIsApplied(_ output: (MTLPixelFormat, OPNVideoTransferFunction)) -> Bool {
+    nonisolated private func outputFormatIsApplied(_ frame: OPNNextVideoFrame) -> Bool {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        return metalLayer?.pixelFormat == output.0 && appliedTransfer == output.1
+        return metalLayer?.pixelFormat == frame.outputFormat && appliedTransfer == frame.outputTransfer
     }
 }

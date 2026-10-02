@@ -5,7 +5,7 @@ import Testing
 @Suite struct OPNVideoArrivalQueueTests {
     private let refresh = 1.0 / 120.0
 
-    private func queue(arrivingEvery interval: Double, count: Int) -> OPNVideoArrivalQueue<Int> {
+    private func makeQueue(arrivingEvery interval: Double, count: Int) -> OPNVideoArrivalQueue<Int> {
         var queue = OPNVideoArrivalQueue<Int>()
         queue.displayRefreshInterval = refresh
         for index in 0..<count {
@@ -29,21 +29,21 @@ import Testing
         var queue = OPNVideoArrivalQueue<Int>()
         let dropped = (1...4).map { queue.push($0, arrivedAt: Double($0)) }
         #expect(dropped == [0, 0, 0, 1])
-        #expect(queue.elements == [2, 3, 4])
+        #expect(queue.pendingElements == [2, 3, 4])
     }
 
     @Test func atTheDisplayCeilingOnlyTheNewestIsShown() {
-        var queue = queue(arrivingEvery: refresh, count: 60)
+        var queue = makeQueue(arrivingEvery: refresh, count: 60)
         queue.push(100, arrivedAt: 60 * refresh)
         queue.push(101, arrivedAt: 60 * refresh + 0.001)
         let shown = queue.next()
         #expect(queue.isAtDisplayCeiling)
         #expect(shown == 101)
-        #expect(queue.elements.isEmpty)
+        #expect(queue.pendingElements.isEmpty)
     }
 
     @Test func belowTheCeilingEveryFrameIsShownInOrder() {
-        var queue = queue(arrivingEvery: 1.0 / 116.0, count: 60)
+        var queue = makeQueue(arrivingEvery: 1.0 / 116.0, count: 60)
         queue.push(100, arrivedAt: 60 / 116.0)
         queue.push(101, arrivedAt: 60 / 116.0 + 0.001)
         let first = queue.next()
@@ -53,7 +53,7 @@ import Testing
     }
 
     @Test func aStreamThatSlowsDownLeavesTheCeiling() {
-        var queue = queue(arrivingEvery: refresh, count: 60)
+        var queue = makeQueue(arrivingEvery: refresh, count: 60)
         let wasAtCeiling = queue.isAtDisplayCeiling
         for index in 0..<60 {
             queue.push(index, arrivedAt: 1 + Double(index) / 100)
@@ -67,25 +67,25 @@ import Testing
 @Suite struct OPNInFlightBudgetTests {
     @Test func belowTheCeilingTwoFramesMayWait() {
         var budget = OPNInFlightBudget()
-        let limit = budget.limit(atCeiling: false, now: 10)
+        let limit = budget.inFlightLimit(isAtDisplayCeiling: false, now: 10)
         #expect(limit == 2)
     }
 
     @Test func atTheCeilingOneFrameMayWait() {
         var budget = OPNInFlightBudget()
-        let limit = budget.limit(atCeiling: true, now: 10)
+        let limit = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
         #expect(limit == 1)
     }
 
     @Test func droppingFramesWithOneInFlightFallsBackToTwoUntilTheRetry() {
         var budget = OPNInFlightBudget()
-        let before = budget.limit(atCeiling: true, now: 10)
+        let before = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
         for index in 0...OPNInFlightBudget.tolerableDrops {
             budget.submitted(at: 10 + Double(index) / 120, droppedBefore: 1)
             budget.presented()
         }
-        let during = budget.limit(atCeiling: true, now: 11)
-        let afterRetry = budget.limit(atCeiling: true, now: 21)
+        let during = budget.inFlightLimit(isAtDisplayCeiling: true, now: 11)
+        let afterRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 21)
         #expect(before == 1)
         #expect(during == 2)
         #expect(afterRetry == 1)
@@ -93,12 +93,12 @@ import Testing
 
     @Test func aPresentThatNeverLandsStopsHoldingTheBudget() {
         var budget = OPNInFlightBudget()
-        _ = budget.limit(atCeiling: true, now: 10)
+        _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
         budget.submitted(at: 10, droppedBefore: 0)
-        let held = budget.inFlight
-        _ = budget.limit(atCeiling: true, now: 10 + OPNInFlightBudget.lostPresentTimeout * 2)
+        let held = budget.framesInFlight
+        _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10 + OPNInFlightBudget.lostPresentTimeout * 2)
         #expect(held == 1)
-        #expect(budget.inFlight == 0)
+        #expect(budget.framesInFlight == 0)
     }
 }
 
