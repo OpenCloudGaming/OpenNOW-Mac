@@ -150,6 +150,7 @@ enum SettingsSearchIndex {
     ]
 
     private static let remoteCoOpEntries: [SettingsSearchEntry] = [
+        SettingsSearchEntry("Couch Co-Op Layout", .remoteCoOp, nil, keywords: ["couch", "split screen", "two players", "side by side", "top and bottom", "second copy", "player 2"]),
         SettingsSearchEntry("Enable Remote Co-Op", .remoteCoOp, nil, keywords: ["couch", "friend", "share", "invite", "multiplayer"]),
         SettingsSearchEntry("Require Host Approval", .remoteCoOp, nil, keywords: ["guest", "join", "permission"]),
         SettingsSearchEntry("Hide Guest Invite Details", .remoteCoOp, nil, keywords: ["invite", "privacy", "link"]),

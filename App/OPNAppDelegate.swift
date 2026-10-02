@@ -56,18 +56,26 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         OPNStreamTelemetry.configure(sink: OPNStreamTelemetrySink())
         OPNLog.info(.app, "NSApplication did finish launching")
         installStreamShortcutMonitor()
+        let gate = OPNInstanceFeatureGate.current
         bindUpdatePresentation()
-        startApplicationUpdateChecks()
+        if gate.allowsUpdater {
+            startApplicationUpdateChecks()
+        }
+        OPNCouchCoopLauncher.prepare()
         OPNMainWindowCloseGuard.install()
         OPNDockIconController.install()
         SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
-        // Before the first sync pass: a launch that synced first would copy the legacy folder's
-        // contents into an empty new library.
-        let migration = OPNCaptureMigration.runMigration()
-        if !migration.movedLibraries.isEmpty || !migration.warnings.isEmpty {
-            OPNLog.info(.app, "Capture library migration moved \(migration.movedLibraries.map(\.rawValue)) warnings=\(migration.warnings.count)")
+        if gate.allowsCaptureMigration {
+            // Before the first sync pass: a launch that synced first would copy the legacy folder's
+            // contents into an empty new library.
+            let migration = OPNCaptureMigration.runMigration()
+            if !migration.movedLibraries.isEmpty || !migration.warnings.isEmpty {
+                OPNLog.info(.app, "Capture library migration moved \(migration.movedLibraries.map(\.rawValue)) warnings=\(migration.warnings.count)")
+            }
         }
-        OPNCloudSyncCoordinator.shared.start()
+        if gate.allowsCloudSync {
+            OPNCloudSyncCoordinator.shared.start()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -248,6 +256,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
 
     /// Manual requests clear the "remind tomorrow" snooze before the gate, matching prior behaviour.
     private func checkForApplicationUpdates(isAutomatic: Bool) {
+        guard OPNInstanceFeatureGate.current.allowsUpdater else { return }
         guard !isAutomatic else {
             requestUpdateCheck(.automatic)
             return
@@ -292,6 +301,8 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    static let updateBlockedByCouchCoopMessage = "OpenNOW can't install an update while couch co-op is running. Quit the other copy of OpenNOW first, then install the update."
+
     static let updateChecksSuspendedMessage = "Update checks are suspended while OpenNOW runs as a debug build or with a debugger attached, because those report version 0.0.0 and would always think an update is available. Use OpenNOW ▸ Preview Update Dialog to test the update dialogs."
 
     /// An automatic check that lands mid-session would drop a modal over the game, so it waits for
@@ -335,6 +346,10 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
 
     private func installUpdate(_ release: OPNGitHubRelease) {
         guard updateInstallTask == nil else { return }
+        guard !OPNCouchCoopPresence.shared.blocksUpdateInstall else {
+            OPNUpdatePresentation.shared.reportInstallFailure(Self.updateBlockedByCouchCoopMessage)
+            return
+        }
         updateInstallTask = Task { @MainActor in
             defer { updateInstallTask = nil }
             do {

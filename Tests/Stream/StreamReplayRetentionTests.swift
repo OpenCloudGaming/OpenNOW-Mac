@@ -54,6 +54,58 @@ struct StreamReplayRetentionTests {
         #expect(remaining == Set([newest.id, other.id]))
     }
 
+    @Test("it keeps one window per title for each player")
+    func itKeepsOneWindowPerTitleForEachPlayer() throws {
+        let root = try StreamReplayTestSupport.makeRoot(prefix: "opn-retention")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let playerOne = try Self.writeWindow(in: root, applicationID: "100", createdAt: Date().addingTimeInterval(-60))
+        let playerTwo = try Self.writeWindow(in: root, applicationID: "100", createdAt: Date(), instanceNumber: 2)
+
+        StreamReplayRetentionLibrary.prune(in: root, budgetBytes: 1_000_000)
+
+        let remaining = Set(StreamReplayRetentionLibrary.loadRetainedWindows(in: root).map(\.id))
+        #expect(remaining == Set([playerOne.id, playerTwo.id]))
+    }
+
+    @Test("it looks a title up for the player who earned it")
+    func itLooksATitleUpForThePlayerWhoEarnedIt() throws {
+        let root = try StreamReplayTestSupport.makeRoot(prefix: "opn-retention")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let playerOne = try Self.writeWindow(in: root, applicationID: "100")
+        let playerTwo = try Self.writeWindow(in: root, applicationID: "100", instanceNumber: 2)
+
+        #expect(StreamReplayRetentionLibrary.window(forApplicationID: "100", in: root)?.id == playerOne.id)
+        #expect(StreamReplayRetentionLibrary.window(forApplicationID: "100", instanceNumber: 2, in: root)?.id == playerTwo.id)
+        #expect(StreamReplayRetentionLibrary.window(forApplicationID: "100", instanceNumber: 3, in: root) == nil)
+    }
+
+    @Test("it does not hand one player's ring to another")
+    func itDoesNotHandOnePlayersRingToAnother() throws {
+        let root = try StreamReplayTestSupport.makeRoot(prefix: "opn-retention")
+        let staging = try StreamReplayTestSupport.makeRoot(prefix: "opn-retention-staging")
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: staging)
+        }
+        try Self.writeWindow(in: root, applicationID: "100", instanceNumber: 2)
+
+        let claimedByPlayerOne = StreamReplayRetentionLibrary.claimForAdoption(applicationID: "100", encodedWidth: 64, encodedHeight: 64, now: 1_000, in: root, into: staging)
+        let claimedByPlayerTwo = StreamReplayRetentionLibrary.claimForAdoption(applicationID: "100", instanceNumber: 2, encodedWidth: 64, encodedHeight: 64, now: 1_000, in: root, into: staging)
+
+        #expect(claimedByPlayerOne == nil)
+        #expect(claimedByPlayerTwo?.count == 1)
+    }
+
+    @Test("a manifest written before couch co-op belongs to the first player")
+    func aManifestWrittenBeforeCouchCoopBelongsToTheFirstPlayer() throws {
+        let root = try StreamReplayTestSupport.makeRoot(prefix: "opn-retention")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let window = try Self.writeWindow(in: root, applicationID: "100")
+
+        let stored = try #require(StreamReplayRetentionLibrary.loadRetainedWindows(in: root).first { $0.id == window.id })
+        #expect(stored.ownerInstanceNumber == OPNAppInstance.primaryNumber)
+    }
+
     @Test("it evicts the oldest title when the store is over budget")
     func itEvictsTheOldestTitleOverBudget() throws {
         let root = try StreamReplayTestSupport.makeRoot(prefix: "opn-retention")
@@ -202,7 +254,8 @@ struct StreamReplayRetentionTests {
                                     height: Int = 64,
                                     startHostTime: CFTimeInterval = 0,
                                     endHostTime: CFTimeInterval = 0,
-                                    segmentSizes: [Int] = [0]) throws -> StreamReplayRetainedWindow {
+                                    segmentSizes: [Int] = [0],
+                                    instanceNumber: Int? = nil) throws -> StreamReplayRetainedWindow {
         let directory = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let secondsPerSegment: Double = 60
@@ -225,7 +278,8 @@ struct StreamReplayRetentionTests {
             videoBitrateMbps: 2,
             audioBitrateKbps: 128,
             segments: segments,
-            storageDirectoryPath: directory.path
+            storageDirectoryPath: directory.path,
+            instanceNumber: instanceNumber
         )
         try StreamReplayRetentionLibrary.write(window)
         return window

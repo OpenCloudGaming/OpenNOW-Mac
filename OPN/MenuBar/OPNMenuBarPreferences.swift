@@ -12,6 +12,7 @@ enum OPNMenuBarPreferences {
 
     static var showsStatusItem: Bool {
         get {
+            guard OPNInstanceFeatureGate.current.allowsMenuBarItem else { return false }
             guard OPNAppPreferenceStorage.standard.object(forKey: showsStatusItemKey) != nil else {
                 return defaultShowsStatusItem
             }

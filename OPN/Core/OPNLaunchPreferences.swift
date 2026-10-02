@@ -46,7 +46,8 @@ enum OPNLaunchPreferences {
     /// stored choice is withheld, not rewritten, and resolves to opening the window. Shared with the
     /// settings row so it shows the presentation actually in force.
     static func resolvedStartupPresentation(storedRawValue: String?) -> OPNStartupPresentation {
-        resolvedStartupPresentation(
+        guard !OPNInstanceFeatureGate.current.alwaysOpensWindow else { return .window }
+        return resolvedStartupPresentation(
             storedRawValue: storedRawValue,
             canReachMenuBar: OPNMenuBarPreferences.showsStatusItem && OPNWindowClosePreferences.keepsApplicationRunning
         )

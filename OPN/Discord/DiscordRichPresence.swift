@@ -58,7 +58,7 @@ final class DiscordRichPresence {
     }
 
     func update(_ state: DiscordPresenceState) {
-        guard let client, isEnabled else { return }
+        guard let client, isEnabled, OPNInstanceFeatureGate.current.allowsDiscordPresence else { return }
 
         let activity = activity(for: state)
         guard activity != lastActivity else { return }

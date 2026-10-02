@@ -132,7 +132,8 @@ extension StreamReplayBuffer {
             videoBitrateMbps: retention.videoBitrateMbps,
             audioBitrateKbps: retention.audioBitrateKbps,
             segments: ordered.map(retainedSegment(for:)),
-            storageDirectoryPath: durableDirectory.path
+            storageDirectoryPath: durableDirectory.path,
+            instanceNumber: retention.instanceNumber
         )
         segments.removeAll()
         try? StreamReplayRetentionLibrary.write(window)
@@ -159,6 +160,7 @@ extension StreamReplayBuffer {
         let encoded = OPNVideoSize.capped(width: configuration.recording.width, height: configuration.recording.height, maxHeight: configuration.maxHeight)
         guard let adopted = StreamReplayRetentionLibrary.claimForAdoption(
             applicationID: configuration.recording.applicationID,
+            instanceNumber: configuration.recording.instanceNumber,
             encodedWidth: encoded.width,
             encodedHeight: encoded.height,
             now: now,
@@ -222,6 +224,7 @@ extension StreamReplayBuffer {
             pendingRetention = PendingRetention(
                 title: configuration.recording.title,
                 applicationID: configuration.recording.applicationID,
+                instanceNumber: configuration.recording.instanceNumber,
                 videoBitrateMbps: configuration.recording.videoBitrateMbps,
                 audioBitrateKbps: configuration.recording.audioBitrateKbps,
                 retainedBudgetBytes: configuration.retainedBudgetBytes

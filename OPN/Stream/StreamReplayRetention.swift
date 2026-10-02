@@ -38,6 +38,7 @@ public struct StreamReplayRetainedWindow: Codable, Equatable, Identifiable, Send
     public let audioBitrateKbps: Int
     public let segments: [Segment]
     public let storageDirectoryPath: String?
+    public let instanceNumber: Int?
 
     public init(id: UUID,
                 title: String,
@@ -50,7 +51,8 @@ public struct StreamReplayRetainedWindow: Codable, Equatable, Identifiable, Send
                 videoBitrateMbps: Int,
                 audioBitrateKbps: Int,
                 segments: [Segment],
-                storageDirectoryPath: String?) {
+                storageDirectoryPath: String?,
+                instanceNumber: Int? = nil) {
         self.id = id
         self.title = title
         self.applicationID = applicationID
@@ -63,7 +65,10 @@ public struct StreamReplayRetainedWindow: Codable, Equatable, Identifiable, Send
         self.audioBitrateKbps = audioBitrateKbps
         self.segments = segments
         self.storageDirectoryPath = storageDirectoryPath
+        self.instanceNumber = instanceNumber
     }
+
+    public var ownerInstanceNumber: Int { instanceNumber ?? OPNAppInstance.primaryNumber }
 
     public var durationSeconds: Double { max(0, endHostTime - startHostTime) }
 
@@ -144,8 +149,8 @@ public enum StreamReplayRetentionLibrary {
     }
 
     /// The stored ring for one title, which is what a starting session looks for.
-    public static func window(forApplicationID applicationID: String, in root: URL = retainedWindowsDirectory) -> StreamReplayRetainedWindow? {
-        loadRetainedWindows(in: root).first { $0.applicationID == applicationID }
+    public static func window(forApplicationID applicationID: String, instanceNumber: Int = 1, in root: URL = retainedWindowsDirectory) -> StreamReplayRetainedWindow? {
+        loadRetainedWindows(in: root).first { $0.applicationID == applicationID && $0.ownerInstanceNumber == instanceNumber }
     }
 
     public static func write(_ window: StreamReplayRetainedWindow) throws {
@@ -162,12 +167,13 @@ public enum StreamReplayRetentionLibrary {
     /// live staging directory and the caller gets them as ring segments to keep rolling.
     @discardableResult
     static func claimForAdoption(applicationID: String,
+                                 instanceNumber: Int = OPNAppInstance.primaryNumber,
                                  encodedWidth: Int,
                                  encodedHeight: Int,
                                  now: CFTimeInterval,
                                  in root: URL = retainedWindowsDirectory,
                                  into directory: URL) -> [StreamReplaySegment]? {
-        guard let window = window(forApplicationID: applicationID, in: root) else { return nil }
+        guard let window = window(forApplicationID: applicationID, instanceNumber: instanceNumber, in: root) else { return nil }
         guard window.width == encodedWidth, window.height == encodedHeight else { return nil }
         guard window.endHostTime <= now else { return nil }
         var claimed: [StreamReplaySegment] = []
@@ -256,7 +262,8 @@ public enum StreamReplayRetentionLibrary {
             videoBitrateMbps: window.videoBitrateMbps,
             audioBitrateKbps: window.audioBitrateKbps,
             segments: ordered,
-            storageDirectoryPath: window.storageDirectoryPath
+            storageDirectoryPath: window.storageDirectoryPath,
+            instanceNumber: window.instanceNumber
         )
         try? save(trimmed)
         return true
@@ -271,16 +278,21 @@ public enum StreamReplayRetentionLibrary {
         return didRemove
     }
 
-    /// One window per title: the newest is kept and its older siblings go.
+    /// One window per title and player: the newest is kept and its older siblings go.
     private static func removeDuplicateWindows(in root: URL) -> Bool {
         var didRemove = false
-        var seenApplicationIDs = Set<String>()
+        var seenKeys = Set<RetentionKey>()
         let windows = retainedWindows(in: root).sorted { $0.createdAt > $1.createdAt }
-        for window in windows where !seenApplicationIDs.insert(window.applicationID).inserted {
+        for window in windows where !seenKeys.insert(RetentionKey(applicationID: window.applicationID, instanceNumber: window.ownerInstanceNumber)).inserted {
             try? FileManager.default.removeItem(at: window.directoryURL)
             didRemove = true
         }
         return didRemove
+    }
+
+    private struct RetentionKey: Hashable {
+        let applicationID: String
+        let instanceNumber: Int
     }
 
     private static func retainedWindowDirectories(in root: URL) -> [URL] {

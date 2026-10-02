@@ -60,7 +60,8 @@ enum OPNWindowClosePreferences {
 
     static var behavior: OPNWindowCloseBehavior {
         get {
-            resolvedBehavior(storedRawValue: OPNAppPreferenceStorage.standard.string(forKey: behaviorKey))
+            guard !OPNInstanceFeatureGate.current.quitsWithLastWindow else { return .quitApplication }
+            return resolvedBehavior(storedRawValue: OPNAppPreferenceStorage.standard.string(forKey: behaviorKey))
         }
         set {
             guard newValue != behavior else { return }

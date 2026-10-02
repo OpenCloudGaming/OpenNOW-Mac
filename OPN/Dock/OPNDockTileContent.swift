@@ -32,6 +32,7 @@ struct OPNDockTileContent: Equatable, Sendable {
     /// arrives even under menu-bar-only. Kept here, on the pure decision, rather than read off
     /// `NSApplication` at the call site.
     var isAnnouncingWatch: Bool = false
+    var playerMark: String?
 
     static let none = OPNDockTileContent(isStreaming: false)
 

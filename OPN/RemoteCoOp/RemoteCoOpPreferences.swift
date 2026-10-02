@@ -30,7 +30,7 @@ public enum OPNRemoteCoOpPreferencesStore {
     public static func load() -> OPNRemoteCoOpPreferences {
         let latencyMode = migratedLatencyMode()
         return OPNRemoteCoOpPreferences(
-            isEnabled: bool(storage.object(forKey: enabledKey), defaultValue: false),
+            isEnabled: OPNInstanceFeatureGate.current.allowsRemoteCoOpHosting && bool(storage.object(forKey: enabledKey), defaultValue: false),
             reservedGuestSlots: int(storage.object(forKey: reservedGuestSlotsKey), defaultValue: 1),
             transportMode: migratedTransportMode(string(storage.object(forKey: transportModeKey))),
             qualityPreset: OPNRemoteCoOpQualityPreset(rawValue: string(storage.object(forKey: qualityPresetKey))) ?? .p720f60,

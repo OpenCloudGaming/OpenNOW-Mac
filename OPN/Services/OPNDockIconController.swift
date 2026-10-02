@@ -68,6 +68,7 @@ enum OPNDockIconController {
         observerTokens.removeAll()
         sessionObservers.removeAll()
         appliedContent = .none
+        couchCoopMark = nil
         isAnnouncingWatch = false
         watchedTitleCount = 0
         queueProgress.reset()
@@ -164,6 +165,7 @@ enum OPNDockIconController {
     /// different types, so they are watched separately; recomputing is cheap and writes are skipped
     /// when nothing changed.
     private static var sessionObservers: [AnyCancellable] = []
+    private static var couchCoopMark: String?
 
     /// A recording export, as the Dock needs it: a fraction while one runs, nil once it is over.
     ///
@@ -195,7 +197,12 @@ enum OPNDockIconController {
             session.$resumableSessionTitle.sink { title in
                 refreshTile(phase: session.phase, resumableSessionTitle: title)
             },
+            OPNCouchCoopPresence.shared.$isActive.sink { isActive in
+                couchCoopMark = OPNCouchCoopLabels.dockMark(instance: OPNAppInstance.current, isCouchCoopActive: isActive)
+                refreshTile(phase: session.phase, resumableSessionTitle: session.resumableSessionTitle)
+            },
         ]
+        couchCoopMark = OPNCouchCoopLabels.dockMark(instance: OPNAppInstance.current, isCouchCoopActive: OPNCouchCoopPresence.shared.isActive)
         refreshTile(phase: session.phase, resumableSessionTitle: session.resumableSessionTitle)
     }
 
@@ -218,7 +225,8 @@ enum OPNDockIconController {
             progress: OPNDockTileContent.progress(queue: queueFraction, isStarting: phase == .starting, export: exportFraction),
             isStreaming: phase == .streaming,
             watchedTitles: watchedTitleCount,
-            isAnnouncingWatch: isAnnouncingWatch
+            isAnnouncingWatch: isAnnouncingWatch,
+            playerMark: couchCoopMark
         ))
     }
 
@@ -226,7 +234,7 @@ enum OPNDockIconController {
         guard content != appliedContent else { return }
         appliedContent = content
         applyBadge(content.badgeLabel)
-        applyProgress(content.progress, isStreaming: content.isStreaming)
+        applyProgress(content.progress, isStreaming: content.isStreaming, playerMark: content.playerMark)
     }
 
     private static func applyBadge(_ label: String?) {
@@ -235,9 +243,9 @@ enum OPNDockIconController {
         tile.display()
     }
 
-    private static func applyProgress(_ progress: OPNDockProgress?, isStreaming: Bool) {
+    private static func applyProgress(_ progress: OPNDockProgress?, isStreaming: Bool, playerMark: String?) {
         guard let tile = NSApp?.dockTile else { return }
-        guard progress != nil || isStreaming else {
+        guard progress != nil || isStreaming || playerMark != nil else {
             // Clearing hands the tile back its own icon. Left installed, a finished wait would sit on
             // the Dock icon until the app quit.
             guard progressView != nil else { return }
@@ -249,6 +257,7 @@ enum OPNDockIconController {
         let view = progressView ?? installProgressView(on: tile)
         view.progress = progress
         view.isStreaming = isStreaming
+        view.playerMark = playerMark
         tile.display()
     }
 
@@ -267,6 +276,6 @@ enum OPNDockIconController {
         NSApp?.dockTile.contentView = nil
         progressView = nil
         applyBadge(appliedContent.badgeLabel)
-        applyProgress(appliedContent.progress, isStreaming: appliedContent.isStreaming)
+        applyProgress(appliedContent.progress, isStreaming: appliedContent.isStreaming, playerMark: appliedContent.playerMark)
     }
 }

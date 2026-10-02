@@ -117,17 +117,19 @@ struct InterfaceSettingsPage: View {
                     guard OPNWindowCloseBehavior.allCases.indices.contains(index) else { return }
                     OPNWindowClosePreferences.behavior = OPNWindowCloseBehavior.allCases[index]
                 }
-                SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(
-                    title: "Launch at Login",
-                    subtitle: launchAtLoginSubtitle,
-                    isOn: launchesAtLogin,
-                    isNew: OPNNewSettings.isNew(.launchAtLogin),
-                    uiScale: uiScale
-                ) { newValue in
-                    OPNNewSettings.acknowledge(.launchAtLogin)
-                    launchesAtLogin = OPNLoginItemController.setEnabled(newValue)
-                    OPNLaunchPreferences.launchesAtLogin = launchesAtLogin
+                if OPNInstanceFeatureGate.current.allowsLaunchAtLogin {
+                    SettingsDivider(uiScale: uiScale)
+                    SettingsToggleRow(
+                        title: "Launch at Login",
+                        subtitle: launchAtLoginSubtitle,
+                        isOn: launchesAtLogin,
+                        isNew: OPNNewSettings.isNew(.launchAtLogin),
+                        uiScale: uiScale
+                    ) { newValue in
+                        OPNNewSettings.acknowledge(.launchAtLogin)
+                        launchesAtLogin = OPNLoginItemController.setEnabled(newValue)
+                        OPNLaunchPreferences.launchesAtLogin = launchesAtLogin
+                    }
                 }
                 SettingsDivider(uiScale: uiScale)
                 SettingsOptionRow(

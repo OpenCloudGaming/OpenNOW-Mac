@@ -429,6 +429,7 @@ public final class StreamReplayBuffer: @unchecked Sendable {
     struct PendingRetention {
         let title: String
         let applicationID: String
+        let instanceNumber: Int
         let videoBitrateMbps: Int
         let audioBitrateKbps: Int
         let retainedBudgetBytes: Int64

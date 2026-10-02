@@ -350,7 +350,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
             capabilities: streamDeviceCapabilities(from: capabilities),
             cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
-        microphoneMode = profile.microphoneMode.lowercased()
+        microphoneMode = OPNInstanceFeatureGate.current.startingMicrophoneMode(storedMode: profile.microphoneMode.lowercased())
         microphoneDeviceUID = profile.microphoneDeviceId
         let microphoneConfiguration = microphoneConfigurationForCurrentMode
         // The HUD's dropdown reads the same saved choice the Settings picker does, so the two agree

@@ -13,7 +13,7 @@ struct SignInModal: View {
     let availableSize: CGSize
     let onClose: () -> Void
 
-    @State private var selectedTab: SignInTab = .browser
+    @State private var selectedTab: SignInTab = OPNInstanceFeatureGate.current.signInStartsOnQRCode ? .qrCode : .browser
     @State private var isProviderMenuPresented = false
 
     private var panelWidth: CGFloat {

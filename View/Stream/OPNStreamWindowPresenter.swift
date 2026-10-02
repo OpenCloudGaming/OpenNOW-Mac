@@ -350,6 +350,10 @@ final class OPNStreamWindowPresenter {
 
     private static func windowTitle(for configuration: StreamLaunchConfiguration) -> String {
         let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return title.isEmpty ? "GeForce NOW" : title
+        return OPNCouchCoopLabels.windowTitle(
+            base: title.isEmpty ? "GeForce NOW" : title,
+            instance: OPNAppInstance.current,
+            isCouchCoopActive: OPNCouchCoopPresence.shared.isActive
+        )
     }
 }

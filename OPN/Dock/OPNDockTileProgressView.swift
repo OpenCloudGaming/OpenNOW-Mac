@@ -35,6 +35,15 @@ final class OPNDockTileProgressView: NSView {
         didSet { needsDisplay = true }
     }
 
+    /// The player mark drawn over the icon's top leading corner while couch co-op is running, so the
+    /// two copies are told apart in the Dock. Nil draws nothing.
+    var playerMark: String? {
+        didSet {
+            guard playerMark != oldValue else { return }
+            needsDisplay = true
+        }
+    }
+
     /// Advances the sweep while indeterminate. Owned here and invalidated the moment the bar stops
     /// being indeterminate or the view is released. `nonisolated(unsafe)` for the same reason as
     /// `SteamControllerHIDMonitor.heartbeatTimer`: `deinit` is nonisolated, and the timer is only
@@ -66,6 +75,10 @@ final class OPNDockTileProgressView: NSView {
     /// circle's edge whatever its aspect ratio.
     private static let liveBadgeGlyphFraction = 0.58
 
+    private static let playerMarkWidthFraction = 0.4
+    private static let playerMarkHeightFraction = 0.28
+    private static let playerMarkFontFraction = 0.62
+
     /// The badge's glyph. `gamecontroller.fill` rather than a plain "live" dot: the state worth
     /// naming on this tile is that a *game* is running, which a dot cannot say. Swapping the badge is
     /// this one constant — the badge is drawn at whatever aspect the symbol has.
@@ -96,6 +109,19 @@ final class OPNDockTileProgressView: NSView {
         )
     }
 
+    /// The player mark's pill inside a tile of `bounds`, laid out in the top leading corner opposite
+    /// the live badge. Pure, so the placement can be asserted without a dock.
+    static func playerMarkRect(in bounds: NSRect) -> NSRect {
+        let height = bounds.width * playerMarkHeightFraction
+        let inset = bounds.width * liveBadgeInsetFraction
+        return NSRect(
+            x: bounds.minX + inset,
+            y: bounds.maxY - inset - height,
+            width: bounds.width * playerMarkWidthFraction,
+            height: height
+        )
+    }
+
     /// Where the indeterminate segment sits in the well, as a 0…1 leading offset that can be scaled
     /// by the well's travel. Pure, so the sweep can be tested without a dock or a clock. Reduce
     /// Motion parks it centered rather than animating it.
@@ -123,6 +149,10 @@ final class OPNDockTileProgressView: NSView {
             drawLiveBadge()
         }
 
+        if let playerMark {
+            drawPlayerMark(playerMark, fill: fill)
+        }
+
         if let progress {
             drawProgressBar(progress, fill: fill)
         }
@@ -145,6 +175,21 @@ final class OPNDockTileProgressView: NSView {
             y: rect.midY - glyph.size.height / 2
         )
         glyph.draw(at: origin, from: .zero, operation: .sourceOver, fraction: 1)
+    }
+
+    private func drawPlayerMark(_ mark: String, fill: NSColor) {
+        let rect = Self.playerMarkRect(in: bounds)
+        guard rect.width > 0, rect.height > 0 else { return }
+        let radius = rect.height / 2
+        fill.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: rect.height * Self.playerMarkFontFraction, weight: .heavy),
+            .foregroundColor: NSColor.white,
+        ]
+        let text = NSAttributedString(string: mark, attributes: attributes)
+        let size = text.size()
+        text.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2))
     }
 
     /// The badge's glyph, tinted to read against the white disc and scaled to fit inside it at

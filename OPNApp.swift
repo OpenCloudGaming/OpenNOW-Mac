@@ -7,6 +7,7 @@ struct OPNApp: App {
     @NSApplicationDelegateAdaptor(OPNAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
     @ObservedObject private var keybindings = OPNKeybindingsObserver.shared
+    @ObservedObject private var couchCoopPresence = OPNCouchCoopPresence.shared
     /// The status item's insertion flag, observed here because `isInserted` is a scene argument:
     /// whether the item exists at all is decided in this body. Deliberately this small object and
     /// not `OPNMenuBarSessionModel` — that model publishes at stream cadence (a 1 Hz elapsed clock,
@@ -226,7 +227,7 @@ struct OPNApp: App {
     @StateObject private var systemAppearance = OPNSystemAppearance()
 
     var body: some Scene {
-        Window("OpenNOW", id: "main") {
+        Window(OPNCouchCoopLauncher.mainWindowTitle(isCouchCoopActive: couchCoopPresence.isActive), id: "main") {
             ContentView()
                 .environmentObject(systemAppearance)
         }
@@ -236,10 +237,12 @@ struct OPNApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
-                Button {
-                    OPNAppDelegate.requestApplicationUpdateCheck()
-                } label: {
-                    Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+                if OPNInstanceFeatureGate.current.allowsUpdater {
+                    Button {
+                        OPNAppDelegate.requestApplicationUpdateCheck()
+                    } label: {
+                        Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
+                    }
                 }
             }
             CommandGroup(replacing: .help) {
@@ -250,6 +253,7 @@ struct OPNApp: App {
                 }
             }
             CommandMenu("Stream") {
+                OPNCouchCoopStartButton()
                 Button("Join Remote Co-Op as Guest…") {
                     openWindow(id: "remote-coop-guest")
                 }

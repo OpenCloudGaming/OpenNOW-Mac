@@ -41,7 +41,7 @@ extension NativeNVSTHostViewModel {
         // device's and this value would otherwise letterbox and aim the pointer against a fiction.
         view.setStreamContentSize(width: profile.resolution.width, height: profile.resolution.height)
         view.remoteInputEnabled = isConnected && !unifiedHUDVisible && !streamControlsVisible
-        configurePushToTalkMonitor(for: view, mode: profile.microphoneMode)
+        configurePushToTalkMonitor(for: view, mode: OPNInstanceFeatureGate.current.startingMicrophoneMode(storedMode: profile.microphoneMode))
         configureInput(for: view)
         installNativeFullScreenObservers(for: view)
         attachStreamWindow(view.window)

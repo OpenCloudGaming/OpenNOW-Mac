@@ -141,7 +141,8 @@ extension NativeNVSTHostViewModel {
             audioBitrateKbps: settings.recordingAudioBitrateKbps,
             // The enhancement readback is not wired on this transport, so the window is the decoded
             // stream, exactly as a manual recording is here.
-            enhancedVideoEnabled: false
+            enhancedVideoEnabled: false,
+            instanceNumber: OPNAppInstance.current.number
         )
         let quality = OPNStreamPreferences.replayQualityOptions[min(max(settings.recordingReplayQualityIndex, 0), OPNStreamPreferences.replayQualityOptions.count - 1)]
         let buffer = StreamReplayBufferConfiguration(

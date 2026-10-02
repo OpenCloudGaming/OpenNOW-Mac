@@ -128,10 +128,12 @@ public struct StreamRecordingConfiguration: Equatable, Sendable {
     public let videoBitrateMbps: Int
     public let audioBitrateKbps: Int
     public let enhancedVideoEnabled: Bool
+    public let instanceNumber: Int
 
-    public init(title: String, applicationID: String, width: Int, height: Int, fps: Int, videoBitrateMbps: Int, audioBitrateKbps: Int, enhancedVideoEnabled: Bool) {
+    public init(title: String, applicationID: String, width: Int, height: Int, fps: Int, videoBitrateMbps: Int, audioBitrateKbps: Int, enhancedVideoEnabled: Bool, instanceNumber: Int = 1) {
         self.title = title.isEmpty ? "GeForce NOW Stream" : title
         self.applicationID = applicationID
+        self.instanceNumber = max(instanceNumber, OPNAppInstance.primaryNumber)
         self.width = max(1, width)
         self.height = max(1, height)
         self.fps = max(1, fps)

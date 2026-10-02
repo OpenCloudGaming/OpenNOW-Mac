@@ -31,6 +31,8 @@ struct RemoteCoOpSettingsPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
+            CouchCoopSettingsCard(uiScale: uiScale)
+
             SettingsCard(title: "Session", uiScale: uiScale) {
                 SettingsToggleRow(
                     title: "Enable Remote Co-Op",
