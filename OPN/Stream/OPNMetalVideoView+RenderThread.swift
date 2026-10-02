@@ -10,11 +10,18 @@ struct OPNArrivedVideoFrame {
     let receivedAt: CFTimeInterval
 }
 
-/// A frame the render thread took from the arrival queue, with the queue state it was taken in.
+/// A frame the render thread took from the arrival queue, with the frames lost before it was taken.
 struct OPNQueuedFrameDraw {
     let frame: OPNNextVideoFrame
-    let isAtDisplayCeiling: Bool
-    let queueDepth: Int
+    let droppedBefore: Int
+}
+
+/// Identifies the presentation one submitted frame is waiting for. The lifetime separates a worker
+/// from the worker that replaced it, so a callback that arrives late cannot complete a newer
+/// frame's slot.
+struct OPNPresentationTicket: Equatable {
+    let lifetime: UInt64
+    let sequence: UInt64
 }
 
 /// Tuning for `OPNVideoArrivalQueue`, which cannot hold static stored properties of its own.
@@ -32,6 +39,9 @@ struct OPNVideoArrivalQueue<Element> {
     private(set) var pendingElements: [Element] = []
     private(set) var isAtDisplayCeiling = false
     var displayRefreshInterval: CFTimeInterval = 0
+    /// Every element lost since the last take: capacity trims plus, at the ceiling, the older
+    /// elements the newest-only rule coalesced away.
+    private(set) var droppedElementCount = 0
     private var arrivalTimes: [CFTimeInterval] = []
 
     /// Returns how many older elements were dropped to stay within the capacity.
@@ -42,6 +52,7 @@ struct OPNVideoArrivalQueue<Element> {
         let excess = pendingElements.count - OPNVideoArrivalQueueLimits.capacity
         guard excess > 0 else { return 0 }
         pendingElements.removeFirst(excess)
+        droppedElementCount += excess
         return excess
     }
 
@@ -49,14 +60,23 @@ struct OPNVideoArrivalQueue<Element> {
         guard !pendingElements.isEmpty else { return nil }
         guard isAtDisplayCeiling else { return pendingElements.removeFirst() }
         let newest = pendingElements.removeLast()
+        droppedElementCount += pendingElements.count
         pendingElements.removeAll()
         return newest
+    }
+
+    /// The elements dropped since the previous call, which is what the in-flight budget acts on.
+    mutating func takeDroppedElementCount() -> Int {
+        let dropped = droppedElementCount
+        droppedElementCount = 0
+        return dropped
     }
 
     mutating func removeAll() {
         pendingElements.removeAll()
         arrivalTimes.removeAll()
         isAtDisplayCeiling = false
+        droppedElementCount = 0
     }
 
     /// Enters the ceiling within 1% of the display's fastest refresh and leaves it past 2%, so a
@@ -91,16 +111,28 @@ struct OPNInFlightBudget {
     static let tolerableDrops = 4
     static let lostPresentTimeout: CFTimeInterval = 0.05
 
-    private(set) var framesInFlight = 0
+    /// Separates this budget's tickets from a replacement budget's, so a callback from a stopped
+    /// worker cannot complete a frame the new worker submitted.
+    let lifetime: UInt64
+
     private(set) var isLimitedToOneFrame = false
-    private var lastSubmitAt: CFTimeInterval = 0
+    /// The frames handed to the display whose presented callback has not arrived, with the time
+    /// each was submitted.
+    private var outstandingPresentations: [(ticket: OPNPresentationTicket, submittedAt: CFTimeInterval)] = []
+    private var nextSequence: UInt64 = 1
     private var droppedFrameCounts: [Int] = []
     private var retryAt: CFTimeInterval = 0
     private var retryDelay: CFTimeInterval = 10
 
+    var framesInFlight: Int { outstandingPresentations.count }
+
+    init(lifetime: UInt64) {
+        self.lifetime = lifetime
+    }
+
     /// The frames that may be in flight right now.
     mutating func inFlightLimit(isAtDisplayCeiling: Bool, now: CFTimeInterval) -> Int {
-        if framesInFlight > 0, now - lastSubmitAt > Self.lostPresentTimeout { framesInFlight = 0 }
+        expireLostPresentations(at: now)
         let isOneFrameWanted = isAtDisplayCeiling && now >= retryAt
         if isOneFrameWanted != isLimitedToOneFrame {
             isLimitedToOneFrame = isOneFrameWanted
@@ -109,39 +141,63 @@ struct OPNInFlightBudget {
         return isLimitedToOneFrame ? 1 : 2
     }
 
-    mutating func submitted(at time: CFTimeInterval, droppedBefore dropped: Int) {
-        framesInFlight += 1
-        lastSubmitAt = time
-        guard isLimitedToOneFrame else { return }
+    /// Records a frame handed to the display and returns the ticket its presented callback must
+    /// carry. `droppedBefore` counts the frames lost before this one was taken, and feeds the
+    /// fallback because they mean the display could not keep up. Renderer failures are counted
+    /// separately and deliberately do not: they are a renderer-capability signal that the adaptive
+    /// enhancement budget already acts on, not a pacing signal.
+    mutating func submitted(at time: CFTimeInterval, droppedBefore dropped: Int) -> OPNPresentationTicket {
+        let ticket = OPNPresentationTicket(lifetime: lifetime, sequence: nextSequence)
+        nextSequence += 1
+        outstandingPresentations.append((ticket, time))
+        guard isLimitedToOneFrame else { return ticket }
         droppedFrameCounts.append(dropped)
         if droppedFrameCounts.count > Self.dropWindow { droppedFrameCounts.removeFirst(droppedFrameCounts.count - Self.dropWindow) }
-        guard droppedFrameCounts.reduce(0, +) > Self.tolerableDrops else { return }
+        guard droppedFrameCounts.reduce(0, +) > Self.tolerableDrops else { return ticket }
         isLimitedToOneFrame = false
         retryAt = time + retryDelay
         retryDelay *= 2
         droppedFrameCounts.removeAll()
+        return ticket
     }
 
-    mutating func presented() {
-        framesInFlight = max(0, framesInFlight - 1)
+    /// Completes the presentation the ticket was issued for. A ticket that already timed out, or
+    /// that a replaced worker issued, completes nothing.
+    mutating func presented(_ ticket: OPNPresentationTicket) {
+        outstandingPresentations.removeAll { $0.ticket == ticket }
+    }
+
+    /// Forgets presentations whose callback never arrived, so a lost present cannot hold a slot.
+    private mutating func expireLostPresentations(at now: CFTimeInterval) {
+        outstandingPresentations.removeAll { now - $0.submittedAt > Self.lostPresentTimeout }
     }
 }
 
 /// The thread `vrr` draws on. It runs `drain` each time it is signalled, so a present never waits
 /// for the main thread.
 final class OPNVideoRenderThread: @unchecked Sendable {
+    /// How long `stop` waits inline. A draw that outlives it is reported as unfinished and `onExit`
+    /// runs when the worker leaves, so a caller on the main actor is never held for the whole
+    /// drawable timeout.
+    static let inlineStopTimeout: CFTimeInterval = 0.05
+
     private let wake = DispatchSemaphore(value: 0)
     private let finished = DispatchSemaphore(value: 0)
+    private let onExit: @Sendable () -> Void
     private let stateLock = NSLock()
     private var isRunning = true
+    private var isExited = false
 
-    init(drain: @escaping @Sendable () -> Void) {
+    init(drain: @escaping @Sendable () -> Void, onExit: @escaping @Sendable () -> Void = {}) {
+        self.onExit = onExit
         let thread = Thread { [self] in
             while isStillRunning {
                 wake.wait()
                 if isStillRunning { drain() }
             }
+            markExited()
             finished.signal()
+            onExit()
         }
         thread.name = "OpenNOW video render"
         thread.qualityOfService = .userInteractive
@@ -154,17 +210,36 @@ final class OPNVideoRenderThread: @unchecked Sendable {
         return isRunning
     }
 
+    /// True once the worker has returned from its last draw and left the thread.
+    var hasExited: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return isExited
+    }
+
     func signal() {
         wake.signal()
     }
 
-    /// Waits up to `timeout` for the draw in progress to finish.
-    func stop(timeout: CFTimeInterval) {
+    /// Asks the worker to leave and waits up to `timeout` for it. False means a draw is still
+    /// running; `onExit` fires when it finishes.
+    @discardableResult
+    func stop(timeout: CFTimeInterval) -> Bool {
         stateLock.lock()
+        if isExited {
+            stateLock.unlock()
+            return true
+        }
         isRunning = false
         stateLock.unlock()
         wake.signal()
-        _ = finished.wait(timeout: .now() + max(0, timeout))
+        return finished.wait(timeout: .now() + max(0, timeout)) == .success
+    }
+
+    private func markExited() {
+        stateLock.lock()
+        isExited = true
+        stateLock.unlock()
     }
 }
 
@@ -174,6 +249,8 @@ extension OPNMetalVideoView {
     func updateRenderThread() {
         let isThreadWanted = presentationMode == .vrr && window != nil
         let refreshInterval = window?.screen?.minimumRefreshInterval ?? 0
+        let isRetiringThreadAlive = retiringRenderThread?.hasExited == false
+        if !isRetiringThreadAlive { retiringRenderThread = nil }
         os_unfair_lock_lock(&frameLock)
         if refreshInterval > 0 { arrivalQueue.displayRefreshInterval = refreshInterval }
         let existingThread = renderThread
@@ -183,20 +260,31 @@ extension OPNMetalVideoView {
         }
         os_unfair_lock_unlock(&frameLock)
         guard isThreadWanted else {
-            // Longer than `nextDrawable()`'s one-second timeout, so the thread has let go of the
-            // view before teardown continues.
-            existingThread?.stop(timeout: 1.1)
+            retireRenderThread(existingThread)
             return
         }
-        guard existingThread == nil else { return }
+        // A worker still finishing a draw holds drawables the replacement would fight it for.
+        guard existingThread == nil, !isRetiringThreadAlive else { return }
         os_unfair_lock_lock(&presentLock)
-        inFlightBudget = OPNInFlightBudget()
+        inFlightBudget = OPNInFlightBudget(lifetime: nextRenderThreadLifetime)
+        nextRenderThreadLifetime &+= 1
         os_unfair_lock_unlock(&presentLock)
-        let thread = OPNVideoRenderThread { [weak self] in self?.drawArrivedFrames() }
+        let thread = OPNVideoRenderThread { [weak self] in
+            self?.drawArrivedFrames()
+        } onExit: { [weak self] in
+            Task { @MainActor in self?.updateRenderThread() }
+        }
         os_unfair_lock_lock(&frameLock)
         arrivalQueue.removeAll()
         renderThread = thread
         os_unfair_lock_unlock(&frameLock)
+    }
+
+    /// Asks a worker to leave, remembering it while a draw finishes so nothing replaces it first.
+    private func retireRenderThread(_ thread: OPNVideoRenderThread?) {
+        guard let thread else { return }
+        guard !thread.stop(timeout: OPNVideoRenderThread.inlineStopTimeout) else { return }
+        retiringRenderThread = thread
     }
 
     /// On the render thread: presents queued frames as drawables free up. The frame is taken once a
@@ -210,10 +298,9 @@ extension OPNMetalVideoView {
                 continue
             }
             os_unfair_lock_lock(&presentLock)
-            inFlightBudget.submitted(at: CACurrentMediaTime(),
-                                     droppedBefore: queued.isAtDisplayCeiling ? max(0, queued.queueDepth - 1) : 0)
+            let ticket = inFlightBudget.submitted(at: CACurrentMediaTime(), droppedBefore: queued.droppedBefore)
             os_unfair_lock_unlock(&presentLock)
-            drawable.addPresentedHandler { [weak self] _ in self?.notePresented() }
+            drawable.addPresentedHandler { [weak self] _ in self?.notePresented(ticket) }
             os_unfair_lock_lock(&drawLock)
             render(queued.frame, into: drawable)
             os_unfair_lock_unlock(&drawLock)
@@ -239,11 +326,11 @@ extension OPNMetalVideoView {
         return inFlightBudget.framesInFlight < limit
     }
 
-    /// From the presented handler: frees the frame's place in the budget and wakes the render
-    /// thread, which may have stopped at the limit.
-    nonisolated private func notePresented() {
+    /// From the presented handler: completes the presentation the ticket was issued for and wakes
+    /// the render thread, which may have stopped at the limit.
+    nonisolated private func notePresented(_ ticket: OPNPresentationTicket) {
         os_unfair_lock_lock(&presentLock)
-        inFlightBudget.presented()
+        inFlightBudget.presented(ticket)
         os_unfair_lock_unlock(&presentLock)
         os_unfair_lock_lock(&frameLock)
         let thread = renderThread
@@ -261,16 +348,15 @@ extension OPNMetalVideoView {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
         guard presentationMode == .vrr else { return nil }
-        let isAtDisplayCeiling = arrivalQueue.isAtDisplayCeiling
-        let queueDepth = arrivalQueue.pendingElements.count
         guard let arrived = arrivalQueue.next() else { return nil }
+        let droppedBefore = arrivalQueue.takeDroppedElementCount()
         let frame = OPNNextVideoFrame(frame: arrived.frame,
                                       serial: arrived.serial,
                                       sourceSize: sourceFrameSize,
                                       outputFormat: desiredOutputFormat,
                                       outputTransfer: desiredTransfer,
                                       receivedAt: arrived.receivedAt)
-        return OPNQueuedFrameDraw(frame: frame, isAtDisplayCeiling: isAtDisplayCeiling, queueDepth: queueDepth)
+        return OPNQueuedFrameDraw(frame: frame, droppedBefore: droppedBefore)
     }
 
     nonisolated private func outputFormatIsApplied(_ frame: OPNNextVideoFrame) -> Bool {

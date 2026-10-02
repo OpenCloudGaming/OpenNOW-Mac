@@ -78,7 +78,11 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     nonisolated(unsafe) var renderThread: OPNVideoRenderThread?
     nonisolated(unsafe) var arrivalQueue = OPNVideoArrivalQueue<OPNArrivedVideoFrame>()
     /// `vrr` only, under `presentLock`.
-    nonisolated(unsafe) var inFlightBudget = OPNInFlightBudget()
+    nonisolated(unsafe) var inFlightBudget = OPNInFlightBudget(lifetime: 0)
+    /// `vrr` only, main actor: a worker that was asked to leave and is still finishing a draw.
+    var retiringRenderThread: OPNVideoRenderThread?
+    /// `vrr` only, main actor: numbers each worker so its presented callbacks stay its own.
+    var nextRenderThreadLifetime: UInt64 = 1
     /// A one-shot request to write the next drawn frame — the drawable itself, after our render
     /// pass — as a JPEG. Set on the main actor, consumed on the render thread under `frameLock`.
     nonisolated(unsafe) var pendingRenderSnapshotURL: URL?
