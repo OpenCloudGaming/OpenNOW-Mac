@@ -17,6 +17,14 @@ import Testing
         #expect(pacing.displayVsyncMicroseconds == 8333)
     }
 
+    @Test func aDisplayWithNoReportedRefreshKeepsTheSessionIntervalAndTheFallback() {
+        let pacing = NvstBifrostFreeTransport.pacingIntervals(sessionFrameMicroseconds: 8333,
+                                                              displayRefreshRate: 0,
+                                                              isVrrPresentation: true)
+        #expect(pacing.frameMicroseconds == 8333)
+        #expect(pacing.displayVsyncMicroseconds == NvstBifrostFreeTransport.fallbackVsyncMicroseconds)
+    }
+
     @Test func otherModesKeepTheSessionAndDisplayIntervals() {
         let pacing = NvstBifrostFreeTransport.pacingIntervals(sessionFrameMicroseconds: 8333, displayRefreshRate: 120,
                                                               isVrrPresentation: false)

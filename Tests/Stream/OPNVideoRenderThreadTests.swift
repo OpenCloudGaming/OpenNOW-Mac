@@ -52,6 +52,17 @@ import Testing
         #expect([first, second] == [100, 101])
     }
 
+    @Test func removeAllForgetsThePendingFramesAndTheCeiling() {
+        var queue = makeQueue(arrivingEvery: refresh, count: 60)
+        queue.push(100, arrivedAt: 60 * refresh)
+        let wasAtCeiling = queue.isAtDisplayCeiling
+        queue.removeAll()
+        #expect(wasAtCeiling)
+        #expect(!queue.isAtDisplayCeiling)
+        #expect(queue.pendingElements.isEmpty)
+        #expect(queue.next() == nil)
+    }
+
     @Test func aStreamThatSlowsDownLeavesTheCeiling() {
         var queue = makeQueue(arrivingEvery: refresh, count: 60)
         let wasAtCeiling = queue.isAtDisplayCeiling
@@ -91,6 +102,38 @@ import Testing
         #expect(afterRetry == 1)
     }
 
+    @Test func theRetryWaitDoublesAfterEachFailedOneFrameAttempt() {
+        var budget = OPNInFlightBudget()
+        _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
+        tripTheFallback(&budget, from: 10)
+        let firstRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 21)
+        tripTheFallback(&budget, from: 21)
+        let duringSecondFallback = budget.inFlightLimit(isAtDisplayCeiling: true, now: 31)
+        let secondRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 42)
+        #expect(firstRetry == 1)
+        #expect(duringSecondFallback == 2)
+        #expect(secondRetry == 1)
+    }
+
+    /// Submits enough dropping frames to trip the fallback from one frame in flight back to two.
+    private func tripTheFallback(_ budget: inout OPNInFlightBudget, from time: CFTimeInterval) {
+        for index in 0...OPNInFlightBudget.tolerableDrops {
+            budget.submitted(at: time + Double(index) / 120, droppedBefore: 1)
+            budget.presented()
+        }
+    }
+
+    @Test func aStalePresentCallbackCannotFreeASlotItNeverHeld() {
+        var budget = OPNInFlightBudget()
+        let limit = budget.inFlightLimit(isAtDisplayCeiling: false, now: 10)
+        budget.presented()
+        budget.presented()
+        #expect(limit == 2)
+        #expect(budget.framesInFlight == 0)
+        budget.submitted(at: 10, droppedBefore: 0)
+        #expect(budget.framesInFlight == 1)
+    }
+
     @Test func aPresentThatNeverLandsStopsHoldingTheBudget() {
         var budget = OPNInFlightBudget()
         _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
@@ -113,5 +156,21 @@ import Testing
         let ranAfterStop = drained.wait(timeout: .now() + 0.1) == .success
         #expect(ran)
         #expect(!ranAfterStop)
+    }
+
+    @Test func aThreadCreatedAfterAStopDrainsAgain() {
+        let firstDrain = DispatchSemaphore(value: 0)
+        let first = OPNVideoRenderThread { firstDrain.signal() }
+        first.signal()
+        let ranFirst = firstDrain.wait(timeout: .now() + 1) == .success
+        first.stop(timeout: 1)
+
+        let secondDrain = DispatchSemaphore(value: 0)
+        let second = OPNVideoRenderThread { secondDrain.signal() }
+        second.signal()
+        let ranSecond = secondDrain.wait(timeout: .now() + 1) == .success
+        second.stop(timeout: 1)
+        #expect(ranFirst)
+        #expect(ranSecond)
     }
 }
