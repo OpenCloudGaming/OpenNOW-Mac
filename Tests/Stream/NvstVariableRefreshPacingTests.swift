@@ -17,15 +17,21 @@ import Testing
         #expect(pacing.displayVsyncMicroseconds == 8333)
     }
 
-    @Test func aDisplayWithNoReportedRefreshKeepsTheSessionIntervalAndTheFallback() {
+    @Test func anUnreportedDisplayRefreshKeepsTheSessionFrameInterval() {
         let pacing = NvstBifrostFreeTransport.pacingIntervals(sessionFrameMicroseconds: 8333,
                                                               displayRefreshRate: 0,
                                                               isVrrPresentation: true)
         #expect(pacing.frameMicroseconds == 8333)
+    }
+
+    @Test func anUnreportedDisplayRefreshFallsBackToTheDefaultDisplayInterval() {
+        let pacing = NvstBifrostFreeTransport.pacingIntervals(sessionFrameMicroseconds: 8333,
+                                                              displayRefreshRate: 0,
+                                                              isVrrPresentation: true)
         #expect(pacing.displayVsyncMicroseconds == NvstBifrostFreeTransport.fallbackVsyncMicroseconds)
     }
 
-    @Test func aRefreshRateWithNoVariableRefreshMarginKeepsTheDisplayInterval() {
+    @Test func aRefreshRateWithNoVariableRefreshMarginPacesFromTheDisplayInterval() {
         let pacing = NvstBifrostFreeTransport.pacingIntervals(sessionFrameMicroseconds: 8333,
                                                               displayRefreshRate: 3600,
                                                               isVrrPresentation: true)
@@ -33,10 +39,10 @@ import Testing
         #expect(pacing.displayVsyncMicroseconds == 277)
     }
 
-    @Test func otherModesKeepTheSessionAndDisplayIntervals() {
-        let pacing = NvstBifrostFreeTransport.pacingIntervals(sessionFrameMicroseconds: 8333, displayRefreshRate: 120,
+    @Test func otherModesLeavePacingUnchanged() {
+        let pacing = NvstBifrostFreeTransport.pacingIntervals(sessionFrameMicroseconds: 8333, displayRefreshRate: 144,
                                                               isVrrPresentation: false)
         #expect(pacing.frameMicroseconds == 8333)
-        #expect(pacing.displayVsyncMicroseconds == 8333)
+        #expect(pacing.displayVsyncMicroseconds == 6944)
     }
 }

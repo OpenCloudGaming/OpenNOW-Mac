@@ -27,8 +27,8 @@ import Testing
 
     @Test func overflowDropsTheOldest() {
         var queue = OPNVideoArrivalQueue<Int>()
-        let dropped = (1...4).map { queue.push($0, arrivedAt: Double($0)) }
-        #expect(dropped == [0, 0, 0, 1])
+        let droppedPerPush = (1...4).map { queue.push($0, arrivedAt: Double($0)) }
+        #expect(droppedPerPush == [0, 0, 0, 1])
         #expect(queue.pendingElements == [2, 3, 4])
     }
 
@@ -45,8 +45,8 @@ import Testing
         _ = queue.takeDroppedElementCount()
         queue.push(100, arrivedAt: 60 * refresh)
         queue.push(101, arrivedAt: 60 * refresh + 0.001)
-        let shown = queue.next()
-        #expect(shown == 101)
+        let shownElement = queue.next()
+        #expect(shownElement == 101)
         #expect(queue.takeDroppedElementCount() == 1)
     }
 
@@ -54,9 +54,9 @@ import Testing
         var queue = makeQueue(arrivingEvery: refresh, count: 60)
         queue.push(100, arrivedAt: 60 * refresh)
         queue.push(101, arrivedAt: 60 * refresh + 0.001)
-        let shown = queue.next()
+        let shownElement = queue.next()
         #expect(queue.isAtDisplayCeiling)
-        #expect(shown == 101)
+        #expect(shownElement == 101)
         #expect(queue.pendingElements.isEmpty)
     }
 
@@ -70,25 +70,30 @@ import Testing
         #expect([first, second] == [100, 101])
     }
 
-    @Test func removeAllForgetsThePendingFramesAndTheCeiling() {
+    @Test func removeAllForgetsThePendingFrames() {
         var queue = makeQueue(arrivingEvery: refresh, count: 60)
         queue.push(100, arrivedAt: 60 * refresh)
-        let wasAtCeiling = queue.isAtDisplayCeiling
         queue.removeAll()
-        #expect(wasAtCeiling)
-        #expect(!queue.isAtDisplayCeiling)
         #expect(queue.pendingElements.isEmpty)
         #expect(queue.next() == nil)
     }
 
+    @Test func removeAllClearsTheCeilingState() {
+        var queue = makeQueue(arrivingEvery: refresh, count: 60)
+        let isAtCeilingBeforeReset = queue.isAtDisplayCeiling
+        queue.removeAll()
+        #expect(isAtCeilingBeforeReset)
+        #expect(!queue.isAtDisplayCeiling)
+    }
+
     @Test func aStreamThatSlowsDownLeavesTheCeiling() {
         var queue = makeQueue(arrivingEvery: refresh, count: 60)
-        let wasAtCeiling = queue.isAtDisplayCeiling
+        let isAtCeilingBeforeSlowdown = queue.isAtDisplayCeiling
         for index in 0..<60 {
             queue.push(index, arrivedAt: 1 + Double(index) / 100)
             _ = queue.next()
         }
-        #expect(wasAtCeiling)
+        #expect(isAtCeilingBeforeSlowdown)
         #expect(!queue.isAtDisplayCeiling)
     }
 }
@@ -110,30 +115,30 @@ import Testing
 
     @Test func droppingFramesWithOneInFlightFallsBackToTwoUntilTheRetry() {
         var budget = OPNInFlightBudget(lifetime: lifetime)
-        let before = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
-        tripTheFallback(&budget, from: 10)
-        let during = budget.inFlightLimit(isAtDisplayCeiling: true, now: 11)
-        let afterRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 21)
-        #expect(before == 1)
-        #expect(during == 2)
-        #expect(afterRetry == 1)
+        let limitBefore = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
+        submitUntilTheFallbackTrips(&budget, from: 10)
+        let limitDuringFallback = budget.inFlightLimit(isAtDisplayCeiling: true, now: 11)
+        let limitAtRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 21)
+        #expect(limitBefore == 1)
+        #expect(limitDuringFallback == 2)
+        #expect(limitAtRetry == 1)
     }
 
     @Test func theRetryWaitDoublesAfterEachFailedOneFrameAttempt() {
         var budget = OPNInFlightBudget(lifetime: lifetime)
         _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
-        tripTheFallback(&budget, from: 10)
-        let firstRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 21)
-        tripTheFallback(&budget, from: 21)
-        let duringSecondFallback = budget.inFlightLimit(isAtDisplayCeiling: true, now: 31)
-        let secondRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 42)
-        #expect(firstRetry == 1)
-        #expect(duringSecondFallback == 2)
-        #expect(secondRetry == 1)
+        submitUntilTheFallbackTrips(&budget, from: 10)
+        let limitAtFirstRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 21)
+        submitUntilTheFallbackTrips(&budget, from: 21)
+        let limitDuringSecondFallback = budget.inFlightLimit(isAtDisplayCeiling: true, now: 31)
+        let limitAtSecondRetry = budget.inFlightLimit(isAtDisplayCeiling: true, now: 42)
+        #expect(limitAtFirstRetry == 1)
+        #expect(limitDuringSecondFallback == 2)
+        #expect(limitAtSecondRetry == 1)
     }
 
     /// Submits enough dropping frames to trip the fallback from one frame in flight back to two.
-    private func tripTheFallback(_ budget: inout OPNInFlightBudget, from time: CFTimeInterval) {
+    private func submitUntilTheFallbackTrips(_ budget: inout OPNInFlightBudget, from time: CFTimeInterval) {
         for index in 0...OPNInFlightBudget.tolerableDrops {
             let ticket = budget.submitted(at: time + Double(index) / 120, droppedBefore: 1)
             budget.presented(ticket)
@@ -143,12 +148,12 @@ import Testing
     @Test func aLatePresentCannotFreeANewerFramesSlot() {
         var budget = OPNInFlightBudget(lifetime: lifetime)
         _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
-        let timedOut = budget.submitted(at: 10, droppedBefore: 0)
+        let timedOutTicket = budget.submitted(at: 10, droppedBefore: 0)
         _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10 + OPNInFlightBudget.lostPresentTimeout * 2)
-        let current = budget.submitted(at: 10.2, droppedBefore: 0)
-        budget.presented(timedOut)
+        let currentTicket = budget.submitted(at: 10.2, droppedBefore: 0)
+        budget.presented(timedOutTicket)
         #expect(budget.framesInFlight == 1)
-        budget.presented(current)
+        budget.presented(currentTicket)
         #expect(budget.framesInFlight == 0)
     }
 
@@ -170,71 +175,77 @@ import Testing
         var budget = OPNInFlightBudget(lifetime: lifetime)
         _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10)
         _ = budget.submitted(at: 10, droppedBefore: 0)
-        let held = budget.framesInFlight
+        let frameCountWhileUnpresented = budget.framesInFlight
         _ = budget.inFlightLimit(isAtDisplayCeiling: true, now: 10 + OPNInFlightBudget.lostPresentTimeout * 2)
-        #expect(held == 1)
+        #expect(frameCountWhileUnpresented == 1)
         #expect(budget.framesInFlight == 0)
     }
 }
 
 @Suite struct OPNVideoRenderThreadTests {
-    @Test func drainsWhenSignalledAndNotAfterStopping() {
+    @Test func drainsWhenSignalled() {
         let drained = DispatchSemaphore(value: 0)
         let thread = OPNVideoRenderThread { drained.signal() }
         thread.signal()
-        let ran = drained.wait(timeout: .now() + 1) == .success
+        let isDrained = drained.wait(timeout: .now() + 1) == .success
+        thread.stop(timeout: 1)
+        #expect(isDrained)
+    }
+
+    @Test func ignoresSignalsAfterStopping() {
+        let drained = DispatchSemaphore(value: 0)
+        let thread = OPNVideoRenderThread { drained.signal() }
         thread.stop(timeout: 1)
         thread.signal()
-        let ranAfterStop = drained.wait(timeout: .now() + 0.1) == .success
-        #expect(ran)
-        #expect(!ranAfterStop)
+        let isDrainedAfterStop = drained.wait(timeout: .now() + 0.1) == .success
+        #expect(!isDrainedAfterStop)
     }
 
     @Test func aThreadCreatedAfterAStopDrainsAgain() {
         let firstDrain = DispatchSemaphore(value: 0)
-        let first = OPNVideoRenderThread { firstDrain.signal() }
-        first.signal()
-        let ranFirst = firstDrain.wait(timeout: .now() + 1) == .success
-        first.stop(timeout: 1)
+        let firstThread = OPNVideoRenderThread { firstDrain.signal() }
+        firstThread.signal()
+        let isFirstDrained = firstDrain.wait(timeout: .now() + 1) == .success
+        firstThread.stop(timeout: 1)
 
         let secondDrain = DispatchSemaphore(value: 0)
-        let second = OPNVideoRenderThread { secondDrain.signal() }
-        second.signal()
-        let ranSecond = secondDrain.wait(timeout: .now() + 1) == .success
-        second.stop(timeout: 1)
-        #expect(ranFirst)
-        #expect(ranSecond)
+        let secondThread = OPNVideoRenderThread { secondDrain.signal() }
+        secondThread.signal()
+        let isSecondDrained = secondDrain.wait(timeout: .now() + 1) == .success
+        secondThread.stop(timeout: 1)
+        #expect(isFirstDrained)
+        #expect(isSecondDrained)
     }
 
     @Test func stopReportsThatTheWorkerHasLeft() {
         let thread = OPNVideoRenderThread {}
-        let stopped = thread.stop(timeout: 1)
-        let stoppedAgain = thread.stop(timeout: 0)
-        #expect(stopped)
-        #expect(stoppedAgain)
-        #expect(thread.hasExited)
+        let isStoppedInline = thread.stop(timeout: 1)
+        let isStoppedAgain = thread.stop(timeout: 0)
+        #expect(isStoppedInline)
+        #expect(isStoppedAgain)
+        #expect(thread.isFinished)
     }
 
     @Test func aWorkerBlockedInADrawReportsThatItHasNotLeftYet() {
         let drawStarted = DispatchSemaphore(value: 0)
         let releaseDraw = DispatchSemaphore(value: 0)
-        let exited = DispatchSemaphore(value: 0)
+        let exitReported = DispatchSemaphore(value: 0)
         let thread = OPNVideoRenderThread {
             drawStarted.signal()
             releaseDraw.wait()
         } onExit: {
-            exited.signal()
+            exitReported.signal()
         }
         thread.signal()
-        let started = drawStarted.wait(timeout: .now() + 1) == .success
-        let stoppedInline = thread.stop(timeout: OPNVideoRenderThread.inlineStopTimeout)
-        let wasAlive = !thread.hasExited
+        let isDrawStarted = drawStarted.wait(timeout: .now() + 1) == .success
+        let isStoppedInline = thread.stop(timeout: OPNVideoRenderThread.inlineStopTimeout)
+        let isAlive = !thread.isFinished
         releaseDraw.signal()
-        let leftEventually = exited.wait(timeout: .now() + 1) == .success
-        #expect(started)
-        #expect(!stoppedInline)
-        #expect(wasAlive)
-        #expect(leftEventually)
-        #expect(thread.hasExited)
+        let isExitReported = exitReported.wait(timeout: .now() + 1) == .success
+        #expect(isDrawStarted)
+        #expect(!isStoppedInline)
+        #expect(isAlive)
+        #expect(isExitReported)
+        #expect(thread.isFinished)
     }
 }

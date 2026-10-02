@@ -16,7 +16,7 @@ import Testing
         let values = OPNStreamPreferences.presentationModeOptions.map(\.value)
         #expect(values.compactMap(OPNVideoPresentationMode.init(rawValue:)).count == values.count)
         #expect(values.last.flatMap(OPNVideoPresentationMode.init(rawValue:)) == .vrr)
-        #expect(OPNVideoPresentationMode.vrr.drawsOnDecode)
-        #expect(!OPNVideoPresentationMode.smooth.drawsOnDecode)
+        #expect(OPNVideoPresentationMode.vrr.isDecodeDriven)
+        #expect(!OPNVideoPresentationMode.smooth.isDecodeDriven)
     }
 }

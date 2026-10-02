@@ -279,7 +279,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     var isSessionReadyFullScreenEntryRequested = false
     let onScreenKeyboard = StreamOnScreenKeyboardModel()
 
-    func startIfNeeded() {
+    func startWhenIdle() {
         guard startTask == nil, path == nil, !didEnd else { return }
         guard let nativeView, Self.nativeVideoSurfaceHandle(for: nativeView) != nil else {
             loadingStepIndex = StreamLaunchStep.checkNetworkRoute.rawValue

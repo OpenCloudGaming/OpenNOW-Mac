@@ -32,7 +32,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     nonisolated(unsafe) var enhancementDroppedFrameCount: UInt64 = 0
     nonisolated(unsafe) private var lastEnhancementFrameTimeMs = -1.0
     nonisolated(unsafe) var lastDiagnosticsUpdateTime: CFTimeInterval = 0
-    nonisolated(unsafe) var drawableSizeDirty = true
+    nonisolated(unsafe) var isDrawableSizeDirty = true
     nonisolated(unsafe) private var enhancementSettings = OPNVideoEnhancementSettings()
     nonisolated(unsafe) private var enhancementResult = OPNVideoEnhancementResult()
     nonisolated(unsafe) private var enhancementOverBudgetCount = 0
@@ -162,12 +162,12 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     nonisolated private func drawableSizeNeedsUpdate() -> Bool {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        return drawableSizeDirty
+        return isDrawableSizeDirty
     }
 
-    nonisolated private func markDrawableSizeDirty(_ dirty: Bool) {
+    nonisolated private func markDrawableSizeDirty(_ isDirty: Bool) {
         os_unfair_lock_lock(&frameLock)
-        drawableSizeDirty = dirty
+        isDrawableSizeDirty = isDirty
         os_unfair_lock_unlock(&frameLock)
     }
 
@@ -263,7 +263,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
 
         guard let next = nextFrameToDraw(), next.isRenderable else { return }
         if applyOutputFormat(next.outputFormat, transfer: next.outputTransfer) { return }
-        if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
+        if isDrawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
         guard let drawable = view.currentDrawable else { return }
         os_unfair_lock_lock(&drawLock)
         render(next, into: drawable)
@@ -280,7 +280,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
             ? next.sourceSize
             : CGSize(width: frame.width, height: frame.height)
         var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize),
-                                            drawableResolution: videoResolutionString(CGSize(width: drawable.texture.width, height: drawable.texture.height)))
+                                            drawableResolution: videoResolutionString(drawable.texturePixelSize))
         let enhancement = budgetedEnhancement()
 
         if enhancement.mode > 0,
@@ -424,7 +424,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         guard let enhancementRenderer else { return false }
         let settings = configuredEnhancementSettings(enhancement: enhancement,
                                                     sourceSize: sourceSize,
-                                                    drawableSize: CGSize(width: drawable.texture.width, height: drawable.texture.height),
+                                                    drawableSize: drawable.texturePixelSize,
                                                     renderer: enhancementRenderer)
         let diagnosticsNow = CACurrentMediaTime()
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
@@ -465,7 +465,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         settings.sharpness = 0
         settings.denoise = 0
         settings.sourceSize = sourceSize
-        settings.drawableSize = CGSize(width: drawable.texture.width, height: drawable.texture.height)
+        settings.drawableSize = drawable.texturePixelSize
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
         settings.captureEnhancedPixelBuffer = false
         settings.lowCostSpatial = true

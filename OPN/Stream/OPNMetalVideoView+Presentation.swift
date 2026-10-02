@@ -15,6 +15,11 @@ extension CGColorSpace {
     static let sRGBForRender: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 }
 
+extension CAMetalDrawable {
+    /// The pixel size of the surface this drawable presents, which is the size a pass renders at.
+    var texturePixelSize: CGSize { CGSize(width: texture.width, height: texture.height) }
+}
+
 /// How decoded frames meet the display.
 ///
 /// Measured 2026-09-04 on a 120 Hz panel with a 120 fps stream: decode completions arrive in bursts
@@ -43,7 +48,8 @@ enum OPNVideoPresentationMode: Int, Sendable {
         }
     }
 
-    var drawsOnDecode: Bool { self == .lowestLatency || self == .vrr }
+    /// Whether the frame is drawn the moment it decodes rather than on the display link's tick.
+    var isDecodeDriven: Bool { self == .lowestLatency || self == .vrr }
 }
 
 /// `lowestLatency` only: at most one decode-driven draw is on its way to the main actor.

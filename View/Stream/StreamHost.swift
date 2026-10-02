@@ -74,14 +74,14 @@ struct NativeNVSTMediaStreamSurface: View {
             // one of these writes is `@Published` now, which makes publishing here undefined
             // behavior ("Publishing changes from within view updates is not allowed"). As `@State`
             // on a struct SwiftUI merely scheduled another pass; on an `ObservableObject` it does
-            // not. `resolveIfReady` latches on `didResolve` and `startIfNeeded` has its own guards,
+            // not. `resolveIfReady` latches on `didResolve` and `startWhenIdle` has its own guards,
             // so arriving a turn later is safe.
             NativeNVSTStreamHostView(
                 onResolve: { view in
                     Task { @MainActor in
                         model.nativeView = view
                         model.configureNativeView(view)
-                        model.startIfNeeded()
+                        model.startWhenIdle()
                     }
                 },
                 // Re-registered whenever the surface lands in a window, not only at resolve time:
@@ -102,7 +102,7 @@ struct NativeNVSTMediaStreamSurface: View {
         }
         .background(Color.black)
         .onAppear {
-            model.startIfNeeded()
+            model.startWhenIdle()
         }
         .task { await model.pollControllerBatteries() }
         .task { await model.pollControllerInputStatus() }

@@ -17,8 +17,7 @@ struct OPNQueuedFrameDraw {
 }
 
 /// Identifies the presentation one submitted frame is waiting for. The lifetime separates a worker
-/// from the worker that replaced it, so a callback that arrives late cannot complete a newer
-/// frame's slot.
+/// from its replacement, so a late callback cannot complete a newer frame's slot.
 struct OPNPresentationTicket: Equatable {
     let lifetime: UInt64
     let sequence: UInt64
@@ -142,10 +141,7 @@ struct OPNInFlightBudget {
     }
 
     /// Records a frame handed to the display and returns the ticket its presented callback must
-    /// carry. `droppedBefore` counts the frames lost before this one was taken, and feeds the
-    /// fallback because they mean the display could not keep up. Renderer failures are counted
-    /// separately and deliberately do not: they are a renderer-capability signal that the adaptive
-    /// enhancement budget already acts on, not a pacing signal.
+    /// carry. Only pacing drops feed the fallback; renderer failures are a capability signal.
     mutating func submitted(at time: CFTimeInterval, droppedBefore dropped: Int) -> OPNPresentationTicket {
         let ticket = OPNPresentationTicket(lifetime: lifetime, sequence: nextSequence)
         nextSequence += 1
@@ -176,17 +172,22 @@ struct OPNInFlightBudget {
 /// The thread `vrr` draws on. It runs `drain` each time it is signalled, so a present never waits
 /// for the main thread.
 final class OPNVideoRenderThread: @unchecked Sendable {
-    /// How long `stop` waits inline. A draw that outlives it is reported as unfinished and `onExit`
-    /// runs when the worker leaves, so a caller on the main actor is never held for the whole
-    /// drawable timeout.
+    /// How long `stop` waits inline; a draw that outlives it is reported as unfinished and `onExit`
+    /// runs when the worker leaves.
     static let inlineStopTimeout: CFTimeInterval = 0.05
+
+    /// The worker's lifecycle, guarded by `stateLock`: running until `stop` asks it to leave, and
+    /// finished once the thread body has returned.
+    private struct Lifecycle {
+        var isRunning = true
+        var isFinished = false
+    }
 
     private let wake = DispatchSemaphore(value: 0)
     private let finished = DispatchSemaphore(value: 0)
     private let onExit: @Sendable () -> Void
     private let stateLock = NSLock()
-    private var isRunning = true
-    private var isExited = false
+    private var lifecycle = Lifecycle()
 
     init(drain: @escaping @Sendable () -> Void, onExit: @escaping @Sendable () -> Void = {}) {
         self.onExit = onExit
@@ -195,7 +196,7 @@ final class OPNVideoRenderThread: @unchecked Sendable {
                 wake.wait()
                 if isStillRunning { drain() }
             }
-            markExited()
+            markFinished()
             finished.signal()
             onExit()
         }
@@ -207,14 +208,14 @@ final class OPNVideoRenderThread: @unchecked Sendable {
     private var isStillRunning: Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return isRunning
+        return lifecycle.isRunning
     }
 
     /// True once the worker has returned from its last draw and left the thread.
-    var hasExited: Bool {
+    var isFinished: Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
-        return isExited
+        return lifecycle.isFinished
     }
 
     func signal() {
@@ -226,19 +227,19 @@ final class OPNVideoRenderThread: @unchecked Sendable {
     @discardableResult
     func stop(timeout: CFTimeInterval) -> Bool {
         stateLock.lock()
-        if isExited {
+        if lifecycle.isFinished {
             stateLock.unlock()
             return true
         }
-        isRunning = false
+        lifecycle.isRunning = false
         stateLock.unlock()
         wake.signal()
         return finished.wait(timeout: .now() + max(0, timeout)) == .success
     }
 
-    private func markExited() {
+    private func markFinished() {
         stateLock.lock()
-        isExited = true
+        lifecycle.isFinished = true
         stateLock.unlock()
     }
 }
@@ -249,7 +250,7 @@ extension OPNMetalVideoView {
     func updateRenderThread() {
         let isThreadWanted = presentationMode == .vrr && window != nil
         let refreshInterval = window?.screen?.minimumRefreshInterval ?? 0
-        let isRetiringThreadAlive = retiringRenderThread?.hasExited == false
+        let isRetiringThreadAlive = retiringRenderThread?.isFinished == false
         if !isRetiringThreadAlive { retiringRenderThread = nil }
         os_unfair_lock_lock(&frameLock)
         if refreshInterval > 0 { arrivalQueue.displayRefreshInterval = refreshInterval }

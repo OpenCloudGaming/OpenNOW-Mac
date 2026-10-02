@@ -391,8 +391,8 @@ extension NvstBifrostFreeTransport {
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.sendQosReport()
-                await self.sendRtpStatsIfNeeded()
-                await self.sendControlChannelStatsIfNeeded()
+                await self.sendRtpStatsWhenDue()
+                await self.sendControlChannelStatsWhenDue()
                 try? await Task.sleep(for: .seconds(NvstQosReport.interval))
             }
         }
@@ -460,7 +460,7 @@ extension NvstBifrostFreeTransport {
     /// frame-gated cadence of the official `sendRtpStats` builder. The fields carry what this
     /// pipeline actually measures; the NACK report is all zeros because this client does not
     /// send NACKs, exactly the payload the official client sends before its receiver exists.
-    func sendRtpStatsIfNeeded() {
+    func sendRtpStatsWhenDue() {
         guard let bundle, let receiver else { return }
         let stats = receiver.stats
         let frame = stats.framesEmitted
@@ -492,7 +492,7 @@ extension NvstBifrostFreeTransport {
     /// stream 0 only — the official client transmits no control-channel stats from any other
     /// stream. The timestamp is session-elapsed microseconds, the closest honest analog to the
     /// official library's steady-clock-epoch microseconds.
-    func sendControlChannelStatsIfNeeded() {
+    func sendControlChannelStatsWhenDue() {
         guard let bundle, sessionStartedAt != nil else { return }
         let now = Date()
         if let last = controlStatsLastSentAt,
