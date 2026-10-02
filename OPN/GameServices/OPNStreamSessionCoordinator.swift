@@ -131,7 +131,8 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
             selectedStore: configuration.selectedStore,
             resumeSessionID: session.id,
             resumeServer: session.serverAddress,
-            metadata: configuration.metadata
+            metadata: configuration.metadata,
+            coopTile: configuration.coopTile
         )
         return try await startNativeNVSTSession(configuration: recoveryConfiguration)
     }
@@ -287,7 +288,7 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
 
     func makeSettings(configuration: StreamLaunchConfiguration) -> [String: Any] {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities, coopTile: configuration.coopTile)
         let resolved = StreamSettingsResolver.resolve(
             profile: streamProfile(from: profile),
             capabilities: streamDeviceCapabilities(from: capabilities),
@@ -308,7 +309,8 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
             selectedStore: configuration.selectedStore,
             resumeSessionID: configuration.resumeSessionID,
             resumeServer: configuration.resumeServer,
-            metadata: configuration.metadata
+            metadata: configuration.metadata,
+            coopTile: configuration.coopTile
         )
     }
 

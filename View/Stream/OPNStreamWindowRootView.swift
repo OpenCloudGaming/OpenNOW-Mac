@@ -32,6 +32,12 @@ struct OPNStreamWindowRootView: View {
         OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
     }
 
+    private var isTiled: Bool { configuration.coopTile?.isTiled == true }
+
+    private var stageAspectRatio: Double {
+        OPNCouchCoopVideoPolicy.apply(to: viewModel.streamProfile, tile: configuration.coopTile).aspectRatio
+    }
+
     private var preferredColorScheme: ColorScheme? {
         switch appearancePreference {
         case .system: nil
@@ -46,8 +52,8 @@ struct OPNStreamWindowRootView: View {
             GeometryReader { proxy in
                 StreamStageLayout(
                     viewport: proxy.size,
-                    topInset: windowTopInset,
-                    aspectRatio: CGFloat(viewModel.streamProfile.aspectRatio)
+                    topInset: isTiled ? 0 : windowTopInset,
+                    aspectRatio: CGFloat(stageAspectRatio)
                 ) { _ in
                     StreamHostView(
                         configuration: configuration,
@@ -66,7 +72,7 @@ struct OPNStreamWindowRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if viewModel.isStreamLaunchLoadingVisible {
-                VendorStreamLaunchLoadingOverlay(viewModel: viewModel, windowTopInset: windowTopInset)
+                VendorStreamLaunchLoadingOverlay(viewModel: viewModel, windowTopInset: isTiled ? 0 : windowTopInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
                     .zIndex(10)
@@ -74,7 +80,7 @@ struct OPNStreamWindowRootView: View {
         }
         .ignoresSafeArea(edges: .all)
         .background(Color.black)
-        .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: true))
+        .background(StreamWindowAspectConfigurator(aspectRatio: stageAspectRatio, isLocked: configuration.coopTile == nil))
         .environment(\.opnUIScale, uiScale)
         .preferredColorScheme(preferredColorScheme)
     }

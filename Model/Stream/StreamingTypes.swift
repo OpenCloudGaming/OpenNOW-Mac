@@ -13,6 +13,7 @@ public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Senda
     public let resumeSessionID: String
     public let resumeServer: String
     public let metadata: [String: String]
+    public let coopTile: OPNCouchCoopTile?
 
     public init(id: UUID = UUID(),
                 title: String,
@@ -22,7 +23,8 @@ public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Senda
                 selectedStore: String,
                 resumeSessionID: String = "",
                 resumeServer: String = "",
-                metadata: [String: String] = [:]) {
+                metadata: [String: String] = [:],
+                coopTile: OPNCouchCoopTile? = nil) {
         self.id = id
         self.title = title
         self.applicationID = applicationID
@@ -32,6 +34,22 @@ public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Senda
         self.resumeSessionID = resumeSessionID
         self.resumeServer = resumeServer
         self.metadata = metadata
+        self.coopTile = coopTile
+    }
+
+    public func settingCoopTile(_ coopTile: OPNCouchCoopTile?) -> StreamLaunchConfiguration {
+        StreamLaunchConfiguration(
+            id: id,
+            title: title,
+            applicationID: applicationID,
+            accessToken: accessToken,
+            accountLinked: accountLinked,
+            selectedStore: selectedStore,
+            resumeSessionID: resumeSessionID,
+            resumeServer: resumeServer,
+            metadata: metadata,
+            coopTile: coopTile
+        )
     }
 
     public var resumesExistingSession: Bool {

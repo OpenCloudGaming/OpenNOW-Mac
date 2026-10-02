@@ -425,7 +425,9 @@ extension NativeNVSTHostViewModel {
 
     /// The full-screen tile and its focus entry share this rather than each writing the condition
     /// out: a PiP window is small and floating, and there is no full screen to enter from it.
-    var isFullScreenTileDisabled: Bool { nativeView?.window == nil || isPictureInPicture }
+    var isFullScreenTileDisabled: Bool { nativeView?.window == nil || isPictureInPicture || isCouchCoopTiled }
+
+    var isCouchCoopTiled: Bool { configuration.coopTile?.isTiled == true }
 
     /// The window owns the transition: nothing here touches the style mask, collection behaviour,
     /// aspect ratio or frame - `WindowFitting` grants `.fullScreenPrimary` before the window
@@ -434,7 +436,7 @@ extension NativeNVSTHostViewModel {
     func toggleNativeFullScreen() {
         // There is no full screen to enter from a small floating window; the tile is disabled in
         // PiP and this is the same answer for the menu bar and the shortcut.
-        guard let window = nativeView?.window, !isFullScreenTransitioning, !isPictureInPicture else { return }
+        guard let window = nativeView?.window, !isFullScreenTransitioning, !isPictureInPicture, !isCouchCoopTiled else { return }
         guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
         // Read before the toggle: `.fullScreen` is only inserted once the transition finishes.
         let isEnteringFullScreen = !window.styleMask.contains(.fullScreen)
@@ -494,7 +496,7 @@ extension NativeNVSTHostViewModel {
         nativeView?.isPictureInPictureMode = true
         nativeView?.remoteInputEnabled = networkPathAvailable
         nativeView?.restoreInputFocus()
-        let aspectRatio = CGFloat(OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).aspectRatio)
+        let aspectRatio = CGFloat(OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities(), coopTile: configuration.coopTile).aspectRatio)
         OPNStreamPictureInPicture.enter(window, aspectRatio: aspectRatio)
         isPictureInPicture = true
         showNativeTransientStreamMessage("Picture in Picture")
@@ -691,7 +693,7 @@ extension NativeNVSTHostViewModel {
         let mode = OPNPillarboxFillMode.from(modeIndex)
         pillarboxFillModeIndex = mode.rawValue
         OPNStreamPreferences.savePillarboxFillModeIndex(mode.rawValue)
-        let dim = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities()).pillarboxFillDim
+        let dim = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities(), coopTile: configuration.coopTile).pillarboxFillDim
         nativeView?.setPillarboxFill(mode: mode.rawValue, dim: dim)
         OPNStreamTelemetry.capture("nvst.ui.pillarbox.update", level: .info, message: "Native NVST pillarbox fill changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode.label])
     }

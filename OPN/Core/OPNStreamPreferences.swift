@@ -331,7 +331,7 @@ public enum OPNStreamPreferences {
         return profile(from: dictionary)
     }
 
-    public static func launchProfile(forGame appId: String, capabilities: OPNStreamDeviceCapabilities) -> OPNStreamPreferenceProfile {
+    public static func launchProfile(forGame appId: String, capabilities: OPNStreamDeviceCapabilities, coopTile: OPNCouchCoopTile? = nil) -> OPNStreamPreferenceProfile {
         var profile = loadProfile()
         if let gameProfile = loadProfile(forGame: appId) {
             profile.upscalingModeIndex = gameProfile.upscalingModeIndex
@@ -349,7 +349,7 @@ public enum OPNStreamPreferences {
             profile.presentationModeIndex = gameProfile.presentationModeIndex
             profile.presentationMode = gameProfile.presentationMode
         }
-        return effectiveProfile(profile, capabilities: capabilities)
+        return OPNCouchCoopVideoPolicy.apply(to: effectiveProfile(profile, capabilities: capabilities), tile: coopTile)
     }
 
     public static func saveProfile(forGame appId: String, profile: OPNStreamPreferenceProfile) {

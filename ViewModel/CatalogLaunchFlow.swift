@@ -491,7 +491,8 @@ extension CatalogViewModel {
         session.idToken.isEmpty ? session.accessToken : session.idToken
     }
 
-    func startPreparedStream(_ configuration: StreamLaunchConfiguration, message: String) {
+    func startPreparedStream(_ requested: StreamLaunchConfiguration, message: String) {
+        let configuration = requested.settingCoopTile(requested.coopTile ?? OPNCouchCoopTile.forLaunch())
         if activeDiscordPresence == nil {
             activeDiscordPresence = discordPresence(for: configuration)
         }

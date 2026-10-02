@@ -347,7 +347,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         nativeView.remoteInputEnabled = false
         nativeView.setNativeNVSTVideoVisible(false)
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities, coopTile: configuration.coopTile)
         let resolvedStreamSettings = StreamSettingsResolver.resolve(
             profile: streamProfile(from: profile),
             capabilities: streamDeviceCapabilities(from: capabilities),
@@ -526,7 +526,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         startNativeStatsPolling(path: path)
         refreshAntiAFKMouseMovementTask()
         startReplayBufferIfEnabled()
-        let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities(), coopTile: configuration.coopTile)
         pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
         nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)
         upscalingModeIndex = launchProfile.upscalingModeIndex

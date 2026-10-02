@@ -63,6 +63,12 @@ final class OPNStreamWindow: NSWindow {
     /// preferences; the factory hands one in when it creates the window.
     var frameStoreDefaults: UserDefaults = .standard
 
+    var isTiled = false
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        isTiled ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+
     /// Keeps the window's placement saved as it moves, in the slot its current mode belongs to.
     /// Observing move and resize rather than saving only at teardown matters because a quit that
     /// never reaches `OPNStreamWindowPresenter.dismiss()` would otherwise forget where it was.
@@ -88,8 +94,12 @@ final class OPNStreamWindow: NSWindow {
         // A full-screen frame belongs to the Space, not to the user: restoring it would open the
         // next session full-bleed. The exit re-fires the move, so the windowed placement is saved
         // once the window is back on the desktop.
-        guard !styleMask.contains(.fullScreen) else { return }
+        guard Self.shouldPersistFrame(isFullScreen: styleMask.contains(.fullScreen), isTiled: isTiled) else { return }
         OPNStreamWindowFrameStore.save(frame, isPictureInPicture: isPictureInPicture, defaults: frameStoreDefaults)
+    }
+
+    static func shouldPersistFrame(isFullScreen: Bool, isTiled: Bool) -> Bool {
+        !isFullScreen && !isTiled
     }
 
     struct WindowedState {

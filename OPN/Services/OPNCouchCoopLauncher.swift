@@ -26,6 +26,7 @@ enum OPNCouchCoopLauncher {
         guard OPNLabs.isCouchCoopEnabled else { return }
         OPNCouchCoopPresence.shared.start()
         OPNCouchCoopControllerCoordinator.shared.start()
+        OPNCouchCoopCatalogTiler.shared.start()
     }
 
     static func startSecondInstance() {

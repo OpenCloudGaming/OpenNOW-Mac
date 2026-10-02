@@ -1,6 +1,6 @@
 import Foundation
 
-enum OPNCouchCoopLayout: String, CaseIterable, Equatable, Sendable {
+public enum OPNCouchCoopLayout: String, CaseIterable, Codable, Equatable, Sendable {
     case sideBySide
     case topAndBottom
     case manual

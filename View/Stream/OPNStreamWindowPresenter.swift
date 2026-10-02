@@ -21,6 +21,7 @@ final class OPNStreamWindowPresenter {
     private(set) var window: OPNStreamWindow?
     private var presentedConfigurationID: UUID?
     private var hostingView: NSHostingView<OPNStreamWindowRootView>?
+    private var presentationOptionsBeforeTiling: NSApplication.PresentationOptions?
 
     /// Per-window full-screen bookkeeping, tracked from `present` so a dismissal that lands
     /// mid-enter is recognised before AppKit sets `.fullScreen`.
@@ -93,6 +94,10 @@ final class OPNStreamWindowPresenter {
             self?.handleCloseRequest(viewModel: viewModel, window: window) ?? false
         }
         OPNStreamWindowCloseGuard.install(on: window)
+        if let tile = configuration.coopTile {
+            OPNCouchCoopWindowPlacement.apply(tile, to: window)
+            if tile.isTiled { presentationOptionsBeforeTiling = OPNCouchCoopWindowPlacement.enterTiledPresentation() }
+        }
 
         self.window = window
         self.hostingView = hostingView
@@ -119,6 +124,10 @@ final class OPNStreamWindowPresenter {
         presentedConfigurationID = nil
         hostingView = nil
         self.window = nil
+        if let options = presentationOptionsBeforeTiling {
+            OPNCouchCoopWindowPlacement.restorePresentation(options)
+            presentationOptionsBeforeTiling = nil
+        }
         OPNStreamWindowCloseGuard.uninstall(from: window)
         window.closeRequestHandler = nil
         window.sessionSurface = nil

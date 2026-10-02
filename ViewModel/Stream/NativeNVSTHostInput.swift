@@ -17,7 +17,7 @@ extension NativeNVSTHostViewModel {
             view.setNativeNVSTVideoVisible(false)
             return
         }
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities(), coopTile: configuration.coopTile)
         view.directMouseInputEnabled = profile.directMouseInput
         mouseSensitivityPercent = profile.mouseSensitivityPercent
         view.mouseSensitivity = Double(profile.mouseSensitivityPercent) / 100
@@ -192,7 +192,8 @@ extension NativeNVSTHostViewModel {
     /// The launch profile this session was resolved from, so a mid-stream change reads one source.
     var currentLaunchProfile: OPNStreamPreferenceProfile {
         OPNStreamPreferences.launchProfile(forGame: configuration.applicationID,
-                                           capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+                                           capabilities: OPNStreamPreferences.loadDeviceCapabilities(),
+                                           coopTile: configuration.coopTile)
     }
 
     /// The microphone configuration this session negotiates from: the mode, the device and the volume

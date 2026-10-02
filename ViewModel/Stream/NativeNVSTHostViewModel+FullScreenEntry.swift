@@ -19,7 +19,7 @@ extension NativeNVSTHostViewModel {
     static let sessionReadyFullScreenAttemptLimit = 200
 
     func enterNativeFullScreenWhenSessionReady() {
-        guard OPNSessionReadyAction.isFullScreenRequestedWhenReady else { return }
+        guard OPNSessionReadyAction.isFullScreenRequestedWhenReady, configuration.coopTile == nil else { return }
         sessionReadyFullScreenTask?.cancel()
         sessionReadyFullScreenTask = Task { @MainActor [weak self] in
             await self?.performNativeFullScreenEntry()

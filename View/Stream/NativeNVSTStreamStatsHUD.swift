@@ -276,12 +276,12 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeStatsStreamFramesPerSecond: Double {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities(), coopTile: configuration.coopTile)
         return model.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
     }
 
     var nativeStatsResolutionRow: NativeNVSTStatsPanel.Row {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities(), coopTile: configuration.coopTile)
         let resolution = nonEmptyNativeStat(model.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
         return NativeNVSTStatsPanel.Row(label: "Resolution", value: resolution)
     }
