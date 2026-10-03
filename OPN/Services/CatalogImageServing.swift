@@ -19,22 +19,15 @@ protocol CatalogImageServing: Sendable {
 
 extension CatalogImageCache: CatalogImageServing {}
 
-private let catalogImageServingDefaultMaxPixelSize: CGFloat = 1920 * 2
-
+/// No overload here supplies a rung. A default was what let six call sites decode at banner size
+/// for surfaces a fraction of it, silently: the rung is a property of the surface being drawn, so
+/// the compiler is the right place to insist every caller names one.
 extension CatalogImageServing {
     func image(for url: URL, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
         await image(for: url, maxPixelSize: maxPixelSize, retainingSourceData: false)
     }
 
-    func image(for url: URL, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
-        await image(for: url, maxPixelSize: catalogImageServingDefaultMaxPixelSize, retainingSourceData: retainingSourceData)
-    }
-
     func firstFrameImage(for url: URL, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
         await firstFrameImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: false)
-    }
-
-    func firstFrameImage(for url: URL, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
-        await firstFrameImage(for: url, maxPixelSize: catalogImageServingDefaultMaxPixelSize, retainingSourceData: retainingSourceData)
     }
 }
