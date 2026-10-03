@@ -53,9 +53,8 @@ struct OPNRawMouseDeltaAccumulator {
     }
 }
 
-/// How many macOS pointer points one raw count is worth, learned from both views of the same
-/// movement: the HID counts and AppKit's deltas. Both totals decay on every AppKit event, so the
-/// ratio follows the Tracking Speed slider, and with acceleration on, the recent average.
+/// How many macOS pointer points one raw count is worth, learned from the HID counts and AppKit's
+/// deltas. Decaying totals follow Tracking Speed, and with acceleration on, the recent average.
 struct OPNMacPointerScale {
     static let calibrationCounts = 400.0
     static let decayPerPointerEvent = 0.99

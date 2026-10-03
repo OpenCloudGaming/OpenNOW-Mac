@@ -117,7 +117,6 @@ struct OPNRawMouseHIDMonitorTests {
         #expect(!OPNRawMouseHIDMonitor.isReportInFlight(lastReportUptimeNanoseconds: 0, uptimeNanoseconds: 5_000_000_000))
     }
 
-
     @Test func macPointerScaleWaitsForEnoughMovement() {
         var scale = OPNMacPointerScale()
         scale.recordCounts(x: 16, y: 0)
