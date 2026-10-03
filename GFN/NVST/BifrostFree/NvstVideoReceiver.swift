@@ -40,6 +40,9 @@ public enum NvstReceiveEvent: Sendable {
     /// telling the seat not to reference `frameIndex` (the frame the hole was in) — the latter
     /// without the keyframe's cost.
     case chainBroken(frameIndex: UInt32)
+    /// Packets missing from a gap that is still open, due a retransmission request now. The gap
+    /// keeps waiting for them; `recoveryNeeded` follows only if they never arrive.
+    case retransmissionWanted([UInt64])
 }
 
 public struct NvstReceiverStats: Equatable, Sendable {
@@ -53,6 +56,10 @@ public struct NvstReceiverStats: Equatable, Sendable {
     public var latePackets: UInt64 = 0
     /// Packets received twice; the second copy is dropped.
     public var duplicatePackets: UInt64 = 0
+    /// Packets the SRTP replay window rejected: already seen, or older than the window.
+    public var replayedPackets: UInt64 = 0
+    /// Requested packets that arrived while their gap was still open.
+    public var retransmissionRepairedPackets: UInt64 = 0
     /// Packets rebuilt by FEC recovery and injected back into the reorder path.
     public var recoveredPackets: UInt64 = 0
     /// The largest single finalized-loss range, in packets.
@@ -142,6 +149,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// The armed bound. The packet repair window is ~140 ms at 5K's ~8,500 packets/s, so the flat
     /// bound cut a repairable gap off early — and the packet window alone freezes a calm scene.
     public static let fecRepairMaximumWaitCeilingNanoseconds: UInt64 = 250_000_000
+    /// How far behind the newest packet a retransmission may still be accepted: the official
+    /// client's NACK queue length. RFC 3711's 64 is 7.5 ms at ~8,500 packets/s, less than one
+    /// round trip, so every resent packet was rejected as a replay.
+    public static let replayWindowPackets = 2048
 
     public enum ReceiverError: LocalizedError, Equatable, Sendable {
         case unsupportedProfile(String)
@@ -162,7 +173,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     private let srtcpMasterSalt: Data
     private let reorderWindow: Int
     private let reassembler: NvstFrameReassembler
-    private var replay = SrtpReplayWindow()
+    private var replay = SrtpReplayWindow(size: NvstVideoReceiver.replayWindowPackets)
+    private var nackTracker = NvstNackTracker()
+    /// When missing packets were last scanned for; nil makes the next packet scan at once.
+    private var lastNackScanAt: UInt64?
     private var reorder: [UInt64: NvstRtpVideoPacket] = [:]
     private var nextIndex: UInt64?
     private var openGap: (index: UInt64, since: UInt64)?
@@ -265,6 +279,8 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         defer { lock.unlock() }
         reorder.removeAll()
         nextIndex = nil
+        nackTracker.reset()
+        lastNackScanAt = nil
         reassembler.reset()
     }
 
@@ -330,6 +346,7 @@ public final class NvstVideoReceiver: @unchecked Sendable {
             stageNanoseconds.unprotect += DispatchTime.now().uptimeNanoseconds - stageStart
         } catch NvstRtpParseError.replayed {
             stats.droppedPackets += 1
+            stats.replayedPackets += 1
             return [.dropped(.replayed)]
         } catch {
             stats.droppedPackets += 1
@@ -650,8 +667,12 @@ extension NvstVideoReceiver {
         }
         if index > expected {
             stats.outOfOrderPackets += 1
-            if openGap?.index != expected { openGap = (expected, uptimeNanoseconds()) }
+            if openGap?.index != expected {
+                openGap = (expected, uptimeNanoseconds())
+                lastNackScanAt = nil
+            }
         }
+        if !nackTracker.isEmpty, nackTracker.arrived(index) { stats.retransmissionRepairedPackets += 1 }
         // Armed FEC holds a gap past the plain reorder window: a block's parity trails an early-frame
         // hole by up to `fecRepairReorderWindow` packets, so only the wall-clock bound ends it.
         let isPastFecWait = index > expected && isPastFecRepairWait()
@@ -673,7 +694,23 @@ extension NvstVideoReceiver {
             nextIndex = cursor + 1
         }
         if reorder.isEmpty { openGap = nil }
+        if let nextIndex { nackTracker.forget(below: nextIndex) }
+        requestMissingPackets(events: &events)
         return ready
+    }
+
+    /// Asks for the packets still missing below the newest buffered one, at most once a
+    /// millisecond, so a lost packet can be resent before its gap gives up.
+    private func requestMissingPackets(events: inout [NvstReceiveEvent]) {
+        guard let expected = nextIndex, !reorder.isEmpty else { return }
+        let now = uptimeNanoseconds()
+        if let lastNackScanAt, now &- lastNackScanAt < NvstNackTracker.initialDelayNanoseconds { return }
+        guard let newest = reorder.keys.max(), newest > expected else { return }
+        lastNackScanAt = now
+        let limit = NvstRtcp.maximumNackEntries * 17
+        let missing = (expected..<newest).lazy.filter { self.reorder[$0] == nil }.prefix(limit)
+        let due = nackTracker.due(missing: Array(missing), now: now)
+        if !due.isEmpty { events.append(.retransmissionWanted(due)) }
     }
 
     private func recordRecovery(first: UInt64, last: UInt64, events: inout [NvstReceiveEvent]) {
@@ -716,7 +753,14 @@ extension NvstVideoReceiver {
     private func isGapFinalized(depth: UInt64, isPastFecWait: Bool) -> Bool {
         guard !isPastFecWait else { return true }
         guard depth >= UInt64(reorderWindow) else { return false }
-        return depth >= UInt64(Self.fecRepairReorderWindow) || !fecRecovery.snapshot.isArmed
+        if depth >= UInt64(Self.fecRepairReorderWindow) { return true }
+        return !fecRecovery.snapshot.isArmed && !isWithinRetransmissionWait()
+    }
+
+    /// Whether the open gap's first packet was requested and may still be resent in time.
+    private func isWithinRetransmissionWait() -> Bool {
+        guard let expected = nextIndex else { return false }
+        return nackTracker.isAwaitingRetransmission(of: expected, now: uptimeNanoseconds())
     }
 
     /// Whether the open gap has outlived its wall-clock chance of repair.

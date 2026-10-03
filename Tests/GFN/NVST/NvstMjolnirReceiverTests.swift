@@ -128,6 +128,62 @@ struct NvstMjolnirReceiverTests {
         #expect(stats.droppedPackets == 0)
     }
 
+    /// A lost packet is requested while its gap is open, and the gap waits for the resend instead
+    /// of becoming loss once the reorder window passes it, so the frames behind it are not lost.
+    @Test func aRequestedPacketThatIsResentInTimeRepairsTheGap() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        let media: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x65]
+        func feed(_ sequence: UInt16) throws -> [NvstReceiveEvent] {
+            receiver.process(datagram: try NvstReceiverFixtures.seal(
+                NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
+                sequence: sequence, handoff: handoff))
+        }
+        func requested(_ events: [NvstReceiveEvent]) -> [UInt64] {
+            events.flatMap { event -> [UInt64] in
+                if case .retransmissionWanted(let indices) = event { return indices } else { return [] }
+            }
+        }
+        _ = try feed(1)
+        #expect(requested(try feed(3)).isEmpty)
+        clock.withLock { $0 = NvstNackTracker.initialDelayNanoseconds }
+        #expect(requested(try feed(4)) == [2])
+        // Well past the four-packet window and the 64-packet RFC 3711 replay window.
+        for sequence in UInt16(5)...UInt16(80) {
+            #expect(NvstReceiverFixtures.recoveries(try feed(sequence)) == 0)
+        }
+        let repaired = try feed(2)
+        #expect(NvstReceiverFixtures.frames(repaired).count == 79)
+        #expect(NvstReceiverFixtures.recoveries(repaired) == 0)
+        let stats = receiver.snapshot
+        #expect(stats.retransmissionRepairedPackets == 1)
+        #expect(stats.finalizedLossPackets == 0)
+        #expect(stats.replayedPackets == 0)
+    }
+
+    /// A resend that never comes ends the wait: the gap is loss once its request has expired.
+    @Test func aRequestedPacketThatNeverArrivesBecomesLossAfterTheWait() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        let media: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x65]
+        func feed(_ sequence: UInt16) throws -> [NvstReceiveEvent] {
+            receiver.process(datagram: try NvstReceiverFixtures.seal(
+                NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
+                sequence: sequence, handoff: handoff))
+        }
+        _ = try feed(1)
+        _ = try feed(3)
+        clock.withLock { $0 = NvstNackTracker.initialDelayNanoseconds }
+        for sequence in UInt16(4)...UInt16(8) {
+            #expect(NvstReceiverFixtures.recoveries(try feed(sequence)) == 0)
+        }
+        clock.withLock { $0 = NvstNackTracker.maximumWaitNanoseconds }
+        #expect(NvstReceiverFixtures.recoveries(try feed(9)) == 1)
+        #expect(receiver.snapshot.finalizedLossPackets == 1)
+    }
+
     /// A second gap among the survivors finalizes on its own later packet rather than being
     /// silently absorbed by the first flush.
     @Test func interleavedGapsFinalizeIndependently() throws {

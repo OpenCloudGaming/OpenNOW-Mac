@@ -293,10 +293,20 @@ public enum SrtpKeyDerivation {
 
 /// Replay window for the video stream (64 packets, matching the observed vendor behavior).
 public struct SrtpReplayWindow {
-    private var highestIndex: UInt64?
-    private var seen: UInt64 = 0
+    /// RFC 3711's minimum window, and what every stream used before video needed retransmissions.
+    public static let minimumSize = 64
 
-    public init() {}
+    /// How far behind the highest accepted index a packet may still arrive, rounded up to 64.
+    public let size: UInt64
+    private var highestIndex: UInt64?
+    /// One bit per index, slotted by `index % size`.
+    private var seen: [UInt64]
+
+    public init(size: Int = SrtpReplayWindow.minimumSize) {
+        let words = (max(size, Self.minimumSize) + 63) / 64
+        self.size = UInt64(words * 64)
+        seen = Array(repeating: 0, count: words)
+    }
 
     /// The extended index a sequence number most plausibly belongs to (RFC 3711 §3.3.1).
     ///
@@ -327,27 +337,43 @@ public struct SrtpReplayWindow {
     public func wouldAccept(_ index: UInt64) -> Bool {
         guard let highest = highestIndex else { return true }
         if index > highest { return true }
-        let age = highest - index
-        return age < 64 && (seen & (1 << age)) == 0
+        return highest - index < size && !isSeen(index)
     }
 
     public mutating func accept(_ index: UInt64) -> Bool {
         guard let highest = highestIndex else {
             highestIndex = index
-            seen = 1 // the highest itself is already seen (age 0)
+            setSeen(index, true)
             return true
         }
         if index > highest {
-            let delta = index - highest
-            // Every known index ages by delta; the previous highest becomes age delta.
-            seen = (delta >= 64) ? 0 : (seen << delta) | (1 << delta)
+            // The slots the window slides over held indices a full window older; they start unseen.
+            if index - highest >= size {
+                seen = Array(repeating: 0, count: seen.count)
+            } else {
+                for slid in (highest + 1)...index { setSeen(slid, false) }
+            }
             highestIndex = index
-            seen |= 1
+            setSeen(index, true)
             return true
         }
-        let age = highest - index
-        if age >= 64 || (seen & (1 << age)) != 0 { return false }
-        seen |= (1 << age)
+        if highest - index >= size || isSeen(index) { return false }
+        setSeen(index, true)
         return true
+    }
+
+    private func isSeen(_ index: UInt64) -> Bool {
+        let slot = index % size
+        return seen[Int(slot / 64)] & (1 << (slot % 64)) != 0
+    }
+
+    private mutating func setSeen(_ index: UInt64, _ isSeen: Bool) {
+        let slot = index % size
+        let bit: UInt64 = 1 << (slot % 64)
+        if isSeen {
+            seen[Int(slot / 64)] |= bit
+        } else {
+            seen[Int(slot / 64)] &= ~bit
+        }
     }
 }

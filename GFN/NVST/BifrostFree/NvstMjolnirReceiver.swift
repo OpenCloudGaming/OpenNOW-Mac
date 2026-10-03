@@ -252,11 +252,18 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     /// packet by packet.
     @discardableResult
     public func requestRetransmission(firstMissing: UInt64, lastMissing: UInt64) -> Int {
-        guard let ssrc = receiver.feedbackCounters.boundSSRC, lastMissing >= firstMissing else { return 0 }
-        let span = Int(lastMissing - firstMissing) + 1
+        guard lastMissing >= firstMissing else { return 0 }
         // Beyond a burst this size a keyframe arrives sooner than the retransmissions would.
-        guard span <= NvstRtcp.maximumNackEntries * 16 else { return 0 }
-        let missing = (firstMissing...lastMissing).map { UInt16(truncatingIfNeeded: $0) }
+        guard lastMissing - firstMissing < UInt64(NvstRtcp.maximumNackEntries * 16) else { return 0 }
+        return requestRetransmission(of: Array(firstMissing...lastMissing))
+    }
+
+    /// Asks the seat to retransmit these packets, named in extended RTP sequence space.
+    @discardableResult
+    public func requestRetransmission(of indices: [UInt64]) -> Int {
+        guard let ssrc = receiver.feedbackCounters.boundSSRC, !indices.isEmpty else { return 0 }
+        let span = indices.count
+        let missing = indices.map { UInt16(truncatingIfNeeded: $0) }
         guard let nack = NvstRtcp.genericNack(senderSSRC: NvstVideoReceiver.clientSSRC,
                                               mediaSSRC: ssrc,
                                               missing: missing) else { return 0 }
@@ -404,6 +411,8 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
                 let handler = onDrop
                 callbackLock.unlock()
                 handler?(reason)
+            case .retransmissionWanted(let indices):
+                requestRetransmission(of: indices)
             }
         }
     }
