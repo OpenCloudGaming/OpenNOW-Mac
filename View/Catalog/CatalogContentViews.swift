@@ -374,7 +374,11 @@ struct CatalogHeroView: View {
                 let textWidth = CatalogVendorLayout.heroTextWidth(for: bandWidth)
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
-                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill) { color in
+                    CatalogHeroRemoteImage(
+                        url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920),
+                        contentMode: .fill,
+                        maxPixelSize: CatalogMarqueeArtwork.decodePixelSize
+                    ) { color in
                         scrimColor = color
                     }
                     .frame(width: max(bandWidth - imageLeading, 1), height: heroHeight)
@@ -458,8 +462,14 @@ struct CatalogHeroTitleView: View {
 
     var body: some View {
         if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth) {
-            CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: fallbackTitle.opacity(0), failure: fallbackTitle)
-                .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
+            CatalogCachedImageView(
+                url: logoURL,
+                contentMode: .fit,
+                maxPixelSize: CGFloat(CatalogLogoArtwork.requestWidth),
+                placeholder: fallbackTitle.opacity(0),
+                failure: fallbackTitle
+            )
+            .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
         } else {
             fallbackTitle
         }

@@ -93,7 +93,7 @@ actor CatalogImageCache {
     /// bytes for the EXIF scrim, so prefetching its artwork without them stored an entry the hero
     /// could not use - it missed, and decoded the largest image in the app a second time, during
     /// launch, once per rotation game.
-    nonisolated func prefetchPriority(_ urls: [URL], maxPixelSize: CGFloat = 1024, retainingSourceData: Bool = false) {
+    nonisolated func prefetchPriority(_ urls: [URL], maxPixelSize: CGFloat, retainingSourceData: Bool = false) {
         guard !urls.isEmpty else { return }
         Task(priority: .userInitiated) { [weak self] in
             await self?.startPriorityPrefetch(urls, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
@@ -119,7 +119,7 @@ actor CatalogImageCache {
         }
     }
 
-    func image(for url: URL, maxPixelSize: CGFloat = 1920 * 2, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
+    func image(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
         await resolveImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData, isFirstFrame: false)
     }
 

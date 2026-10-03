@@ -5,10 +5,21 @@ import CryptoKit
 import ImageIO
 import SwiftUI
 
+/// The marquee banner is one asset with one rung. The URL is requested at 1920px and both warmers
+/// (`CatalogLaunchPrefetch`, `CatalogImagePrefetch.prewarmHeroRotation`) decode it at 1920, and the
+/// memory cache is keyed by URL rather than by rung, so the view asks for 1920 as well. It used to
+/// take the shared 3840 default - four times the pixels the prefetch had already decoded, or a
+/// duplicate full-size decode when the view won the race. W3-3 tracks the cache side of the same
+/// mismatch.
+enum CatalogMarqueeArtwork {
+    static let decodePixelSize: CGFloat = 1920
+}
+
 struct CatalogHeroRemoteImage: View {
     let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL?
     let contentMode: ContentMode
+    let maxPixelSize: CGFloat
     let onScrimColorChange: (CatalogMarqueeScrimColor) -> Void
 
     @State private var image: NSImage?
@@ -43,7 +54,7 @@ struct CatalogHeroRemoteImage: View {
         isLoading = true
         // The scrim colour is read from the image's EXIF user comment, so this is the one call site
         // that needs the compressed bytes kept alongside the decoded image.
-        if let cached = await imageCache.firstFrameImage(for: url, retainingSourceData: true) {
+        if let cached = await imageCache.firstFrameImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: true) {
             guard !Task.isCancelled else { return }
             image = cached.image
             hasFailed = false

@@ -25,6 +25,11 @@ enum CatalogArtworkType {
 
 /// One width for every logo request: the width is baked into the CDN URL and the URL is the image
 /// cache key, so two widths for one asset decode it twice.
+///
+/// The same reasoning fixes the decode rung, which is why every logo surface decodes at this width
+/// rather than at its own drawn size: the memory cache is keyed by URL, not by rung, so a 160pt
+/// overlay asking for less than the 390pt hero title would hand the hero whichever decoded first.
+/// W3-3 tracks making the cache rung-aware, which would let the small surfaces ask for less.
 enum CatalogLogoArtwork {
     static let requestWidth = 620
 }

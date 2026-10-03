@@ -159,6 +159,7 @@ struct StoreRemoteIconImage: View {
 
     @State private var image: NSImage?
     @State private var hasFailed = false
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Group {
@@ -176,14 +177,16 @@ struct StoreRemoteIconImage: View {
                     .opacity(0.42)
             }
         }
-        .task(id: url) { await loadImage() }
+        .task(id: url) {
+            await loadImage(maxPixelSize: CatalogStoreIconArtwork.decodeRung(scale: uiScale, displayScale: displayScale))
+        }
     }
 
     @MainActor
-    private func loadImage() async {
+    private func loadImage(maxPixelSize: CGFloat) async {
         image = nil
         hasFailed = false
-        guard let cached = await imageCache.image(for: url), !Task.isCancelled else {
+        guard let cached = await imageCache.image(for: url, maxPixelSize: maxPixelSize), !Task.isCancelled else {
             hasFailed = !Task.isCancelled
             return
         }
