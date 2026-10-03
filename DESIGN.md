@@ -672,6 +672,38 @@ row's label beside its control, which would be the one-column layout at half the
 card and leaves a hole whenever a pair differs. Cards inside the columns get
 `opnSettingsNarrowRows`, which moves a row's control under its label instead of beside it.
 
+### Settings Row Explanations (`SettingsRowTitle`, `SettingsHelpIcon`, `SettingsHelpText`)
+
+Every settings row's explanation is a tooltip, not a second line. `SettingsRowTitle` takes an
+optional `help:` string and, when it is non-empty, rides a small muted `questionmark.circle` beside
+the title; the text shows in a tooltip on hover. Option, toggle, slider and field rows all route
+their subtitle through it, so a page reads as one-line rows rather than paragraphs.
+
+The explanation used to sit under the title. In the 250pt column it wrapped a sentence into six
+short lines while the control left the rest of the card empty, and across a page of rows it spent a
+paragraph of height each; moving it to the row's full width detached it from the title it explains
+and stretched it to a hard-to-track measure. The tooltip keeps it one hover away without drawing it.
+
+The icon is a `Button` whose tooltip is driven by `onHover`, not `.help`: a help tag on these rows
+does not raise, while `onHover` fires for any view. Clicking pins the tooltip open; a click outside
+or another hover dismisses it.
+
+A pad has no pointer, so controller mode does not use the icon at all. Each focusable row publishes
+its explanation through `SettingsFocusedHelpKey` while focused, and `SettingsView` shows it in a
+fixed `SettingsFocusedHelpStrip` under the page, updating as the pad walks the rows. The strip's
+height is fixed so the content above it - and the scroll position - does not jump between a long
+explanation and a short one. A second focus stop on each row's question mark was rejected: it would
+double every row in the traversal.
+
+### Settings Option Row (`SettingsOptionRow`)
+
+A row whose setting is one of a small set: its `SettingsRowTitle` (with the explanation tooltip),
+then the option chips (`SettingsFlowLayout`) in the remaining width, or the chips stacked under the
+title when `opnSettingsNarrowRows` says the container cannot hold both. The title column stays 250pt
+so the chips keep the alignment they share with the sliders and fields on the same page. The row is
+focusable as one unit: confirm advances the selection and left/right walks the enabled chips, so a
+pad reaches every option without a pointer.
+
 ### Settings Disclosure Card (`SettingsDisclosureCard`)
 
 A `SettingsCollapsibleCard` whose open state persists under `OpenNOW.Settings.Expanded.<key>`. For a

@@ -45,9 +45,9 @@ struct InputSettingsPage: View {
 
     private var mouseCard: some View {
         SettingsCard(title: "Mouse & Keyboard", uiScale: uiScale) {
-            SettingsToggleRow(title: "Direct Mouse Input", subtitle: Self.directMouseInputSubtitle, isOn: viewModel.streamProfile.directMouseInput, isCompact: true, uiScale: uiScale, action: viewModel.setDirectMouseInputEnabled)
+            SettingsToggleRow(title: "Direct Mouse Input", subtitle: Self.directMouseInputSubtitle, isOn: viewModel.streamProfile.directMouseInput, uiScale: uiScale, action: viewModel.setDirectMouseInputEnabled)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Raw Mouse Input", subtitle: "Aim with unaccelerated HID deltas in relative mode instead of the pointer macOS has already accelerated. Reading mouse counts needs the Input Monitoring permission; without it the stream keeps the accelerated pointer. Mouse Sensitivity still applies.", isOn: viewModel.streamProfile.rawMouseInput, isCompact: true, uiScale: uiScale, action: viewModel.setRawMouseInputEnabled)
+            SettingsToggleRow(title: "Raw Mouse Input", subtitle: "Aim with unaccelerated HID deltas in relative mode instead of the pointer macOS has already accelerated. Reading mouse counts needs the Input Monitoring permission; without it the stream keeps the accelerated pointer. Mouse Sensitivity still applies.", isOn: viewModel.streamProfile.rawMouseInput, uiScale: uiScale, action: viewModel.setRawMouseInputEnabled)
             if viewModel.streamProfile.rawMouseInput, !inputMonitoringGranted {
                 SettingsDivider(uiScale: uiScale)
                 rawMouseInputPermissionRow
@@ -61,9 +61,9 @@ struct InputSettingsPage: View {
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(title: "Cursor", subtitle: "Which pointer is drawn while a game shows its own. Auto hides the Mac's whenever the stream is drawing one.", options: OPNCursorPolicy.allCases.map(\.label), selectedIndex: viewModel.streamProfile.cursorPolicy.rawValue, uiScale: uiScale, action: { viewModel.setCursorPolicyIndex(OPNCursorPolicy.from($0).rawValue) })
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, isCompact: true, uiScale: uiScale, action: viewModel.setSuppressInputWhenInactive)
+            SettingsToggleRow(title: "Suppress Input When Inactive", subtitle: "Avoid sending input while OpenNOW is not focused.", isOn: viewModel.streamProfile.suppressInputWhenInactive, uiScale: uiScale, action: viewModel.setSuppressInputWhenInactive)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. \(OPNKeybindings.standard.combo(for: .toggleAntiAFK).label) toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, isCompact: true, uiScale: uiScale, action: viewModel.setAntiAFKMouseMovementEnabled)
+            SettingsToggleRow(title: "Anti-AFK Mouse Movement", subtitle: "Moves the stream mouse every 60 seconds while a stream is active. \(OPNKeybindings.standard.combo(for: .toggleAntiAFK).label) toggles it in-stream.", isOn: viewModel.streamProfile.antiAFKMouseMovementEnabled, uiScale: uiScale, action: viewModel.setAntiAFKMouseMovementEnabled)
         }
         .settingsSection("mouse")
     }
@@ -177,15 +177,12 @@ struct InputSettingsPage: View {
 
     private var mappingRow: some View {
         HStack(spacing: 12 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text("Controller Mapping")
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text("Opt-in mappings for Steam, DualShock 4, and generic controllers. Each type keeps its own default, and a game can override it. Unassigned native controllers pass through unchanged.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            SettingsRowTitle(
+                title: "Controller Mapping",
+                isNew: false,
+                help: "Opt-in mappings for Steam, DualShock 4, and generic controllers. Each type keeps its own default, and a game can override it. Unassigned native controllers pass through unchanged.",
+                uiScale: uiScale
+            )
             Spacer(minLength: 0)
             Button("Open Mapping") {
                 showingControllerMapping = true
@@ -196,13 +193,12 @@ struct InputSettingsPage: View {
 
     private var controllerOrderRow: some View {
         HStack(spacing: 12 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                SettingsRowTitle(title: "Controller Order", isNew: OPNNewSettings.isNew(.controllerOrder), uiScale: uiScale)
-                Text("Choose which connected controllers are Player 1–4. Mappings follow the controller type, so reordering does not change which profile applies.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            SettingsRowTitle(
+                title: "Controller Order",
+                isNew: OPNNewSettings.isNew(.controllerOrder),
+                help: "Choose which connected controllers are Player 1–4. Mappings follow the controller type, so reordering does not change which profile applies.",
+                uiScale: uiScale
+            )
             Spacer(minLength: 0)
             Button("Reorder Controllers") {
                 OPNNewSettings.acknowledge(.controllerOrder)
@@ -215,14 +211,12 @@ struct InputSettingsPage: View {
     private var controllerToolsCard: some View {
         SettingsCard(title: "Controller Tools", uiScale: uiScale) {
             HStack {
-                VStack(alignment: .leading, spacing: 5 * uiScale) {
-                    Text("Test Controller")
-                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OPNDesign.Text.primary)
-                    Text("Verify live button presses, sticks, and triggers. Steam Controller and DualShock 4 use dedicated diagrams; other pads use a generic layout.")
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                }
+                SettingsRowTitle(
+                    title: "Test Controller",
+                    isNew: false,
+                    help: "Verify live button presses, sticks, and triggers. Steam Controller and DualShock 4 use dedicated diagrams; other pads use a generic layout.",
+                    uiScale: uiScale
+                )
                 Spacer()
                 Button("Open Tester") {
                     showingControllerTest = true

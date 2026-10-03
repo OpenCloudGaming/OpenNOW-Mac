@@ -82,14 +82,12 @@ struct SystemSettingsPage: View {
         VStack(alignment: .leading, spacing: 10 * uiScale) {
             SettingsSubheading(title: "Device & Route", uiScale: uiScale)
             HStack(alignment: .center, spacing: 12 * uiScale) {
-                    VStack(alignment: .leading, spacing: 4 * uiScale) {
-                        Text("Identifiers and endpoint paths are masked by default.")
-                            .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                            .foregroundStyle(OPNDesign.Text.primary)
-                        Text("Reveal only when collecting support information locally.")
-                            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                            .foregroundStyle(OPNDesign.Text.tertiary)
-                    }
+                    SettingsRowTitle(
+                        title: "Identifiers and endpoint paths are masked by default.",
+                        isNew: false,
+                        help: "Reveal only when collecting support information locally.",
+                        uiScale: uiScale
+                    )
                     Spacer()
                     SettingsRevealButton(revealed: revealSensitive, uiScale: uiScale) { revealSensitive.toggle() }
                 }
@@ -184,15 +182,8 @@ struct SystemCapabilityRow: View {
         HStack(spacing: 12 * uiScale) {
             Rectangle()
                 .fill(positive ? OPNDesign.accent : OPNDesign.Stroke.strong)
-                .frame(width: 4 * uiScale, height: 42 * uiScale)
-            VStack(alignment: .leading, spacing: 4 * uiScale) {
-                Text(title)
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text(subtitle)
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-            }
+                .frame(width: 4 * uiScale, height: 20 * uiScale)
+            SettingsRowTitle(title: title, isNew: false, help: subtitle, uiScale: uiScale)
             Spacer(minLength: 0)
             Text(value.uppercased())
                 .font(.settingsFont(size: 11 * uiScale, weight: .bold))

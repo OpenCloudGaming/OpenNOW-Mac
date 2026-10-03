@@ -19,6 +19,9 @@ enum SettingsTagMetrics {
 struct SettingsRowTitle: View {
     let title: String
     let isNew: Bool
+    /// When non-empty, a question mark rides beside the title and shows this text as a hover
+    /// tooltip. Settings rows carry their explanation here rather than on a second line.
+    var help: String = ""
     let uiScale: CGFloat
 
     var body: some View {
@@ -27,7 +30,68 @@ struct SettingsRowTitle: View {
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                 .foregroundStyle(OPNDesign.Text.primary)
             if isNew { OPNNewTag(uiScale: uiScale) }
+            if !help.isEmpty {
+                SettingsHelpIcon(title: title, help: help, uiScale: uiScale)
+            }
         }
+    }
+}
+
+/// The question mark a settings row wears when it has an explanation. The tooltip rides `onHover`,
+/// not `.help`, which does not raise on these rows; the click pins it open for keyboard and pad.
+struct SettingsHelpIcon: View {
+    let title: String
+    let help: String
+    let uiScale: CGFloat
+
+    @State private var isHovering = false
+    @State private var isPinned = false
+
+    private var isShowingHelp: Bool { isHovering || isPinned }
+
+    var body: some View {
+        Button { isPinned.toggle() } label: {
+            Image(systemName: "questionmark.circle")
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                .foregroundStyle(isShowingHelp ? OPNDesign.Text.secondary : OPNDesign.Text.muted)
+                .frame(width: 16 * uiScale, height: 16 * uiScale)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel("About \(title)")
+        .popover(isPresented: isShowingHelpBinding, arrowEdge: .bottom) {
+            SettingsHelpText(text: help, uiScale: uiScale)
+                .foregroundStyle(OPNDesign.Text.primary)
+                .frame(width: 300 * uiScale, alignment: .leading)
+                .padding(14 * uiScale)
+        }
+    }
+
+    /// Clears both the hover and the pin when the system dismisses the popover (a click outside), so
+    /// the next hover raises it again instead of finding a stale `true`.
+    private var isShowingHelpBinding: Binding<Bool> {
+        Binding(
+            get: { isShowingHelp },
+            set: { presented in
+                guard !presented else { return }
+                isHovering = false
+                isPinned = false
+            }
+        )
+    }
+}
+
+/// The explanation body shared by the hover tooltip and controller mode's help strip, so both read
+/// at the same size and measure.
+struct SettingsHelpText: View {
+    let text: String
+    let uiScale: CGFloat
+
+    var body: some View {
+        Text(text)
+            .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

@@ -55,14 +55,12 @@ struct StoreConnectionsOverview: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 14 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text("Library ownership sync")
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text("Connected stores can sync library ownership before launch.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-            }
+            SettingsRowTitle(
+                title: "Library ownership sync",
+                isNew: false,
+                help: "Connected stores can sync library ownership before launch.",
+                uiScale: uiScale
+            )
             Spacer(minLength: 0)
             SettingsStatusPill(title: "CONNECTED", value: "\(connectedCount)/\(totalCount)", positive: connectedCount > 0, uiScale: uiScale)
         }

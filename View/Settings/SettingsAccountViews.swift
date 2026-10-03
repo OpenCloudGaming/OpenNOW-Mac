@@ -82,14 +82,12 @@ struct AccountSettingsPage: View {
     private var profilePrivacyCard: some View {
         SettingsCard(title: "Profile & Privacy", uiScale: uiScale) {
             HStack(alignment: .center, spacing: 12 * uiScale) {
-                VStack(alignment: .leading, spacing: 4 * uiScale) {
-                    Text("Personal account details are masked by default.")
-                        .font(.settingsFont(size: 14 * uiScale, weight: .bold))
-                        .foregroundStyle(OPNDesign.Text.primary)
-                    Text("Reveal only when validating account state on your own machine.")
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                }
+                SettingsRowTitle(
+                    title: "Personal account details are masked by default.",
+                    isNew: false,
+                    help: "Reveal only when validating account state on your own machine.",
+                    uiScale: uiScale
+                )
                 Spacer()
                 SettingsRevealButton(revealed: revealSensitive, uiScale: uiScale) { revealSensitive.toggle() }
             }

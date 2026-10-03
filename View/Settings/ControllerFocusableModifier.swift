@@ -15,6 +15,21 @@ struct ControllerFocusOrderKey: PreferenceKey {
     }
 }
 
+/// The explanation of the row the pad has focused, published so controller mode can show it without
+/// a pointer. Only the focused row emits a value; the rest emit nil, so the reduce keeps the one.
+struct SettingsFocusedHelp: Equatable {
+    let id: String
+    let text: String
+}
+
+struct SettingsFocusedHelpKey: PreferenceKey {
+    static let defaultValue: SettingsFocusedHelp? = nil
+
+    static func reduce(value: inout SettingsFocusedHelp?, nextValue: () -> SettingsFocusedHelp?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
 /// Coordinate space the row positions are measured in.
 let controllerSettingsFocusSpace = "opn-settings-focus"
 
@@ -68,6 +83,8 @@ extension EnvironmentValues {
 
 private struct ControllerFocusableModifier: ViewModifier {
     let id: String
+    /// The row's explanation, surfaced to controller mode while this row is focused.
+    let help: String?
     let activate: (() -> Void)?
     let adjust: ((Int) -> Void)?
 
@@ -93,6 +110,7 @@ private struct ControllerFocusableModifier: ViewModifier {
                         )
                     }
                 }
+                .preference(key: SettingsFocusedHelpKey.self, value: focusedHelp)
                 .openNowFocusRing(focusedRowID == id)
                 .id(id)
                 .onChange(of: rowCommand) { _, command in
@@ -102,6 +120,11 @@ private struct ControllerFocusableModifier: ViewModifier {
         } else {
             content
         }
+    }
+
+    private var focusedHelp: SettingsFocusedHelp? {
+        guard focusedRowID == id, let help, !help.isEmpty else { return nil }
+        return SettingsFocusedHelp(id: id, text: help)
     }
 
     private func handle(_ command: ControllerInputCommand) {
@@ -118,16 +141,19 @@ extension View {
     /// Opts a row into pad traversal. `adjust` is for rows that change value in place (sliders,
     /// option pickers); rows that only act on press leave it nil.
     ///
+    /// `help` is the row's explanation. While the row is focused it is published to the settings
+    /// page's help strip, because a pad has no pointer to hover the question mark with.
+    ///
     /// `id` exists for the handful of call sites that address a row by name. Everything else should
     /// use the `ControllerFocusIdentity` overload: ordering comes from measured position, so the id
     /// only has to be unique - deriving it from display copy makes two same-titled rows collide and
     /// makes copy-editing a title silently drop focus.
-    func controllerFocusable(id: String, activate: (() -> Void)? = nil, adjust: ((Int) -> Void)? = nil) -> some View {
-        modifier(ControllerFocusableModifier(id: id, activate: activate, adjust: adjust))
+    func controllerFocusable(id: String, help: String? = nil, activate: (() -> Void)? = nil, adjust: ((Int) -> Void)? = nil) -> some View {
+        modifier(ControllerFocusableModifier(id: id, help: help, activate: activate, adjust: adjust))
     }
 
-    func controllerFocusable(_ identity: ControllerFocusIdentity, activate: (() -> Void)? = nil, adjust: ((Int) -> Void)? = nil) -> some View {
-        modifier(ControllerFocusableModifier(id: identity.id, activate: activate, adjust: adjust))
+    func controllerFocusable(_ identity: ControllerFocusIdentity, help: String? = nil, activate: (() -> Void)? = nil, adjust: ((Int) -> Void)? = nil) -> some View {
+        modifier(ControllerFocusableModifier(id: identity.id, help: help, activate: activate, adjust: adjust))
     }
 }
 

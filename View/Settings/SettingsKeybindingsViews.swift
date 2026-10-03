@@ -130,11 +130,7 @@ struct KeybindingRecorderRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
-                SettingsRowTitle(title: action.title, isNew: false, uiScale: uiScale)
-                Text(action.subtitle)
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                SettingsRowTitle(title: action.title, isNew: false, help: action.subtitle, uiScale: uiScale)
                 statusLine
             }
             Spacer(minLength: 12 * uiScale)

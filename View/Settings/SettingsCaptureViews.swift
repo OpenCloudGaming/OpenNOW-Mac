@@ -362,15 +362,7 @@ struct CaptureLibraryCard: View {
 
     private var libraryLink: some View {
         HStack(alignment: .center, spacing: 16 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text(libraryLinkTitle)
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text(libraryLinkSubtitle)
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            SettingsRowTitle(title: libraryLinkTitle, isNew: false, help: libraryLinkSubtitle, uiScale: uiScale)
             Spacer(minLength: 12 * uiScale)
             SettingsActionButton(title: "OPEN LIBRARY", minimumWidth: 150 * uiScale, uiScale: uiScale) {
                 openLibrary()

@@ -140,18 +140,18 @@ struct VideoSettingsPage: View {
                 SettingsInfoRow(label: "Cloud G-Sync", value: tip, uiScale: uiScale)
             }
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Cloud G-Sync", subtitle: "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, isCompact: true, uiScale: uiScale, action: viewModel.setCloudGsyncEnabled)
+            SettingsToggleRow(title: "Cloud G-Sync", subtitle: "Request cloud-side G-Sync when the server and stream mode support it.", isOn: viewModel.streamProfile.enableCloudGsync, uiScale: uiScale, action: viewModel.setCloudGsyncEnabled)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Reflex", subtitle: "Low-latency pacing for supported games when the seat allows it.", isOn: viewModel.streamProfile.enableReflex, isNew: OPNNewSettings.isNew(.reflex), isCompact: true, uiScale: uiScale) { enabled in
+            SettingsToggleRow(title: "Reflex", subtitle: "Low-latency pacing for supported games when the seat allows it.", isOn: viewModel.streamProfile.enableReflex, isNew: OPNNewSettings.isNew(.reflex), uiScale: uiScale) { enabled in
                 OPNNewSettings.acknowledge(.reflex)
                 viewModel.setReflexEnabled(enabled)
             }
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, isCompact: true, uiScale: uiScale, action: viewModel.setFallbackToLogicalResolution)
+            SettingsToggleRow(title: "Logical Resolution Fallback", subtitle: "Allow the stream request to fall back to logical display resolution.", isOn: viewModel.streamProfile.fallbackToLogicalResolution, uiScale: uiScale, action: viewModel.setFallbackToLogicalResolution)
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(title: "HUD Stream", subtitle: "Controls vendor HUD streaming metadata mode.", options: OPNStreamPreferences.hudStreamingModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.hudStreamingModeIndex, uiScale: uiScale, action: viewModel.setHudStreamingModeIndex)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Power Saver", subtitle: "Reduce resource use when possible.", isOn: viewModel.streamProfile.enablePowerSaver, isCompact: true, uiScale: uiScale, action: viewModel.setPowerSaverEnabled)
+            SettingsToggleRow(title: "Power Saver", subtitle: "Reduce resource use when possible.", isOn: viewModel.streamProfile.enablePowerSaver, uiScale: uiScale, action: viewModel.setPowerSaverEnabled)
         }
     }
 
@@ -160,16 +160,13 @@ struct VideoSettingsPage: View {
             HStack(alignment: .center, spacing: 16 * uiScale) {
                 Rectangle()
                     .fill(OPNDesign.Stroke.strong)
-                    .frame(width: 4 * uiScale, height: 48 * uiScale)
-                VStack(alignment: .leading, spacing: 5 * uiScale) {
-                    Text("Restore default streaming settings")
-                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OPNDesign.Text.primary)
-                    Text("Resets resolution, FPS, codec, bitrate, color precision, latency, HDR, L4S, input, audio, and enhancement options.")
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                    .frame(width: 4 * uiScale, height: 20 * uiScale)
+                SettingsRowTitle(
+                    title: "Restore default streaming settings",
+                    isNew: false,
+                    help: "Resets resolution, FPS, codec, bitrate, color precision, latency, HDR, L4S, input, audio, and enhancement options.",
+                    uiScale: uiScale
+                )
                 Spacer(minLength: 12 * uiScale)
                 SettingsActionButton(title: "RESTORE DEFAULTS", minimumWidth: 150 * uiScale, uiScale: uiScale) { viewModel.restoreStreamingProfileDefaults() }
             }
@@ -313,14 +310,12 @@ struct StreamingProfileOverview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14 * uiScale) {
             HStack(alignment: .center, spacing: 14 * uiScale) {
-                VStack(alignment: .leading, spacing: 6 * uiScale) {
-                    Text("Active streaming profile")
-                        .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                        .foregroundStyle(OPNDesign.Text.primary)
-                    Text("These values are sent to OpenNOW when a new stream starts.")
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                }
+                SettingsRowTitle(
+                    title: "Active streaming profile",
+                    isNew: false,
+                    help: "These values are sent to OpenNOW when a new stream starts.",
+                    uiScale: uiScale
+                )
                 Spacer(minLength: 0)
                 SettingsStatusPill(title: "MODE", value: mode, positive: mode != "Balanced defaults", uiScale: uiScale)
             }

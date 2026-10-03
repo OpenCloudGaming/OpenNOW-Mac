@@ -37,6 +37,7 @@ struct SettingsInfoRow: View {
 struct SettingsOptionRow: View {
     @State private var focusIdentity = ControllerFocusIdentity()
     let title: String
+    /// The setting's full explanation, shown as a hover tooltip rather than a second line.
     let subtitle: String
     let options: [String]
     let selectedIndex: Int
@@ -54,37 +55,31 @@ struct SettingsOptionRow: View {
         layout
         .controllerFocusable(
             focusIdentity,
+            help: subtitle,
             activate: { cycleOption(1) },
             adjust: { delta in cycleOption(delta) }
         )
     }
 
-    /// Side by side when the container can hold the label column, stacked when it cannot - inside a
-    /// masonry column or at the minimum window width the 250pt label leaves the chips too little
-    /// room and they wrap into three rows.
+    /// Side by side when the container can hold the title column, stacked when it cannot - inside a
+    /// masonry column or at the minimum window width, where the chips would wrap into three rows.
     @ViewBuilder private var layout: some View {
         if isNarrow {
             VStack(alignment: .leading, spacing: 8 * uiScale) {
-                label
+                titleLabel
                 chips
             }
         } else {
-            HStack(alignment: .top, spacing: 18 * uiScale) {
-                label
+            HStack(alignment: .center, spacing: 18 * uiScale) {
+                titleLabel
                     .frame(width: 250 * uiScale, alignment: .leading)
                 chips
             }
         }
     }
 
-    private var label: some View {
-        VStack(alignment: .leading, spacing: 5 * uiScale) {
-            SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
-            Text(subtitle)
-                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                .foregroundStyle(OPNDesign.Text.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    private var titleLabel: some View {
+        SettingsRowTitle(title: title, isNew: isNew, help: subtitle, uiScale: uiScale)
     }
 
     private var chips: some View {
@@ -193,47 +188,25 @@ struct Toggle: View {
 struct SettingsToggleRow: View {
     @State private var focusIdentity = ControllerFocusIdentity()
     let title: String
+    /// The setting's full explanation, shown as a tooltip beside the title rather than a second line.
     let subtitle: String
     let isOn: Bool
     var isNew = false
-    /// One line instead of two: the subtitle appears on hover or under pad focus. For the many
-    /// short toggles whose titles already say what they do, where a permanent second line spends
-    /// a third of the page's height restating them.
-    var isCompact = false
-    /// The setting is on but this Mac cannot act on it. The subtitle says why; this stops the
+    /// The setting is on but this Mac cannot act on it. The tooltip says why; this stops the
     /// control itself from contradicting it.
     var isInert = false
     let uiScale: CGFloat
     let action: @MainActor @Sendable (Bool) -> Void
 
-    @State private var isHovering = false
-    @Environment(\.controllerFocusedRowID) private var focusedRowID
-
-    private var showsSubtitle: Bool {
-        guard isCompact else { return true }
-        return isHovering || focusedRowID == focusIdentity.id
-    }
-
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
-                if showsSubtitle {
-                    Text(subtitle)
-                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                        .foregroundStyle(OPNDesign.Text.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            SettingsRowTitle(title: title, isNew: isNew, help: subtitle, uiScale: uiScale)
             Spacer()
             Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), isInert: isInert, uiScale: uiScale)
         }
-        .onHover { hovering in
-            guard isCompact else { return }
-            withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
-        }
         .controllerFocusable(
             focusIdentity,
+            help: subtitle,
             activate: { action(!isOn) },
             adjust: { delta in
                 let next = delta > 0
@@ -265,16 +238,8 @@ private struct SettingsFieldRow<Field: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
-            VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text(title)
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text(subtitle)
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .settingsLabelColumn(uiScale: uiScale)
+            SettingsRowTitle(title: title, isNew: false, help: subtitle, uiScale: uiScale)
+                .settingsLabelColumn(uiScale: uiScale)
             field(Binding(get: { draft }, set: { updateDraft($0) }))
                 .textFieldStyle(.plain)
                 .font(.settingsFont(size: 13 * uiScale, weight: .medium))
@@ -290,7 +255,7 @@ private struct SettingsFieldRow<Field: View>: View {
                     draft = value
                 }
         }
-        .controllerFocusable(focusIdentity, activate: { isFieldFocused = true })
+        .controllerFocusable(focusIdentity, help: subtitle, activate: { isFieldFocused = true })
     }
 
     private func updateDraft(_ value: String) {
@@ -337,6 +302,8 @@ struct SettingsSliderRow: View {
     let range: ClosedRange<Double>
     var step = 1.0
     var isNew = false
+    /// The setting's full explanation, shown as a tooltip beside the title.
+    var help: String = ""
     let uiScale: CGFloat
     let action: @MainActor @Sendable (Double) -> Void
 
@@ -359,6 +326,7 @@ struct SettingsSliderRow: View {
         }
         .controllerFocusable(
             focusIdentity,
+            help: help,
             adjust: { delta in
                 // A zero or absent step would make a pad nudge do nothing, so fall back to a
                 // hundredth of the range.
@@ -372,7 +340,7 @@ struct SettingsSliderRow: View {
 
     private var label: some View {
         VStack(alignment: .leading, spacing: 5 * uiScale) {
-            SettingsRowTitle(title: title, isNew: isNew, uiScale: uiScale)
+            SettingsRowTitle(title: title, isNew: isNew, help: help, uiScale: uiScale)
             Text(valueText)
                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                 .foregroundStyle(OPNDesign.accentInk)

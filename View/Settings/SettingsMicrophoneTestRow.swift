@@ -14,13 +14,18 @@ struct SettingsMicrophoneTestRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
             VStack(alignment: .leading, spacing: 5 * uiScale) {
-                Text("Microphone Test")
-                    .font(.settingsFont(size: 15 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.primary)
-                Text(message ?? "Opens the selected input device without starting a stream, so the microphone can be checked before playing.")
-                    .font(.settingsFont(size: 12 * uiScale, weight: .medium))
-                    .foregroundStyle(OPNDesign.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                SettingsRowTitle(
+                    title: "Microphone Test",
+                    isNew: false,
+                    help: "Opens the selected input device without starting a stream, so the microphone can be checked before playing.",
+                    uiScale: uiScale
+                )
+                if let message {
+                    Text(message)
+                        .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                        .foregroundStyle(OPNDesign.Text.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .settingsLabelColumn(uiScale: uiScale)
             levelMeter

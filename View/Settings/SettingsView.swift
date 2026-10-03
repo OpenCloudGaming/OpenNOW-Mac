@@ -123,6 +123,9 @@ struct SettingsView: View {
     @StateObject private var focus = ControllerSettingsFocusModel()
     @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @State private var windowWidth: CGFloat = 0
+    /// The focused row's explanation, shown in a strip under the page while a pad drives it. A pad
+    /// has no pointer, so the hover tooltip on each row's question mark is unreachable there.
+    @State private var focusedHelpText = ""
 
     private static let tabBarFocusID = "settings-tabs"
 
@@ -142,6 +145,9 @@ struct SettingsView: View {
                     SettingsTabBar(selection: $viewModel.selectedSettingsGroup, groups: visibleGroups, uiScale: uiScale)
                         .controllerFocusable(id: Self.tabBarFocusID, adjust: { moveGroup(delta: $0) })
                     SettingsContent(viewModel: viewModel, uiScale: uiScale, focusedID: focus.focusedID)
+                    if !focusedHelpText.isEmpty {
+                        SettingsFocusedHelpStrip(text: focusedHelpText, uiScale: uiScale)
+                    }
                 }
             } else {
                 HStack(spacing: 0) {
@@ -173,6 +179,9 @@ struct SettingsView: View {
         .coordinateSpace(name: controllerSettingsFocusSpace)
         .onPreferenceChange(ControllerFocusOrderKey.self) { entries in
             focus.setOrder(entries)
+        }
+        .onPreferenceChange(SettingsFocusedHelpKey.self) { help in
+            focusedHelpText = help?.text ?? ""
         }
         .onAppear { focus.setActive(controllerModeEnabled) }
         .onChange(of: controllerPageCommand) { _, pageCommand in
@@ -232,6 +241,32 @@ struct SettingsView: View {
         let next = min(max(current + delta, 0), groups.count - 1)
         guard next != current else { return }
         viewModel.selectedSettingsGroup = groups[next]
+    }
+}
+
+/// Controller mode's answer to the row tooltips: the focused row's explanation, shown under the
+/// page as the pad walks the rows. The height is fixed so the content above it does not jump.
+struct SettingsFocusedHelpStrip: View {
+    let text: String
+    let uiScale: CGFloat
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10 * uiScale) {
+            Image(systemName: "questionmark.circle")
+                .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                .foregroundStyle(OPNDesign.accentInk)
+            SettingsHelpText(text: text, uiScale: uiScale)
+                .foregroundStyle(OPNDesign.Text.secondary)
+                .lineLimit(3)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 28 * uiScale)
+        .padding(.vertical, 12 * uiScale)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 72 * uiScale, alignment: .top)
+        .background(OPNDesign.Surface.panel)
+        .overlay(alignment: .top) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1) }
+        .accessibilityElement(children: .combine)
     }
 }
 

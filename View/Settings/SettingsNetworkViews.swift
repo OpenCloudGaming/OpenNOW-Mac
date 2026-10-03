@@ -9,7 +9,7 @@ struct NetworkTransportSettingsPage: View {
             SettingsCard(title: "Transport", uiScale: uiScale) {
                 SettingsToggleRow(title: "L4S", subtitle: "Use low-latency scalable throughput when available.", isOn: viewModel.streamProfile.enableL4S, uiScale: uiScale, action: viewModel.setL4SEnabled)
                 SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(title: "Prevent Display Sleep", subtitle: "Keeps the monitor awake while a stream is active.", isOn: viewModel.streamProfile.preventDisplaySleepWhileStreaming, isCompact: true, uiScale: uiScale, action: viewModel.setPreventDisplaySleepWhileStreaming)
+                SettingsToggleRow(title: "Prevent Display Sleep", subtitle: "Keeps the monitor awake while a stream is active.", isOn: viewModel.streamProfile.preventDisplaySleepWhileStreaming, uiScale: uiScale, action: viewModel.setPreventDisplaySleepWhileStreaming)
             }
             .settingsSection("transport")
         }
