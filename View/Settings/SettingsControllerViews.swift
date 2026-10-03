@@ -170,6 +170,11 @@ struct SteamControllerSettingsPage: View {
                 }
             }
         }
+        // The launch path no longer starts the HID monitor, so this page starts it for its own Status
+        // card and connected-pad list.
+        .onAppear {
+            SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
+        }
         .opnConfirmation(
             isPresented: Binding(
                 get: { permissionResetError != nil },

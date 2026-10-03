@@ -297,6 +297,11 @@ final class ControllerCatalogViewModel: ObservableObject {
         configureSearchKeyboard()
         inputRouter.onCommand = { [weak self] command in self?.handleInput(command) }
         steamNavigator.onCommand = { [weak self] command in self?.handleInput(command) }
+        // Controller mode is a launch surface for pad users, so it starts the HID monitor itself;
+        // the display-only navigator on the settings page must not.
+        if capturesControllerInput {
+            SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
+        }
         steamNavigator.start(capturingInput: capturesControllerInput)
     }
 
