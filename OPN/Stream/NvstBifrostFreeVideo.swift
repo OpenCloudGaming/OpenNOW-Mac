@@ -7,6 +7,12 @@ import CoreMedia
 import CoreVideo
 import Foundation
 
+/// The frame and display intervals the seat's `0x203` pacing report carries, in microseconds.
+struct NvstPacingIntervals {
+    let frameMicroseconds: UInt32
+    let displayVsyncMicroseconds: UInt32
+}
+
 extension NvstBifrostFreeTransport {
     // MARK: - Video
 
@@ -129,6 +135,45 @@ extension NvstBifrostFreeTransport {
         }
     }
 
+    /// The interval that stands in for a display whose refresh the client could not read.
+    static let fallbackVsyncMicroseconds: UInt32 = 16_000
+    /// The divisor of NVIDIA Reflex's margin under G-SYNC: `refresh - refresh² / 3600`.
+    static let variableRefreshMarginDivisor = 3600.0
+
+    /// `vrr` presentation lets the display follow the stream, so the seat is asked for frames just
+    /// under the display's maximum refresh. Every other mode keeps the session's own interval.
+    static func pacingIntervals(sessionFrameMicroseconds: UInt32,
+                                displayRefreshRate: Int,
+                                isVrrPresentation: Bool) -> NvstPacingIntervals {
+        guard displayRefreshRate > 0 else {
+            return NvstPacingIntervals(frameMicroseconds: sessionFrameMicroseconds,
+                                       displayVsyncMicroseconds: fallbackVsyncMicroseconds)
+        }
+        let displayVsyncMicroseconds = UInt32(1_000_000 / displayRefreshRate)
+        guard isVrrPresentation else {
+            return NvstPacingIntervals(frameMicroseconds: sessionFrameMicroseconds,
+                                       displayVsyncMicroseconds: displayVsyncMicroseconds)
+        }
+        guard let variableRefreshMicroseconds = variableRefreshIntervalMicroseconds(displayRefreshRate: displayRefreshRate) else {
+            return NvstPacingIntervals(frameMicroseconds: sessionFrameMicroseconds,
+                                       displayVsyncMicroseconds: displayVsyncMicroseconds)
+        }
+        let cappedMicroseconds = max(sessionFrameMicroseconds, variableRefreshMicroseconds)
+        return NvstPacingIntervals(frameMicroseconds: cappedMicroseconds,
+                                   displayVsyncMicroseconds: cappedMicroseconds)
+    }
+
+    /// The interval the seat is asked for on a VRR display, or nil when the display's rate leaves
+    /// no positive margin to pace under — the margin is zero at 3600 Hz and negative above it.
+    private static func variableRefreshIntervalMicroseconds(displayRefreshRate: Int) -> UInt32? {
+        let refresh = Double(displayRefreshRate)
+        let variableRefreshRate = refresh - refresh * refresh / variableRefreshMarginDivisor
+        guard variableRefreshRate > 0, variableRefreshRate.isFinite else { return nil }
+        let microseconds = (1_000_000 / variableRefreshRate).rounded()
+        guard microseconds <= Double(UInt32.max) else { return nil }
+        return UInt32(microseconds)
+    }
+
     private func makeVideoPipeline(handoff: NVSTVideoHandoff,
                                    decoder: NvstVideoToolboxDecoder,
                                    receiver: NvstMjolnirReceiver,
@@ -140,13 +185,18 @@ extension NvstBifrostFreeTransport {
         // the seat paces its own frame generation to whatever vsync interval the client reports —
         // this used to go out as a hardcoded 16000 us (~62.5 Hz) regardless of the real display.
         let displayRefreshRate = OPNStreamPreferences.loadDeviceCapabilities().maxDisplayRefreshRate
-        let displayVsyncMicroseconds = displayRefreshRate > 0 ? UInt32(1_000_000 / displayRefreshRate) : 16000
+        let pacing = Self.pacingIntervals(sessionFrameMicroseconds: sessionFrameTimeMicroseconds,
+                                          displayRefreshRate: displayRefreshRate,
+                                          isVrrPresentation: isVrrPresentation)
+        if isVrrPresentation {
+            logger?("NVST vrr pacing: seat asked for \(pacing.frameMicroseconds) us frames under a \(displayRefreshRate) Hz display")
+        }
         let nativeBroadcaster = remoteCoOpNativeBroadcaster
         return NvstVideoPipeline(
             decoder: decoder,
             clock: clock,
-            frameTimeMicroseconds: sessionFrameTimeMicroseconds,
-            displayVsyncMicroseconds: displayVsyncMicroseconds,
+            frameTimeMicroseconds: pacing.frameMicroseconds,
+            displayVsyncMicroseconds: pacing.displayVsyncMicroseconds,
             vsyncMode: configuredVsyncMode ?? .adaptive,
             logger: logger,
             // Nothing on this transport consumes `videoFrames()` — we own the decoder — but the
@@ -341,8 +391,8 @@ extension NvstBifrostFreeTransport {
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.sendQosReport()
-                await self.sendRtpStatsIfNeeded()
-                await self.sendControlChannelStatsIfNeeded()
+                await self.sendRtpStatsWhenDue()
+                await self.sendControlChannelStatsWhenDue()
                 try? await Task.sleep(for: .seconds(NvstQosReport.interval))
             }
         }
@@ -410,7 +460,7 @@ extension NvstBifrostFreeTransport {
     /// frame-gated cadence of the official `sendRtpStats` builder. The fields carry what this
     /// pipeline actually measures; the NACK report is all zeros because this client does not
     /// send NACKs, exactly the payload the official client sends before its receiver exists.
-    func sendRtpStatsIfNeeded() {
+    func sendRtpStatsWhenDue() {
         guard let bundle, let receiver else { return }
         let stats = receiver.stats
         let frame = stats.framesEmitted
@@ -442,7 +492,7 @@ extension NvstBifrostFreeTransport {
     /// stream 0 only — the official client transmits no control-channel stats from any other
     /// stream. The timestamp is session-elapsed microseconds, the closest honest analog to the
     /// official library's steady-clock-epoch microseconds.
-    func sendControlChannelStatsIfNeeded() {
+    func sendControlChannelStatsWhenDue() {
         guard let bundle, sessionStartedAt != nil else { return }
         let now = Date()
         if let last = controlStatsLastSentAt,

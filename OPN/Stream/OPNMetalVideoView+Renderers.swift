@@ -5,7 +5,6 @@
 import AppKit
 import Foundation
 import Metal
-import MetalKit
 import QuartzCore
 
 struct VideoEnhancement {
@@ -40,14 +39,17 @@ struct RenderDiagnostics {
 }
 
 extension OPNMetalVideoView {
-    func emitDiagnosticsIfNeeded(_ diagnostics: RenderDiagnostics, force: Bool) {
+    nonisolated func emitDiagnostics(_ diagnostics: RenderDiagnostics, isForced: Bool) {
         let now = CACurrentMediaTime()
-        guard force || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
+        guard isForced || lastDiagnosticsUpdateTime <= 0 || now - lastDiagnosticsUpdateTime >= 1.0 else { return }
         lastDiagnosticsUpdateTime = now
         var diagnostics = diagnostics
         populateDrawCadenceDiagnostics(&diagnostics)
-        diagnostics.outputFormat = Self.outputFormatName(metalView.colorPixelFormat)
+        diagnostics.outputFormat = Self.outputFormatName(metalLayer?.pixelFormat ?? .bgra8Unorm)
+        os_unfair_lock_lock(&frameLock)
         diagnostics.isHDR = appliedTransfer.isHDR
+        let presentationModeLabel = presentationMode.label
+        os_unfair_lock_unlock(&frameLock)
         if let renderDiagnosticsHandler {
             os_unfair_lock_lock(&frameLock)
             let received = framesReceived
@@ -64,7 +66,7 @@ extension OPNMetalVideoView {
                 maxFrameIntervalMs: diagnostics.maxFrameIntervalMs,
                 framesReceived: received,
                 framesDrawn: framesDrawn,
-                presentationMode: presentationMode.label,
+                presentationMode: presentationModeLabel,
                 presentLatencyMs: present.latency,
                 presentLatencyMaxMs: present.maximum,
                 presentJitterMs: present.jitter
@@ -86,13 +88,13 @@ extension OPNMetalVideoView {
         os_unfair_lock_unlock(&enhancementOverrideLock)
     }
 
-    func localVideoEnhancementOverride() -> (Int32, Int32, Int32, Int32, Int32, Int32, Int32)? {
+    nonisolated func localVideoEnhancementOverride() -> (Int32, Int32, Int32, Int32, Int32, Int32, Int32)? {
         os_unfair_lock_lock(&enhancementOverrideLock)
         defer { os_unfair_lock_unlock(&enhancementOverrideLock) }
         return enhancementOverride
     }
 
-    func localVideoEnhancement() -> VideoEnhancement {
+    nonisolated func localVideoEnhancement() -> VideoEnhancement {
         let values = localVideoEnhancementOverride() ?? (0, 0, 0, 2160, 0, 55, 0)
         return VideoEnhancement(mode: normalizedEnhancementMode(values.0), sharpness: values.1, denoise: values.2, targetHeight: values.3, pillarboxFillMode: values.4, pillarboxFillDim: values.5, pillarboxFillColor: values.6)
     }
@@ -103,7 +105,7 @@ extension OPNMetalVideoView {
         enhancementRenderer?.pillarboxFillCommit.value ?? .notApplied
     }
 
-    func recordDrawCadence() {
+    nonisolated func recordDrawCadence() {
         framesDrawn &+= 1
         let now = CACurrentMediaTime()
         if lastDrawCadenceTime > 0 {
@@ -115,7 +117,7 @@ extension OPNMetalVideoView {
         lastDrawCadenceTime = now
     }
 
-    func populateDrawCadenceDiagnostics(_ diagnostics: inout RenderDiagnostics) {
+    nonisolated func populateDrawCadenceDiagnostics(_ diagnostics: inout RenderDiagnostics) {
         guard drawIntervalCount > 0 else { return }
         diagnostics.frameIntervalMs = drawIntervalTotalMs / Double(drawIntervalCount)
         diagnostics.maxFrameIntervalMs = drawIntervalMaxMs
@@ -125,9 +127,11 @@ extension OPNMetalVideoView {
     }
 
     func resetDrawCadence() {
+        os_unfair_lock_lock(&drawLock)
         lastDrawCadenceTime = 0
         drawIntervalTotalMs = 0
         drawIntervalMaxMs = 0
         drawIntervalCount = 0
+        os_unfair_lock_unlock(&drawLock)
     }
 }

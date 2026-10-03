@@ -272,6 +272,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// fed to the pipeline's `0x203` report cadence. `nil` (a transport that predates the
     /// setting) keeps the captured baseline's Adaptive behaviour end to end.
     let configuredVsyncMode: NvstVsyncMode?
+    /// The client presents with `vrr`, so the seat is paced under the display's maximum refresh.
+    /// See `pacingIntervals`.
+    let isVrrPresentation: Bool
     /// Playback channels the resolver settled on (2, 6 or 8): what the bundle's audio section
     /// decodes and what the ANNOUNCE asks the seat to encode.
     let configuredAudioChannelCount: Int
@@ -290,6 +293,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 configuredPrefilterModel: Int? = nil,
                 configuredColorQuality: String? = nil,
                 configuredVsyncMode: NvstVsyncMode? = nil,
+                isVrrPresentation: Bool = false,
                 configuredAudioChannelCount: Int = 2,
                 preferredAudioChannelCount: Int = 0,
                 logger: (@Sendable (String) -> Void)? = nil,
@@ -309,6 +313,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterModel = configuredPrefilterModel
         self.configuredColorQuality = configuredColorQuality
         self.configuredVsyncMode = configuredVsyncMode
+        self.isVrrPresentation = isVrrPresentation
         self.configuredAudioChannelCount = NvstCoreAudioFormat.supportedPlayoutChannelCount(configuredAudioChannelCount)
         self.preferredAudioChannelCount = preferredAudioChannelCount > 0 ? preferredAudioChannelCount : self.configuredAudioChannelCount
         self.logger = logger

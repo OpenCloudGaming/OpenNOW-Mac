@@ -15,6 +15,11 @@ extension CGColorSpace {
     static let sRGBForRender: CGColorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 }
 
+extension CAMetalDrawable {
+    /// The pixel size of the surface this drawable presents, which is the size a pass renders at.
+    var texturePixelSize: CGSize { CGSize(width: texture.width, height: texture.height) }
+}
+
 /// How decoded frames meet the display.
 ///
 /// Measured 2026-09-04 on a 120 Hz panel with a 120 fps stream: decode completions arrive in bursts
@@ -30,10 +35,8 @@ enum OPNVideoPresentationMode: Int, Sendable {
     /// Present as soon as a frame decodes, without waiting for the refresh (`displaySyncEnabled`
     /// off, the display link paused). Lowest latency; tearing is possible.
     case lowestLatency = 2
-    /// Draw as soon as a frame decodes, like `lowestLatency`, but present with vsync on, so a
-    /// variable-refresh display refreshes when the frame arrives instead of on the display link's
-    /// fixed tick. A frame that decodes while the previous present is still waiting for the glass
-    /// is drawn when that present lands, and a newer one replaces it rather than queueing.
+    /// Draw every frame on a dedicated render thread as soon as it decodes, in arrival order, with
+    /// vsync on; three drawables keep two frames in flight. See `OPNVideoArrivalQueue`.
     case vrr = 3
 
     var label: String {
@@ -45,58 +48,36 @@ enum OPNVideoPresentationMode: Int, Sendable {
         }
     }
 
-    var drawsOnDecode: Bool { self == .lowestLatency || self == .vrr }
+    /// Whether the frame is drawn the moment it decodes rather than on the display link's tick.
+    var isDecodeDriven: Bool { self == .lowestLatency || self == .vrr }
 }
 
-/// When a decode-driven draw goes to the main actor. At most one draw is ever outstanding, and in
-/// `vrr` a draw also waits for the previous present to reach the glass: the main thread then never
-/// blocks in `nextDrawable()` behind vsync, and the frame drawn is always the newest one.
+/// `lowestLatency` only: at most one decode-driven draw is on its way to the main actor.
 struct OPNManualDrawGate: Sendable {
-    /// A present whose handler has not fired by then is treated as lost rather than waited on.
-    static let presentTimeoutSeconds: CFTimeInterval = 0.05
-
     private(set) var isDrawQueued = false
-    private var isDrawDeferred = false
-    private var presentStartedAt: CFTimeInterval = 0
 
     /// True when the caller should queue a draw now.
-    mutating func request(waitsForPresent: Bool, now: CFTimeInterval) -> Bool {
-        let presentPending = waitsForPresent && presentStartedAt > 0 && now - presentStartedAt < Self.presentTimeoutSeconds
-        guard isDrawQueued || presentPending else {
-            isDrawQueued = true
-            return true
-        }
-        if waitsForPresent { isDrawDeferred = true }
-        return false
-    }
-
-    mutating func presentStarted(at now: CFTimeInterval) {
-        presentStartedAt = now
-    }
-
-    /// True when a frame arrived while the present was in flight and should be drawn now.
-    mutating func presentCompleted() -> Bool {
-        presentStartedAt = 0
-        return takeDeferred()
-    }
-
-    /// True when a frame arrived during the draw and no present holds it back.
-    mutating func drawFinished() -> Bool {
-        isDrawQueued = false
-        return presentStartedAt == 0 && takeDeferred()
-    }
-
-    /// Forgets the present being waited on. A queued draw stays counted: it is still on its way.
-    mutating func forgetPresent() {
-        presentStartedAt = 0
-        isDrawDeferred = false
-    }
-
-    private mutating func takeDeferred() -> Bool {
-        guard isDrawDeferred, !isDrawQueued else { return false }
-        isDrawDeferred = false
+    mutating func request() -> Bool {
+        guard !isDrawQueued else { return false }
+        isDrawQueued = true
         return true
     }
+
+    mutating func drawFinished() {
+        isDrawQueued = false
+    }
+}
+
+/// The frame a draw should present, with the output format the drawable must be in.
+struct OPNNextVideoFrame {
+    let frame: OPNVideoFrame
+    let serial: UInt64
+    let sourceSize: CGSize
+    let outputFormat: MTLPixelFormat
+    let outputTransfer: OPNVideoTransferFunction
+    let receivedAt: CFTimeInterval
+
+    var isRenderable: Bool { frame.width > 0 && frame.height > 0 }
 }
 
 struct OPNVideoRenderDiagnosticsSnapshot: Equatable, Sendable {
@@ -145,13 +126,13 @@ extension OPNMetalVideoView {
     /// out on the same queue (so the copy runs after the render) and writes it once complete.
     /// The libwebrtc renderers use their own queue, so a capture taken on that path may read a
     /// frame that is still being drawn; the custom paths are exact.
-    func captureDrawableIfRequested() {
+    nonisolated func captureRequestedDrawable(_ drawable: any CAMetalDrawable) {
         os_unfair_lock_lock(&frameLock)
         let url = pendingRenderSnapshotURL
         pendingRenderSnapshotURL = nil
         os_unfair_lock_unlock(&frameLock)
         guard let url else { return }
-        guard let drawable = metalView.currentDrawable, let commandQueue, let device = metalView.device else {
+        guard let commandQueue, let device else {
             OPNLog.warning(.stream, "Render snapshot: no drawable")
             return
         }
@@ -214,13 +195,18 @@ extension OPNMetalVideoView {
             ? metalView.drawableSize
             : CGSize(width: Int(frame.width), height: Int(frame.height))
         let resolvedSource = sourceSize.width > 0 && sourceSize.height > 0 ? sourceSize : CGSize(width: Int(frame.width), height: Int(frame.height))
-        let settings = configuredEnhancementSettings(enhancement: localVideoEnhancement(), sourceSize: resolvedSource, renderer: enhancementRenderer)
-        settings.drawableSize = size
+        os_unfair_lock_lock(&drawLock)
+        let settings = configuredEnhancementSettings(enhancement: localVideoEnhancement(),
+                                                    sourceSize: resolvedSource,
+                                                    drawableSize: size,
+                                                    renderer: enhancementRenderer)
         settings.captureEnhancedPixelBuffer = false
         if settings.configuredTier == .off || settings.configuredTier == .metalFX || settings.configuredTier == .temporal {
             settings.configuredTier = .spatial
         }
-        guard let texture = enhancementRenderer.renderOffscreenSnapshot(frame, settings: settings, size: size),
+        let rendered = enhancementRenderer.renderOffscreenSnapshot(frame, settings: settings, size: size)
+        os_unfair_lock_unlock(&drawLock)
+        guard let texture = rendered,
               let image = CIImage(mtlTexture: texture, options: [.colorSpace: CGColorSpace.sRGBForRender as Any]) else { return nil }
         let context = CIContext(options: [.cacheIntermediates: false])
         guard let data = context.jpegRepresentation(of: image.oriented(.downMirrored), colorSpace: CGColorSpace.sRGBForRender, options: [:]) else { return nil }
@@ -235,48 +221,58 @@ extension OPNMetalVideoView {
         let previous = presentationMode
         presentationMode = mode
         pendingFrames.removeAll()
+        arrivalQueue.removeAll()
         os_unfair_lock_unlock(&frameLock)
-        os_unfair_lock_lock(&manualDrawLock)
-        manualDrawGate.forgetPresent()
-        os_unfair_lock_unlock(&manualDrawLock)
         guard previous != mode else { return }
-        let metalLayer = metalView.layer as? CAMetalLayer
+        let drawableLayer = metalView.layer as? CAMetalLayer
         switch mode {
         case .lowestLatency, .vrr:
             // Our own draw() calls replace the display link; only `vrr` still presents on vsync.
             metalView.isPaused = true
             metalView.enableSetNeedsDisplay = false
-            metalLayer?.displaySyncEnabled = mode == .vrr
+            drawableLayer?.displaySyncEnabled = mode == .vrr
         case .balanced, .smooth:
-            metalLayer?.displaySyncEnabled = true
+            drawableLayer?.displaySyncEnabled = true
             metalView.enableSetNeedsDisplay = false
             metalView.isPaused = false
         }
+        drawableLayer?.maximumDrawableCount = mode == .vrr ? 3 : 2
+        drawableLayer?.allowsNextDrawableTimeout = mode == .vrr
+        updateRenderThread()
         resetDrawCadence()
         OPNLog.info(.stream, "Video presentation mode \(previous.label) -> \(mode.label)")
     }
 
     /// The frame this refresh should draw, or nil when there is nothing new. `smooth` hands out
     /// its queue oldest first; the other modes hand out the newest frame once.
-    func nextFrameToDraw() -> (frame: OPNVideoFrame, serial: UInt64, sourceSize: CGSize, output: (MTLPixelFormat, OPNVideoTransferFunction), receivedAt: CFTimeInterval)? {
+    func nextFrameToDraw() -> OPNNextVideoFrame? {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        let output = (desiredOutputFormat, desiredTransfer)
         if presentationMode == .smooth {
             guard !pendingFrames.isEmpty else { return nil }
             let next = pendingFrames.removeFirst()
-            return (next.frame, next.serial, sourceFrameSize, output, next.receivedAt)
+            return OPNNextVideoFrame(frame: next.frame,
+                                     serial: next.serial,
+                                     sourceSize: sourceFrameSize,
+                                     outputFormat: desiredOutputFormat,
+                                     outputTransfer: desiredTransfer,
+                                     receivedAt: next.receivedAt)
         }
         guard let frame = videoFrame, frameSerial > 0, frameSerial != lastDrawnFrameSerial else { return nil }
-        return (frame, frameSerial, sourceFrameSize, output, latestFrameReceivedAt)
+        return OPNNextVideoFrame(frame: frame,
+                                 serial: frameSerial,
+                                 sourceSize: sourceFrameSize,
+                                 outputFormat: desiredOutputFormat,
+                                 outputTransfer: desiredTransfer,
+                                 receivedAt: latestFrameReceivedAt)
     }
 
     /// Hooks the drawable every render path is about to present (MTKView hands the same one to
     /// whoever asks during this draw) so its presented time can be measured against when the frame
     /// reached the renderer. That difference is the latency a viewer can feel from this side of the
     /// wire; its interval jitter is what reads as judder.
-    func attachPresentedHandler(receivedAt: CFTimeInterval) {
-        guard receivedAt > 0, let drawable = metalView.currentDrawable else { return }
+    nonisolated func attachPresentedHandler(to drawable: any CAMetalDrawable, receivedAt: CFTimeInterval) {
+        guard receivedAt > 0 else { return }
         drawable.addPresentedHandler { [weak self] presented in
             guard let self else { return }
             let presentedAt = presented.presentedTime
@@ -299,24 +295,8 @@ extension OPNMetalVideoView {
         }
     }
 
-    /// `vrr` only: holds further draws until the drawable about to be presented reaches the glass.
-    func holdDrawsUntilPresented() {
-        guard presentationMode == .vrr, let drawable = metalView.currentDrawable else { return }
-        os_unfair_lock_lock(&manualDrawLock)
-        manualDrawGate.presentStarted(at: CACurrentMediaTime())
-        os_unfair_lock_unlock(&manualDrawLock)
-        drawable.addPresentedHandler { [weak self] _ in self?.drawablePresented() }
-    }
-
-    nonisolated private func drawablePresented() {
-        os_unfair_lock_lock(&manualDrawLock)
-        let drawsAgain = manualDrawGate.presentCompleted()
-        os_unfair_lock_unlock(&manualDrawLock)
-        if drawsAgain { requestManualDraw(waitsForPresent: true) }
-    }
-
     /// Drains the presented-time window into the diagnostics snapshot.
-    func takePresentDiagnostics() -> (latency: Double, maximum: Double, jitter: Double) {
+    nonisolated func takePresentDiagnostics() -> (latency: Double, maximum: Double, jitter: Double) {
         os_unfair_lock_lock(&presentLock)
         defer {
             presentLatencyTotalMs = 0
@@ -348,11 +328,14 @@ extension OPNMetalVideoView {
     /// Reconfigures the layer for a new output format. Returns true when it did, in which case the
     /// current draw is skipped: the drawable already vended for this pass has the old format, and
     /// the next display tick is a few milliseconds away.
-    func applyOutputFormatIfNeeded(_ format: MTLPixelFormat, transfer: OPNVideoTransferFunction) -> Bool {
+    func applyOutputFormat(_ format: MTLPixelFormat, transfer: OPNVideoTransferFunction) -> Bool {
         guard metalView.colorPixelFormat != format || appliedTransfer != transfer else { return false }
         let previous = metalView.colorPixelFormat
         metalView.colorPixelFormat = format
+        os_unfair_lock_lock(&frameLock)
+        appliedOutputFormat = format
         appliedTransfer = transfer
+        os_unfair_lock_unlock(&frameLock)
         if let metalLayer = metalView.layer as? CAMetalLayer {
             switch transfer {
             case .pq:

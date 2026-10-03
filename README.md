@@ -70,6 +70,8 @@ Pick your shape, then your resolution - 16:9, 16:10, 21:9, or 32:9. The wide end
 
 ![Video settings: quality preset, aspect ratio, resolution and frame rate; codec, colour precision, HDR and colour space; maximum bitrate, with a measured per-frame decode budget for this Mac](docs/screenshots/streaming-quality.png)
 
+**On a 4K TV**, pick a scaled (HiDPI) mode in System Settings → Displays. OpenNOW tells the cloud PC your display's DPI from macOS's scaling, so a TV run at 1× gets a Windows desktop at 100% scale, with text too small to read; a scaled mode keeps the full 4K stream and enlarges the remote desktop to match.
+
 ### No more black bars
 
 GeForce NOW bakes pillarbox columns into 16:9-only titles - real black pixels, not window padding, so a wide monitor is stuck with them. OpenNOW detects those bars in the incoming frames and lets you decide what fills them:
@@ -120,7 +122,7 @@ The current architecture and remaining dependency-removal milestones are documen
 - **Balanced** - the newest frame at every display refresh.
 - **Smooth** - holds one frame, so two that arrive together are shown a refresh apart. Even motion for about one frame of extra latency.
 - **Lowest Latency** - each frame the instant it decodes, with vsync off. Fastest, but tearing is possible, and macOS drops a variable refresh rate display back to a fixed rate.
-- **VRR** - each frame the instant it decodes, with vsync on. A variable refresh rate display (Adaptive-Sync, G-SYNC Compatible, ProMotion) then refreshes exactly when the frame arrives instead of on a fixed clock, which keeps motion smooth when the game's frame rate moves around. This is how the official client presents on a VRR display. On a fixed-rate display it still never tears.
+- **VRR** - each frame the instant it decodes, in arrival order, with vsync on, drawn on its own render thread. A variable refresh rate display (Adaptive-Sync, G-SYNC Compatible, ProMotion) then refreshes exactly when the frame arrives instead of on a fixed clock, which keeps motion smooth when the game's frame rate moves around. OpenNOW asks the server for a frame rate just under the display's maximum (116 fps on a 120 Hz display), so the stream stays inside the VRR range; a game that runs at the maximum anyway gets its newest frame shown at each refresh. Capping such a game a few fps under the display's maximum in its own settings keeps every frame. On a fixed-rate display it still never tears. With a mouse, also turn on **Raw Mouse Input** (Settings → Input → Mouse): without it, macOS's once-per-refresh mouse batches become uneven camera steps, and VRR makes them visible. See [Raw Mouse Input](#raw-mouse-input).
 
 ## Raw Mouse Input
 

@@ -16,26 +16,28 @@ import QuartzCore
 @MainActor
 final class OPNMetalVideoView: NSView, MTKViewDelegate {
     let metalView: MTKView
+    nonisolated(unsafe) let metalLayer: CAMetalLayer?
+    nonisolated let device: (any MTLDevice)?
     nonisolated(unsafe) var videoFrame: OPNVideoFrame?
-    var commandQueue: (any MTLCommandQueue)?
-    var enhancementRenderer: OPNVideoEnhancementRenderer?
+    nonisolated(unsafe) var commandQueue: (any MTLCommandQueue)?
+    nonisolated(unsafe) var enhancementRenderer: OPNVideoEnhancementRenderer?
     nonisolated(unsafe) var sourceFrameSize = CGSize.zero
     let targetFps: Int
     nonisolated(unsafe) var frameSerial: UInt64 = 0
-    var lastDrawnFrameSerial: UInt64 = 0
-    var lastDrawCadenceTime: CFTimeInterval = 0
-    var drawIntervalTotalMs = 0.0
-    var drawIntervalMaxMs = 0.0
-    var drawIntervalCount = 0
-    var enhancementDroppedFrameCount: UInt64 = 0
-    private var lastEnhancementFrameTimeMs = -1.0
-    var lastDiagnosticsUpdateTime: CFTimeInterval = 0
-    nonisolated(unsafe) var drawableSizeDirty = true
-    private var enhancementSettings = OPNVideoEnhancementSettings()
-    private var enhancementResult = OPNVideoEnhancementResult()
-    private var enhancementOverBudgetCount = 0
-    private var lastLoggedFallbackReason = ""
-    private var adaptiveEnhancementPenalty = 0
+    nonisolated(unsafe) var lastDrawnFrameSerial: UInt64 = 0
+    nonisolated(unsafe) var lastDrawCadenceTime: CFTimeInterval = 0
+    nonisolated(unsafe) var drawIntervalTotalMs = 0.0
+    nonisolated(unsafe) var drawIntervalMaxMs = 0.0
+    nonisolated(unsafe) var drawIntervalCount = 0
+    nonisolated(unsafe) var enhancementDroppedFrameCount: UInt64 = 0
+    nonisolated(unsafe) private var lastEnhancementFrameTimeMs = -1.0
+    nonisolated(unsafe) var lastDiagnosticsUpdateTime: CFTimeInterval = 0
+    nonisolated(unsafe) var isDrawableSizeDirty = true
+    nonisolated(unsafe) private var enhancementSettings = OPNVideoEnhancementSettings()
+    nonisolated(unsafe) private var enhancementResult = OPNVideoEnhancementResult()
+    nonisolated(unsafe) private var enhancementOverBudgetCount = 0
+    nonisolated(unsafe) private var lastLoggedFallbackReason = ""
+    nonisolated(unsafe) private var adaptiveEnhancementPenalty = 0
     nonisolated(unsafe) var enhancementOverride: (Int32, Int32, Int32, Int32, Int32, Int32, Int32)?
     nonisolated(unsafe) var enhancementOverrideLock = os_unfair_lock_s()
     nonisolated(unsafe) var frameLock = os_unfair_lock_s()
@@ -43,9 +45,12 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     /// a stream can switch to 10-bit or HDR at a keyframe without changing size.
     nonisolated(unsafe) var desiredOutputFormat: MTLPixelFormat = .bgra8Unorm
     nonisolated(unsafe) var desiredTransfer = OPNVideoTransferFunction.sdr
-    var appliedTransfer = OPNVideoTransferFunction.sdr
+    nonisolated(unsafe) var appliedTransfer = OPNVideoTransferFunction.sdr
+    /// The drawable format the layer is configured for, guarded by `frameLock` like
+    /// `appliedTransfer`, so the render thread never reads `CAMetalLayer` to find out.
+    nonisolated(unsafe) var appliedOutputFormat: MTLPixelFormat = .bgra8Unorm
     nonisolated(unsafe) var framesReceived: UInt64 = 0
-    var framesDrawn: UInt64 = 0
+    nonisolated(unsafe) var framesDrawn: UInt64 = 0
     nonisolated(unsafe) var presentationMode = OPNVideoPresentationMode.balanced
     /// `smooth` only: frames waiting for a refresh, oldest first. Capped at two so a stall cannot
     /// build a latency debt; anything older than the newest two is dropped like `balanced` does.
@@ -61,12 +66,23 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     nonisolated(unsafe) var lastPresentInterval = -1.0
     nonisolated(unsafe) var presentJitterTotalMs = 0.0
     nonisolated(unsafe) var presentJitterCount = 0
-    /// `lowestLatency` and `vrr` only: guards `manualDrawGate`, so a burst of decode completions
-    /// enqueues one draw rather than one per frame.
+    /// `lowestLatency` only: guards `manualDrawGate`, so a burst of decode completions enqueues one
+    /// draw rather than one per frame.
     nonisolated(unsafe) var manualDrawLock = os_unfair_lock_s()
-    /// Whether a decode-driven draw is on its way to the main actor, and in `vrr` whether a present
-    /// is still waiting for the glass. See `requestManualDraw(waitsForPresent:)`.
+    /// Whether a decode-driven draw is on its way to the main actor. See `requestManualDraw()`.
     nonisolated(unsafe) var manualDrawGate = OPNManualDrawGate()
+    /// Held by every draw and by the main-actor paths that touch the draw state, so the `vrr`
+    /// render thread and the main actor never interleave.
+    nonisolated(unsafe) var drawLock = os_unfair_lock_s()
+    /// `vrr` only, under `frameLock`: the render thread and the frames waiting for it.
+    nonisolated(unsafe) var renderThread: OPNVideoRenderThread?
+    nonisolated(unsafe) var arrivalQueue = OPNVideoArrivalQueue<OPNArrivedVideoFrame>()
+    /// `vrr` only, under `presentLock`.
+    nonisolated(unsafe) var inFlightBudget = OPNInFlightBudget(lifetime: 0)
+    /// `vrr` only, main actor: a worker that was asked to leave and is still finishing a draw.
+    var retiringRenderThread: OPNVideoRenderThread?
+    /// `vrr` only, main actor: numbers each worker so its presented callbacks stay its own.
+    var nextRenderThreadLifetime: UInt64 = 1
     /// A one-shot request to write the next drawn frame — the drawable itself, after our render
     /// pass — as a JPEG. Set on the main actor, consumed on the render thread under `frameLock`.
     nonisolated(unsafe) var pendingRenderSnapshotURL: URL?
@@ -76,7 +92,9 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
 
     init(frame frameRect: NSRect, targetFps: Int32) {
         self.targetFps = min(max(Int(targetFps), 30), 240)
-        metalView = MTKView(frame: frameRect, device: MTLCreateSystemDefaultDevice())
+        device = MTLCreateSystemDefaultDevice()
+        metalView = MTKView(frame: frameRect, device: device)
+        metalLayer = metalView.layer as? CAMetalLayer
         super.init(frame: frameRect)
 
         wantsLayer = true
@@ -115,6 +133,10 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         nil
     }
 
+    deinit {
+        renderThread?.stop(timeout: 0)
+    }
+
     override func layout() {
         super.layout()
         metalView.frame = bounds
@@ -127,23 +149,25 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         resetDrawCadence()
         markDrawableSizeDirty(true)
         updateDrawableSizeForCurrentBackingScale()
+        updateRenderThread()
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         markDrawableSizeDirty(true)
         updateDrawableSizeForCurrentBackingScale()
+        updateRenderThread()
     }
 
     nonisolated private func drawableSizeNeedsUpdate() -> Bool {
         os_unfair_lock_lock(&frameLock)
         defer { os_unfair_lock_unlock(&frameLock) }
-        return drawableSizeDirty
+        return isDrawableSizeDirty
     }
 
-    nonisolated private func markDrawableSizeDirty(_ dirty: Bool) {
+    nonisolated private func markDrawableSizeDirty(_ isDirty: Bool) {
         os_unfair_lock_lock(&frameLock)
-        drawableSizeDirty = dirty
+        isDrawableSizeDirty = isDirty
         os_unfair_lock_unlock(&frameLock)
     }
 
@@ -178,11 +202,21 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
             pendingFrames.append((frame, frameSerial, receivedAt))
             if pendingFrames.count > 2 { pendingFrames.removeFirst(pendingFrames.count - 2) }
         }
+        let thread = mode == .vrr ? renderThread : nil
+        if thread != nil {
+            arrivalQueue.push(OPNArrivedVideoFrame(frame: frame, serial: frameSerial, receivedAt: receivedAt),
+                              arrivedAt: receivedAt)
+        }
         os_unfair_lock_unlock(&frameLock)
-        if mode.drawsOnDecode { requestManualDraw(waitsForPresent: mode == .vrr) }
+        if let thread {
+            thread.signal()
+            return
+        }
+        guard mode == .lowestLatency else { return }
+        requestManualDraw()
     }
 
-    /// Kicks a `lowestLatency` or `vrr` draw from whatever thread decoded the frame.
+    /// Kicks a `lowestLatency` draw from whatever thread decoded the frame.
     ///
     /// The draw has to land on the main actor. `draw(in:)` and the whole render path below it are
     /// main-actor-isolated, and `-[MTKView draw]`'s ObjC thunk checks that at runtime: calling it
@@ -203,19 +237,18 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     /// pool is empty, and at a decode rate above what the display presents it usually is; clearing
     /// the flag first let every frame that arrived during that wait enqueue another blocked draw,
     /// measured as the main thread sitting in `semaphore_timedwait_trap` for 98% of a sample.
-    nonisolated func requestManualDraw(waitsForPresent: Bool) {
+    nonisolated func requestManualDraw() {
         os_unfair_lock_lock(&manualDrawLock)
-        let queuesDraw = manualDrawGate.request(waitsForPresent: waitsForPresent, now: CACurrentMediaTime())
+        let shouldQueueDraw = manualDrawGate.request()
         os_unfair_lock_unlock(&manualDrawLock)
-        guard queuesDraw else { return }
+        guard shouldQueueDraw else { return }
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.metalView.draw()
                 os_unfair_lock_lock(&self.manualDrawLock)
-                let drawsAgain = self.manualDrawGate.drawFinished()
+                self.manualDrawGate.drawFinished()
                 os_unfair_lock_unlock(&self.manualDrawLock)
-                if drawsAgain { self.requestManualDraw(waitsForPresent: true) }
             }
         }
     }
@@ -223,41 +256,50 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     func draw(in view: MTKView) {
         guard view == metalView else { return }
         // Both callers land here on the main actor: MTKView's display link, and the coalesced kick
-        // in `requestManualDraw(waitsForPresent:)`. The recompute reads window/backingScaleFactor,
-        // which AppKit allows on the main thread only, so it stays behind that check rather than
-        // running wherever the caller happened to be.
+        // in `requestManualDraw()`. The recompute reads window/backingScaleFactor, which AppKit
+        // allows on the main thread only, so it stays behind that check rather than running
+        // wherever the caller happened to be.
         synchronizeDrawableSize()
 
-        guard let next = nextFrameToDraw(), next.frame.width > 0, next.frame.height > 0 else { return }
+        guard let next = nextFrameToDraw(), next.isRenderable else { return }
+        if applyOutputFormat(next.outputFormat, transfer: next.outputTransfer) { return }
+        if isDrawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
+        guard let drawable = view.currentDrawable else { return }
+        os_unfair_lock_lock(&drawLock)
+        render(next, into: drawable)
+        os_unfair_lock_unlock(&drawLock)
+    }
+
+    /// Draws `next` into `drawable` and presents it. Called under `drawLock`, on the main actor or
+    /// on the `vrr` render thread.
+    nonisolated func render(_ next: OPNNextVideoFrame, into drawable: any CAMetalDrawable) {
         let frame = next.frame
-        if applyOutputFormatIfNeeded(next.output.0, transfer: next.output.1) { return }
-        attachPresentedHandler(receivedAt: next.receivedAt)
-        holdDrawsUntilPresented()
+        attachPresentedHandler(to: drawable, receivedAt: next.receivedAt)
 
         let sourceSize = next.sourceSize.width > 0 && next.sourceSize.height > 0
             ? next.sourceSize
             : CGSize(width: frame.width, height: frame.height)
-        var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize), drawableResolution: videoResolutionString(metalView.drawableSize))
+        var diagnostics = RenderDiagnostics(sourceResolution: videoResolutionString(sourceSize),
+                                            drawableResolution: videoResolutionString(drawable.texturePixelSize))
         let enhancement = budgetedEnhancement()
-        if drawableSizeDirty { updateDrawableSizeForCurrentBackingScale() }
 
         if enhancement.mode > 0,
-           renderEnhancedFrame(frame, drawSerial: next.serial, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
-            captureDrawableIfRequested()
-            emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
+           renderEnhancedFrame(frame, into: drawable, drawSerial: next.serial, sourceSize: sourceSize, enhancement: enhancement, diagnostics: &diagnostics) {
+            captureRequestedDrawable(drawable)
+            emitDiagnostics(diagnostics, isForced: !diagnostics.fallback.isEmpty)
             return
         }
         // Enhancement off, or the enhanced pass declined the frame: the plain spatial pass still
         // draws it. That shader set is the only converter that reads every decoded surface — 8-bit
         // NV12 through 10-bit 4:4:4 — and it applies whatever pillarbox fill is selected, so the
         // picture and its committed geometry stay correct on one path.
-        if renderPlainFrame(frame, drawSerial: next.serial, sourceSize: sourceSize, diagnostics: &diagnostics) {
-            captureDrawableIfRequested()
-            emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
+        if renderPlainFrame(frame, into: drawable, drawSerial: next.serial, sourceSize: sourceSize, diagnostics: &diagnostics) {
+            captureRequestedDrawable(drawable)
+            emitDiagnostics(diagnostics, isForced: !diagnostics.fallback.isEmpty)
             return
         }
         lastEnhancementFrameTimeMs = diagnostics.enhancementFrameTimeMs
-        emitDiagnosticsIfNeeded(diagnostics, force: !diagnostics.fallback.isEmpty)
+        emitDiagnostics(diagnostics, isForced: !diagnostics.fallback.isEmpty)
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
@@ -297,35 +339,36 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     /// Fills in the shared settings object for this frame. Fill with upscaling off borrows the
     /// spatial path in its cheapest form: `lowCostSpatial` selects the plain-sample `fast_*`
     /// shaders, so the picture area is untouched and only the bar columns cost anything extra.
-    func configuredEnhancementSettings(enhancement: VideoEnhancement,
+    nonisolated func configuredEnhancementSettings(enhancement: VideoEnhancement,
                                                sourceSize: CGSize,
+                                               drawableSize: CGSize,
                                                renderer: OPNVideoEnhancementRenderer) -> OPNVideoEnhancementSettings {
         let settings = enhancementSettings
         // Fill with upscaling off: borrow the spatial path in its cheapest form.
         // lowCostSpatial selects the plain-sample `fast_*` shaders, so the picture
         // area is untouched and only the bar columns cost anything extra.
-        let fillOnly = enhancement.mode == 0
+        let isFillOnly = enhancement.mode == 0
         switch enhancement.mode {
         case 4: settings.configuredTier = .temporal
         case 3: settings.configuredTier = .metalFX
         case 2: settings.configuredTier = .spatial
         case 0: settings.configuredTier = .spatial
-        default: settings.configuredTier = automaticEnhancementTier(renderer: renderer, device: metalView.device)
+        default: settings.configuredTier = automaticEnhancementTier(renderer: renderer, device: device)
         }
         settings.pillarboxFillMode = Int(enhancement.pillarboxFillMode)
         settings.pillarboxFillDim = Float(enhancement.pillarboxFillDim) / 100.0
         settings.pillarboxFillColor = enhancement.pillarboxFillColor
-        settings.sharpness = fillOnly ? 0 : Int(enhancement.sharpness)
-        settings.denoise = fillOnly ? 0 : Int(enhancement.denoise)
+        settings.sharpness = isFillOnly ? 0 : Int(enhancement.sharpness)
+        settings.denoise = isFillOnly ? 0 : Int(enhancement.denoise)
         settings.sourceSize = sourceSize
-        settings.drawableSize = metalView.drawableSize
+        settings.drawableSize = drawableSize
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
-        settings.lowCostSpatial = fillOnly || adaptiveEnhancementPenalty > 0
+        settings.lowCostSpatial = isFillOnly || adaptiveEnhancementPenalty > 0
         return settings
     }
 
     /// Copies an accepted enhanced frame's result into the HUD diagnostics and the adaptive budget.
-    private func applyEnhancementSuccess(_ result: OPNVideoEnhancementResult,
+    nonisolated private func applyEnhancementSuccess(_ result: OPNVideoEnhancementResult,
                                          drawSerial: UInt64,
                                          targetFrameTimeMs: Double,
                                          diagnostics: inout RenderDiagnostics) {
@@ -365,32 +408,34 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
 
     /// The requested enhancement, stepped down while the adaptive budget is over. Each penalty
     /// level drops to the next cheaper tier rather than switching the picture off outright.
-    private func budgetedEnhancement() -> VideoEnhancement {
+    nonisolated private func budgetedEnhancement() -> VideoEnhancement {
         var enhancement = localVideoEnhancement()
         guard adaptiveEnhancementPenalty > 0, let enhancementRenderer else { return enhancement }
-        if enhancement.mode == 4 {
-            enhancement.mode = enhancementRenderer.isMetalFXAvailable ? 3 : 2
-        } else if enhancement.mode == 3, !enhancementRenderer.isMetalFXAvailable {
-            enhancement.mode = 2
-        } else if enhancement.mode == 2, adaptiveEnhancementPenalty > 1 {
-            enhancement.mode = 0
+        switch enhancement.mode {
+        case 4: enhancement.mode = enhancementRenderer.isMetalFXAvailable ? 3 : 2
+        case 3 where !enhancementRenderer.isMetalFXAvailable: enhancement.mode = 2
+        case 2 where adaptiveEnhancementPenalty > 1: enhancement.mode = 0
+        default: break
         }
         return enhancement
     }
 
-    private func renderEnhancedFrame(_ frame: OPNVideoFrame, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
+    nonisolated private func renderEnhancedFrame(_ frame: OPNVideoFrame, into drawable: any CAMetalDrawable, drawSerial: UInt64, sourceSize: CGSize, enhancement: VideoEnhancement, diagnostics: inout RenderDiagnostics) -> Bool {
         guard let enhancementRenderer else { return false }
-        let settings = configuredEnhancementSettings(enhancement: enhancement, sourceSize: sourceSize, renderer: enhancementRenderer)
+        let settings = configuredEnhancementSettings(enhancement: enhancement,
+                                                    sourceSize: sourceSize,
+                                                    drawableSize: drawable.texturePixelSize,
+                                                    renderer: enhancementRenderer)
         let diagnosticsNow = CACurrentMediaTime()
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || diagnosticsNow - lastDiagnosticsUpdateTime >= 1.0
 
         let result = enhancementResult
-        let enhancedOK = enhancementRenderer.renderFrame(frame, to: metalView, settings: settings, result: result)
-        if !enhancedOK, enhancement.fillMode.needsCustomRenderPath, result.fallbackReason != lastLoggedFallbackReason {
+        let isEnhanced = enhancementRenderer.renderFrame(frame, into: drawable, settings: settings, result: result)
+        if !isEnhanced, enhancement.fillMode.needsCustomRenderPath, result.fallbackReason != lastLoggedFallbackReason {
             lastLoggedFallbackReason = result.fallbackReason
             OPNLog.info(.stream, "Pillarbox custom path FELL BACK: \(result.fallbackReason)")
         }
-        if enhancedOK {
+        if isEnhanced {
             applyEnhancementSuccess(result, drawSerial: drawSerial, targetFrameTimeMs: settings.targetFrameTimeMs, diagnostics: &diagnostics)
             return true
         }
@@ -408,7 +453,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
 
     /// Draws any decoded surface through the spatial shader's cheapest form: the YCbCr conversion and
     /// the pillarbox fill the user asked for, with no sharpening and no denoise.
-    private func renderPlainFrame(_ frame: OPNVideoFrame, drawSerial: UInt64, sourceSize: CGSize, diagnostics: inout RenderDiagnostics) -> Bool {
+    nonisolated private func renderPlainFrame(_ frame: OPNVideoFrame, into drawable: any CAMetalDrawable, drawSerial: UInt64, sourceSize: CGSize, diagnostics: inout RenderDiagnostics) -> Bool {
         guard let enhancementRenderer else { return false }
         let surfaceFormat = CVPixelBufferGetPixelFormatType(frame.pixelBuffer)
         let settings = enhancementSettings
@@ -420,14 +465,14 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         settings.sharpness = 0
         settings.denoise = 0
         settings.sourceSize = sourceSize
-        settings.drawableSize = metalView.drawableSize
+        settings.drawableSize = drawable.texturePixelSize
         settings.targetFrameTimeMs = 1000.0 / Double(max(1, targetFps))
         settings.captureEnhancedPixelBuffer = false
         settings.lowCostSpatial = true
         settings.emitDiagnostics = lastDiagnosticsUpdateTime <= 0 || CACurrentMediaTime() - lastDiagnosticsUpdateTime >= 1.0
 
         let result = enhancementResult
-        if enhancementRenderer.renderFrame(frame, to: metalView, settings: settings, result: result) {
+        if enhancementRenderer.renderFrame(frame, into: drawable, settings: settings, result: result) {
             diagnostics.pixelFormat = result.pixelFormat.isEmpty ? OPNVideoTextureSource.pixelFormatName(surfaceFormat) : result.pixelFormat
             diagnostics.renderMode = "BiPlanar"
             diagnostics.frameSource = result.frameSource.isEmpty ? "CVPixelBuffer" : result.frameSource
@@ -451,17 +496,23 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         return false
     }
 
-    private func adaptEnhancementBudget(frameTimeMs: Double, targetFrameTimeMs: Double) {
+    nonisolated private func adaptEnhancementBudget(frameTimeMs: Double, targetFrameTimeMs: Double) {
         if frameTimeMs > targetFrameTimeMs * 1.15 {
-            enhancementOverBudgetCount += 1
-            if enhancementOverBudgetCount >= 10 {
-                adaptiveEnhancementPenalty = min(2, adaptiveEnhancementPenalty + 1)
-                enhancementOverBudgetCount = 0
-            }
-        } else if frameTimeMs > 0, frameTimeMs < targetFrameTimeMs * 0.72 {
-            enhancementOverBudgetCount = 0
-            if adaptiveEnhancementPenalty > 0 { adaptiveEnhancementPenalty -= 1 }
+            noteOverBudgetFrame()
+            return
         }
+        guard frameTimeMs > 0, frameTimeMs < targetFrameTimeMs * 0.72 else { return }
+        enhancementOverBudgetCount = 0
+        guard adaptiveEnhancementPenalty > 0 else { return }
+        adaptiveEnhancementPenalty -= 1
+    }
+
+    /// Steps the enhancement down one tier once ten frames in a row run over the target.
+    nonisolated private func noteOverBudgetFrame() {
+        enhancementOverBudgetCount += 1
+        guard enhancementOverBudgetCount >= 10 else { return }
+        adaptiveEnhancementPenalty = min(2, adaptiveEnhancementPenalty + 1)
+        enhancementOverBudgetCount = 0
     }
 
 }
@@ -486,12 +537,10 @@ private func videoResolutionString(_ size: CGSize) -> String {
     return width > 0 && height > 0 ? "\(width)x\(height)" : "unknown"
 }
 
-@MainActor
 private func metalDeviceIsAppleM1Class(_ device: (any MTLDevice)?) -> Bool {
     device?.name.lowercased().hasPrefix("apple m1") == true
 }
 
-@MainActor
 private func automaticEnhancementTier(renderer: OPNVideoEnhancementRenderer, device: (any MTLDevice)?) -> OPNVideoEnhancementTier {
     if metalDeviceIsAppleM1Class(device) {
         return renderer.isMetalFXAvailable ? .metalFX : .spatial
