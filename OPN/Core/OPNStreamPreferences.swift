@@ -210,7 +210,7 @@ public enum OPNStreamPreferences {
         return channels > 0 ? channels : 2
     }
 
-    public static func loadDeviceCapabilities(screen: NSScreen? = nil) -> OPNStreamDeviceCapabilities {
+    public static func loadDeviceCapabilities() -> OPNStreamDeviceCapabilities {
         var capabilities = OPNStreamDeviceCapabilities()
         capabilities.h264HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_H264)
         capabilities.h265HardwareDecodeSupported = VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
@@ -219,21 +219,15 @@ public enum OPNStreamPreferences {
         }
         capabilities.audioOutputChannelCount = defaultOutputDeviceChannelCount()
 
-        guard let snapshot = mainThreadScreenSnapshot(screen: screen) else { return capabilities }
+        guard let snapshot = OPNStreamScreenSnapshotCache.resolved() else { return capabilities }
         let scale = snapshot.backingScaleFactor > 0 ? snapshot.backingScaleFactor : 1.0
         capabilities.displayDpi = max(100, Int((100.0 * scale).rounded()))
-        if let screenNumber = snapshot.screenNumber {
-            let displayId = CGDirectDisplayID(screenNumber)
-            let width = CGDisplayPixelsWide(displayId)
-            let height = CGDisplayPixelsHigh(displayId)
-            if width > 0, height > 0 {
-                capabilities.maxDisplayWidth = width
-                capabilities.maxDisplayHeight = height
+        if snapshot.screenNumber != nil {
+            if snapshot.pixelWidth > 0, snapshot.pixelHeight > 0 {
+                capabilities.maxDisplayWidth = snapshot.pixelWidth
+                capabilities.maxDisplayHeight = snapshot.pixelHeight
             }
-            if let mode = CGDisplayCopyDisplayMode(displayId) {
-                let refreshRate = mode.refreshRate
-                if refreshRate.isFinite, refreshRate > 0 { capabilities.maxDisplayRefreshRate = Int(refreshRate.rounded()) }
-            }
+            if snapshot.refreshRate > 0 { capabilities.maxDisplayRefreshRate = snapshot.refreshRate }
         }
         if capabilities.maxDisplayWidth == 0 || capabilities.maxDisplayHeight == 0 {
             capabilities.maxDisplayWidth = Int((snapshot.frameSize.width * scale).rounded())
@@ -242,17 +236,6 @@ public enum OPNStreamPreferences {
         capabilities.maxDisplayRefreshRate = max(capabilities.maxDisplayRefreshRate, snapshot.maximumFramesPerSecond)
         capabilities.hdrDisplaySupported = snapshot.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0
         return capabilities
-    }
-
-    private static func mainThreadScreenSnapshot(screen: NSScreen?) -> OPNStreamScreenSnapshot? {
-        nonisolated(unsafe) let requestedScreen = screen
-        let capture = {
-            MainActor.assumeIsolated {
-                OPNStreamScreenSnapshot(screen: requestedScreen ?? NSScreen.main)
-            }
-        }
-        if Thread.isMainThread { return capture() }
-        return DispatchQueue.main.sync(execute: capture)
     }
 
     public static func codecSupported(_ codec: OPNStreamCodecOption, capabilities: OPNStreamDeviceCapabilities) -> Bool {

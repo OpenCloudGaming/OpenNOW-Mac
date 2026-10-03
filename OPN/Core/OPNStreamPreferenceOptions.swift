@@ -273,23 +273,6 @@ public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
     public init() {}
 }
 
-struct OPNStreamScreenSnapshot: Sendable {
-    let backingScaleFactor: CGFloat
-    let screenNumber: UInt32?
-    let frameSize: CGSize
-    let maximumFramesPerSecond: Int
-    let maximumPotentialExtendedDynamicRangeColorComponentValue: CGFloat
-
-    @MainActor init?(screen: NSScreen?) {
-        guard let screen else { return nil }
-        backingScaleFactor = screen.backingScaleFactor
-        screenNumber = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-        frameSize = screen.frame.size
-        maximumFramesPerSecond = screen.maximumFramesPerSecond
-        maximumPotentialExtendedDynamicRangeColorComponentValue = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
-    }
-}
-
 public struct OPNStreamPresentationCapability: Equatable, Sendable {
     public let supportsTenBit: Bool
     public let supportsHDR: Bool
