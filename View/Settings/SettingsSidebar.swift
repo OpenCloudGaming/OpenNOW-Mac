@@ -101,7 +101,7 @@ enum SettingsNewBadges {
         case .surroundSound: .audio
         case .sessionReadyAction, .steamBigPictureMode, .inGameSettingsPersistence: .general
         case .vsyncMode, .reflex: .video
-        case .controllerOrder: .input
+        case .controllerOrder, .matchMacPointerSpeed: .input
         case .homeLayout, .homeCategories, .tileDensity, .tileTitles, .reduceMotion, .accentColor, .appearance, .jumpBackIn: .theme
         case .keybindings: .keybindings
         case .menuBar, .launchAtLogin, .startupPresentation, .sessionInsights: .general

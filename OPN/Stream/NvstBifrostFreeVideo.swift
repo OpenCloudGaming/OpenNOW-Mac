@@ -842,6 +842,9 @@ extension NvstBifrostFreeTransport {
         // a rumble-capable pad is present. Always on here: a pad without motors just never gets a
         // command it could act on, and the seat otherwise stays silent for every pad.
         sent.append("haptics=\((try? sendFramedRemoteInput(NvstRemoteInput.hapticsState(enabled: true))) != nil)")
+        // What the official client sends at start ("SDL mouse settings (accel=0, speed=10)"): without
+        // it the seat keeps Windows' pointer acceleration on top of our unaccelerated counts.
+        sent.append("mouseSettings=\((try? sendFramedRemoteInput(NvstRemoteInput.mouseSettings(isAccelerationEnabled: false, speed: 10))) != nil)")
         logger?("NVST input activation sent (\(sent.joined(separator: " ")))")
     }
 

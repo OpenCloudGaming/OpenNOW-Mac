@@ -188,6 +188,7 @@ extension OPNStreamPreferences {
     public static func saveSuppressInputWhenInactive(_ value: Bool) { storage.set(value, forKey: k.suppressInputWhenInactive) }
     public static func saveDirectMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.directMouseInput) }
     public static func saveRawMouseInputEnabled(_ value: Bool) { storage.set(value, forKey: k.rawMouseInput) }
+    public static func saveRawMouseMatchesMacPointerSpeed(_ value: Bool) { storage.set(value, forKey: k.rawMouseMatchesMacPointerSpeed) }
     public static func saveCursorPolicyIndex(_ value: Int) { storage.set(normalizedCursorPolicyIndex(value), forKey: k.cursorPolicyIndex) }
     public static func saveMouseSensitivityPercent(_ value: Int) { storage.set(clamp(value, mouseSensitivityRange.lowerBound, mouseSensitivityRange.upperBound), forKey: k.mouseSensitivityPercent) }
     public static func saveAntiAFKMouseMovementEnabled(_ value: Bool) { storage.set(value, forKey: k.antiAFKMouseMovementEnabled) }
@@ -348,6 +349,7 @@ extension OPNStreamPreferences {
         profile.suppressInputWhenInactive = bool(value(dictionary, k.suppressInputWhenInactive), true)
         profile.directMouseInput = bool(value(dictionary, k.directMouseInput), true)
         profile.rawMouseInput = bool(value(dictionary, k.rawMouseInput), false)
+        profile.rawMouseMatchesMacPointerSpeed = bool(value(dictionary, k.rawMouseMatchesMacPointerSpeed), false)
         profile.cursorPolicyIndex = storedCursorPolicyIndex(dictionary)
         profile.cursorPolicy = OPNCursorPolicy.from(profile.cursorPolicyIndex)
         profile.mouseSensitivityPercent = clamp(int(value(dictionary, k.mouseSensitivityPercent), 100), mouseSensitivityRange.lowerBound, mouseSensitivityRange.upperBound)
@@ -414,6 +416,7 @@ extension OPNStreamPreferences {
             k.suppressInputWhenInactive: profile.suppressInputWhenInactive,
             k.directMouseInput: profile.directMouseInput,
             k.rawMouseInput: profile.rawMouseInput,
+            k.rawMouseMatchesMacPointerSpeed: profile.rawMouseMatchesMacPointerSpeed,
             k.cursorPolicyIndex: profile.cursorPolicyIndex,
             k.mouseSensitivityPercent: profile.mouseSensitivityPercent,
             k.antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,

@@ -79,6 +79,15 @@ import Testing
         #expect([UInt8](NvstRemoteInput.hapticsState(enabled: false)).suffix(2) == [0x00, 0x00])
     }
 
+    /// `RiClientBackend::GetMouseSettingsId`: RI packet type 25, body {acceleration, speed} as
+    /// big-endian u32.
+    @Test func mouseSettingsPacketMatchesTheOfficialLayout() {
+        let packet = NvstRemoteInput.mouseSettings(isAccelerationEnabled: false, speed: 10)
+        #expect([UInt8](packet) == [0x00, 0x00, 0x00, 0x0c, 0x19, 0x00, 0x00, 0x00,
+                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a])
+        #expect([UInt8](NvstRemoteInput.mouseSettings(isAccelerationEnabled: true, speed: 10))[8 ..< 12] == [0x00, 0x00, 0x00, 0x01])
+    }
+
     @Test func controlCommandNamesTheHapticCode() {
         #expect(NvstControlCommandCode.hapticEvent.rawValue == 0x010b)
         #expect(NvstControlCommandCode.hapticEvent.name == "haptic-event")

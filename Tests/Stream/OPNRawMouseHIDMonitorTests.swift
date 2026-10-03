@@ -116,4 +116,45 @@ struct OPNRawMouseHIDMonitorTests {
     @Test func noReportYetMeansNothingIsInFlight() {
         #expect(!OPNRawMouseHIDMonitor.isReportInFlight(lastReportUptimeNanoseconds: 0, uptimeNanoseconds: 5_000_000_000))
     }
+
+    @Test func macPointerScaleWaitsForEnoughMovement() {
+        var scale = OPNMacPointerScale()
+        scale.recordCounts(x: 16, y: 0)
+        scale.recordPointer(deltaX: 8, deltaY: 0)
+        #expect(scale.pointsPerCount == nil)
+    }
+
+    @Test func macPointerScaleLearnsTheTrackingSpeedRatio() {
+        var scale = OPNMacPointerScale()
+        for _ in 0..<60 {
+            scale.recordCounts(x: 12, y: -4)
+            scale.recordPointer(deltaX: 6, deltaY: -2)
+        }
+        #expect(abs((scale.pointsPerCount ?? 0) - 0.5) < 0.001)
+    }
+
+    /// AppKit's event lands a few milliseconds after the counts it covers, so each event is paired
+    /// with the counts of the previous one. Steady movement still yields the true ratio.
+    @Test func macPointerScaleToleratesCountsLandingAnEventEarly() {
+        var scale = OPNMacPointerScale()
+        scale.recordCounts(x: 20, y: 0)
+        for _ in 0..<300 {
+            scale.recordPointer(deltaX: 5, deltaY: 0)
+            scale.recordCounts(x: 20, y: 0)
+        }
+        #expect(abs((scale.pointsPerCount ?? 0) - 0.25) < 0.01)
+    }
+
+    @Test func macPointerScaleFollowsATrackingSpeedChange() {
+        var scale = OPNMacPointerScale()
+        for _ in 0..<100 {
+            scale.recordCounts(x: 10, y: 0)
+            scale.recordPointer(deltaX: 10, deltaY: 0)
+        }
+        for _ in 0..<600 {
+            scale.recordCounts(x: 10, y: 0)
+            scale.recordPointer(deltaX: 3, deltaY: 0)
+        }
+        #expect(abs((scale.pointsPerCount ?? 0) - 0.3) < 0.01)
+    }
 }

@@ -131,7 +131,7 @@ macOS hands mouse movement to apps about once per screen refresh - roughly 120 b
 **Settings → Input → Mouse → Raw Mouse Input** reads the mouse directly and sends each movement as soon as the mouse reports it, up to 1,000 times a second on a gaming mouse. The official client reads the mouse the same way.
 
 - It needs the **Input Monitoring** permission (System Settings → Privacy & Security → Input Monitoring). Without it, OpenNOW keeps using macOS's mouse events and says so in Settings.
-- It skips macOS's pointer speed and acceleration, so aim can feel faster than before. Lower **Mouse Sensitivity** on the same card, or the game's own sensitivity, to match.
+- It skips macOS's pointer speed and acceleration, so aim can feel faster than before, and game menus that draw their own pointer (No Man's Sky's inventory, for example) move at the mouse's full DPI. Turn on **Match Mac Pointer Speed**, just below it, to keep the raw timing but move as far as your Mac's pointer would, like the official client. Or lower **Mouse Sensitivity** on the same card, or the game's own sensitivity, to match.
 - Trackpads and Apple mice keep going through macOS.
 
 ## 5.1 Surround Sound

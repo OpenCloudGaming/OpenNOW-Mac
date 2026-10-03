@@ -124,6 +124,7 @@ public struct StreamProfile: Equatable, Sendable {
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
     public var rawMouseInput: Bool
+    public var rawMouseMatchesMacPointerSpeed: Bool
     public var cursorPolicy: Int
     public var antiAFKMouseMovementEnabled: Bool
     public var preventDisplaySleepWhileStreaming: Bool
@@ -175,6 +176,7 @@ public struct StreamProfile: Equatable, Sendable {
                 suppressInputWhenInactive: Bool = true,
                 directMouseInput: Bool = true,
                 rawMouseInput: Bool = false,
+                rawMouseMatchesMacPointerSpeed: Bool = false,
                 cursorPolicy: Int = 0,
                 antiAFKMouseMovementEnabled: Bool = false,
                 preventDisplaySleepWhileStreaming: Bool = true,
@@ -225,6 +227,7 @@ public struct StreamProfile: Equatable, Sendable {
         self.suppressInputWhenInactive = suppressInputWhenInactive
         self.directMouseInput = directMouseInput
         self.rawMouseInput = rawMouseInput
+        self.rawMouseMatchesMacPointerSpeed = rawMouseMatchesMacPointerSpeed
         self.cursorPolicy = cursorPolicy
         self.antiAFKMouseMovementEnabled = antiAFKMouseMovementEnabled
         self.preventDisplaySleepWhileStreaming = preventDisplaySleepWhileStreaming
@@ -284,6 +287,7 @@ public struct ResolvedStreamSettings: Equatable, Sendable {
     public var suppressInputWhenInactive: Bool
     public var directMouseInput: Bool
     public var rawMouseInput: Bool
+    public var rawMouseMatchesMacPointerSpeed: Bool
     public var cursorPolicy: Int
     public var antiAFKMouseMovementEnabled: Bool
     public var preventDisplaySleepWhileStreaming: Bool
@@ -343,6 +347,7 @@ public struct ResolvedStreamSettings: Equatable, Sendable {
             "suppressInputWhenInactive": suppressInputWhenInactive,
             "directMouseInput": directMouseInput,
             "rawMouseInput": rawMouseInput,
+            "rawMouseMatchesMacPointerSpeed": rawMouseMatchesMacPointerSpeed,
             "cursorPolicy": cursorPolicy,
             "antiAFKMouseMovementEnabled": antiAFKMouseMovementEnabled,
             "preventDisplaySleepWhileStreaming": preventDisplaySleepWhileStreaming,
@@ -452,6 +457,7 @@ public enum StreamSettingsResolver {
             suppressInputWhenInactive: profile.suppressInputWhenInactive,
             directMouseInput: profile.directMouseInput,
             rawMouseInput: profile.rawMouseInput,
+            rawMouseMatchesMacPointerSpeed: profile.rawMouseMatchesMacPointerSpeed,
             cursorPolicy: OPNCursorPolicy.from(profile.cursorPolicy).rawValue,
             antiAFKMouseMovementEnabled: profile.antiAFKMouseMovementEnabled,
             preventDisplaySleepWhileStreaming: profile.preventDisplaySleepWhileStreaming,

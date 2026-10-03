@@ -374,6 +374,9 @@ public final class NativeStreamView: NSView {
     /// events so slow movements are not lost to rounding at low settings.
     public var mouseSensitivity = 1.0
     var mouseDeltaRemainder = CGPoint.zero
+    /// Raw counts keep their timing but are sent at the size macOS would have moved the pointer.
+    public var rawMouseMatchesMacPointerSpeed = false
+    var macPointerScale = OPNMacPointerScale()
     var pressedKeyboardEvents: [UInt16: KeyboardEvent] = [:]
     var textInputState = NativeNVSTTextInputState()
     var textInputKeyCodes: Set<UInt16> = []

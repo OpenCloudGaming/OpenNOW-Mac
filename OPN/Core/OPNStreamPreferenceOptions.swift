@@ -359,6 +359,7 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var suppressInputWhenInactive = true
     public var directMouseInput = true
     public var rawMouseInput = false
+    public var rawMouseMatchesMacPointerSpeed = false
     public var mouseSensitivityPercent = 100
     public var antiAFKMouseMovementEnabled = false
     public var preventDisplaySleepWhileStreaming = true

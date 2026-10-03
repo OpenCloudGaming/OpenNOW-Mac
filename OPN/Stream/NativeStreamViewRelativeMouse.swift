@@ -12,19 +12,63 @@ extension NativeStreamView {
         }
         switch rawMouseMotion() {
         case .counts(let counts):
-            emitScaledMouseMove(deltaX: CGFloat(counts.x), deltaY: CGFloat(counts.y))
+            emitCountsMouseMove(counts, pointerDeltaX: event.deltaX, pointerDeltaY: event.deltaY)
         case .pending:
-            return
+            emitPendingMouseMove(pointerDeltaX: event.deltaX, pointerDeltaY: event.deltaY)
         case .unavailable:
             emitScaledMouseMove(deltaX: event.deltaX, deltaY: event.deltaY)
         }
+    }
+
+    /// The counts this event covers, sent at the size macOS would have moved the pointer once the
+    /// ratio is known, and as the Mac's own delta until then.
+    private func emitCountsMouseMove(_ counts: OPNRawMouseDelta, pointerDeltaX: CGFloat, pointerDeltaY: CGFloat) {
+        guard rawMouseMatchesMacPointerSpeed else {
+            emitScaledMouseMove(deltaX: CGFloat(counts.x), deltaY: CGFloat(counts.y))
+            return
+        }
+        macPointerScale.recordCounts(x: counts.x, y: counts.y)
+        macPointerScale.recordPointer(deltaX: pointerDeltaX, deltaY: pointerDeltaY)
+        emitMacSizedMouseMove(counts, fallbackDeltaX: pointerDeltaX, fallbackDeltaY: pointerDeltaY)
+    }
+
+    /// A motion event whose counts have not landed yet: the Mac's delta carries the motion until the
+    /// ratio is known, and only feeds the ratio afterwards.
+    private func emitPendingMouseMove(pointerDeltaX: CGFloat, pointerDeltaY: CGFloat) {
+        guard rawMouseMatchesMacPointerSpeed else { return }
+        let isCalibrated = macPointerScale.pointsPerCount != nil
+        macPointerScale.recordPointer(deltaX: pointerDeltaX, deltaY: pointerDeltaY)
+        guard !isCalibrated else { return }
+        emitScaledMouseMove(deltaX: pointerDeltaX, deltaY: pointerDeltaY)
     }
 
     /// Raw counts pushed by the HID reader as each report lands, instead of waiting for the next
     /// AppKit motion event.
     private func emitPushedRawMotion(_ delta: OPNRawMouseDelta) {
         guard rawMouseInputEnabled, isPointerLocked else { return }
-        emitScaledMouseMove(deltaX: CGFloat(delta.x), deltaY: CGFloat(delta.y))
+        guard rawMouseMatchesMacPointerSpeed else {
+            emitScaledMouseMove(deltaX: CGFloat(delta.x), deltaY: CGFloat(delta.y))
+            return
+        }
+        let pointsPerCount = macPointerScale.pointsPerCount
+        macPointerScale.recordCounts(x: delta.x, y: delta.y)
+        guard let pointsPerCount else { return }
+        emitScaledMouseMove(deltaX: Self.scaledPoints(fromCount: delta.x, pointsPerCount: pointsPerCount),
+                            deltaY: Self.scaledPoints(fromCount: delta.y, pointsPerCount: pointsPerCount))
+    }
+
+    private func emitMacSizedMouseMove(_ counts: OPNRawMouseDelta, fallbackDeltaX: CGFloat, fallbackDeltaY: CGFloat) {
+        guard let pointsPerCount = macPointerScale.pointsPerCount else {
+            emitScaledMouseMove(deltaX: fallbackDeltaX, deltaY: fallbackDeltaY)
+            return
+        }
+        emitScaledMouseMove(deltaX: Self.scaledPoints(fromCount: counts.x, pointsPerCount: pointsPerCount),
+                            deltaY: Self.scaledPoints(fromCount: counts.y, pointsPerCount: pointsPerCount))
+    }
+
+    /// One raw count in macOS pointer points, so the two sources of motion scale through one place.
+    private static func scaledPoints(fromCount count: Int, pointsPerCount: Double) -> CGFloat {
+        CGFloat(Double(count) * pointsPerCount)
     }
 
     /// What the raw HID reader has for this motion event. `.unavailable` whenever raw capture is

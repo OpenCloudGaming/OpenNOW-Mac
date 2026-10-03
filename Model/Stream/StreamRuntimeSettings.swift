@@ -26,6 +26,7 @@ struct StreamRuntimeSettings: Equatable {
     var suppressInputWhenInactive = true
     var directMouseInput = true
     var rawMouseInput = false
+    var rawMouseMatchesMacPointerSpeed = false
     var cursorPolicy = 0
     var antiAFKMouseMovementEnabled = false
     var upscalingMode = 0
@@ -84,6 +85,7 @@ struct StreamRuntimeSettings: Equatable {
         suppressInputWhenInactive = Self.bool(dictionary["suppressInputWhenInactive"], fallback: true)
         directMouseInput = Self.bool(dictionary["directMouseInput"], fallback: true)
         rawMouseInput = Self.bool(dictionary["rawMouseInput"])
+        rawMouseMatchesMacPointerSpeed = Self.bool(dictionary["rawMouseMatchesMacPointerSpeed"])
         cursorPolicy = OPNCursorPolicy.from(Self.int(dictionary["cursorPolicy"])).rawValue
         antiAFKMouseMovementEnabled = Self.bool(dictionary["antiAFKMouseMovementEnabled"])
         pillarboxFillMode = OPNPillarboxFillMode.from(Self.int(dictionary["pillarboxFillMode"], fallback: 0)).rawValue
