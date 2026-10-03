@@ -9,6 +9,10 @@ struct CatalogHeroRemoteImage: View {
     let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL?
     let contentMode: ContentMode
+    /// Required rather than defaulted, and passed from `CatalogMarqueeHeroArtwork`: this view used to
+    /// inherit the cache's 3840 default, so it and the launch prefetch disagreed about the rung for
+    /// the same URL and whichever ran first decided the hero's decode for the session.
+    let maxPixelSize: CGFloat
     let onScrimColorChange: (CatalogMarqueeScrimColor) -> Void
 
     @State private var image: NSImage?
@@ -43,8 +47,11 @@ struct CatalogHeroRemoteImage: View {
         isLoading = true
         // The scrim colour is read from the image's EXIF user comment, so this is the one call site
         // that needs the compressed bytes kept alongside the decoded image.
-        if let cached = await imageCache.firstFrameImage(for: url, retainingSourceData: true) {
+        if let cached = await imageCache.firstFrameImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: true) {
             guard !Task.isCancelled else { return }
+            // The decoded size is the thing this fix is about: a hero rung that disagrees with the
+            // prefetch's shows up here as a second, larger decode of the same URL at launch.
+            OPNLog.info(.cache, "Catalog hero artwork url=\(url.absoluteString) rung=\(Int(maxPixelSize)) decodedBytes=\(cached.decodedByteCount)")
             image = cached.image
             hasFailed = false
             isLoading = false

@@ -29,6 +29,16 @@ enum CatalogLogoArtwork {
     static let requestWidth = 620
 }
 
+/// One rung for the marquee hero band - the width baked into its CDN URL and the `maxPixelSize` its
+/// decode is asked for - because `CatalogImageLoadKey` carries the rung: the launch prefetch warms
+/// the hero at this rung and the view reads it back at this rung, or the largest artwork on the home
+/// screen is fetched and decoded twice during launch. The view used to inherit the cache's 3840
+/// default while both prefetches warmed 1920, which is the mismatch this pins shut.
+enum CatalogMarqueeHeroArtwork {
+    static let requestWidth = 1920
+    static let decodeRung: CGFloat = CGFloat(requestWidth)
+}
+
 extension OPNCatalogGameObject {
     var cardBadgeLabel: String? {
         if isLaunchPatching { return patchStatusPrimaryDisplayText }

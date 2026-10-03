@@ -256,7 +256,7 @@ struct CatalogContentView: View {
         var seen = Set<String>()
         for offset in 1...min(2, games.count - 1) {
             let game = games[(index + offset) % games.count]
-            appendHeroPrefetchURL(game.bestMarqueeHeroImageURL, width: 1920, urls: &heroURLs, seen: &seen)
+            appendHeroPrefetchURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeHeroArtwork.requestWidth, urls: &heroURLs, seen: &seen)
             appendHeroPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &wordmarkURLs, seen: &seen)
         }
         guard !heroURLs.isEmpty || !wordmarkURLs.isEmpty else { return }
@@ -374,7 +374,11 @@ struct CatalogHeroView: View {
                 let textWidth = CatalogVendorLayout.heroTextWidth(for: bandWidth)
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
-                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill) { color in
+                    CatalogHeroRemoteImage(
+                        url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeHeroArtwork.requestWidth),
+                        contentMode: .fill,
+                        maxPixelSize: CatalogMarqueeHeroArtwork.decodeRung
+                    ) { color in
                         scrimColor = color
                     }
                     .frame(width: max(bandWidth - imageLeading, 1), height: heroHeight)
