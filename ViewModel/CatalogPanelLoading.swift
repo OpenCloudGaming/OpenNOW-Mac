@@ -42,9 +42,9 @@ extension CatalogViewModel {
     /// well before the marquee, and holding for the marquee when the rails are ready is the wait the
     /// adaptive hold exists to bound, not to extend.
     var startupContentGate: StartupContentGate? {
-        // The account-scoped disk work carries the Jump Back In rail and the collections the page
-        // draws, so the splash must not uncover a page that would settle when they land.
-        guard hasLoadedAccountScopedState else { return nil }
+        // The disk work carries the Jump Back In rail and the collections the page draws, so the
+        // splash must not uncover a page that would settle when they land.
+        guard isAccountScopedStateLoaded else { return nil }
         if !heroRotationGames.isEmpty { return .hero }
         guard !isLoadingPanels, !catalogSections.isEmpty else { return nil }
         return .rails

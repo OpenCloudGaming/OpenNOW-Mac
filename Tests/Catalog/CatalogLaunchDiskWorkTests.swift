@@ -1,6 +1,5 @@
 //  The launch path's account-scoped disk work: `start()` defers the icon-directory scan and the
-//  `UserDefaults` reads behind collections, playtime and recently-played off the main actor, and the
-//  surfaces that display them wait on `awaitAccountScopedState()` instead of painting empty lists.
+//  state reads behind collections, playtime and recently-played, and the surfaces wait on it.
 
 import AppKit
 import Foundation
@@ -38,12 +37,12 @@ import Testing
 
         // `start()` has to return with the disk work still queued: an inline load would already have
         // put the stored collection in the model here, which is the main-actor scan this defers.
-        #expect(!model.hasLoadedAccountScopedState)
+        #expect(!model.isAccountScopedStateLoaded)
         #expect(model.userCollections.isEmpty)
 
         await model.awaitAccountScopedState()
 
-        #expect(model.hasLoadedAccountScopedState)
+        #expect(model.isAccountScopedStateLoaded)
         #expect(model.userCollections.map(\.name) == ["Co-op"])
     }
 

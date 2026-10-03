@@ -10,14 +10,6 @@ enum CatalogCollectionsDialog: Equatable {
     case delete(id: String)
 }
 
-/// What `start()`'s deferred account-scoped disk work loads, carried back to the main actor in one
-/// hop so the observable properties are assigned together and no observer sees a half-applied state.
-struct CatalogAccountScopedState: Sendable {
-    let playtimeStatistics: CatalogPlaytimeStatistics
-    let recentlyPlayed: CatalogRecentlyPlayed
-    let collections: [OPNUserCollection]
-}
-
 extension CatalogViewModel {
     /// The account a collection belongs to, following favorites' catalog account and falling back
     /// to the playtime identity so an account without a user id still gets an isolated store.
@@ -327,36 +319,8 @@ extension CatalogViewModel {
         Self.pruneOrphanedCollectionIcons()
     }
 
-    /// The account-scoped state `start()` loads off the main actor, and the two launch disk scans it
-    /// owns. `nonisolated` and `async` so awaiting it from the main actor runs it on the generic
-    /// executor rather than on the main actor it was called from.
-    nonisolated static func readAccountScopedState(
-        playtimeAccountIdentifier: String,
-        collectionsAccountIdentifier: String,
-        accountIdentifiers: [String]
-    ) async -> CatalogAccountScopedState {
-        // Records which account this is, so the backup can be restored into it before any local
-        // collection key exists. First, because the prune below reads the registered namespaces.
-        OPNCloudSyncAccountNamespace.registerCurrentAccount(
-            collectionsAccountIdentifier,
-            candidates: accountIdentifiers
-        )
-        let state = CatalogAccountScopedState(
-            playtimeStatistics: CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier),
-            recentlyPlayed: CatalogRecentlyPlayed.load(accountIdentifier: playtimeAccountIdentifier),
-            collections: CatalogCollectionsStore.load(accountIdentifier: collectionsAccountIdentifier).collections
-        )
-        // The second launch scan. Kept here rather than on the main actor so a first launch after an
-        // upgrade does not list and stat the icon directory before the first frame.
-        pruneOrphanedCollectionIcons()
-        return state
-    }
-
-    /// Drops custom icon files no collection names any more. Every account's icons are kept, not just
-    /// the one on screen, so another account's images are never pruned away.
-    ///
-    /// `nonisolated` so the launch path runs the directory scan off the main actor; the
-    /// collections-edit path calls it inline, where it already runs.
+    /// Drops custom icon files no collection names any more, keeping every account's icons rather
+    /// than only the one on screen. `nonisolated` so the launch path scans off the main actor.
     nonisolated static func pruneOrphanedCollectionIcons() {
         OPNCollectionIconStore.removeOrphans(keeping: CatalogCollectionsStore.referencedImageAssetIdentifiers())
     }

@@ -422,13 +422,10 @@ final class CatalogViewModel {
     let deinitHandle = CatalogViewModelDeinitHandle()
 
     private var hasStarted = false
-    /// The account-scoped disk work `start()` runs off the main actor: the icon-directory scan and
-    /// the `UserDefaults` reads behind collections, playtime and recently-played. See
-    /// `CatalogLaunchDiskWork.swift`.
+    /// The launch's account-scoped disk work, owned by `CatalogLaunchDiskWork.swift`.
     var accountScopedStateTask: Task<Void, Never>?
-    /// Whether that work has landed, written only by `CatalogLaunchDiskWork.swift`.
-    /// `startupContentGate` holds the splash until it has.
-    var hasLoadedAccountScopedState = false
+    /// Whether that work has landed; `startupContentGate` holds the splash until it has.
+    var isAccountScopedStateLoaded = false
 
     init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
