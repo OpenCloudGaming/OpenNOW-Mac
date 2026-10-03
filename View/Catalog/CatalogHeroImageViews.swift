@@ -177,10 +177,15 @@ private final class CatalogMarqueeScrimColorBox {
 }
 
 enum CatalogHeroImageMetadata {
-    /// The scrim colour is a property of the artwork, not the slide, and a rotation can return to a
-    /// slide already shown; a cached colour keeps that revisit from re-parsing the EXIF comment or
-    /// sampling the image again.
-    nonisolated(unsafe) private static let scrimColorCache = NSCache<NSURL, CatalogMarqueeScrimColorBox>()
+    /// One entry per hero artwork URL, covering a full rotation of the three-Double colour boxes.
+    static let cacheBudget = ImageCacheBudget(countLimit: 128, totalCostLimit: 128 * scrimColorEntryCost)
+
+    /// A rotation returns to slides already shown, so a cached colour spares that revisit the EXIF
+    /// re-parse and resample.
+    nonisolated(unsafe) private static let scrimColorCache: NSCache<NSURL, CatalogMarqueeScrimColorBox> = cacheBudget.makeCache()
+
+    /// The box plus its three Doubles, rounded up, so the cost ceiling matches the count ceiling.
+    private static let scrimColorEntryCost = 256
 
     private struct Metadata: Decodable {
         let colors: Colors?
@@ -196,7 +201,7 @@ enum CatalogHeroImageMetadata {
         let key = url as NSURL
         if let cached = scrimColorCache.object(forKey: key) { return cached.color }
         guard let color = await scrimColor(from: data) else { return nil }
-        scrimColorCache.setObject(CatalogMarqueeScrimColorBox(color), forKey: key)
+        scrimColorCache.setObject(CatalogMarqueeScrimColorBox(color), forKey: key, cost: scrimColorEntryCost)
         return color
     }
 

@@ -415,13 +415,16 @@ struct ScreenshotTextPrompt: View {
 /// sites differ only in how many pixels they ask for, and both are small next to the source PNG.
 @MainActor
 enum ScreenshotImageLoader {
-    private static let cache = NSCache<NSString, NSImage>()
+    /// Grid thumbnails are ~0.3MB decoded and the reader's copies ~13MB; 128 entries holds the
+    /// visible grid, and 64MB holds a handful of reader decodes without following the library size.
+    static let cacheBudget = ImageCacheBudget(countLimit: 128, totalCostLimit: 64 * 1024 * 1024)
+    private static let cache: NSCache<NSString, NSImage> = cacheBudget.makeCache()
 
     static func image(for screenshot: StreamScreenshot, longestEdge: CGFloat) async -> NSImage? {
         let key = key(for: screenshot, longestEdge: longestEdge)
         if let cached = cache.object(forKey: key) { return cached }
         let url = screenshot.imageURL
-        let image = await Task.detached(priority: .utility) { () -> NSImage? in
+        let decoded = await Task.detached(priority: .utility) { () -> (image: NSImage, cost: Int)? in
             guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -429,10 +432,11 @@ enum ScreenshotImageLoader {
                 kCGImageSourceThumbnailMaxPixelSize: max(64, longestEdge)
             ]
             guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            let image = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+            return (image, cgImage.bytesPerRow * cgImage.height)
         }.value
-        if let image { cache.setObject(image, forKey: key) }
-        return image
+        if let decoded { cache.setObject(decoded.image, forKey: key, cost: decoded.cost) }
+        return decoded?.image
     }
 
     static func cachedImage(for screenshot: StreamScreenshot, longestEdge: CGFloat) -> NSImage? {

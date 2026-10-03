@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
 struct LoginBackdrop: View {
@@ -52,14 +53,43 @@ struct VendorResourceImage: View {
         for subdirectory in ["OPN", "Resources/OPN", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
-                imageCache.setObject(image, forKey: cacheKey)
+                imageCache.setObject(image, forKey: cacheKey, cost: decodedByteCost(ofImageAt: url, image: image))
                 return image
             }
         }
         return nil
     }
 
-    nonisolated(unsafe) private static let imageCache = NSCache<NSString, NSImage>()
+    /// The eight prewarm assets decode to ~20MB, and a miss re-decodes inside a first-frame render,
+    /// so the budget holds the whole set; twice the set as a count means only cost can evict.
+    nonisolated static let cacheBudget = ImageCacheBudget(countLimit: 16, totalCostLimit: 48 * 1024 * 1024)
+    nonisolated(unsafe) private static let imageCache: NSCache<NSString, NSImage> = cacheBudget.makeCache()
+
+    /// Decoded bytes of the image at `url`. `NSImage(contentsOf:)` decodes lazily, so the file's
+    /// pixel dimensions are the only cost available before the first draw.
+    nonisolated static func decodedByteCost(ofImageAt url: URL, image: NSImage) -> Int {
+        guard let pixelCount = filePixelCount(ofImageAt: url) else {
+            // Vector sources (SVG) carry no pixel dimensions, so they are charged at their declared size.
+            return decodedByteCost(pixelCount: Double(image.size.width) * Double(image.size.height))
+        }
+        return decodedByteCost(pixelCount: pixelCount)
+    }
+
+    nonisolated private static func filePixelCount(ofImageAt url: URL) -> Double? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Double,
+              let height = properties[kCGImagePropertyPixelHeight] as? Double,
+              width > 0, height > 0
+        else { return nil }
+        return width * height
+    }
+
+    /// Four bytes per pixel, capped at 4GB so a non-finite or implausible size cannot trap the conversion.
+    nonisolated private static func decodedByteCost(pixelCount: Double) -> Int {
+        guard pixelCount.isFinite, pixelCount > 0 else { return 1 }
+        return Int(clamping: Int64(min(pixelCount, 1_000_000_000) * 4))
+    }
 }
 
 struct VendorSplashLoadingView: View {
