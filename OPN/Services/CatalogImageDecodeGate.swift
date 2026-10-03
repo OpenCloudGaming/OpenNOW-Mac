@@ -2,19 +2,13 @@ import Foundation
 
 /// The concurrency budget for catalog artwork decodes, and the peak it has reached.
 ///
-/// On-demand decodes used to be unbounded: every visible tile's `.task(id: url)` spawned its own
-/// detached decode on the first frame, and the eager home page fires one per tile. The gate caps
-/// that wave and keeps a reserved lane free for first-frame work, so the hero and the prefetch that
-/// warms the first rail never queue behind a screenful of tiles.
-///
-/// A bound nobody can read is a bound nobody can verify, so each new peak is reported once through
-/// the ordinary log path and lands in the diagnostics log a user can already send.
+/// Every visible tile on the eager home page used to spawn its own detached decode on the first
+/// frame. The gate caps that wave and keeps a lane free for the hero and the first-frame prefetch.
 nonisolated final class CatalogImageDecodeGate: @unchecked Sendable {
     /// The epic's first-frame ceiling for concurrent decodes.
-    static let defaultLimit = 6
-    /// Slots inside `defaultLimit` that only first-frame work may occupy. At least one slot always
-    /// stays available to on-demand work, so the reservation can never starve the catalog.
-    static let defaultReservedForFirstFrame = 2
+    static let maximumConcurrentDecodes = 6
+    /// Slots inside the ceiling that only first-frame work may occupy.
+    static let reservedFirstFrameSlots = 2
 
     private let limiter: OPNRequestConcurrencyLimiter
     private let limit: Int
@@ -23,8 +17,8 @@ nonisolated final class CatalogImageDecodeGate: @unchecked Sendable {
     private var loggedPeak = 0
 
     init(
-        limit: Int = CatalogImageDecodeGate.defaultLimit,
-        reservedForFirstFrame: Int = CatalogImageDecodeGate.defaultReservedForFirstFrame
+        limit: Int = CatalogImageDecodeGate.maximumConcurrentDecodes,
+        reservedForFirstFrame: Int = CatalogImageDecodeGate.reservedFirstFrameSlots
     ) {
         self.limit = limit
         self.reservedForFirstFrame = reservedForFirstFrame
@@ -35,7 +29,7 @@ nonisolated final class CatalogImageDecodeGate: @unchecked Sendable {
         limiter.peakConcurrentCount
     }
 
-    /// Runs `operation` once the gate has capacity and holds that slot until the operation returns.
+    /// Runs `operation` once the gate has capacity, holding that slot until the operation returns.
     func run<T: Sendable>(isFirstFrame: Bool, _ operation: @escaping @Sendable () async -> T) async -> T {
         let result = await limiter.withPermit(isPriority: isFirstFrame) {
             await operation()

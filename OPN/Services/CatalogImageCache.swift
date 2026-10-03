@@ -22,14 +22,6 @@ struct CatalogImageCacheStatistics: Sendable {
     let totalBytes: Int
 }
 
-/// Which decode lane a load enters. First-frame work draws on capacity that on-demand tile decodes
-/// cannot occupy, so the artwork the first frame is waiting on never queues behind a screenful of
-/// tiles.
-private enum CatalogImageLoadPriority {
-    case onDemand
-    case firstFrame
-}
-
 /// One queued background decode. The options travel with the URL because the one cache serves both
 /// tiles and marquee banners, and the banner rung is both larger and source-retaining.
 private struct CatalogImagePrefetchRequest: Sendable {
@@ -128,14 +120,14 @@ actor CatalogImageCache {
     }
 
     func image(for url: URL, maxPixelSize: CGFloat = 1920 * 2, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
-        await cachedImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData, priority: .onDemand)
+        await resolveImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData, isFirstFrame: false)
     }
 
     func firstFrameImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> CatalogCachedImageData? {
-        await cachedImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData, priority: .firstFrame)
+        await resolveImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData, isFirstFrame: true)
     }
 
-    private func cachedImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool, priority: CatalogImageLoadPriority) async -> CatalogCachedImageData? {
+    private func resolveImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool, isFirstFrame: Bool) async -> CatalogCachedImageData? {
         if let cached = memoryCache.image(for: url), !retainingSourceData || cached.sourceData != nil {
             return cached
         }
@@ -145,7 +137,6 @@ actor CatalogImageCache {
             return await existingTask.value
         }
 
-        let isFirstFrame = priority == .firstFrame
         let task = Task<CatalogCachedImageData?, Never>.detached(priority: .utility, operation: { [weak self] in
             guard let self else { return nil }
             return await self.decodeGate.run(isFirstFrame: isFirstFrame) {
@@ -339,8 +330,6 @@ actor CatalogImageCache {
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             // Revalidation decodes the fresh bytes, so it takes a slot like any other decode.
-            // Left outside the gate, a screenful of stale entries would fan out unbounded behind
-            // the bound the caller just waited on.
             await self.decodeGate.run(isFirstFrame: false) {
                 if let downloaded = await self.downloadImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
                     await self.storeImage(downloaded, for: url)
