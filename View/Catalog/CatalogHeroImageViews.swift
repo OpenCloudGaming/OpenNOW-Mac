@@ -180,7 +180,28 @@ enum CatalogHeroImageMetadata {
     /// The scrim colour is a property of the artwork, not the slide, and a rotation can return to a
     /// slide already shown; a cached colour keeps that revisit from re-parsing the EXIF comment or
     /// sampling the image again.
-    nonisolated(unsafe) private static let scrimColorCache = NSCache<NSURL, CatalogMarqueeScrimColorBox>()
+    ///
+    /// One entry per hero artwork URL, and the marquee rotates through every hero slide the
+    /// catalog has before returning to one it has already shown, so the ceiling has to cover the
+    /// rotation: 128 entries is several times the marquee's slide count. Each entry is three
+    /// Doubles, so the cost budget is deliberately tiny - it backstops a future heavier entry
+    /// rather than doing the work here, and 128 x 256B is exactly the count ceiling.
+    nonisolated(unsafe) private static let scrimColorCache: NSCache<NSURL, CatalogMarqueeScrimColorBox> = {
+        let cache = NSCache<NSURL, CatalogMarqueeScrimColorBox>()
+        cache.countLimit = 128
+        cache.totalCostLimit = 128 * scrimColorEntryCost
+        return cache
+    }()
+
+    /// Rounded up from the box plus its three Doubles so the 1:1 cost budget stays a real, if
+    /// distant, ceiling.
+    private static let scrimColorEntryCost = 256
+
+    /// The configured ceiling, exposed so the acceptance criterion (a limit above the visible
+    /// working set) is asserted by `ImageCacheBudgetTests` rather than only commented.
+    nonisolated static var cacheBudget: (countLimit: Int, totalCostLimit: Int) {
+        (scrimColorCache.countLimit, scrimColorCache.totalCostLimit)
+    }
 
     private struct Metadata: Decodable {
         let colors: Colors?
@@ -196,7 +217,7 @@ enum CatalogHeroImageMetadata {
         let key = url as NSURL
         if let cached = scrimColorCache.object(forKey: key) { return cached.color }
         guard let color = await scrimColor(from: data) else { return nil }
-        scrimColorCache.setObject(CatalogMarqueeScrimColorBox(color), forKey: key)
+        scrimColorCache.setObject(CatalogMarqueeScrimColorBox(color), forKey: key, cost: scrimColorEntryCost)
         return color
     }
 

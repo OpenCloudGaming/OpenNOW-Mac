@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
 struct LoginBackdrop: View {
@@ -52,14 +53,47 @@ struct VendorResourceImage: View {
         for subdirectory in ["OPN", "Resources/OPN", nil] as [String?] {
             let url = Bundle.main.url(forResource: name, withExtension: fileExtension, subdirectory: subdirectory)
             if let url, let image = NSImage(contentsOf: url) {
-                imageCache.setObject(image, forKey: cacheKey)
+                imageCache.setObject(image, forKey: cacheKey, cost: decodedByteCost(ofImageAt: url, image: image))
                 return image
             }
         }
         return nil
     }
 
-    nonisolated(unsafe) private static let imageCache = NSCache<NSString, NSImage>()
+    /// Every brand asset is decoded once for the process lifetime, and a miss re-decodes
+    /// synchronously inside a first-frame render. The budget therefore has to hold the whole set:
+    /// logo 4.0MB + login-wall-background 1.9MB + login-wall-fallback-tile 8.3MB + logo-isolated
+    /// 1.1MB + hero-vignette 4.8MB is ~20MB at file resolution, and the remaining headroom covers
+    /// the two large SVGs rasterizing at 2x. The prewarm list is eight fixed assets, so twice that
+    /// as a count limit means the count can never evict a live entry - only the cost budget decides.
+    nonisolated(unsafe) private static let imageCache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 16
+        cache.totalCostLimit = 48 * 1024 * 1024
+        return cache
+    }()
+
+    /// The configured ceiling, exposed so the acceptance criterion (a limit above the working set)
+    /// is asserted by `ImageCacheBudgetTests` rather than only commented.
+    nonisolated static var cacheBudget: (countLimit: Int, totalCostLimit: Int) {
+        (imageCache.countLimit, imageCache.totalCostLimit)
+    }
+
+    /// Decoded bytes of an image at `url`, taken from the file's pixel dimensions rather than from
+    /// a rendered rep: `NSImage(contentsOf:)` decodes lazily, so its reps report nothing useful
+    /// until the first draw. Vector sources (SVG) carry no pixel dimensions at all, so those are
+    /// charged at their declared point size.
+    nonisolated static func decodedByteCost(ofImageAt url: URL, image: NSImage) -> Int {
+        if let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+           let width = properties[kCGImagePropertyPixelWidth] as? Int,
+           let height = properties[kCGImagePropertyPixelHeight] as? Int,
+           width > 0, height > 0 {
+            return width * height * 4
+        }
+        let size = image.size
+        return max(Int(size.width * size.height * 4), 1)
+    }
 }
 
 struct VendorSplashLoadingView: View {

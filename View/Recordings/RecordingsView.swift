@@ -631,35 +631,3 @@ private struct RecordingPlayerView: NSViewRepresentable {
     }
 }
 
-@MainActor
-private enum RecordingThumbnailLoader {
-    private static let cache = NSCache<NSString, NSImage>()
-
-    static func thumbnail(for recording: StreamRecording) async -> NSImage? {
-        let key = recording.id.uuidString as NSString
-        if let cached = cache.object(forKey: key) { return cached }
-        let image = await generateThumbnail(videoURL: recording.videoURL, durationSeconds: recording.durationSeconds)
-        if let image { cache.setObject(image, forKey: key) }
-        return image
-    }
-
-    private static func generateThumbnail(videoURL: URL, durationSeconds: Double) async -> NSImage? {
-        await Task.detached(priority: .utility) {
-            let asset = AVURLAsset(url: videoURL)
-            let generator = AVAssetImageGenerator(asset: asset)
-            generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 360, height: 216)
-            generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
-            generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
-            let targetSeconds = max(0.2, min(max(durationSeconds * 0.18, 0.2), max(durationSeconds - 0.2, 0.2)))
-            let time = CMTime(seconds: targetSeconds, preferredTimescale: 600)
-            let cgImage = await withCheckedContinuation { continuation in
-                generator.generateCGImageAsynchronously(for: time) { image, _, error in
-                    continuation.resume(returning: error == nil ? image : nil)
-                }
-            }
-            guard let cgImage else { return nil }
-            return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-        }.value
-    }
-}
