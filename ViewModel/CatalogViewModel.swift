@@ -422,6 +422,10 @@ final class CatalogViewModel {
     let deinitHandle = CatalogViewModelDeinitHandle()
 
     private var hasStarted = false
+    /// The launch's account-scoped disk work, owned by `CatalogLaunchDiskWork.swift`.
+    var accountScopedStateTask: Task<Void, Never>?
+    /// Whether that work has landed; `startupContentGate` holds the splash until it has.
+    var isAccountScopedStateLoaded = false
 
     init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
@@ -456,11 +460,10 @@ final class CatalogViewModel {
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
-        loadAccountScopedState()
         loadMaintenanceWatches()
-        pruneOrphanedCollectionIcons()
         observeCollectionsStoreChanges()
         observeHomeArrangementChanges()
+        startAccountScopedStateLoad()
     }
 
     private func scheduleSearchDebounce() {

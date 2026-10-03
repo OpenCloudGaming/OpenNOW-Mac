@@ -446,6 +446,9 @@ struct CatalogView: View {
             // configuration it already holds, which keeps either order from rebuilding a live
             // session's hosting view.
             syncStreamWindowPresentation()
+            // The menu bar publishes its snapshot at attach, so wait for the deferred disk work:
+            // otherwise it paints empty collections and play history first.
+            await viewModel.awaitAccountScopedState()
             // Bound for as long as this window is on screen: the menu bar surface follows the
             // launch flow through it, and can hand a launch back to it while it exists.
             viewModel.attachMenuBarSurface()

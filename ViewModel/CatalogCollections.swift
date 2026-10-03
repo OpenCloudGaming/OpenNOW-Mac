@@ -316,25 +316,12 @@ extension CatalogViewModel {
         // The menu bar's windowless launch reads this cache, so what the catalog can resolve now is
         // written back while there is a catalog to resolve it with.
         persistMenuBarCollectionGames()
-        pruneOrphanedCollectionIcons()
+        Self.pruneOrphanedCollectionIcons()
     }
 
-    /// Loads the state scoped to the signed-in account and records which account it is, so the
-    /// backup can be restored into it before any local collection key exists.
-    func loadAccountScopedState() {
-        let playtimeAccountIdentifier = Self.playtimeAccountIdentifier(account: account, session: session)
-        playtimeStatistics = CatalogPlaytimeStatistics.load(accountIdentifier: playtimeAccountIdentifier)
-        recentlyPlayed = CatalogRecentlyPlayed.load(accountIdentifier: playtimeAccountIdentifier)
-        OPNCloudSyncAccountNamespace.registerCurrentAccount(
-            collectionsAccountIdentifier,
-            candidates: [session.userId, account.userId, account.externalUserId, account.email]
-        )
-        userCollections = CatalogCollectionsStore.load(accountIdentifier: collectionsAccountIdentifier).collections
-    }
-
-    /// Drops custom icon files no collection names any more. Every account's icons are kept, not just
-    /// the one on screen, so another account's images are never pruned away.
-    func pruneOrphanedCollectionIcons() {
+    /// Drops custom icon files no collection names any more, keeping every account's icons rather
+    /// than only the one on screen. `nonisolated` so the launch path scans off the main actor.
+    nonisolated static func pruneOrphanedCollectionIcons() {
         OPNCollectionIconStore.removeOrphans(keeping: CatalogCollectionsStore.referencedImageAssetIdentifiers())
     }
 
