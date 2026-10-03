@@ -21,6 +21,8 @@ private struct CommonPerformanceAuditOutput: Encodable {
 }
 
 func runStreamPreferencesPerformanceAudit() throws -> Bool {
+    // Capture the display snapshot the way launch does, so the loop measures the production read path.
+    MainActor.assumeIsolated { OPNStreamScreenSnapshotCache.refresh() }
     let measurements = [
         measureCommonAuditOperation(operation: "OPNStreamPreferences.loadDeviceCapabilities", iterations: 200) {
             _ = OPNStreamPreferences.loadDeviceCapabilities()
