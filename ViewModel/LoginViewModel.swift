@@ -35,7 +35,7 @@ final class LoginViewModel: ObservableObject {
     @Published private(set) var signInRequest: LoginSignInRequest?
 
     let authService: any LoginAuthServing
-    private let providerInfoService: any GameProviderInfoServing
+    let providerInfoService: any GameProviderInfoServing
     let jarvisAuthService = JarvisAuthService(transport: JarvisURLSessionTransport())
 
     init(authService: any LoginAuthServing = OPNAuthService.shared, providerInfoService: any GameProviderInfoServing = OPNGameService.shared) {
@@ -97,9 +97,10 @@ final class LoginViewModel: ObservableObject {
         OPNLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
         ensureDeviceRegistration()
         prefillLastAccount()
-        refreshLoginProviders()
         acceptedTerms = OPNAppPreferenceStorage.standard.bool(forKey: Self.termsAcceptedKey)
         restoreSavedSessionFromKeychain()
+        // The sign-in picker is this list's only reader, and a restored session never shows it.
+        if activeSession == nil { refreshLoginProviders() }
         OPNLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
@@ -251,6 +252,7 @@ final class LoginViewModel: ObservableObject {
 
     func beginReauthentication(for account: LoginAccount) {
         selectRememberedAccount(account)
+        refreshLoginProviders()
         successMessage = ""
         validationMessage = "\(account.displayName) is signed out. Sign in again to switch to it."
         signInRequest = .reauthenticate(email: account.email)
@@ -274,6 +276,7 @@ final class LoginViewModel: ObservableObject {
     /// Picks the account's provider and starts the browser leg, which is what its row promises.
     func beginSignInAgain(for account: LoginAccount) {
         selectRememberedAccount(account)
+        refreshLoginProviders()
         successMessage = ""
         validationMessage = ""
         // Keep a switch banner pointed at the account actually being signed in. Do not invent one
@@ -292,6 +295,7 @@ final class LoginViewModel: ObservableObject {
         successMessage = ""
         validationMessage = ""
         signInRequest = .addAccount
+        refreshLoginProviders()
         OPNLog.info(.auth, "Add-account sign-in requested accounts=\(accounts.count)")
     }
 
@@ -371,77 +375,6 @@ final class LoginViewModel: ObservableObject {
         email = account.email
         selectedProvider = providerOption(idpId: account.providerIdpId, fallbackName: account.providerName)
         rememberSession = account.rememberSession
-    }
-
-    private func refreshLoginProviders() {
-        guard !isLoadingProviders else { return }
-        isLoadingProviders = true
-        let requestedProviderIdpId = selectedProvider.idpId
-        providerInfoService.fetchProviderInfo(idpId: requestedProviderIdpId) { [weak self] success, info, _, error in
-            guard let self else { return }
-            self.isLoadingProviders = false
-            guard success else {
-                OPNLog.warning(.auth, "Provider discovery failed: \(error)")
-                return
-            }
-            self.applyProviderInfo(info)
-        }
-    }
-
-    private func applyProviderInfo(_ info: OPNGameProviderInfo) {
-        let discoveredProviders = Self.providerOptions(from: info)
-        guard !discoveredProviders.isEmpty else { return }
-
-        let previousProviderIdpId = selectedProvider.idpId
-        providers = discoveredProviders
-        if let existingProvider = providerOptionIfAvailable(idpId: previousProviderIdpId) {
-            selectedProvider = existingProvider
-        } else if let preferredProvider = Self.preferredProvider(in: discoveredProviders, info: info) {
-            selectedProvider = preferredProvider
-        } else {
-            selectedProvider = discoveredProviders[0]
-        }
-    }
-
-    func providerOption(idpId: String, fallbackName: String = "") -> LoginProvider {
-        if let provider = providerOptionIfAvailable(idpId: idpId) { return provider }
-        if idpId.isEmpty || idpId == Jarvis.defaultIdpId { return .nvidia }
-        let title = fallbackName.trimmed.isEmpty ? "Provider" : fallbackName.trimmed
-        return LoginProvider(idpId: idpId, title: title, loginProvider: title, loginProviderCode: title, streamingServiceUrl: "")
-    }
-
-    private func providerOptionIfAvailable(idpId: String) -> LoginProvider? {
-        guard !idpId.isEmpty else { return nil }
-        return providers.first { $0.idpId == idpId }
-    }
-
-    private static func providerOptions(from info: OPNGameProviderInfo) -> [LoginProvider] {
-        var seenIdpIds = Set<String>()
-        let options = info.endpoints.compactMap { endpoint -> LoginProvider? in
-            guard !endpoint.idpId.isEmpty, seenIdpIds.insert(endpoint.idpId).inserted else { return nil }
-            return LoginProvider(endpoint: endpoint)
-        }
-        return options.isEmpty ? [.nvidia] : options
-    }
-
-    private static func preferredProvider(in providers: [LoginProvider], info: OPNGameProviderInfo) -> LoginProvider? {
-        if info.loginPreferredProviders.count == 1,
-           let provider = provider(matching: info.loginPreferredProviders[0], in: providers) {
-            return provider
-        }
-        if let provider = provider(matching: info.loggedInProvider, in: providers) { return provider }
-        if let provider = provider(matching: info.defaultProvider, in: providers) { return provider }
-        return nil
-    }
-
-    private static func provider(matching vendorName: String, in providers: [LoginProvider]) -> LoginProvider? {
-        let normalized = vendorName.trimmed.lowercased()
-        guard !normalized.isEmpty else { return nil }
-        return providers.first { provider in
-            provider.loginProvider.lowercased() == normalized ||
-            provider.loginProviderCode.lowercased() == normalized ||
-            provider.title.lowercased() == normalized
-        }
     }
 
     func trySave() {
