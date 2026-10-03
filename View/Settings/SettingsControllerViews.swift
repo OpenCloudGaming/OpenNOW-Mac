@@ -170,6 +170,12 @@ struct SteamControllerSettingsPage: View {
                 }
             }
         }
+        // The launch path no longer starts the HID monitor, so the page that owns Steam Controller
+        // settings is one of the places that starts it. Without this the Status card would read
+        // Inactive and a connected pad would never show up here.
+        .onAppear {
+            SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
+        }
         .opnConfirmation(
             isPresented: Binding(
                 get: { permissionResetError != nil },

@@ -5,7 +5,11 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private static let microphoneShortcutKeyCode: UInt16 = 46
     private static let recordingShortcutKeyCode: UInt16 = 15
     private static let antiAFKShortcutKeyCode: UInt16 = 40
-    private static let initialUpdateCheckDelaySeconds: TimeInterval = 5
+    /// The wait before the first automatic update check. It has to clear the launch splash hold,
+    /// which is capped at `StartupReadiness.maximumTimeout` (6 s): the 5 s it used to be fired
+    /// inside that hold, so the GitHub request arrived while the catalog and login fetches the wait
+    /// exists to avoid were still running.
+    static let initialUpdateCheckDelaySeconds: TimeInterval = 30
 
     private let githubUpdater: OPNGitHubUpdater
     private let updateChecks: OPNUpdateCheckCoordinator
@@ -65,7 +69,11 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         startApplicationUpdateChecks()
         OPNMainWindowCloseGuard.install()
         OPNDockIconController.install()
-        SteamControllerHIDMonitor.shared.setEnabled(SteamControllerPreference.isEnabled)
+        // The Steam Controller HID monitor is deliberately NOT started here: it creates the
+        // `IOHIDManager` and matches devices on the main run loop, and nothing needs pad input
+        // until a stream starts, the controller settings page opens, or controller mode is entered.
+        // Each of those turns it on itself; `setEnabled` is idempotent, so the first one to ask wins.
+
         // Before the first sync pass: a launch that synced first would copy the legacy folder's
         // contents into an empty new library.
         let migration = OPNCaptureMigration.runMigration()
@@ -190,8 +198,8 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         guard OPNUpdatePreferences.automaticUpdateChecksCanBeScheduled else { return }
         guard applicationUpdateCheckTimer == nil else { return }
         applicationUpdateCheckTimer = Timer.scheduledTimer(timeInterval: 60 * 60, target: self, selector: #selector(applicationUpdateCheckTimerFired(_:)), userInfo: nil, repeats: true)
-        // Delay the first check so it doesn't contend with the launch-time
-        // catalog and login fetches; subsequent checks stay on the hourly timer.
+        // Delay the first check so it doesn't contend with the launch-time catalog and login fetches;
+        // subsequent checks stay on the hourly timer.
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Self.initialUpdateCheckDelaySeconds))
             self?.checkForApplicationUpdates(isAutomatic: true)
