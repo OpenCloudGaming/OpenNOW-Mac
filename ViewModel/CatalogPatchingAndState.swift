@@ -19,7 +19,8 @@ extension CatalogViewModel {
                 remoteCoOpPreferences: OPNRemoteCoOpPreferencesStore.load(),
                 selectedRegionUrl: OPNStreamPreferences.loadSelectedRegionUrl(),
                 regionOptions: Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions()),
-                microphoneDeviceOptions: OPNStreamPreferences.loadMicrophoneDeviceOptions()
+                microphoneDeviceOptions: OPNStreamPreferences.loadMicrophoneDeviceOptions(),
+                outputDeviceOptions: OPNStreamPreferences.loadOutputDeviceOptions()
             )
             await MainActor.run { [weak self] in
                 guard let self, generation == self.settingsPreferencesGeneration, !Task.isCancelled else { return }
@@ -30,6 +31,7 @@ extension CatalogViewModel {
                 self.settingsRegionOptions = snapshot.regionOptions
                 self.unavailableSettingsRegionUrl = snapshot.selectedRegionUrl.isEmpty || snapshot.regionOptions.contains(where: { $0.url == snapshot.selectedRegionUrl }) ? "" : snapshot.selectedRegionUrl
                 self.microphoneDeviceOptions = snapshot.microphoneDeviceOptions
+                self.outputDeviceOptions = snapshot.outputDeviceOptions
                 self.settingsPreferencesTask = nil
             }
         }

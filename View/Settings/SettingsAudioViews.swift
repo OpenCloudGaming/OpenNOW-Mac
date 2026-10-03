@@ -16,6 +16,10 @@ struct AudioSettingsPage: View {
 
     private var outputCard: some View {
         SettingsCard(title: "Output", uiScale: uiScale) {
+            SettingsOptionRow(title: "Output Device", subtitle: "Routes OpenNOW stream playback on this Mac. It does not change the macOS default output or any other app's audio.", options: viewModel.outputDeviceOptions.map(\.label), selectedIndex: selectedOutputDeviceIndex, uiScale: uiScale) { index in
+                viewModel.setOutputDeviceId(viewModel.outputDeviceOptions[index].uniqueId)
+            }
+            SettingsDivider(uiScale: uiScale)
             SettingsSliderRow(title: "Game Volume", valueText: percentText(viewModel.streamProfile.gameVolume), value: viewModel.streamProfile.gameVolume, range: 0...1, step: 0.01, uiScale: uiScale, action: viewModel.setGameVolume)
             SettingsDivider(uiScale: uiScale)
             SettingsOptionRow(title: "Surround Sound", subtitle: viewModel.surroundModeSubtitle, options: OPNStreamPreferences.surroundModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.surroundModeIndex, isNew: OPNNewSettings.isNew(.surroundSound), uiScale: uiScale) { index in
@@ -24,6 +28,10 @@ struct AudioSettingsPage: View {
             }
         }
         .settingsSection("output")
+    }
+
+    private var selectedOutputDeviceIndex: Int {
+        viewModel.outputDeviceOptions.firstIndex { $0.uniqueId == viewModel.streamProfile.outputDeviceId } ?? 0
     }
 
     private var microphoneCard: some View {

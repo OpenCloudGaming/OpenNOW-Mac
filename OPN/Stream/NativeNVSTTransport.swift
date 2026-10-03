@@ -23,6 +23,16 @@ public protocol NativeNVSTTransport: Sendable {
     /// mid-stream has to become selectable without the HUD being closed and reopened.
     func setMicrophoneDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async
     func setLocalAudioPlaybackMuted(_ muted: Bool) async throws
+    /// 0...1, never above unity, applied after the game-audio tee. Stored before a session exists.
+    func setGameVolume(_ volume: Double) async throws
+    /// 0...1, applied to the live send pipeline. Stored before a session exists.
+    func setMicrophoneVolume(_ volume: Double) async throws
+    /// Swaps the playout device mid-stream; the seat's audio stream is fixed at ANNOUNCE.
+    func setOutputDevice(_ uid: String) async throws
+    /// Delivered on the main actor; the device reports it from the CoreAudio queue.
+    func setOutputDeviceHandler(_ handler: (@MainActor @Sendable (NvstOutputDeviceChange) -> Void)?) async
+    /// The output device set changed, so the picker's rows are stale.
+    func setOutputDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async
     func togglePerformanceOverlay() async throws
     func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot?
     func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws
@@ -77,6 +87,11 @@ public extension NativeNVSTTransport {
     func setMicrophoneFallbackHandler(_ handler: (@MainActor @Sendable (String) -> Void)?) async {}
     func setMicrophoneDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {}
     func setLocalAudioPlaybackMuted(_ muted: Bool) async throws { throw NativeNVSTError.notRunning }
+    func setGameVolume(_ volume: Double) async throws {}
+    func setMicrophoneVolume(_ volume: Double) async throws {}
+    func setOutputDevice(_ uid: String) async throws {}
+    func setOutputDeviceHandler(_ handler: (@MainActor @Sendable (NvstOutputDeviceChange) -> Void)?) async {}
+    func setOutputDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {}
 
     /// Recording is optional for a transport. The status handler is the only channel the UI
     /// listens on, so a transport that never installs one simply leaves the HUD at `.idle`.

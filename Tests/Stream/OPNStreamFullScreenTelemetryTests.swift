@@ -125,7 +125,9 @@ struct OPNStreamFullScreenTelemetryTests {
             preconditions: gameModePreconditions()
         )
 
-        let event = sink.captured.first
+        // The sink is process-global, so another suite emitting concurrently must not become this
+        // test's subject.
+        let event = sink.captured.first { $0.name == OPNStreamFullScreenTelemetry.successEventName }
         #expect(event?.name == OPNStreamFullScreenTelemetry.successEventName)
         #expect(event?.level == .info)
         #expect(event?.attributes["enteredFullScreen"] == "true")
@@ -144,7 +146,7 @@ struct OPNStreamFullScreenTelemetryTests {
             elapsedMs: 10_012
         )
 
-        let event = sink.captured.first
+        let event = sink.captured.first { $0.name == OPNStreamFullScreenTelemetry.failureEventName }
         #expect(event?.name == OPNStreamFullScreenTelemetry.failureEventName)
         #expect(event?.level == .warning)
         #expect(event?.attributes["reason"] == "geometryDeferred")

@@ -54,6 +54,8 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     /// too late for this: the window is already on screen by then.
     func applicationWillFinishLaunching(_ notification: Notification) {
         WindowFitting.installEarlyFitting()
+        // Before the catalog reads preferences from a detached task, so that read never needs the main thread.
+        OPNStreamScreenSnapshotCache.install()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

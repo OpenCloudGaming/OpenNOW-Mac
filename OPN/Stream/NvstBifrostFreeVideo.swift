@@ -14,6 +14,12 @@ struct NvstPacingIntervals {
 }
 
 extension NvstBifrostFreeTransport {
+    /// The session's frame rate, not the client display's. Split from the actor's length budget.
+    var sessionFrameTimeMicroseconds: UInt32 {
+        guard let fps = negotiatedFps, fps > 0 else { return Self.targetFrameTimeMicroseconds }
+        return UInt32(1_000_000 / fps)
+    }
+
     // MARK: - Video
 
     func startVideo(handoff: NVSTVideoHandoff, mediaReceiver: any NativeNVSTMediaReceiver) async throws {
@@ -284,6 +290,10 @@ extension NvstBifrostFreeTransport {
             sender.setReportProvider { [weak receiver] in receiver?.receiverReportBlock() }
             clock.start()
             installBundleHandlers(bundle, sender: sender, logger: logger)
+            // Applied before the post-handshake device opens, so the session never starts a frame
+            // at the wrong device or the wrong level.
+            bundle.setOutputDevice(uid: outputDeviceUniqueID)
+            bundle.setGameVolume(gameVolume)
             self.bundle = bundle
             logger?("NVST audio format channels=\(bundle.audioChannelCount) requested=\(configuredAudioChannelCount)"
                     + " layout=\(NativeNVSTPerformanceSnapshot.audioLayoutName(bundle.audioChannelCount))")

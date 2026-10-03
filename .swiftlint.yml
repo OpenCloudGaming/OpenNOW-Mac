@@ -106,6 +106,24 @@ custom_rules:
     message: "Inject services through the view model or @Environment instead of constructing them in the view."
     severity: warning
 
+  # The service layer and the view models are reached from background work (the catalog resolves
+  # its preferences on a detached task), so a synchronous main-thread hop there blocks that work for
+  # as long as the main thread is busy, and deadlocks outright when the main thread is waiting on it.
+  # Reach the main actor with `MainActor.assumeIsolated` when already on it, or with an `async` hop.
+  no_main_thread_sync:
+    name: "Blocking main-thread hop"
+    included: ".*/(OPN|ViewModel)/.*\\.swift"
+    regex: 'DispatchQueue\.main\.sync'
+    excluded_match_kinds:
+      - comment
+      - doccomment
+      - doccomment.field
+      - comment.mark
+      - comment.url
+      - string
+    message: "`DispatchQueue.main.sync` from background work blocks it on the main thread and deadlocks if the main thread is waiting on that work. Read a cached value or hop with `await`."
+    severity: error
+
   # R7 — long-lived side effects belong in the view model, not the view body.
   view_owns_long_lived_effect:
     name: "Long-lived effect in View"

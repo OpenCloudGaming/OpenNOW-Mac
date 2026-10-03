@@ -23,10 +23,32 @@ struct NativeNVSTHUDFocusEntryParityTests {
 
     @Test func tileIDsMatchTheFocusEntries() {
         let (surface, model) = makeHUDSurface()
-        #expect(focusIDs(in: "audio", on: model) == surface.nativeHUDAudioTiles.map(\.id))
         #expect(focusIDs(in: "capture", on: model) == surface.nativeHUDCaptureTiles.map(\.id))
         #expect(focusIDs(in: "display", on: model) == surface.nativeHUDDisplayTiles.map(\.id))
         #expect(focusIDs(in: "input", on: model) == surface.nativeHUDInputTiles.map(\.id))
+    }
+
+    /// The AUDIO panel has no tiles any more: the mute tiles were replaced by the volume sliders'
+    /// leading icons, so its rows are hand-listed here in draw order — output above microphone, each
+    /// volume a two-entry row of its mute icon and its slider.
+    @Test func theAudioRowsAreTheControlsThePanelDraws() {
+        let (_, model) = makeHUDSurface()
+        let audioIDs = model.hudFocusEntries
+            .filter { $0.group == "audio" || $0.id.hasPrefix("game-volume") || $0.id.hasPrefix("microphone-volume") || $0.id == "output-device" || $0.id == "microphone-device" || $0.id == "microphone-mode" }
+            .map(\.id)
+        #expect(audioIDs == [
+            NativeNVSTHostViewModel.outputDeviceDropdownID,
+            NativeNVSTHostViewModel.gameVolumeMuteFocusID,
+            NativeNVSTHostViewModel.gameVolumeFocusID,
+            NativeNVSTHostViewModel.microphoneDeviceDropdownID,
+            NativeNVSTHostViewModel.microphoneVolumeMuteFocusID,
+            NativeNVSTHostViewModel.microphoneVolumeFocusID,
+            NativeNVSTHostViewModel.microphoneModeDropdownID,
+        ])
+        // The volume icon and its slider share a row, so up/down steps past the whole control.
+        #expect(StreamHUDFocusEntry.rows(of: model.hudFocusEntries).contains { row in
+            row.map { model.hudFocusEntries[$0].id } == [NativeNVSTHostViewModel.gameVolumeMuteFocusID, NativeNVSTHostViewModel.gameVolumeFocusID]
+        })
     }
 
     /// The other half of the contract: a tile the grid dims while its entry stays enabled is a
@@ -34,7 +56,7 @@ struct NativeNVSTHUDFocusEntryParityTests {
     @Test func tileDisabledStatesMatchTheFocusEntries() {
         let (surface, model) = makeHUDSurface()
         let disabledByID = Dictionary(uniqueKeysWithValues: model.hudFocusEntries.map { ($0.id, $0.isDisabled) })
-        let tiles = surface.nativeHUDAudioTiles + surface.nativeHUDCaptureTiles + surface.nativeHUDDisplayTiles + surface.nativeHUDInputTiles
+        let tiles = surface.nativeHUDCaptureTiles + surface.nativeHUDDisplayTiles + surface.nativeHUDInputTiles
         for tile in tiles {
             #expect(disabledByID[tile.id] == tile.isDisabled, "\(tile.id) disabled state drifted")
         }
@@ -42,7 +64,7 @@ struct NativeNVSTHUDFocusEntryParityTests {
 
     @Test func noPanelWrapsOntoASecondRow() {
         let (_, model) = makeHUDSurface()
-        for group in ["audio", "capture", "display", "input"] {
+        for group in ["capture", "display", "input"] {
             #expect(focusIDs(in: group, on: model).count <= 4, "\(group) needs a second row")
         }
     }

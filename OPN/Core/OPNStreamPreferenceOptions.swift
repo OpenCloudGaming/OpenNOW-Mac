@@ -1,7 +1,6 @@
 //  The option tables' element types and the resolved profile they add up to.
 //
 
-import AppKit
 import CoreAudio
 import CoreMedia
 import Foundation
@@ -204,15 +203,14 @@ public struct OPNStreamSurroundModeOption: Equatable, Sendable {
     }
 }
 
-public struct OPNStreamMicrophoneDeviceOption: Equatable, Sendable {
-    public var label: String
-    public var uniqueId: String
-    public var automatic = false
-
-    public init(label: String, uniqueId: String, automatic: Bool = false) {
+/// One row of a CoreAudio device picker: a label, the UID it resolves by, and whether the row is
+/// the synthetic "Default Device". The microphone and output pickers read the same shape.
+public struct OPNStreamAudioDeviceOption: Equatable, Sendable {
+    public let label: String
+    public let uniqueId: String
+    public init(label: String, uniqueId: String) {
         self.label = label
         self.uniqueId = uniqueId
-        self.automatic = automatic
     }
 }
 
@@ -271,22 +269,16 @@ public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
     public var displayDpi = 100
 
     public init() {}
-}
 
-struct OPNStreamScreenSnapshot: Sendable {
-    let backingScaleFactor: CGFloat
-    let screenNumber: UInt32?
-    let frameSize: CGSize
-    let maximumFramesPerSecond: Int
-    let maximumPotentialExtendedDynamicRangeColorComponentValue: CGFloat
-
-    @MainActor init?(screen: NSScreen?) {
-        guard let screen else { return nil }
-        backingScaleFactor = screen.backingScaleFactor
-        screenNumber = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
-        frameSize = screen.frame.size
-        maximumFramesPerSecond = screen.maximumFramesPerSecond
-        maximumPotentialExtendedDynamicRangeColorComponentValue = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+    /// Fills in the display-derived fields from a captured screen snapshot.
+    mutating func applyDisplaySnapshot(_ snapshot: OPNStreamScreenSnapshot) {
+        let scale = snapshot.backingScaleFactor > 0 ? snapshot.backingScaleFactor : 1.0
+        let isResolutionKnown = snapshot.pixelWidth > 0 && snapshot.pixelHeight > 0
+        displayDpi = max(100, Int((100.0 * scale).rounded()))
+        maxDisplayWidth = isResolutionKnown ? snapshot.pixelWidth : Int((snapshot.frameSize.width * scale).rounded())
+        maxDisplayHeight = isResolutionKnown ? snapshot.pixelHeight : Int((snapshot.frameSize.height * scale).rounded())
+        maxDisplayRefreshRate = max(snapshot.refreshRate, snapshot.maximumFramesPerSecond)
+        hdrDisplaySupported = snapshot.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0
     }
 }
 
@@ -367,6 +359,9 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var microphoneVolume = 1.0
     public var microphoneMode = "disabled"
     public var microphoneDeviceId = ""
+    /// The saved output device for OpenNOW stream playback, as a CoreAudio UID. Empty is "Default
+    /// Device", which follows the macOS default output for the whole session.
+    public var outputDeviceId = ""
     public var surroundModeIndex = 0
     public var surroundMode = OPNStreamPreferences.surroundModeOptions[0]
     public var microphonePushToTalkKeyCode = 9

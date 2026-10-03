@@ -6,12 +6,12 @@ import Testing
 /// state a fallback leaves behind. The transport call itself needs a live session.
 @MainActor
 struct NativeNVSTMicrophoneDeviceSelectionTests {
-    private var defaultDevice: OPNStreamMicrophoneDeviceOption {
-        OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)
+    private var defaultDevice: OPNStreamAudioDeviceOption {
+        OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")
     }
 
-    private func pickedDevice(_ label: String = "USB Mic", uid: String = "usb-mic") -> OPNStreamMicrophoneDeviceOption {
-        OPNStreamMicrophoneDeviceOption(label: label, uniqueId: uid)
+    private func pickedDevice(_ label: String = "USB Mic", uid: String = "usb-mic") -> OPNStreamAudioDeviceOption {
+        OPNStreamAudioDeviceOption(label: label, uniqueId: uid)
     }
 
     /// A model whose picker offers the default and one USB microphone, with the USB one in use.

@@ -199,6 +199,7 @@ extension OPNStreamPreferences {
     public static func saveMicrophoneShortcutEnabled(_ value: Bool) { storage.set(value, forKey: k.microphoneShortcutEnabled) }
     public static func saveMicrophoneMode(_ mode: String) { storage.set(microphoneModeOptions.contains { $0.value == mode } ? mode : microphoneModeOptions[0].value, forKey: k.microphoneMode) }
     public static func saveMicrophoneDeviceId(_ deviceId: String) { deviceId.isEmpty ? storage.removeObject(forKey: k.microphoneDeviceId) : storage.set(deviceId, forKey: k.microphoneDeviceId) }
+    public static func saveOutputDeviceId(_ deviceId: String) { deviceId.isEmpty ? storage.removeObject(forKey: k.outputDeviceId) : storage.set(deviceId, forKey: k.outputDeviceId) }
     public static func saveMicrophonePushToTalkKeyCode(_ value: Int) { storage.set(clamp(value, 0, 127), forKey: k.microphonePushToTalkKeyCode) }
     public static func saveMicrophonePushToTalkModifierMask(_ value: Int) { storage.set(sanitizedPushToTalkModifierMask(value), forKey: k.microphonePushToTalkModifierMask) }
 
@@ -364,6 +365,7 @@ extension OPNStreamPreferences {
         profile.microphoneMode = string(value(dictionary, k.microphoneMode), "disabled")
         if !microphoneModeOptions.contains(where: { $0.value == profile.microphoneMode }) { profile.microphoneMode = "disabled" }
         profile.microphoneDeviceId = string(value(dictionary, k.microphoneDeviceId), "")
+        profile.outputDeviceId = string(value(dictionary, k.outputDeviceId), "")
         profile.surroundModeIndex = clampedInt(dictionary, k.surroundModeIndex, 0, surroundModeOptions.count)
         profile.surroundMode = surroundModeOptions[profile.surroundModeIndex]
         profile.microphonePushToTalkKeyCode = clampedInt(dictionary, k.microphonePushToTalkKeyCode, 9, 128)
@@ -428,6 +430,7 @@ extension OPNStreamPreferences {
             k.microphonePushToTalkModifierMask: profile.microphonePushToTalkModifierMask
         ]
         if !profile.microphoneDeviceId.isEmpty { dictionary[k.microphoneDeviceId] = profile.microphoneDeviceId }
+        if !profile.outputDeviceId.isEmpty { dictionary[k.outputDeviceId] = profile.outputDeviceId }
         let normalizedRegionUrl = normalizedHTTPSBaseUrlOrEmpty(profile.selectedRegionUrl)
         if !normalizedRegionUrl.isEmpty { dictionary[k.selectedRegionUrl] = normalizedRegionUrl }
         return dictionary

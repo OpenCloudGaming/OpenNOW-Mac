@@ -62,6 +62,7 @@ extension OPNStreamPreferences {
         Keys.microphoneShortcutEnabled,
         Keys.microphoneMode,
         Keys.microphoneDeviceId,
+        Keys.outputDeviceId,
         Keys.microphonePushToTalkKeyCode,
         Keys.microphonePushToTalkModifierMask,
         Keys.surroundModeIndex
@@ -562,6 +563,7 @@ extension OPNStreamPreferences {
         static let microphoneShortcutEnabled = "OpenNOW.Stream.MicrophoneShortcutEnabled"
         static let microphoneMode = "OpenNOW.Stream.MicrophoneMode"
         static let microphoneDeviceId = "OpenNOW.Stream.MicrophoneDeviceId"
+        static let outputDeviceId = "OpenNOW.Stream.OutputDeviceId"
         static let surroundModeIndex = "OpenNOW.Stream.SurroundModeIndex"
         static let entitledAudioChannelCount = "OpenNOW.Stream.EntitledAudioChannelCount"
         static let entitledInGameSettingsPersistence = "OpenNOW.Stream.EntitledInGameSettingsPersistence"
