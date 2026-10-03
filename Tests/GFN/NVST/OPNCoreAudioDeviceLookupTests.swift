@@ -11,6 +11,11 @@ import Testing
         static let skipReason = "Needs a real CoreAudio input device; a hosted runner reports none."
     }
 
+    private enum OutputDeviceGate {
+        static let isAvailable = !OPNCoreAudioDeviceLookup.allOutputDevices().isEmpty
+        static let skipReason = "Needs a real CoreAudio output device; a hosted runner reports none."
+    }
+
     private func inputDevices() throws -> [AudioDeviceID] {
         let devices = OPNCoreAudioDeviceLookup.allInputDevices()
         try #require(!devices.isEmpty, "a CoreAudio input device")
@@ -23,11 +28,11 @@ import Testing
 
     @Test func anUnusableUIDResolvesToTheSystemDefaultInput() {
         let fallback = OPNCoreAudioDeviceLookup.defaultInputDevice()
-        #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: nil) == fallback)
-        #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: "") == fallback)
-        #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: "no-such-microphone-\(UUID().uuidString)") == fallback)
-        #expect(OPNCoreAudioDeviceLookup.inputDeviceIfPresent(matching: "") == nil)
-        #expect(OPNCoreAudioDeviceLookup.inputDeviceIfPresent(matching: "no-such-microphone") == nil)
+        #expect(OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: nil) == fallback)
+        #expect(OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: "") == fallback)
+        #expect(OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: "no-such-microphone-\(UUID().uuidString)") == fallback)
+        #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: "") == nil)
+        #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: "no-such-microphone") == nil)
         #expect(OPNCoreAudioDeviceLookup.uid(of: AudioDeviceID(kAudioObjectUnknown)) == nil)
     }
 
@@ -36,8 +41,8 @@ import Testing
         let device = try inputDevices()[0]
         let uid = try inputDeviceUID(device)
         #expect(!uid.isEmpty)
+        #expect(OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: uid) == device)
         #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: uid) == device)
-        #expect(OPNCoreAudioDeviceLookup.inputDeviceIfPresent(matching: uid) == device)
     }
 
     @Test func everyEnumeratedDeviceIsInputCapable() {
@@ -45,6 +50,92 @@ import Testing
             #expect(device != AudioDeviceID(kAudioObjectUnknown))
             #expect(OPNCoreAudioDeviceLookup.uid(of: device) != nil, "device \(device) has no UID")
         }
+    }
+
+    // MARK: - Output devices
+
+    @Test func anUnusableOutputUIDResolvesToTheSystemDefaultOutput() {
+        let fallback = OPNCoreAudioDeviceLookup.defaultOutputDevice()
+        #expect(OPNCoreAudioDeviceLookup.resolvedOutputDevice(matching: nil) == fallback)
+        #expect(OPNCoreAudioDeviceLookup.resolvedOutputDevice(matching: "") == fallback)
+        #expect(OPNCoreAudioDeviceLookup.resolvedOutputDevice(matching: "no-such-speaker-\(UUID().uuidString)") == fallback)
+        #expect(OPNCoreAudioDeviceLookup.outputDevice(matching: "") == nil)
+        #expect(OPNCoreAudioDeviceLookup.outputDevice(matching: "no-such-speaker") == nil)
+    }
+
+    @Test(.enabled(if: OutputDeviceGate.isAvailable, Comment(rawValue: OutputDeviceGate.skipReason)))
+    func aPresentOutputUIDResolvesToItsOwnDevice() throws {
+        let device = try #require(OPNCoreAudioDeviceLookup.allOutputDevices().first, "a CoreAudio output device")
+        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: device), "a UID for device \(device)")
+        #expect(!uid.isEmpty)
+        #expect(OPNCoreAudioDeviceLookup.resolvedOutputDevice(matching: uid) == device)
+        #expect(OPNCoreAudioDeviceLookup.outputDevice(matching: uid) == device)
+    }
+
+    /// The picker's rows and the device's resolution have to agree: every enumerated output device
+    /// carries a UID, and the two directions of the lookup use the same set.
+    @Test func everyEnumeratedOutputDeviceIsOutputCapable() {
+        for device in OPNCoreAudioDeviceLookup.allOutputDevices() {
+            #expect(device != AudioDeviceID(kAudioObjectUnknown))
+            #expect(OPNCoreAudioDeviceLookup.uid(of: device) != nil, "device \(device) has no UID")
+        }
+    }
+
+    /// A capture-only interface must not become a row the output picker offers, and vice versa.
+    @Test func theTwoEnumerationsAreDisjointWhereTheHardwareIsSingleDirection() throws {
+        let inputOnly = Set(OPNCoreAudioDeviceLookup.allInputDevices())
+            .subtracting(OPNCoreAudioDeviceLookup.allOutputDevices())
+        let outputOnly = Set(OPNCoreAudioDeviceLookup.allOutputDevices())
+            .subtracting(OPNCoreAudioDeviceLookup.allInputDevices())
+        // Either side may be empty on a given Mac; the assertion is that an input-only device does
+        // not resolve as an output device, which is the failure a shared enumeration would cause.
+        for device in inputOnly {
+            let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: device))
+            #expect(OPNCoreAudioDeviceLookup.outputDevice(matching: uid) == nil)
+        }
+        for device in outputOnly {
+            let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: device))
+            #expect(OPNCoreAudioDeviceLookup.inputDevice(matching: uid) == nil)
+        }
+    }
+
+    @Test(.enabled(if: OutputDeviceGate.isAvailable, Comment(rawValue: OutputDeviceGate.skipReason)))
+    func thePlayoutDeviceResolvesASavedUID() throws {
+        let device = try #require(OPNCoreAudioDeviceLookup.allOutputDevices().first, "a CoreAudio output device")
+        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: device))
+        let audioDevice = NvstCoreAudioDevice(playoutChannelCount: 2, capturesMicrophone: false, preferredOutputDeviceUID: uid)
+        #expect(audioDevice.outputDeviceState.uniqueID == uid)
+        #expect(!audioDevice.outputDeviceState.isFallback)
+        #expect(audioDevice.outputDeviceState.isOutputUsable)
+    }
+
+    @Test(.enabled(if: OutputDeviceGate.isAvailable, Comment(rawValue: OutputDeviceGate.skipReason)))
+    func thePlayoutDeviceReportsFallbackForAMissingUID() {
+        let gone = NvstCoreAudioDevice(playoutChannelCount: 2, capturesMicrophone: false, preferredOutputDeviceUID: "no-such-speaker-\(UUID().uuidString)")
+        #expect(gone.outputDeviceState.isFallback)
+        #expect(gone.outputDeviceState.uniqueID == OPNCoreAudioDeviceLookup.uid(of: OPNCoreAudioDeviceLookup.defaultOutputDevice()))
+
+        let automatic = NvstCoreAudioDevice(playoutChannelCount: 2, capturesMicrophone: false)
+        #expect(!automatic.outputDeviceState.isFallback, "an empty UID is Default Device, not a fallback")
+    }
+
+    /// A fallback is a resolution result, never a write to the saved device: replugging it has to
+    /// return playback to the user's choice.
+    @Test(.enabled(if: OutputDeviceGate.isAvailable, Comment(rawValue: OutputDeviceGate.skipReason)))
+    func anOutputFallbackIsClearedWhenTheSavedDeviceIsSelected() throws {
+        let device = try #require(OPNCoreAudioDeviceLookup.allOutputDevices().first, "a CoreAudio output device")
+        let uid = try #require(OPNCoreAudioDeviceLookup.uid(of: device))
+        let audioDevice = NvstCoreAudioDevice(playoutChannelCount: 2, capturesMicrophone: false, preferredOutputDeviceUID: "no-such-speaker-\(UUID().uuidString)")
+        #expect(audioDevice.outputDeviceState.isFallback)
+
+        audioDevice.setPreferredOutputDevice(uid: uid)
+        audioDevice.drainAudioQueue()
+        #expect(!audioDevice.outputDeviceState.isFallback)
+        #expect(audioDevice.outputDeviceState.uniqueID == uid)
+
+        audioDevice.setPreferredOutputDevice(uid: nil)
+        audioDevice.drainAudioQueue()
+        #expect(!audioDevice.outputDeviceState.isFallback, "Default Device is a choice, not a fallback")
     }
 
     /// Resolution is the tested behaviour, so no AudioUnit is opened: that needs a microphone the

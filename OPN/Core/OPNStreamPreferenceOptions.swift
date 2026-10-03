@@ -203,15 +203,14 @@ public struct OPNStreamSurroundModeOption: Equatable, Sendable {
     }
 }
 
-public struct OPNStreamMicrophoneDeviceOption: Equatable, Sendable {
-    public var label: String
-    public var uniqueId: String
-    public var automatic = false
-
-    public init(label: String, uniqueId: String, automatic: Bool = false) {
+/// One row of a CoreAudio device picker: a label, the UID it resolves by, and whether the row is
+/// the synthetic "Default Device". The microphone and output pickers read the same shape.
+public struct OPNStreamAudioDeviceOption: Equatable, Sendable {
+    public let label: String
+    public let uniqueId: String
+    public init(label: String, uniqueId: String) {
         self.label = label
         self.uniqueId = uniqueId
-        self.automatic = automatic
     }
 }
 
@@ -360,6 +359,9 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var microphoneVolume = 1.0
     public var microphoneMode = "disabled"
     public var microphoneDeviceId = ""
+    /// The saved output device for OpenNOW stream playback, as a CoreAudio UID. Empty is "Default
+    /// Device", which follows the macOS default output for the whole session.
+    public var outputDeviceId = ""
     public var surroundModeIndex = 0
     public var surroundMode = OPNStreamPreferences.surroundModeOptions[0]
     public var microphonePushToTalkKeyCode = 9

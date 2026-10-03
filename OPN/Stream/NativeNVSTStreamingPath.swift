@@ -209,6 +209,28 @@ public actor NativeNVSTStreamingPath {
         try await transport.setLocalAudioPlaybackMuted(muted)
     }
 
+    /// Not gated on an active session: the host applies the saved level before `start`, and the
+    /// transport holds it until the device opens.
+    public func setGameVolume(_ volume: Double) async throws {
+        try await transport.setGameVolume(volume)
+    }
+
+    public func setMicrophoneVolume(_ volume: Double) async throws {
+        try await transport.setMicrophoneVolume(volume)
+    }
+
+    public func setOutputDevice(_ uid: String) async throws {
+        try await transport.setOutputDevice(uid)
+    }
+
+    public func setOutputDeviceHandler(_ handler: (@MainActor @Sendable (NvstOutputDeviceChange) -> Void)?) async {
+        await transport.setOutputDeviceHandler(handler)
+    }
+
+    public func setOutputDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {
+        await transport.setOutputDeviceListHandler(handler)
+    }
+
     /// Returns whether the recorder was actually started. The caller shows "Starting" optimistically
     /// and the recorder is the only thing that ever emits a status, so a silent refusal here would
     /// leave the HUD stuck on it forever with no way back.

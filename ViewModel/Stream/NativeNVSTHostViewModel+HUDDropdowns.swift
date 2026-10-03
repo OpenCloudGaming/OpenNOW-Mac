@@ -8,6 +8,15 @@ import Foundation
 extension NativeNVSTHostViewModel {
     static let microphoneDeviceDropdownID = "microphone-device"
     static let microphoneModeDropdownID = "microphone-mode"
+    static let outputDeviceDropdownID = "output-device"
+    static let gameVolumeFocusID = "game-volume"
+    static let gameVolumeMuteFocusID = "game-volume-mute"
+    static let microphoneVolumeFocusID = "microphone-volume"
+    static let microphoneVolumeMuteFocusID = "microphone-volume-mute"
+    /// The two entries of one volume row share a group so up/down steps past the whole row rather
+    /// than landing on its second half.
+    static let gameVolumeGroup = "audio-game-volume"
+    static let microphoneVolumeGroup = "audio-microphone-volume"
     static let remoteCoOpQualityDropdownPrefix = "coop-quality-"
 
     // MARK: - Pad-driven dropdowns
@@ -17,6 +26,7 @@ extension NativeNVSTHostViewModel {
     func padDropdownItems(_ dropdownID: String) -> [OPNDropdownPadItem] {
         if dropdownID == Self.microphoneDeviceDropdownID { return microphoneDevicePadItems() }
         if dropdownID == Self.microphoneModeDropdownID { return microphoneModePadItems() }
+        if dropdownID == Self.outputDeviceDropdownID { return outputDevicePadItems() }
         guard dropdownID.hasPrefix(Self.remoteCoOpQualityDropdownPrefix),
               let participantID = UUID(uuidString: String(dropdownID.dropFirst(Self.remoteCoOpQualityDropdownPrefix.count))) else { return [] }
         return remoteCoOpQualityPadItems(participantID: participantID)
@@ -80,38 +90,87 @@ extension NativeNVSTHostViewModel {
 
     var isHUDDropdownOpen: Bool { openHUDDropdownID != nil }
 
-    // MARK: - The microphone device dropdown
+    // MARK: - The device dropdowns
 
-    /// One row per input device, the synthetic "Default Device" (empty UID) first, as Settings lists
-    /// them. The default's label carries the fallback so the HUD never claims a device not in use.
-    func microphoneDevicePadItems() -> [OPNDropdownPadItem] {
-        microphoneDeviceOptions.map { option in
-            let isFallbackRow = isMicrophoneDeviceFallbackActive && option.uniqueId.isEmpty
+    /// The rows a CoreAudio device picker draws: the synthetic "Default Device" first, its label
+    /// carrying the fallback so the panel never claims a device that is not in use.
+    private func audioDevicePadItems(options: [OPNStreamAudioDeviceOption],
+                                     selectedUID: String,
+                                     isFallbackActive: Bool,
+                                     select: @escaping (String) -> Void) -> [OPNDropdownPadItem] {
+        options.map { option in
+            let showsFallback = isFallbackActive && option.uniqueId.isEmpty
             return OPNDropdownPadItem(
                 id: option.uniqueId,
-                title: isFallbackRow ? "\(option.label) (fallback)" : option.label,
-                isSelected: option.uniqueId == selectedMicrophoneDeviceUID,
-                action: { [weak self] in self?.requestNativeMicrophoneDevice(option.uniqueId) }
+                title: showsFallback ? "\(option.label) (fallback)" : option.label,
+                isSelected: option.uniqueId == selectedUID,
+                action: { select(option.uniqueId) }
             )
         }
     }
 
-    /// The UID the panel marks, or empty for "Default Device". Empty while a change is in flight too,
+    /// The device in use, named as the picker names it, with the fallback suffix when the saved one
+    /// is gone. A missing saved device resolves to no row, so this reads "Default Device".
+    private func audioDeviceSelectionLabel(options: [OPNStreamAudioDeviceOption],
+                                           selectedUID: String,
+                                           isFallbackActive: Bool) -> String {
+        let label = options.first { $0.uniqueId == selectedUID }?.label ?? "Default Device"
+        guard isFallbackActive else { return label }
+        return "\(label) (fallback)"
+    }
+
+    /// Whether the saved UID is still one of the rows present. The saved UID is never rewritten: a
+    /// fallback is a resolution result, and the device is expected back.
+    private func isSavedAudioDeviceMissing(options: [OPNStreamAudioDeviceOption], savedUID: String) -> Bool {
+        guard !savedUID.isEmpty else { return false }
+        return !options.contains { $0.uniqueId == savedUID }
+    }
+
+    func microphoneDevicePadItems() -> [OPNDropdownPadItem] {
+        audioDevicePadItems(options: microphoneDeviceOptions,
+                            selectedUID: selectedMicrophoneDeviceUID,
+                            isFallbackActive: isMicrophoneDeviceFallbackActive) { [weak self] uid in
+            self?.requestNativeMicrophoneDevice(uid)
+        }
+    }
+
+    func outputDevicePadItems() -> [OPNDropdownPadItem] {
+        audioDevicePadItems(options: outputDeviceOptions,
+                            selectedUID: selectedOutputDeviceUID,
+                            isFallbackActive: isOutputDeviceFallbackActive) { [weak self] uid in
+            self?.requestNativeOutputDevice(uid)
+        }
+    }
+
+    /// The UID a picker marks, or empty for "Default Device". Empty while a change is in flight too,
     /// so the old row is not marked once the user has chosen a new one.
     var selectedMicrophoneDeviceUID: String {
         microphonePendingDeviceUID ?? microphoneDeviceUID
     }
 
-    /// The caption the HUD shows for the focused device row.
+    var selectedOutputDeviceUID: String {
+        outputDevicePendingUID ?? outputDeviceUID
+    }
+
+    /// The captions the HUD shows for the focused device rows.
     var microphoneDeviceCaption: String {
         "Microphone Device \u{00b7} \(microphoneDeviceSelectionLabel)"
     }
 
-    /// The trigger's label: the device in use, named as the picker names it. A missing saved device
-    /// resolves to no row, so this reads "Default Device" and the suffix says it is a fallback.
+    var outputDeviceCaption: String {
+        "Output Device \u{00b7} \(outputDeviceSelectionLabel)"
+    }
+
     var microphoneDeviceSelectionLabel: String {
-        let label = microphoneDeviceOptions.first { $0.uniqueId == selectedMicrophoneDeviceUID }?.label ?? "Default Device"
-        return isMicrophoneDeviceFallbackActive ? "\(label) (fallback)" : label
+        audioDeviceSelectionLabel(options: microphoneDeviceOptions,
+                                  selectedUID: selectedMicrophoneDeviceUID,
+                                  isFallbackActive: isMicrophoneDeviceFallbackActive)
+    }
+
+    var outputDeviceSelectionLabel: String {
+        audioDeviceSelectionLabel(options: outputDeviceOptions,
+                                  selectedUID: selectedOutputDeviceUID,
+                                  isFallbackActive: isOutputDeviceFallbackActive)
     }
 
     /// The live meter as a percentage, for the HUD's readout beside the bar.
@@ -181,10 +240,15 @@ extension NativeNVSTHostViewModel {
         // microphone's availability, and a mode change must never leave capture open.
         if mode != "voice-activity" { requestNativeMicrophoneEnabled(false, source: "mode") }
         microphoneMode = mode
+        // The chord's held state belongs to the mode that owned it. Reconfiguring the monitor also
+        // releases the view's own state, so a mode change cannot strand a press.
+        isPushToTalkKeyHeld = false
         OPNStreamPreferences.saveMicrophoneMode(mode)
         microphoneAvailable = isMicrophoneSectionNegotiated && mode != "disabled"
         if let nativeView { configurePushToTalkMonitor(for: nativeView, mode: mode) }
-        if mode == "voice-activity" { requestNativeMicrophoneEnabled(true, source: "mode") }
+        // The composed gate, not the mode's default: a user who muted stays muted across a mode
+        // change, and push-to-talk only opens on a held key.
+        reconcileNativeMicrophoneGate(source: "mode")
         publishMicrophoneConfiguration()
         OPNStreamTelemetry.capture("nvst.ui.microphone.mode", level: .info, message: "Native NVST microphone mode changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode])
     }
@@ -262,18 +326,30 @@ extension NativeNVSTHostViewModel {
         microphoneDeviceOptions = OPNStreamPreferences.loadMicrophoneDeviceOptions()
     }
 
-    /// Re-reads the list and re-resolves the fallback, which is what the HUD does on every open.
+    /// Re-reads the output list, so an output device plugged in mid-stream becomes a row.
+    func reloadOutputDeviceOptions() {
+        outputDeviceOptions = OPNStreamPreferences.loadOutputDeviceOptions()
+    }
+
+    /// Re-reads a list and re-resolves its fallback, which is what the HUD does on every open.
     func refreshMicrophoneDeviceOptions() {
         reloadMicrophoneDeviceOptions()
         resolveMicrophoneDeviceFallback()
     }
 
-    /// Whether the saved device is still one of the rows present. The saved UID is never rewritten
-    /// here: a fallback is a resolution result, and the device is expected back.
+    func refreshOutputDeviceOptions() {
+        reloadOutputDeviceOptions()
+        resolveOutputDeviceFallback()
+    }
+
     func resolveMicrophoneDeviceFallback() {
         let savedUID = microphoneDeviceUID.isEmpty ? OPNStreamPreferences.loadProfile().microphoneDeviceId : microphoneDeviceUID
-        isMicrophoneDeviceFallbackActive = !savedUID.isEmpty
-            && !microphoneDeviceOptions.contains { $0.uniqueId == savedUID }
+        isMicrophoneDeviceFallbackActive = isSavedAudioDeviceMissing(options: microphoneDeviceOptions, savedUID: savedUID)
+    }
+
+    func resolveOutputDeviceFallback() {
+        let savedUID = outputDeviceUID.isEmpty ? OPNStreamPreferences.loadProfile().outputDeviceId : outputDeviceUID
+        isOutputDeviceFallbackActive = isSavedAudioDeviceMissing(options: outputDeviceOptions, savedUID: savedUID)
     }
 
     /// The capture device is gone and the session fell back to the system default. The transport names

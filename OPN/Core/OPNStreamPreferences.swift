@@ -151,30 +151,28 @@ public enum OPNStreamPreferences {
         }
     }
 
-    public static func loadMicrophoneDeviceOptions() -> [OPNStreamMicrophoneDeviceOption] {
-        var devices = [OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize) == noErr, dataSize > 0 else { return devices }
-        let count = Int(dataSize) / MemoryLayout<AudioObjectID>.size
-        var audioDevices = [AudioObjectID](repeating: 0, count: count)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &audioDevices) == noErr else { return devices }
+    /// The microphone picker's rows, from the same enumeration the capture device resolves against.
+    public static func loadMicrophoneDeviceOptions() -> [OPNStreamAudioDeviceOption] {
+        audioDeviceOptions(from: OPNCoreAudioDeviceLookup.allInputDevices(), fallbackLabel: "Microphone")
+    }
 
-        for audioDevice in audioDevices {
-            var streamAddress = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
-            var streamDataSize: UInt32 = 0
-            guard AudioObjectGetPropertyDataSize(audioDevice, &streamAddress, 0, nil, &streamDataSize) == noErr, streamDataSize > 0 else { continue }
+    /// The stream HUD's and Settings' output picker rows, from the same enumeration playback
+    /// resolves a saved output UID through.
+    public static func loadOutputDeviceOptions() -> [OPNStreamAudioDeviceOption] {
+        audioDeviceOptions(from: OPNCoreAudioDeviceLookup.allOutputDevices(), fallbackLabel: "Output Device")
+    }
+
+    /// The synthetic "Default Device" leads every picker; a device without a name keeps the
+    /// direction's own word rather than an empty row.
+    private static func audioDeviceOptions(from devices: [AudioDeviceID], fallbackLabel: String) -> [OPNStreamAudioDeviceOption] {
+        var options = [OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")]
+        for audioDevice in devices {
             guard let name = audioObjectString(audioDevice, selector: kAudioObjectPropertyName) else { continue }
-            let uid = audioObjectString(audioDevice, selector: kAudioDevicePropertyDeviceUID) ?? String(audioDevice)
-            if !devices.contains(where: { $0.uniqueId == uid }) {
-                devices.append(OPNStreamMicrophoneDeviceOption(label: name.isEmpty ? "Microphone" : name, uniqueId: uid))
-            }
+            let uid = OPNCoreAudioDeviceLookup.uid(of: audioDevice) ?? String(audioDevice)
+            guard !options.contains(where: { $0.uniqueId == uid }) else { continue }
+            options.append(OPNStreamAudioDeviceOption(label: name.isEmpty ? fallbackLabel : name, uniqueId: uid))
         }
-        return devices
+        return options
     }
 
     /// Output channels on the system default output device, summed over its output streams —

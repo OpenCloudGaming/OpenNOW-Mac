@@ -535,4 +535,43 @@ extension NvstBifrostFreeTransport {
         guard let bundle else { throw NativeNVSTError.notRunning }
         bundle.setRemoteAudioMuted(muted)
     }
+
+    /// Stored even without a bundle, because the host applies the saved level before `start` and
+    /// the device that opens afterwards has to read it.
+    public func setGameVolume(_ volume: Double) async throws {
+        gameVolume = min(max(volume.isFinite ? volume : 1, 0), 1)
+        bundle?.setGameVolume(gameVolume)
+    }
+
+    /// Applies the capture gain to the live send pipeline and to the configuration a recovery
+    /// re-negotiates from, so a reconnect cannot undo the slider.
+    public func setMicrophoneVolume(_ volume: Double) async throws {
+        let clamped = min(max(volume.isFinite ? volume : 1, 0), 1)
+        if let configuration = microphoneConfiguration {
+            microphoneConfiguration = NativeNVSTMicrophoneConfiguration(
+                volume: clamped,
+                voiceActivityEnabled: configuration.voiceActivityEnabled,
+                captureRequested: configuration.captureRequested,
+                initiallyEnabled: configuration.initiallyEnabled,
+                deviceUniqueID: configuration.deviceUniqueID
+            )
+        }
+        bundle?.setMicrophoneVolume(clamped)
+    }
+
+    /// Stored even without a bundle, for the same reason as the playback gain: the device that opens
+    /// after the handshake has to resolve the picker's choice.
+    public func setOutputDevice(_ uid: String) async throws {
+        let normalized = uid.isEmpty ? nil : uid
+        outputDeviceUniqueID = normalized
+        bundle?.setOutputDevice(uid: normalized)
+    }
+
+    public func setOutputDeviceHandler(_ handler: (@MainActor @Sendable (NvstOutputDeviceChange) -> Void)?) async {
+        outputDeviceHandler = handler
+    }
+
+    public func setOutputDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {
+        outputDeviceListHandler = handler
+    }
 }

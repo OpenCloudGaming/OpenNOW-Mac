@@ -53,8 +53,8 @@ import Testing
     @Test @MainActor func theAudioDropdownRendersOverTheSectionBeneathIt() throws {
         let model = seededModel()
         model.microphoneDeviceOptions = [
-            OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true),
-            OPNStreamMicrophoneDeviceOption(label: "MacBook Microphone", uniqueId: "built-in"),
+            OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: ""),
+            OPNStreamAudioDeviceOption(label: "MacBook Microphone", uniqueId: "built-in"),
         ]
         model.isMicrophoneSectionNegotiated = true
         model.microphoneMode = "voice-activity"

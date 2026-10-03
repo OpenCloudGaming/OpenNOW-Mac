@@ -212,7 +212,9 @@ extension NativeNVSTHostViewModel {
         let isPushToTalkEnabled = mode.caseInsensitiveCompare("push-to-talk") == .orderedSame
         view.configurePushToTalk(keyCode: isPushToTalkEnabled ? profile.microphonePushToTalkKeyCode : nil,
                                  modifierMask: profile.microphonePushToTalkModifierMask) { [weak self] isHeld in
-            self?.requestNativeMicrophoneEnabled(isHeld, source: "push-to-talk")
+            // The key updates held-key state only. Capture is decided by the composed gate, so a
+            // press while the mute override is active cannot open the microphone.
+            self?.handleNativePushToTalkKey(isHeld: isHeld)
         }
     }
 
