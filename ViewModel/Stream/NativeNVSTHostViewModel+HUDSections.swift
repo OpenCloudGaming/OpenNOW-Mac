@@ -227,8 +227,52 @@ extension NativeNVSTHostViewModel {
         collapsedHUDSections.contains(section)
     }
 
+    /// The focus ring a view should draw: nil until the pad has driven the HUD, so a reader on the
+    /// pointer or keyboard never sees a ring parked on a row only the pad can move.
+    var hudVisibleFocusID: String? {
+        isHUDGamepadFocusVisible ? hudFocusID : nil
+    }
+
     func isHUDSectionHeaderFocused(_ section: OPNStreamHUDSection) -> Bool {
-        hudFocusID == section.focusID
+        hudVisibleFocusID == section.focusID
+    }
+
+    // MARK: - Pad focus navigation
+
+    func handleHUDGamepad(_ state: GamepadState) {
+        guard let step = hudGamepadTracker.navigationStep(state) else { return }
+        // The first step reveals the ring on the control the HUD opened on rather than moving past
+        // it: a reader who has only used the pointer has no ring to move from yet, so the first
+        // press shows where the pad starts instead of skipping the row under it.
+        let isRevealing = !isHUDGamepadFocusVisible
+        isHUDGamepadFocusVisible = true
+        switch step {
+        case .move(let direction):
+            guard !isRevealing else { return }
+            // An open dropdown owns the pad: every direction walks its rows, and focus stays on the
+            // trigger so cancel lands back on it.
+            if isHUDDropdownOpen {
+                moveHUDDropdownHighlight(step: direction.linearStep)
+            } else {
+                moveHUDFocus(direction)
+            }
+        case .activate:
+            if isHUDDropdownOpen {
+                commitHUDDropdownHighlight()
+            } else {
+                StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
+            }
+        case .back:
+            // Back leaves the panel first and only then the HUD; closing both at once is how a user
+            // who mistook a long list for the end of the HUD loses the stream overlay entirely.
+            if isHUDDropdownOpen { closeHUDDropdown() } else { setUnifiedHUDVisible(false) }
+        }
+    }
+
+    func moveHUDFocus(_ direction: StreamHUDFocusDirection) {
+        guard !isHUDDropdownOpen else { return }
+        guard let next = StreamHUDFocusEntry.focusID(from: hudFocusID, direction: direction, in: hudFocusEntries) else { return }
+        hudFocusID = next
     }
 
     var hasCustomHUDLayout: Bool {

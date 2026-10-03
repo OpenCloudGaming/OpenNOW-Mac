@@ -145,7 +145,7 @@ extension NativeNVSTMediaStreamSurface {
 
     /// `Title · subtitle` of the focused tile in `tiles`, or nil when focus is elsewhere.
     func nativeHUDCaption(for tiles: [NativeHUDTile], extra: [(id: String, caption: String)] = []) -> String? {
-        guard let focus = model.hudFocusID else { return nil }
+        guard let focus = model.hudVisibleFocusID else { return nil }
         if let tile = tiles.first(where: { $0.id == focus }) {
             return tile.subtitle.isEmpty ? tile.title : "\(tile.title) · \(tile.subtitle)"
         }
@@ -164,7 +164,7 @@ extension NativeNVSTMediaStreamSurface {
                     systemName: tile.systemName,
                     isActive: tile.isActive,
                     isDisabled: tile.isDisabled,
-                    isFocused: model.hudFocusID == tile.id,
+                    isFocused: model.hudVisibleFocusID == tile.id,
                     isWidthFlexible: true,
                     action: tile.action
                 )
@@ -205,8 +205,8 @@ extension NativeNVSTMediaStreamSurface {
                 isMuted: model.nativeLocalAudioMuted,
                 isDisabled: !model.isConnected,
                 isMuteDisabled: !model.isConnected,
-                isFocused: model.hudFocusID == NativeNVSTHostViewModel.gameVolumeFocusID,
-                isMuteFocused: model.hudFocusID == NativeNVSTHostViewModel.gameVolumeMuteFocusID,
+                isFocused: model.hudVisibleFocusID == NativeNVSTHostViewModel.gameVolumeFocusID,
+                isMuteFocused: model.hudVisibleFocusID == NativeNVSTHostViewModel.gameVolumeMuteFocusID,
                 onToggleMute: model.toggleNativeLocalAudioMute,
                 onPercentChange: { model.updateNativeGameVolume(percent: $0) }
             )
@@ -221,8 +221,8 @@ extension NativeNVSTMediaStreamSurface {
                 isMuted: model.isNativeMicrophoneMuted,
                 isDisabled: model.isMicrophoneVolumeRowDisabled,
                 isMuteDisabled: model.isMicrophoneMuteRowDisabled,
-                isFocused: model.hudFocusID == NativeNVSTHostViewModel.microphoneVolumeFocusID,
-                isMuteFocused: model.hudFocusID == NativeNVSTHostViewModel.microphoneVolumeMuteFocusID,
+                isFocused: model.hudVisibleFocusID == NativeNVSTHostViewModel.microphoneVolumeFocusID,
+                isMuteFocused: model.hudVisibleFocusID == NativeNVSTHostViewModel.microphoneVolumeMuteFocusID,
                 onToggleMute: model.toggleNativeMicrophone,
                 onPercentChange: { model.updateNativeMicrophoneVolume(percent: $0) }
             )
@@ -249,7 +249,7 @@ extension NativeNVSTMediaStreamSurface {
             rows: model.padDropdownItems(dropdownID),
             selection: selection,
             isDisabled: isDisabled,
-            isFocused: model.hudFocusID == dropdownID,
+            isFocused: model.hudVisibleFocusID == dropdownID,
             // Capped so a long list scrolls rather than running the height of the HUD.
             visibleItemCount: 6,
             padDriver: model.padDropdown(dropdownID: dropdownID)
@@ -357,7 +357,7 @@ extension NativeNVSTMediaStreamSurface {
                 range: OPNStreamPreferences.mouseSensitivityRange,
                 step: OPNStreamPreferences.mouseSensitivityStep,
                 isDisabled: !model.isConnected,
-                isFocused: model.hudFocusID == "mouse-sensitivity",
+                isFocused: model.hudVisibleFocusID == "mouse-sensitivity",
                 action: { model.updateNativeMouseSensitivity(percent: $0) }
             )
         }

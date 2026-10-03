@@ -51,7 +51,7 @@ struct StreamHUDClipboardPanel: View {
             options: StreamTextCaptureMode.allCases.map { ($0, $0.label) },
             selection: clipboard.captureMode,
             isDisabled: false,
-            isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardCaptureModeFocusID
+            isFocused: model.hudVisibleFocusID == NativeNVSTHostViewModel.clipboardCaptureModeFocusID
         ) { mode in
             model.setClipboardCaptureMode(mode)
         }
@@ -72,14 +72,14 @@ struct StreamHUDClipboardPanel: View {
                 ForEach(clipboard.entries) { entry in
                     StreamHUDClipboardRow(
                         entry: entry,
-                        isCopyFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry),
-                        isRemoveFocused: model.hudFocusID == NativeNVSTMediaStreamSurface.clipboardRemoveFocusID(for: entry),
+                        isCopyFocused: model.hudVisibleFocusID == NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry),
+                        isRemoveFocused: model.hudVisibleFocusID == NativeNVSTMediaStreamSurface.clipboardRemoveFocusID(for: entry),
                         onCopy: { model.copyClipboardEntry(entry) },
                         onRemove: { model.removeClipboardEntry(entry) }
                     )
                 }
             }
-            StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
+            StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudVisibleFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
                 model.requestClearClipboardHistory()
             }
         }

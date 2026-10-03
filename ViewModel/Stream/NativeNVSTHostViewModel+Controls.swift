@@ -76,36 +76,6 @@ extension NativeNVSTHostViewModel {
         updateNativePillarboxFill(modeIndex: OPNPillarboxFillMode.pickerCases.map(\.rawValue).wrappingNext(after: pillarboxFillModeIndex))
     }
 
-    func handleHUDGamepad(_ state: GamepadState) {
-        guard let step = hudGamepadTracker.navigationStep(state) else { return }
-        switch step {
-        case .move(let direction):
-            // An open dropdown owns the pad: every direction walks its rows, and focus stays on the
-            // trigger so cancel lands back on it.
-            if isHUDDropdownOpen {
-                moveHUDDropdownHighlight(step: direction.linearStep)
-            } else {
-                moveHUDFocus(direction)
-            }
-        case .activate:
-            if isHUDDropdownOpen {
-                commitHUDDropdownHighlight()
-            } else {
-                StreamHUDFocusEntry.activatable(hudFocusID, in: hudFocusEntries)?.action()
-            }
-        case .back:
-            // Back leaves the panel first and only then the HUD; closing both at once is how a user
-            // who mistook a long list for the end of the HUD loses the stream overlay entirely.
-            if isHUDDropdownOpen { closeHUDDropdown() } else { setUnifiedHUDVisible(false) }
-        }
-    }
-
-    func moveHUDFocus(_ direction: StreamHUDFocusDirection) {
-        guard !isHUDDropdownOpen else { return }
-        guard let next = StreamHUDFocusEntry.focusID(from: hudFocusID, direction: direction, in: hudFocusEntries) else { return }
-        hudFocusID = next
-    }
-
     func handleStreamControlsGamepad(_ state: GamepadState) {
         guard let step = hudGamepadTracker.navigationStep(state) else { return }
         switch step {
@@ -326,6 +296,7 @@ extension NativeNVSTHostViewModel {
         onScreenKeyboardVisible = false
         nativeView?.localOverlayCapturesInput = false
         hudFocusID = nil
+        isHUDGamepadFocusVisible = false
         hudGamepadTracker.reset()
         streamControlsFocusIndex = 0
         nativeView?.remoteInputEnabled = false
@@ -373,9 +344,12 @@ extension NativeNVSTHostViewModel {
             // either only when every section is folded and nothing else is reachable.
             hudFocusID = hudFocusEntries.first(where: { !$0.isDisabled && $0.kind == .control })?.id
                 ?? hudFocusEntries.first(where: { !$0.isDisabled })?.id
+            // The cursor is seeded for the pad, but the ring stays hidden until the pad moves it.
+            isHUDGamepadFocusVisible = false
         } else {
             unifiedHUDVisible = false
             hudFocusID = nil
+            isHUDGamepadFocusVisible = false
             clipboard.isClearArmed = false
             let restoreManualCapture = restoreManualCaptureOnHUDHide
             restoreManualCaptureOnHUDHide = false
@@ -473,6 +447,7 @@ extension NativeNVSTHostViewModel {
         nativeStatsVisible = false
         closeHUDDropdown()
         hudFocusID = nil
+        isHUDGamepadFocusVisible = false
         if onScreenKeyboardVisible { setOnScreenKeyboardVisible(false) }
         // Input stays live. The picture is in the game, so the mouse and keyboard have to keep
         // reaching it while the window is small - the same gate the HUD uses on its way out, which

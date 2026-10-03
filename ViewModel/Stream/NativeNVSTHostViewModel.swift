@@ -263,6 +263,10 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     @Published var showingControllerMapping = false
     @Published var showingControllerOrder = false
     @Published var hudFocusID: String?
+    /// Whether the pad has driven the HUD since it opened. The focus ring is drawn only once this is
+    /// true, so a reader on the pointer or keyboard never sees a ring parked on a row only the pad
+    /// can move.
+    @Published var isHUDGamepadFocusVisible = false
     /// Which pad-drivable dropdown is open, if any, and the row the pad stands on inside it. A
     /// dropdown's confirm opens a list instead of firing once, so the gamepad handler owns this.
     @Published var openHUDDropdownID: String?

@@ -41,7 +41,7 @@ extension NativeNVSTMediaStreamSurface {
                         systemName: model.remoteCoOpSnapshot.invite == nil ? "person.badge.plus" : "person.crop.circle.badge.xmark",
                         isActive: model.remoteCoOpSnapshot.invite != nil,
                         isDisabled: !model.sidebarCapabilities.supports(.remoteCoOp) || (model.remoteCoOpSnapshot.invite == nil && !model.canStartRemoteCoOpInvite),
-                        isFocused: model.hudFocusID == "coop-invite",
+                        isFocused: model.hudVisibleFocusID == "coop-invite",
                         action: { model.remoteCoOpSnapshot.invite == nil ? model.startRemoteCoOpInvite() : model.stopRemoteCoOpInvite() }
                     )
                     if model.remoteCoOpSnapshot.invite != nil {
@@ -53,7 +53,7 @@ extension NativeNVSTMediaStreamSurface {
                             systemName: "doc.on.doc",
                             isActive: false,
                             isDisabled: false,
-                            isFocused: model.hudFocusID == "coop-copy",
+                            isFocused: model.hudVisibleFocusID == "coop-copy",
                             action: { model.copyRemoteCoOpInvite() }
                         )
                     }
@@ -123,7 +123,7 @@ extension NativeNVSTMediaStreamSurface {
                     systemName: "checkmark",
                     label: "Approve guest",
                     color: StreamHUDTheme.accent,
-                    isFocused: model.hudFocusID == "coop-approve-\(participant.id.uuidString)"
+                    isFocused: model.hudVisibleFocusID == "coop-approve-\(participant.id.uuidString)"
                 ) {
                     model.approveRemoteCoOpParticipant(participant.id)
                 }
@@ -132,7 +132,7 @@ extension NativeNVSTMediaStreamSurface {
                 systemName: "xmark",
                 label: "Remove guest",
                 color: StreamHUDTheme.danger,
-                isFocused: model.hudFocusID == "coop-remove-\(participant.id.uuidString)"
+                isFocused: model.hudVisibleFocusID == "coop-remove-\(participant.id.uuidString)"
             ) {
                 model.removeRemoteCoOpParticipant(participant.id)
             }
@@ -176,7 +176,7 @@ extension NativeNVSTMediaStreamSurface {
             // The row the guest is on, which is what the trigger reads and the checkmark marks.
             selection: participant.qualityPreset?.label ?? "session-default",
             isDisabled: false,
-            isFocused: model.hudFocusID == focusID,
+            isFocused: model.hudVisibleFocusID == focusID,
             // Capped so the full preset list scrolls instead of running the height of the HUD.
             visibleItemCount: 6,
             padDriver: model.padDropdown(dropdownID: focusID)

@@ -39,7 +39,7 @@ extension NativeNVSTMediaStreamSurface {
                     range: ControllerRumblePreference.range,
                     step: ControllerRumblePreference.step,
                     isDisabled: false,
-                    isFocused: model.hudFocusID == "rumble-intensity",
+                    isFocused: model.hudVisibleFocusID == "rumble-intensity",
                     action: { model.updateRumbleIntensity(percent: $0) }
                 )
                 .padding(.top, 4)

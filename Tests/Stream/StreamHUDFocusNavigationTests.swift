@@ -281,4 +281,44 @@ struct StreamHUDFocusNavigationTests {
         #expect(StreamHUDFocusDirection.up.linearStep == -1)
         #expect(StreamHUDFocusDirection.right.linearStep == 1)
     }
+
+    /// The HUD seeds a focus cursor when it opens for the pad to move from, but the ring stays hidden
+    /// until the pad actually drives — otherwise a pointer or keyboard reader sees a ring parked on a
+    /// row only the pad can move.
+    @Test func theFocusRingStaysHiddenUntilThePadDrivesIt() {
+        let (_, model) = makeHUDSurface()
+        #expect(!model.isHUDGamepadFocusVisible)
+        #expect(model.hudVisibleFocusID == nil)
+
+        model.hudFocusID = NativeNVSTHostViewModel.clipboardCaptureModeFocusID
+        #expect(model.hudVisibleFocusID == nil, "the seeded cursor is not drawn on its own")
+
+        model.isHUDGamepadFocusVisible = true
+        #expect(model.hudVisibleFocusID == NativeNVSTHostViewModel.clipboardCaptureModeFocusID)
+    }
+
+    /// The first step reveals the seeded row instead of moving past it, so a reader who has only used
+    /// the pointer does not skip the control the HUD opened on. The next step moves as usual.
+    @Test func theFirstPadStepRevealsTheSeededFocusInsteadOfMovingIt() {
+        let (_, model) = makeHUDSurface()
+        let firstControl = model.hudFocusEntries.first { !$0.isDisabled && $0.kind == .control }
+        model.hudFocusID = firstControl?.id
+
+        let device = InputDeviceID("pad")
+        func state(_ buttons: GamepadButtons) -> GamepadState {
+            GamepadState(deviceID: device, playerIndex: 0, buttons: buttons, leftStickX: 0, leftStickY: 0, timestamp: MediaTimestamp(nanoseconds: 0))
+        }
+
+        // The tracker treats the first state it sees as the baseline, so a button held while the HUD
+        // opens is not a press. Seed it with nothing held.
+        model.handleHUDGamepad(state([]))
+        model.handleHUDGamepad(state(.dpadDown))
+        #expect(model.isHUDGamepadFocusVisible)
+        #expect(model.hudFocusID == firstControl?.id, "the first press shows the seeded row rather than skipping it")
+        #expect(model.hudVisibleFocusID == firstControl?.id)
+
+        model.handleHUDGamepad(state([]))
+        model.handleHUDGamepad(state(.dpadDown))
+        #expect(model.hudFocusID != firstControl?.id, "the second press moves on")
+    }
 }

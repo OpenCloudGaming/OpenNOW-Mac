@@ -17,7 +17,7 @@ extension NativeNVSTMediaStreamSurface {
             StreamStatsHUDShapeControls(
                 detailLevel: model.statsDetail,
                 position: model.statsPosition,
-                focusedControlID: model.hudFocusID,
+                focusedControlID: model.hudVisibleFocusID,
                 onSelectDetail: { model.setNativeStatsDetail($0) },
                 onSelectPosition: { model.setNativeStatsPosition($0) }
             )

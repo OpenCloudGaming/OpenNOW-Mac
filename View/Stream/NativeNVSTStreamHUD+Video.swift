@@ -19,7 +19,7 @@ extension NativeNVSTMediaStreamSurface {
                     options: NativeNVSTHostViewModel.upscalingTierDisplayOrder.map { ($0.value, $0.label) },
                     selection: OPNStreamPreferences.upscalingModeOptions[model.upscalingModeIndex].value,
                     isDisabled: !model.sidebarCapabilities.supports(.videoEnhancement),
-                    isFocused: model.hudFocusID == "upscaling-tier",
+                    isFocused: model.hudVisibleFocusID == "upscaling-tier",
                     onSelect: { model.updateNativeUpscalingTier(value: $0) }
                 )
                 StreamHUDDropdown(
@@ -28,10 +28,10 @@ extension NativeNVSTMediaStreamSurface {
                     selection: model.upscalingTargetIndex,
                     isDisabled: !model.isConnected || model.upscalingModeIndex == 0 || !model.sidebarCapabilities.supports(.videoEnhancement),
                     onSelect: { model.updateNativeUpscalingTarget(targetIndex: $0) },
-                    isFocused: model.hudFocusID == "upscaling-target"
+                    isFocused: model.hudVisibleFocusID == "upscaling-target"
                 )
-                nativeHUDSliderRow("Clarity", value: model.upscalingSharpness, range: 0...15, isFocused: model.hudFocusID == "clarity") { model.updateNativeUpscalingClarity(sharpness: $0) }
-                nativeHUDSliderRow("Noise Reduction", value: model.upscalingDenoise, range: 0...20, isFocused: model.hudFocusID == "noise-reduction") { model.updateNativeUpscalingClarity(denoise: $0) }
+                nativeHUDSliderRow("Clarity", value: model.upscalingSharpness, range: 0...15, isFocused: model.hudVisibleFocusID == "clarity") { model.updateNativeUpscalingClarity(sharpness: $0) }
+                nativeHUDSliderRow("Noise Reduction", value: model.upscalingDenoise, range: 0...20, isFocused: model.hudVisibleFocusID == "noise-reduction") { model.updateNativeUpscalingClarity(denoise: $0) }
             }
         }
     }
@@ -51,7 +51,7 @@ extension NativeNVSTMediaStreamSurface {
                     selection: model.pillarboxFillModeIndex,
                     isDisabled: !model.isConnected,
                     onSelect: { model.updateNativePillarboxFill(modeIndex: $0) },
-                    isFocused: model.hudFocusID == "pillarbox-fill"
+                    isFocused: model.hudVisibleFocusID == "pillarbox-fill"
                 )
                 StreamHUDDropdown(
                     label: "VSync",
@@ -59,7 +59,7 @@ extension NativeNVSTMediaStreamSurface {
                     selection: OPNStreamPreferences.vsyncModeOptions[model.vsyncModeIndex].value,
                     isDisabled: !model.isConnected,
                     onSelect: { model.updateNativeVsyncMode(modeValue: $0) },
-                    isFocused: model.hudFocusID == "vsync"
+                    isFocused: model.hudVisibleFocusID == "vsync"
                 )
                 nativeHUDDetailRow(label: "Active", value: model.upscalingModeIndex == 0 ? "Native" : OPNStreamPreferences.upscalingModeOptions[model.upscalingModeIndex].label)
                 nativeHUDDetailRow(label: "Resolution", value: model.nativeStreamResolutionText)
