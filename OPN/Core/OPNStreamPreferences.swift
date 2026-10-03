@@ -1,4 +1,3 @@
-import AppKit
 import CoreAudio
 import CoreMedia
 import Foundation
@@ -219,22 +218,8 @@ public enum OPNStreamPreferences {
         }
         capabilities.audioOutputChannelCount = defaultOutputDeviceChannelCount()
 
-        guard let snapshot = OPNStreamScreenSnapshotCache.resolved() else { return capabilities }
-        let scale = snapshot.backingScaleFactor > 0 ? snapshot.backingScaleFactor : 1.0
-        capabilities.displayDpi = max(100, Int((100.0 * scale).rounded()))
-        if snapshot.screenNumber != nil {
-            if snapshot.pixelWidth > 0, snapshot.pixelHeight > 0 {
-                capabilities.maxDisplayWidth = snapshot.pixelWidth
-                capabilities.maxDisplayHeight = snapshot.pixelHeight
-            }
-            if snapshot.refreshRate > 0 { capabilities.maxDisplayRefreshRate = snapshot.refreshRate }
-        }
-        if capabilities.maxDisplayWidth == 0 || capabilities.maxDisplayHeight == 0 {
-            capabilities.maxDisplayWidth = Int((snapshot.frameSize.width * scale).rounded())
-            capabilities.maxDisplayHeight = Int((snapshot.frameSize.height * scale).rounded())
-        }
-        capabilities.maxDisplayRefreshRate = max(capabilities.maxDisplayRefreshRate, snapshot.maximumFramesPerSecond)
-        capabilities.hdrDisplaySupported = snapshot.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0
+        guard let snapshot = OPNStreamScreenSnapshotCache.resolvedSnapshot() else { return capabilities }
+        capabilities.applyDisplaySnapshot(snapshot)
         return capabilities
     }
 

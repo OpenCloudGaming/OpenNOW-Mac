@@ -21,10 +21,7 @@ private struct CommonPerformanceAuditOutput: Encodable {
 }
 
 func runStreamPreferencesPerformanceAudit() throws -> Bool {
-    // The app captures the display snapshot while launching and reads the cached one for the rest
-    // of the session. Capturing it here first keeps the measured loop on that path instead of
-    // charging one iteration with the first-touch AppKit and WindowServer cost production pays
-    // before its first read.
+    // Capture the display snapshot the way launch does, so the loop measures the production read path.
     MainActor.assumeIsolated { OPNStreamScreenSnapshotCache.refresh() }
     let measurements = [
         measureCommonAuditOperation(operation: "OPNStreamPreferences.loadDeviceCapabilities", iterations: 200) {

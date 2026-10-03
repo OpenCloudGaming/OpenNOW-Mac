@@ -1,7 +1,6 @@
 //  The option tables' element types and the resolved profile they add up to.
 //
 
-import AppKit
 import CoreAudio
 import CoreMedia
 import Foundation
@@ -271,6 +270,17 @@ public struct OPNStreamDeviceCapabilities: Equatable, Sendable {
     public var displayDpi = 100
 
     public init() {}
+
+    /// Fills in the display-derived fields from a captured screen snapshot.
+    mutating func applyDisplaySnapshot(_ snapshot: OPNStreamScreenSnapshot) {
+        let scale = snapshot.backingScaleFactor > 0 ? snapshot.backingScaleFactor : 1.0
+        let isResolutionKnown = snapshot.pixelWidth > 0 && snapshot.pixelHeight > 0
+        displayDpi = max(100, Int((100.0 * scale).rounded()))
+        maxDisplayWidth = isResolutionKnown ? snapshot.pixelWidth : Int((snapshot.frameSize.width * scale).rounded())
+        maxDisplayHeight = isResolutionKnown ? snapshot.pixelHeight : Int((snapshot.frameSize.height * scale).rounded())
+        maxDisplayRefreshRate = max(snapshot.refreshRate, snapshot.maximumFramesPerSecond)
+        hdrDisplaySupported = snapshot.maximumPotentialExtendedDynamicRangeColorComponentValue > 1.0
+    }
 }
 
 public struct OPNStreamPresentationCapability: Equatable, Sendable {

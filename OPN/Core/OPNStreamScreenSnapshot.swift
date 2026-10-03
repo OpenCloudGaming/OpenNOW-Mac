@@ -2,13 +2,8 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// Everything `loadDeviceCapabilities` resolves off the current screen: the `NSScreen` properties
-/// plus the CoreGraphics metrics for the same display.
-///
-/// `NSScreen` is main-actor only, so the values are captured there once and cached. The previous
-/// implementation read them from whatever thread called `loadDeviceCapabilities` and reached the
-/// main actor with a blocking synchronous hop, which stalled the catalog's detached preference task
-/// for as long as the main thread was busy.
+/// The screen values `loadDeviceCapabilities` derives its display capabilities from, captured on the
+/// main actor because `NSScreen` is main-actor only.
 struct OPNStreamScreenSnapshot: Sendable {
     let backingScaleFactor: CGFloat
     let screenNumber: UInt32?
@@ -27,15 +22,15 @@ struct OPNStreamScreenSnapshot: Sendable {
         frameSize = screen.frame.size
         maximumFramesPerSecond = screen.maximumFramesPerSecond
         maximumPotentialExtendedDynamicRangeColorComponentValue = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
-        guard let screenNumber = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else {
-            self.screenNumber = nil
+        guard let displayNumber = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else {
+            screenNumber = nil
             pixelWidth = 0
             pixelHeight = 0
             refreshRate = 0
             return
         }
-        self.screenNumber = screenNumber
-        let displayID = CGDirectDisplayID(screenNumber)
+        screenNumber = displayNumber
+        let displayID = CGDirectDisplayID(displayNumber)
         pixelWidth = CGDisplayPixelsWide(displayID)
         pixelHeight = CGDisplayPixelsHigh(displayID)
         let modeRefreshRate = CGDisplayCopyDisplayMode(displayID)?.refreshRate ?? 0
@@ -43,65 +38,60 @@ struct OPNStreamScreenSnapshot: Sendable {
     }
 }
 
-/// The process-wide screen snapshot every stream preference read resolves against.
-///
-/// Captured once during launch and re-captured on every display-configuration change, so the read
-/// path never hops to the main thread: a caller on any thread takes the last capture, and only a
-/// caller already on the main actor captures on demand.
+/// The process-wide screen snapshot every stream preference read resolves against. Captured at launch
+/// and on every display change, so a read never hops to the main thread and waits for it to be free.
 enum OPNStreamScreenSnapshotCache {
-    private static let lock = NSLock()
-    private nonisolated(unsafe) static var snapshot: OPNStreamScreenSnapshot?
-    private nonisolated(unsafe) static var observers: [NSObjectProtocol] = []
-    private nonisolated(unsafe) static var captures = 0
-
-    /// The last snapshot captured on the main actor, or `nil` before the first capture.
-    static func current() -> OPNStreamScreenSnapshot? {
-        lock.withLock { snapshot }
+    private struct State {
+        var snapshot: OPNStreamScreenSnapshot?
+        var observerTokens: [NSObjectProtocol] = []
+        var refreshCount = 0
     }
 
+    private static let lock = NSLock()
+    private nonisolated(unsafe) static var state = State()
+
     /// The snapshot for the calling thread: the cached one, or a fresh capture when the caller is
-    /// already on the main actor. `nil` on a background thread before the first capture, which in
-    /// the app is `install()` during launch.
-    static func resolved() -> OPNStreamScreenSnapshot? {
-        if let cached = current() { return cached }
+    /// already on the main actor. `nil` on a background thread before the first capture.
+    static func resolvedSnapshot() -> OPNStreamScreenSnapshot? {
+        if let cachedSnapshot = lock.withLock({ state.snapshot }) { return cachedSnapshot }
         guard Thread.isMainThread else { return nil }
         MainActor.assumeIsolated { refresh() }
-        return current()
+        return lock.withLock { state.snapshot }
     }
 
     /// Captures the current display state. Main actor only, because `NSScreen` is.
     @MainActor
     static func refresh() {
-        let captured = OPNStreamScreenSnapshot(screen: NSScreen.main)
+        let capturedSnapshot = OPNStreamScreenSnapshot(screen: NSScreen.main)
         lock.withLock {
-            snapshot = captured
-            captures += 1
+            state.snapshot = capturedSnapshot
+            state.refreshCount += 1
         }
     }
 
-    /// Captures the snapshot now and re-captures it whenever `NSScreen.main` would resolve
-    /// differently: displays added, removed, rearranged or reconfigured, a window moved to another
-    /// display, its backing properties changed, or a different window taking key.
+    /// Captures the snapshot and re-captures it whenever `NSScreen.main` would resolve differently.
     @MainActor
     static func install() {
         refresh()
-        guard observers.isEmpty else { return }
-        let center = NotificationCenter.default
-        let recapture: @Sendable (Notification) -> Void = { _ in
+        guard lock.withLock({ state.observerTokens.isEmpty }) else { return }
+        let notificationCenter = NotificationCenter.default
+        let recaptureSnapshot: @Sendable (Notification) -> Void = { _ in
             MainActor.assumeIsolated { OPNStreamScreenSnapshotCache.refresh() }
         }
-        for name in [
+        let observedNames: [Notification.Name] = [
             NSApplication.didChangeScreenParametersNotification,
             NSWindow.didChangeScreenNotification,
             NSWindow.didChangeBackingPropertiesNotification,
             NSWindow.didBecomeKeyNotification
-        ] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main, using: recapture))
+        ]
+        let observerTokens = observedNames.map { observedName in
+            notificationCenter.addObserver(forName: observedName, object: nil, queue: .main, using: recaptureSnapshot)
         }
+        lock.withLock { state.observerTokens = observerTokens }
     }
 
     /// How many times the snapshot has been captured. Test-facing.
-    static var captureCount: Int {
-        lock.withLock { captures }
+    static var refreshCount: Int {
+        lock.withLock { state.refreshCount }
     }
 }

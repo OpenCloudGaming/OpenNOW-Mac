@@ -3,28 +3,25 @@ import Testing
 @testable import OpenNOW
 
 @MainActor @Suite(.serialized) struct StreamPreferencesDisplaySnapshotTests {
-    /// The catalog resolves preferences on a detached task, and the main thread is usually busy with
-    /// catalog work when it does. Reading the screen there used to be a `DispatchQueue.main.sync`, so
-    /// a main thread that waited on that task deadlocked. Nothing on the read path may need the main
-    /// thread to run.
-    @Test func backgroundReadResolvesWhileTheMainThreadIsBlocked() {
+    /// The catalog resolves preferences on a detached task, so the read path must never wait on the
+    /// main thread. Blocking it here would deadlock the read if it did.
+    @Test func loadDeviceCapabilitiesResolvesWhileTheMainThreadIsBlocked() {
         OPNStreamScreenSnapshotCache.refresh()
-        let finished = DispatchSemaphore(value: 0)
+        let isResolved = DispatchSemaphore(value: 0)
         Task.detached(priority: .userInitiated) {
             _ = OPNStreamPreferences.loadDeviceCapabilities()
-            finished.signal()
+            isResolved.signal()
         }
-        #expect(finished.wait(timeout: .now() + 5) == .success)
+        #expect(isResolved.wait(timeout: .now() + 5) == .success)
     }
 
-    @Test func backgroundReadMatchesTheMainActorRead() async {
+    @Test func loadDeviceCapabilitiesMatchesOnEveryThread() async {
         OPNStreamScreenSnapshotCache.refresh()
         let onMainActor = OPNStreamPreferences.loadDeviceCapabilities()
         let onBackgroundThread = await Task.detached { OPNStreamPreferences.loadDeviceCapabilities() }.value
         #expect(onBackgroundThread == onMainActor)
     }
 
-    /// Every display-derived capability must resolve exactly as a direct `NSScreen` read would.
     /// Skipped when the process has no display, which is what a headless test runner reports.
     @Test func capabilitiesMatchTheScreenTheyWereCapturedFrom() {
         OPNStreamScreenSnapshotCache.refresh()
@@ -41,13 +38,13 @@ import Testing
 
     @Test func displayConfigurationChangeRecapturesTheSnapshot() async {
         OPNStreamScreenSnapshotCache.install()
-        let capturesBefore = OPNStreamScreenSnapshotCache.captureCount
+        let refreshesBefore = OPNStreamScreenSnapshotCache.refreshCount
         NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
         var attempts = 0
-        while OPNStreamScreenSnapshotCache.captureCount == capturesBefore, attempts < 100 {
+        while OPNStreamScreenSnapshotCache.refreshCount == refreshesBefore, attempts < 100 {
             try? await Task.sleep(for: .milliseconds(10))
             attempts += 1
         }
-        #expect(OPNStreamScreenSnapshotCache.captureCount > capturesBefore)
+        #expect(OPNStreamScreenSnapshotCache.refreshCount > refreshesBefore)
     }
 }
