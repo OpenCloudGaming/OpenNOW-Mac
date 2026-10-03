@@ -30,6 +30,53 @@ import Testing
     #expect(data.isEmpty)
 }
 
+/// The clear is the first statement of `OPNApp.init()`, and it is deliberately not synchronous: a
+/// directory create plus an atomic truncate does not belong on the launch path before anything else
+/// has run. Queueing it is safe because `diagnosticsLogQueue` is serial — the clear still lands
+/// before every append submitted after it.
+///
+/// The log queue is held busy across the call so a synchronous clear could not return: this test
+/// fails instead of passing if the clear is turned back into a `.sync`.
+@Test func clearDiagnosticsLogForNewRunDoesNotBlockTheCaller() throws {
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+    let logURL = directory.appendingPathComponent("OpenNOW-diagnostics-current.log")
+    try Data("previous-run-log".utf8).write(to: logURL)
+
+    // Occupy the log queue and keep holding it until this test releases it. Waiting for the hold to
+    // actually start is what stops the clear below from slipping in front of it and running at once.
+    let queueIsBusy = DispatchSemaphore(value: 0)
+    let releaseQueue = DispatchSemaphore(value: 0)
+    OPNDiagnostics.diagnosticsLogQueue.async {
+        queueIsBusy.signal()
+        releaseQueue.wait()
+    }
+    queueIsBusy.wait()
+
+    let clearReturned = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        OPNDiagnostics.clearDiagnosticsLogForNewRun(at: logURL)
+        clearReturned.signal()
+    }
+    let returnedWhileQueueWasBusy = clearReturned.wait(timeout: .now() + 5)
+    #expect(returnedWhileQueueWasBusy == .success)
+    // Queued behind the hold, so the previous run's log is still there.
+    #expect(try Data(contentsOf: logURL).count > 0)
+
+    // A line written after the clear, the way `appendDiagnosticsLogLine` writes one: on the same
+    // serial queue. It must observe the clear.
+    releaseQueue.signal()
+    OPNDiagnostics.diagnosticsLogQueue.async {
+        try? Data("first-line-of-new-run\n".utf8).write(to: logURL)
+    }
+    OPNDiagnostics.diagnosticsLogQueue.sync {}
+
+    #expect(try String(contentsOf: logURL, encoding: .utf8) == "first-line-of-new-run\n")
+}
+
 /// Addresses and credentials are redacted; identifiers that make a log worth reading are not.
 /// `token=` used to survive this, which is how a live `id_token_hint` reached the diagnostics
 /// file and the paste service the upload path posts to.
