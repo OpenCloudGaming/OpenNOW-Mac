@@ -22,6 +22,14 @@ struct CatalogImageCacheStatistics: Sendable {
     let totalBytes: Int
 }
 
+/// Which decode lane a load enters. First-frame work draws on capacity that on-demand tile decodes
+/// cannot occupy, so the artwork the first frame is waiting on never queues behind a screenful of
+/// tiles.
+private enum CatalogImageLoadPriority {
+    case onDemand
+    case firstFrame
+}
+
 /// One queued background decode. The options travel with the URL because the one cache serves both
 /// tiles and marquee banners, and the banner rung is both larger and source-retaining.
 private struct CatalogImagePrefetchRequest: Sendable {
@@ -54,6 +62,7 @@ private struct CatalogImageLoadKey: Hashable, Sendable {
 actor CatalogImageCache {
     static let shared = CatalogImageCache()
 
+    nonisolated private let decodeGate = CatalogImageDecodeGate()
     nonisolated private let memoryCache = CatalogImageMemoryCache()
     nonisolated private let containerStore = CatalogImageCacheContainerStore()
     private var inFlightLoads: [CatalogImageLoadKey: Task<CatalogCachedImageData?, Never>] = [:]
@@ -119,6 +128,14 @@ actor CatalogImageCache {
     }
 
     func image(for url: URL, maxPixelSize: CGFloat = 1920 * 2, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
+        await cachedImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData, priority: .onDemand)
+    }
+
+    func firstFrameImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> CatalogCachedImageData? {
+        await cachedImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData, priority: .firstFrame)
+    }
+
+    private func cachedImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool, priority: CatalogImageLoadPriority) async -> CatalogCachedImageData? {
         if let cached = memoryCache.image(for: url), !retainingSourceData || cached.sourceData != nil {
             return cached
         }
@@ -128,9 +145,12 @@ actor CatalogImageCache {
             return await existingTask.value
         }
 
+        let isFirstFrame = priority == .firstFrame
         let task = Task<CatalogCachedImageData?, Never>.detached(priority: .utility, operation: { [weak self] in
             guard let self else { return nil }
-            return await self.loadImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
+            return await self.decodeGate.run(isFirstFrame: isFirstFrame) {
+                await self.loadImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
+            }
         })
         inFlightLoads[key] = task
         let result = await task.value
@@ -186,7 +206,7 @@ actor CatalogImageCache {
             Task(priority: .userInitiated) { [weak self] in
                 guard let self else { return }
                 while let url = await self.nextPriorityPrefetchURL() {
-                    _ = await self.image(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
+                    _ = await self.firstFrameImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData)
                 }
                 await self.priorityPrefetchWorkerDidFinish()
             }
@@ -318,8 +338,13 @@ actor CatalogImageCache {
     nonisolated private func refreshStoredImage(for url: URL, eTag: String, lastModified: String, maxPixelSize: CGFloat, retainingSourceData: Bool) {
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
-            if let downloaded = await self.downloadImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
-                await self.storeImage(downloaded, for: url)
+            // Revalidation decodes the fresh bytes, so it takes a slot like any other decode.
+            // Left outside the gate, a screenful of stale entries would fan out unbounded behind
+            // the bound the caller just waited on.
+            await self.decodeGate.run(isFirstFrame: false) {
+                if let downloaded = await self.downloadImage(for: url, eTag: eTag, lastModified: lastModified, maxPixelSize: maxPixelSize, retainingSourceData: retainingSourceData) {
+                    await self.storeImage(downloaded, for: url)
+                }
             }
         }
     }
@@ -500,22 +525,22 @@ actor CatalogImageCache {
         let image = NSImage(cgImage: cgImage, size: NSSize(width: pixelWidth, height: pixelHeight))
         return (image, bitmap.bytesPerRow * pixelHeight)
     }
+}
 
-    private struct StoredImage {
-        let imageData: CatalogCachedImageData
-        let isFresh: Bool
-        let eTag: String
-        let lastModified: String
-    }
+private struct StoredImage {
+    let imageData: CatalogCachedImageData
+    let isFresh: Bool
+    let eTag: String
+    let lastModified: String
+}
 
-    /// A plain copy of the fields a load needs, so no `ModelContext`-bound object escapes the
-    /// persistence queue.
-    private struct StoredRow {
-        let data: Data
-        let updatedAt: Date
-        let eTag: String
-        let lastModified: String
-    }
+/// A plain copy of the fields a load needs, so no `ModelContext`-bound object escapes the
+/// persistence queue.
+private struct StoredRow {
+    let data: Data
+    let updatedAt: Date
+    let eTag: String
+    let lastModified: String
 }
 
 nonisolated private final class CatalogImageCachePruneThrottle: @unchecked Sendable {

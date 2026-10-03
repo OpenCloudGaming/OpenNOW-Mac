@@ -43,7 +43,7 @@ struct CatalogHeroRemoteImage: View {
         isLoading = true
         // The scrim colour is read from the image's EXIF user comment, so this is the one call site
         // that needs the compressed bytes kept alongside the decoded image.
-        if let cached = await imageCache.image(for: url, retainingSourceData: true) {
+        if let cached = await imageCache.firstFrameImage(for: url, retainingSourceData: true) {
             guard !Task.isCancelled else { return }
             image = cached.image
             hasFailed = false
