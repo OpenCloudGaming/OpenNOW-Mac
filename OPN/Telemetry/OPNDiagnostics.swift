@@ -186,21 +186,9 @@ enum OPNDiagnostics {
         }
     }
 
-    /// Starts a fresh log for this run.
-    ///
-    /// Deliberately asynchronous. This is the first statement of `OPNApp.init()`, and a `.sync` here
-    /// put a directory create and an atomic truncate on the launch path before anything else ran.
-    /// Nothing is lost by queueing it: `diagnosticsLogQueue` is serial, so the clear still lands
-    /// before the first append submitted after it, and that append reopens the handle the clear
-    /// closed. The one reader, `diagnosticsLogForUpload`, goes through the same queue.
-    public static func clearDiagnosticsLogForNewRun() {
-        clearDiagnosticsLogForNewRun(at: diagnosticsLogURL())
-    }
-
-    /// The clear itself, submitted to the log queue rather than run on the caller. The URL is a
-    /// parameter so a test can point it at a temporary file and observe the ordering the launch path
-    /// relies on.
-    static func clearDiagnosticsLogForNewRun(at url: URL) {
+    /// Queued, never run on the caller: this is the first statement of `OPNApp.init()`. The serial
+    /// queue orders it before the run's first append, so a fresh run still starts with an empty log.
+    static func clearDiagnosticsLogForNewRun(at url: URL = diagnosticsLogURL()) {
         diagnosticsLogQueue.async {
             clearDiagnosticsLog(at: url)
             closeDiagnosticsLogHandle()
