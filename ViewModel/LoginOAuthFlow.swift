@@ -265,6 +265,9 @@ extension LoginViewModel {
         // Only the active account owns the shared Jarvis session; clearing it while signing out a
         // background account would sign out whoever is actually streaming.
         if wasActive { await jarvisAuthService.clearSession() }
+        // The wall this uncovers is the only surface that renders the provider picker, and a
+        // launch that restored a session skipped the launch lookup.
+        if activeSession == nil { refreshLoginProviders() }
         successMessage = "Signed out of \(account.displayName)."
         OPNLog.info(.auth, "Sign out completed account=\(email)")
     }
