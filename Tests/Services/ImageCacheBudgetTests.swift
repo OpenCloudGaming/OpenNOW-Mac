@@ -4,18 +4,11 @@ import Testing
 @testable import OpenNOW
 
 /// Four caches reached review with neither a `countLimit` nor a `totalCostLimit`, so each grew to
-/// whatever the working set happened to be until the OS applied memory pressure. A limit is only
-/// real when the writes charge for it - `NSCache` ignores `totalCostLimit` for entries written
-/// without a cost - so these pin the ceiling *and* the decoded-byte cost behind it.
-///
-/// The live visual checks in the acceptance criteria (no change at uiScale 1.0/1.25/1.5, no scroll
-/// thrash) need a running app. What can be asserted here is the invariant they rest on: each
-/// ceiling is above the working set that surface can actually display.
+/// whatever the working set happened to be. These pin the ceiling each surface declares.
 @MainActor
 struct ImageCacheBudgetTests {
-    /// 13 rows are visible at 1.0 uiScale and ~9 at 1.5, and the library lists are `LazyVStack`s
-    /// that keep a screen or two of overscan. 40 is a deliberately generous stand-in for the live
-    /// grid working set on both surfaces.
+    /// 13 rows are visible at 1.0 uiScale and ~9 at 1.5; 40 is a generous stand-in for the live grid
+    /// working set on both surfaces, lazy-stack overscan included.
     private static let visibleGridWorkingSet = 40
 
     /// A 360pt-long-edge 16:9 thumbnail - the smallest entry either library cache stores.
@@ -29,7 +22,7 @@ struct ImageCacheBudgetTests {
             .appendingPathComponent("Resources/OPN", isDirectory: true)
     }
 
-    private static func budgets() -> [(name: String, budget: (countLimit: Int, totalCostLimit: Int))] {
+    private static func budgets() -> [(name: String, budget: ImageCacheBudget)] {
         [
             ("VendorResourceImage", VendorResourceImage.cacheBudget),
             ("ScreenshotImageLoader", ScreenshotImageLoader.cacheBudget),
@@ -38,11 +31,19 @@ struct ImageCacheBudgetTests {
         ]
     }
 
-    @Test func everyBoundedCacheSetsBothLimits() {
+    @Test func everyImageCacheDeclaresBothLimits() {
         for entry in Self.budgets() {
             #expect(entry.budget.countLimit > 0, "\(entry.name) has no count limit")
             #expect(entry.budget.totalCostLimit > 0, "\(entry.name) has no cost limit")
         }
+    }
+
+    /// A declared budget only bounds anything if the cache it builds is configured from it.
+    @Test func aBoundedCacheAppliesTheBudgetItWasBuiltFrom() {
+        let budget = ImageCacheBudget(countLimit: 7, totalCostLimit: 4_096)
+        let cache: NSCache<NSString, NSImage> = budget.makeCache()
+        #expect(cache.countLimit == 7)
+        #expect(cache.totalCostLimit == 4_096)
     }
 
     @Test func screenshotLibraryBudgetExceedsTheVisibleGridWorkingSet() {
@@ -86,8 +87,7 @@ struct ImageCacheBudgetTests {
     }
 
     /// A cost ceiling tighter than the count ceiling would evict entries the count limit still
-    /// admits, which is exactly the thrash the limit exists to prevent. The scrim entry is three
-    /// Doubles, so the two ceilings have to agree.
+    /// admits, which is exactly the thrash the limit exists to prevent.
     @Test func scrimColorCostBudgetCoversItsCountCeiling() {
         let budget = CatalogHeroImageMetadata.cacheBudget
         let payloadBytes = MemoryLayout<CatalogMarqueeScrimColor>.stride
@@ -116,5 +116,13 @@ struct ImageCacheBudgetTests {
 
         let image = try #require(NSImage(contentsOf: url))
         #expect(VendorResourceImage.decodedByteCost(ofImageAt: url, image: image) == 64 * 32 * 4)
+    }
+
+    /// A vector source with no pixel dimensions is charged at its declared size, and a declared
+    /// size that is not a number must not trap the cost conversion.
+    @Test func aSizeWithNoFiniteDimensionsStillCostsARealAmount() {
+        let url = URL(fileURLWithPath: "/nowhere/absent.svg")
+        let image = NSImage(size: NSSize(width: CGFloat.nan, height: CGFloat.infinity))
+        #expect(VendorResourceImage.decodedByteCost(ofImageAt: url, image: image) > 0)
     }
 }

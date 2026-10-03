@@ -415,24 +415,10 @@ struct ScreenshotTextPrompt: View {
 /// sites differ only in how many pixels they ask for, and both are small next to the source PNG.
 @MainActor
 enum ScreenshotImageLoader {
-    /// Two very different entries share one budget: grid thumbnails (360pt long edge, ~0.3MB
-    /// decoded) and the reader's copy (2400pt, ~13MB for a 16:9 still). The grid shows ~13 rows at
-    /// 1.0 uiScale (~9 at 1.5) and a lazy stack keeps a screen or two of overscan, so a 128-entry
-    /// ceiling leaves the entire visible working set resident and only ever evicts off-screen rows.
-    /// 64MB holds ~200 thumbnails, or a handful of full-size reader decodes - flipping through the
-    /// reader can no longer grow this cache to whatever the library contains.
-    private static let cache: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 128
-        cache.totalCostLimit = 64 * 1024 * 1024
-        return cache
-    }()
-
-    /// The configured ceiling, exposed so the acceptance criterion (a limit above the visible
-    /// working set) is asserted by `ImageCacheBudgetTests` rather than only commented.
-    static var cacheBudget: (countLimit: Int, totalCostLimit: Int) {
-        (cache.countLimit, cache.totalCostLimit)
-    }
+    /// Grid thumbnails are ~0.3MB decoded and the reader's copies ~13MB; 128 entries holds the
+    /// visible grid, and 64MB holds a handful of reader decodes without following the library size.
+    static let cacheBudget = ImageCacheBudget(countLimit: 128, totalCostLimit: 64 * 1024 * 1024)
+    private static let cache: NSCache<NSString, NSImage> = cacheBudget.makeCache()
 
     static func image(for screenshot: StreamScreenshot, longestEdge: CGFloat) async -> NSImage? {
         let key = key(for: screenshot, longestEdge: longestEdge)

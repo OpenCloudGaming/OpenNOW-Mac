@@ -1,29 +1,14 @@
 import AppKit
 import AVFoundation
 
-/// Recording thumbnails, decoded off the main thread and cached by recording id.
-///
-/// Split out of `RecordingsView.swift`, which was at the 600-line ceiling: the loader is a cache
-/// and a decode, not a view, so it is the part that should move.
+/// Recording thumbnails, decoded off the main thread and cached by recording id. Split out of
+/// `RecordingsView.swift`, which had reached the 600-line ceiling.
 @MainActor
 enum RecordingThumbnailLoader {
-    /// One entry per recording, each a 360x216 frame (~0.3MB decoded). The library shows ~13 rows
-    /// at 1.0 uiScale (~9 at 1.5) with a screen or two of lazy-stack overscan, so 96 entries keep
-    /// the whole visible working set resident while still evicting rows the user has scrolled past;
-    /// 32MB is ~100 thumbnails, so the count is the binding limit and the cost budget is the real
-    /// memory ceiling if a heavier entry ever lands here.
-    private static let cache: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 96
-        cache.totalCostLimit = 32 * 1024 * 1024
-        return cache
-    }()
-
-    /// The configured ceiling, exposed so the acceptance criterion (a limit above the visible
-    /// working set) is asserted by `ImageCacheBudgetTests` rather than only commented.
-    static var cacheBudget: (countLimit: Int, totalCostLimit: Int) {
-        (cache.countLimit, cache.totalCostLimit)
-    }
+    /// 360x216 frames are ~0.3MB decoded; 96 entries covers the visible library with overscan, and
+    /// 32MB is ~100 thumbnails, so the count is the binding limit.
+    static let cacheBudget = ImageCacheBudget(countLimit: 96, totalCostLimit: 32 * 1024 * 1024)
+    private static let cache: NSCache<NSString, NSImage> = cacheBudget.makeCache()
 
     static func thumbnail(for recording: StreamRecording) async -> NSImage? {
         let key = recording.id.uuidString as NSString
