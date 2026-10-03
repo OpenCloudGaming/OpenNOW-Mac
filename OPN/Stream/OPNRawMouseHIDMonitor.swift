@@ -53,6 +53,30 @@ struct OPNRawMouseDeltaAccumulator {
     }
 }
 
+/// How many macOS pointer points one raw count is worth, learned from both views of the same
+/// movement: the HID counts and AppKit's deltas. Both totals decay on every AppKit event, so the
+/// ratio follows the Tracking Speed slider, and with acceleration on, the recent average.
+struct OPNMacPointerScale {
+    static let calibrationCounts = 400.0
+    static let decayPerPointerEvent = 0.99
+
+    private var pointTotal = 0.0
+    private var countTotal = 0.0
+    private var countsSincePointerEvent = 0.0
+    private(set) var pointsPerCount: Double?
+
+    mutating func recordCounts(x: Int, y: Int) {
+        countsSincePointerEvent += Double(abs(x) + abs(y))
+    }
+
+    mutating func recordPointer(deltaX: CGFloat, deltaY: CGFloat) {
+        pointTotal = pointTotal * Self.decayPerPointerEvent + Double(abs(deltaX) + abs(deltaY))
+        countTotal = countTotal * Self.decayPerPointerEvent + countsSincePointerEvent
+        countsSincePointerEvent = 0
+        if countTotal >= Self.calibrationCounts { pointsPerCount = pointTotal / countTotal }
+    }
+}
+
 /// Why raw capture is not reading counts. Both outcomes leave the AppKit delta path in charge, so
 /// neither is fatal to the stream — they only decide what the telemetry line says.
 enum OPNRawMouseCaptureFailure: String, Sendable {

@@ -52,6 +52,7 @@ extension OPNStreamPreferences {
         Keys.suppressInputWhenInactive,
         Keys.directMouseInput,
         Keys.rawMouseInput,
+        Keys.rawMouseMatchesMacPointerSpeed,
         Keys.cursorPolicyIndex,
         Keys.mouseSensitivityPercent,
         Keys.antiAFKMouseMovementEnabled,
@@ -551,6 +552,7 @@ extension OPNStreamPreferences {
         static let suppressInputWhenInactive = "OpenNOW.Stream.SuppressInputWhenInactive"
         static let directMouseInput = "OpenNOW.Stream.DirectMouseInput"
         static let rawMouseInput = "OpenNOW.Stream.RawMouseInput"
+        static let rawMouseMatchesMacPointerSpeed = "OpenNOW.Stream.RawMouseMatchesMacPointerSpeed"
         static let cursorPolicyIndex = "OpenNOW.Stream.CursorPolicyIndex"
         static let mouseSensitivityPercent = "OpenNOW.Stream.MouseSensitivityPercent"
         static let antiAFKMouseMovementEnabled = "OpenNOW.Stream.AntiAFKMouseMovementEnabled"

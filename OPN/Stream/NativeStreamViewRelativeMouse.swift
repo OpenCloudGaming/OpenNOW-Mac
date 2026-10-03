@@ -12,9 +12,19 @@ extension NativeStreamView {
         }
         switch rawMouseMotion() {
         case .counts(let counts):
-            emitScaledMouseMove(deltaX: CGFloat(counts.x), deltaY: CGFloat(counts.y))
+            guard rawMouseMatchesMacPointerSpeed else {
+                emitScaledMouseMove(deltaX: CGFloat(counts.x), deltaY: CGFloat(counts.y))
+                return
+            }
+            macPointerScale.recordCounts(x: counts.x, y: counts.y)
+            macPointerScale.recordPointer(deltaX: event.deltaX, deltaY: event.deltaY)
+            emitMacSizedMove(counts, pointerDeltaX: event.deltaX, pointerDeltaY: event.deltaY)
         case .pending:
-            return
+            guard rawMouseMatchesMacPointerSpeed else { return }
+            let calibrated = macPointerScale.pointsPerCount != nil
+            macPointerScale.recordPointer(deltaX: event.deltaX, deltaY: event.deltaY)
+            // Until the scale is known the AppKit deltas carry the motion and pushed counts are only measured.
+            if !calibrated { emitScaledMouseMove(deltaX: event.deltaX, deltaY: event.deltaY) }
         case .unavailable:
             emitScaledMouseMove(deltaX: event.deltaX, deltaY: event.deltaY)
         }
@@ -24,7 +34,22 @@ extension NativeStreamView {
     /// AppKit motion event.
     private func emitPushedRawMotion(_ delta: OPNRawMouseDelta) {
         guard rawMouseInputEnabled, isPointerLocked else { return }
-        emitScaledMouseMove(deltaX: CGFloat(delta.x), deltaY: CGFloat(delta.y))
+        guard rawMouseMatchesMacPointerSpeed else {
+            emitScaledMouseMove(deltaX: CGFloat(delta.x), deltaY: CGFloat(delta.y))
+            return
+        }
+        let pointsPerCount = macPointerScale.pointsPerCount
+        macPointerScale.recordCounts(x: delta.x, y: delta.y)
+        guard let pointsPerCount else { return }
+        emitScaledMouseMove(deltaX: CGFloat(Double(delta.x) * pointsPerCount), deltaY: CGFloat(Double(delta.y) * pointsPerCount))
+    }
+
+    private func emitMacSizedMove(_ counts: OPNRawMouseDelta, pointerDeltaX: CGFloat, pointerDeltaY: CGFloat) {
+        guard let pointsPerCount = macPointerScale.pointsPerCount else {
+            emitScaledMouseMove(deltaX: pointerDeltaX, deltaY: pointerDeltaY)
+            return
+        }
+        emitScaledMouseMove(deltaX: CGFloat(Double(counts.x) * pointsPerCount), deltaY: CGFloat(Double(counts.y) * pointsPerCount))
     }
 
     /// What the raw HID reader has for this motion event. `.unavailable` whenever raw capture is

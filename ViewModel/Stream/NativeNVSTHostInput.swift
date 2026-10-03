@@ -22,6 +22,7 @@ extension NativeNVSTHostViewModel {
         mouseSensitivityPercent = profile.mouseSensitivityPercent
         view.mouseSensitivity = Double(profile.mouseSensitivityPercent) / 100
         view.rawMouseInputEnabled = profile.rawMouseInput
+        view.rawMouseMatchesMacPointerSpeed = profile.rawMouseMatchesMacPointerSpeed
         view.cursorPolicy = profile.cursorPolicy
         cursorPolicyIndex = profile.cursorPolicy.rawValue
         view.locksPointerWhenRelativeModeSelected = true
