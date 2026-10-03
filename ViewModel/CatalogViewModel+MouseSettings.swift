@@ -18,6 +18,7 @@ extension CatalogViewModel {
     }
 
     func setRawMouseMatchesMacPointerSpeed(_ enabled: Bool) {
+        OPNNewSettings.acknowledge(.matchMacPointerSpeed)
         OPNStreamPreferences.saveRawMouseMatchesMacPointerSpeed(enabled)
         loadSettingsPreferences()
     }

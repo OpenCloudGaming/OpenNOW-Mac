@@ -54,7 +54,7 @@ struct InputSettingsPage: View {
             }
             if viewModel.streamProfile.rawMouseInput {
                 SettingsDivider(uiScale: uiScale)
-                SettingsToggleRow(title: "Match Mac Pointer Speed", subtitle: "Keep raw input's timing but move as far as your Mac's pointer would, like the official GeForce NOW app. Game menus that draw their own pointer then move at your Mac's speed instead of the mouse's full DPI.", isOn: viewModel.streamProfile.rawMouseMatchesMacPointerSpeed, isCompact: true, uiScale: uiScale, action: viewModel.setRawMouseMatchesMacPointerSpeed)
+                SettingsToggleRow(title: "Match Mac Pointer Speed", subtitle: "Keep raw input's timing but move as far as your Mac's pointer would, like the official GeForce NOW app. Game menus that draw their own pointer then move at your Mac's speed instead of the mouse's full DPI.", isOn: viewModel.streamProfile.rawMouseMatchesMacPointerSpeed, isNew: OPNNewSettings.isNew(.matchMacPointerSpeed), isCompact: true, uiScale: uiScale, action: viewModel.setRawMouseMatchesMacPointerSpeed)
             }
             SettingsDivider(uiScale: uiScale)
             SettingsSliderRow(title: "Mouse Sensitivity", valueText: "\(viewModel.streamProfile.mouseSensitivityPercent)%", value: Double(viewModel.streamProfile.mouseSensitivityPercent), range: Double(OPNStreamPreferences.mouseSensitivityRange.lowerBound)...Double(OPNStreamPreferences.mouseSensitivityRange.upperBound), step: Double(OPNStreamPreferences.mouseSensitivityStep), uiScale: uiScale, action: viewModel.setMouseSensitivityPercent)
