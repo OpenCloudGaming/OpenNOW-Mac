@@ -304,12 +304,12 @@ final class CatalogLaunchPrefetch {
             // during the current slide's five seconds, so decoding the rest now would only move
             // work into the launch spike.
             for game in games.prefix(1) {
-                append(game.bestMarqueeHeroImageURL, width: 1920, into: &urls, seen: &seen)
+                append(game.bestMarqueeHeroImageURL, width: CatalogMarqueeHeroArtwork.requestWidth, into: &urls, seen: &seen)
                 append(game.bestLogoImageURL, width: 620, into: &urls, seen: &seen)
             }
             // Retains the compressed bytes: the hero reads its scrim colour out of them, so an
             // entry without them is a miss and a second decode of the largest artwork in the app.
-            imageCache.prefetchPriority(urls, maxPixelSize: 1920, retainingSourceData: true)
+            imageCache.prefetchPriority(urls, maxPixelSize: CatalogMarqueeHeroArtwork.decodeRung, retainingSourceData: true)
         case .main:
             guard !didPrefetchRailImages else { return }
             didPrefetchRailImages = true
