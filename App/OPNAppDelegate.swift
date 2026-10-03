@@ -5,10 +5,8 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
     private static let microphoneShortcutKeyCode: UInt16 = 46
     private static let recordingShortcutKeyCode: UInt16 = 15
     private static let antiAFKShortcutKeyCode: UInt16 = 40
-    /// The wait before the first automatic update check. It has to clear the launch splash hold,
-    /// which is capped at `StartupReadiness.maximumTimeout` (6 s): the 5 s it used to be fired
-    /// inside that hold, so the GitHub request arrived while the catalog and login fetches the wait
-    /// exists to avoid were still running.
+    /// The wait before the first automatic update check. It must clear the launch splash hold, capped
+    /// at `StartupReadiness.maximumTimeout` (6 s), so the request never contends with the launch fetches.
     static let initialUpdateCheckDelaySeconds: TimeInterval = 30
 
     private let githubUpdater: OPNGitHubUpdater
@@ -69,10 +67,8 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         startApplicationUpdateChecks()
         OPNMainWindowCloseGuard.install()
         OPNDockIconController.install()
-        // The Steam Controller HID monitor is deliberately NOT started here: it creates the
-        // `IOHIDManager` and matches devices on the main run loop, and nothing needs pad input
-        // until a stream starts, the controller settings page opens, or controller mode is entered.
-        // Each of those turns it on itself; `setEnabled` is idempotent, so the first one to ask wins.
+        // The Steam Controller HID monitor starts on demand instead of here: nothing needs pad input
+        // until a stream starts, controller mode is entered, or the controller settings page opens.
 
         // Before the first sync pass: a launch that synced first would copy the legacy folder's
         // contents into an empty new library.
@@ -202,6 +198,7 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         // subsequent checks stay on the hourly timer.
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Self.initialUpdateCheckDelaySeconds))
+            guard !Task.isCancelled else { return }
             self?.checkForApplicationUpdates(isAutomatic: true)
         }
     }
