@@ -10,6 +10,9 @@ protocol CatalogImageServing: Sendable {
     /// that read the file's metadata (the hero, for its EXIF scrim colour) should ask for it -
     /// every retained copy is a second, full-size allocation held for the life of the cache entry.
     func image(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> CatalogCachedImageData?
+    /// Loads artwork on the reserved first-frame lane, used by the launch hero and the prefetch
+    /// that warms the first rail so neither queues behind a screenful of tile decodes.
+    func firstFrameImage(for url: URL, maxPixelSize: CGFloat, retainingSourceData: Bool) async -> CatalogCachedImageData?
     func statistics() async -> CatalogImageCacheStatistics
     func clear() async -> Bool
 }
@@ -25,5 +28,13 @@ extension CatalogImageServing {
 
     func image(for url: URL, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
         await image(for: url, maxPixelSize: catalogImageServingDefaultMaxPixelSize, retainingSourceData: retainingSourceData)
+    }
+
+    func firstFrameImage(for url: URL, maxPixelSize: CGFloat) async -> CatalogCachedImageData? {
+        await firstFrameImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: false)
+    }
+
+    func firstFrameImage(for url: URL, retainingSourceData: Bool = false) async -> CatalogCachedImageData? {
+        await firstFrameImage(for: url, maxPixelSize: catalogImageServingDefaultMaxPixelSize, retainingSourceData: retainingSourceData)
     }
 }
