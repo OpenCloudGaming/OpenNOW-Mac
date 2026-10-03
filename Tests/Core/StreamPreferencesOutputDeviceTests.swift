@@ -1,9 +1,8 @@
 import Testing
 @testable import OpenNOW
 
-/// The output half of the stream-preference profile: the saved output UID round-trips through the
-/// same serialization the rest of the stream settings use, and an empty choice is the absence of a
-/// preference rather than a device named "".
+/// The saved output UID round-trips through the profile serialization, and an empty choice is the
+/// absence of a preference rather than a device named "".
 @Test func outputDevicePreferenceRoundTrips() {
     withExclusivePreferenceDomain {
         let key = "OpenNOW.Stream.OutputDeviceId"

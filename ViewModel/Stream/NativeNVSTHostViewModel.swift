@@ -107,7 +107,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     var microphonePendingStates: [Bool] = []
     @Published var microphoneUpdateTask: Task<Void, Never>?
     /// The picker's rows for the HUD's AUDIO panel, read from the same preference Settings writes.
-    @Published var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = [OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
+    @Published var microphoneDeviceOptions: [OPNStreamAudioDeviceOption] = [OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")]
     /// The saved device is gone and capture fell back. Drives the label and the one-off message.
     @Published var isMicrophoneDeviceFallbackActive = false
     /// The microphone picker's choice for this session, as a UID. Empty is "Default Device".
@@ -118,14 +118,14 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     var pendingMicrophoneDeviceUIDs: [String] = []
     /// The user's mute override, independent of the push-to-talk key and of the mode. It is
     /// session-local: a fresh session starts unmuted.
-    @Published var microphoneMuteOverride = false
+    @Published var isMicrophoneMuteOverrideActive = false
     /// Whether the push-to-talk chord is held. Key state only, never a capture decision on its own:
     /// `nativeMicrophoneCaptureRequested` composes it with the override and the mode.
-    var microphoneKeyHeld = false
+    var isPushToTalkKeyHeld = false
     /// The capture gain for this session, 0...100, read from the same preference Settings writes.
     @Published var microphoneVolumePercent = 100
     /// The output picker's rows, read from the same preference Settings writes.
-    @Published var outputDeviceOptions: [OPNStreamOutputDeviceOption] = [OPNStreamOutputDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
+    @Published var outputDeviceOptions: [OPNStreamAudioDeviceOption] = [OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")]
     /// The output picker's saved choice for this session, as a UID. Empty is "Default Device".
     @Published var outputDeviceUID = ""
     /// The route playback actually runs on, for the fallback label. Empty while unknown.
@@ -377,8 +377,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         microphoneDeviceUID = profile.microphoneDeviceId
         // A new session starts with no override and no held key: both are session-local, and
         // restoring either would open capture the user did not ask for.
-        microphoneMuteOverride = false
-        microphoneKeyHeld = false
+        isMicrophoneMuteOverrideActive = false
+        isPushToTalkKeyHeld = false
         microphoneVolumePercent = Int((profile.microphoneVolume * 100).rounded())
         outputDeviceUID = profile.outputDeviceId
         outputDeviceResolvedUID = ""

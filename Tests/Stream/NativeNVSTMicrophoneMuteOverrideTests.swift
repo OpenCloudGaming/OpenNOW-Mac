@@ -2,9 +2,8 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// The composed microphone gate: mode, push-to-talk key state and the user's mute override, resolved
-/// through one authoritative decision. The transport call itself needs a live session, so what is
-/// asserted here is the decision every event reconciles.
+/// The composed microphone gate, which is the decision every event reconciles. The transport call
+/// itself needs a live session.
 @MainActor
 struct NativeNVSTMicrophoneMuteOverrideTests {
     /// A connected session whose seat carries a microphone, in `mode`, with no override and no key
@@ -17,37 +16,37 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
         model.isMicrophoneSectionNegotiated = true
         model.microphoneMode = mode
         model.microphoneAvailable = mode != "disabled"
-        model.microphoneMuteOverride = false
-        model.microphoneKeyHeld = false
+        model.isMicrophoneMuteOverrideActive = false
+        model.isPushToTalkKeyHeld = false
         model.microphoneVolumePercent = volumePercent
         return model
     }
 
     // MARK: - The four push-to-talk combinations
 
-    @Test func releasedAndUnmutedIsClosed() {
+    @Test func aReleasedKeyWithNoOverrideLeavesTheGateClosed() {
         let model = model(mode: "push-to-talk")
         #expect(!model.nativeMicrophoneCaptureRequested)
     }
 
-    @Test func heldAndUnmutedIsOpen() {
+    @Test func aHeldKeyWithNoOverrideOpensTheGate() {
         let model = model(mode: "push-to-talk")
-        model.microphoneKeyHeld = true
+        model.isPushToTalkKeyHeld = true
         #expect(model.nativeMicrophoneCaptureRequested)
     }
 
-    @Test func releasedAndMutedIsClosed() {
+    @Test func aReleasedKeyWithTheOverrideOnLeavesTheGateClosed() {
         let model = model(mode: "push-to-talk")
-        model.microphoneMuteOverride = true
+        model.isMicrophoneMuteOverrideActive = true
         #expect(!model.nativeMicrophoneCaptureRequested)
     }
 
     /// The override outranks the key: this is the combination the standalone mute tile could not
     /// express, and the one a late key event must never reopen.
-    @Test func heldAndMutedIsClosed() {
+    @Test func aHeldKeyWithTheOverrideOnLeavesTheGateClosed() {
         let model = model(mode: "push-to-talk")
-        model.microphoneKeyHeld = true
-        model.microphoneMuteOverride = true
+        model.isPushToTalkKeyHeld = true
+        model.isMicrophoneMuteOverrideActive = true
         #expect(!model.nativeMicrophoneCaptureRequested)
     }
 
@@ -56,9 +55,9 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
     /// Muting while the key is held stops transmission without the key being released.
     @Test func mutingWhileHeldClosesTheGate() {
         let model = model(mode: "push-to-talk")
-        model.microphoneKeyHeld = true
+        model.isPushToTalkKeyHeld = true
         #expect(model.nativeMicrophoneCaptureRequested)
-        model.microphoneMuteOverride = true
+        model.isMicrophoneMuteOverrideActive = true
         #expect(!model.nativeMicrophoneCaptureRequested)
     }
 
@@ -66,30 +65,30 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
     /// cannot bypass it.
     @Test func aRepressWhileMutedStaysClosed() {
         let model = model(mode: "push-to-talk")
-        model.microphoneMuteOverride = true
+        model.isMicrophoneMuteOverrideActive = true
         model.handleNativePushToTalkKey(isHeld: true)
         #expect(!model.nativeMicrophoneCaptureRequested)
         model.handleNativePushToTalkKey(isHeld: false)
         #expect(!model.nativeMicrophoneCaptureRequested)
         model.handleNativePushToTalkKey(isHeld: true)
         #expect(!model.nativeMicrophoneCaptureRequested)
-        #expect(model.microphoneKeyHeld, "the key state is still tracked; only the gate refuses")
+        #expect(model.isPushToTalkKeyHeld, "the key state is still tracked; only the gate refuses")
     }
 
     @Test func unmutingWhileHeldResumesTransmission() {
         let model = model(mode: "push-to-talk")
-        model.microphoneKeyHeld = true
-        model.microphoneMuteOverride = true
+        model.isPushToTalkKeyHeld = true
+        model.isMicrophoneMuteOverrideActive = true
         #expect(!model.nativeMicrophoneCaptureRequested)
-        model.microphoneMuteOverride = false
+        model.isMicrophoneMuteOverrideActive = false
         #expect(model.nativeMicrophoneCaptureRequested)
     }
 
     @Test func unmutingAfterReleaseDoesNotStartTransmission() {
         let model = model(mode: "push-to-talk")
-        model.microphoneMuteOverride = true
-        model.microphoneKeyHeld = false
-        model.microphoneMuteOverride = false
+        model.isMicrophoneMuteOverrideActive = true
+        model.isPushToTalkKeyHeld = false
+        model.isMicrophoneMuteOverrideActive = false
         #expect(!model.nativeMicrophoneCaptureRequested)
     }
 
@@ -98,28 +97,28 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
     @Test func aModeChangeClearsAHeldKey() {
         withPreservedMicrophoneMode {
             let model = model(mode: "push-to-talk")
-            model.microphoneKeyHeld = true
+            model.isPushToTalkKeyHeld = true
             model.applyMicrophoneMode("voice-activity")
-            #expect(!model.microphoneKeyHeld)
+            #expect(!model.isPushToTalkKeyHeld)
             #expect(model.nativeMicrophoneCaptureRequested, "Open Mic transmits without a held key")
         }
     }
 
     /// A late release from a chord that no longer belongs to the current mode is recorded as
     /// released and never opens capture.
-    @Test func aLateKeyEventInAnotherModeNeverOpensCapture() {
+    @Test func aLateKeyEventOutsidePushToTalkModeIsNotHeld() {
         let model = model(mode: "voice-activity")
-        model.microphoneMuteOverride = true
+        model.isMicrophoneMuteOverrideActive = true
         model.handleNativePushToTalkKey(isHeld: true)
-        #expect(!model.microphoneKeyHeld)
+        #expect(!model.isPushToTalkKeyHeld)
         #expect(!model.nativeMicrophoneCaptureRequested)
     }
 
     /// Disabled mode stays disabled: neither a held key nor an override can open it.
     @Test func disabledModeNeverCaptures() {
         let model = model(mode: "disabled")
-        model.microphoneKeyHeld = true
-        model.microphoneMuteOverride = false
+        model.isPushToTalkKeyHeld = true
+        model.isMicrophoneMuteOverrideActive = false
         #expect(!model.nativeMicrophoneCaptureRequested)
     }
 
@@ -143,10 +142,10 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
         let model = model(mode: "voice-activity")
         #expect(model.nativeMicrophoneCaptureRequested)
         model.toggleNativeMicrophone()
-        #expect(model.microphoneMuteOverride)
+        #expect(model.isMicrophoneMuteOverrideActive)
         #expect(!model.nativeMicrophoneCaptureRequested)
         model.toggleNativeMicrophone()
-        #expect(!model.microphoneMuteOverride)
+        #expect(!model.isMicrophoneMuteOverrideActive)
         #expect(model.nativeMicrophoneCaptureRequested)
     }
 
@@ -155,10 +154,10 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
     @Test func pushToTalkIconTogglesTheOverrideAndNotTheMode() {
         let model = model(mode: "push-to-talk")
         model.toggleNativeMicrophone()
-        #expect(model.microphoneMuteOverride)
+        #expect(model.isMicrophoneMuteOverrideActive)
         #expect(model.microphoneMode == "push-to-talk", "clicking the icon never changes the mode")
         model.toggleNativeMicrophone()
-        #expect(!model.microphoneMuteOverride)
+        #expect(!model.isMicrophoneMuteOverrideActive)
         #expect(model.microphoneMode == "push-to-talk")
     }
 
@@ -166,11 +165,11 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
     @Test func anOverrideAlwaysReadsMuted() {
         let model = model(mode: "push-to-talk")
         #expect(!model.isNativeMicrophoneMuted)
-        model.microphoneKeyHeld = true
+        model.isPushToTalkKeyHeld = true
         #expect(!model.isNativeMicrophoneMuted)
-        model.microphoneMuteOverride = true
+        model.isMicrophoneMuteOverrideActive = true
         #expect(model.isNativeMicrophoneMuted, "a held key must not outrank the override")
-        model.microphoneKeyHeld = false
+        model.isPushToTalkKeyHeld = false
         #expect(model.isNativeMicrophoneMuted)
     }
 
@@ -193,10 +192,10 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
     @Test func movingTheVolumeWhileMutedDoesNotUnmute() {
         withExclusivePreferenceDomain {
             let model = model(mode: "voice-activity")
-            model.microphoneMuteOverride = true
+            model.isMicrophoneMuteOverrideActive = true
             model.updateNativeMicrophoneVolume(percent: 40)
             #expect(model.microphoneVolumePercent == 40)
-            #expect(model.microphoneMuteOverride)
+            #expect(model.isMicrophoneMuteOverrideActive)
         }
     }
 
@@ -214,7 +213,7 @@ struct NativeNVSTMicrophoneMuteOverrideTests {
         // the key state.
         model.microphoneEnabled = true
         #expect(model.microphoneStatusText == "PTT Active")
-        model.microphoneMuteOverride = true
+        model.isMicrophoneMuteOverrideActive = true
         #expect(model.microphoneStatusText == "Muted")
         model.microphoneAvailable = false
         #expect(model.microphoneStatusText == "Disabled")

@@ -172,9 +172,8 @@ extension NativeNVSTMediaStreamSurface {
         }
     }
 
-    /// Output above microphone, each device picker a full-width row and each volume a row led by
-    /// its mute icon. The two standalone mute tiles this panel used to draw are gone: the icons own
-    /// those actions now, which is also why the panel no longer draws a tile grid.
+    /// Output above microphone. The standalone mute tiles are gone: the volume rows' leading icons
+    /// own those actions, which is why the panel draws no tile grid.
     var nativeHUDAudioPanel: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.audio.title,

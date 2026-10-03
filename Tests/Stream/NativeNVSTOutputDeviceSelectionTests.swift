@@ -2,17 +2,16 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// The HUD half of output device selection: the rows, the label naming the device in use, the
-/// fallback state, and the rollback a switch that never activated leaves behind. The transport call
+/// The HUD half of output device selection: rows, labels, fallback and rollback. The transport call
 /// itself needs a live session, so the device's own report is what is driven here.
 @MainActor
 struct NativeNVSTOutputDeviceSelectionTests {
-    private var defaultDevice: OPNStreamOutputDeviceOption {
-        OPNStreamOutputDeviceOption(label: "Default Device", uniqueId: "", automatic: true)
+    private var defaultDevice: OPNStreamAudioDeviceOption {
+        OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")
     }
 
-    private func pickedDevice(_ label: String = "USB Speakers", uid: String = "usb-out") -> OPNStreamOutputDeviceOption {
-        OPNStreamOutputDeviceOption(label: label, uniqueId: uid)
+    private func pickedDevice(_ label: String = "USB Speakers", uid: String = "usb-out") -> OPNStreamAudioDeviceOption {
+        OPNStreamAudioDeviceOption(label: label, uniqueId: uid)
     }
 
     private func modelWithTwoDevices() -> NativeNVSTHostViewModel {
@@ -23,12 +22,12 @@ struct NativeNVSTOutputDeviceSelectionTests {
         return model
     }
 
-    private func change(resolved: String?, preferred: String?, isFallback: Bool = false, hasUsableOutput: Bool = true, didActivateRoute: Bool = true) -> NvstOutputDeviceChange {
+    private func change(resolved: String?, preferred: String?, isFallback: Bool = false, isOutputUsable: Bool = true, isRouteActivated: Bool = true) -> NvstOutputDeviceChange {
         NvstOutputDeviceChange(resolvedUniqueID: resolved,
                                preferredUniqueID: preferred,
                                isFallback: isFallback,
-                               hasUsableOutput: hasUsableOutput,
-                               didActivateRoute: didActivateRoute)
+                               isOutputUsable: isOutputUsable,
+                               isRouteActivated: isRouteActivated)
     }
 
     @Test func theRowsAreTheSavedChoicesWithTheDefaultFirst() {
@@ -92,7 +91,7 @@ struct NativeNVSTOutputDeviceSelectionTests {
             let model = modelWithTwoDevices()
             model.outputDeviceUID = ""
             model.outputDevicePendingUID = "usb-out"
-            model.handleNativeOutputDeviceChange(change(resolved: nil, preferred: "usb-out", isFallback: true, didActivateRoute: false))
+            model.handleNativeOutputDeviceChange(change(resolved: nil, preferred: "usb-out", isFallback: true, isRouteActivated: false))
             #expect(model.outputDevicePendingUID == nil)
             #expect(model.transientStreamMessage == "Could not switch audio output.")
             #expect(model.outputDeviceUID.isEmpty, "a switch that never activated must not be saved")
@@ -105,7 +104,7 @@ struct NativeNVSTOutputDeviceSelectionTests {
         model.isConnected = true
         model.outputDeviceOptions = [defaultDevice]
         model.outputDeviceUID = ""
-        model.handleNativeOutputDeviceChange(change(resolved: nil, preferred: nil, hasUsableOutput: false))
+        model.handleNativeOutputDeviceChange(change(resolved: nil, preferred: nil, isOutputUsable: false))
         #expect(model.transientStreamMessage == "No audio output device available.")
     }
 

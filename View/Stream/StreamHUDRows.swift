@@ -158,11 +158,8 @@ struct StreamHUDSliderRow: View {
     }
 }
 
-/// One AUDIO-panel volume control: a leading mute/unmute icon button, the label, the live
-/// percentage, and the slider. The icon replaces the standalone mute tile the panel used to draw,
-/// so the mute action sits with the level it silences. Both halves are separate pad focus rows —
-/// the icon and the slider each carry their own focus ring — which is why the ring is drawn on the
-/// icon itself rather than on the row.
+/// One AUDIO-panel volume control: a leading mute icon, the label, the percentage and the slider.
+/// Icon and slider are separate pad focus rows, so the icon carries its own focus ring.
 struct StreamHUDVolumeRow: View {
     let label: String
     /// The state glyph, not the action: slashed while muted, otherwise the speaker/microphone in

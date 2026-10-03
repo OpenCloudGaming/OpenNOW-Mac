@@ -152,34 +152,28 @@ public enum OPNStreamPreferences {
         }
     }
 
-    /// The microphone picker's rows, the synthetic "Default Device" first. Enumeration lives in
-    /// `OPNCoreAudioDeviceLookup` so the capture device and the picker cannot disagree about which
-    /// devices exist.
-    public static func loadMicrophoneDeviceOptions() -> [OPNStreamMicrophoneDeviceOption] {
-        var devices = [OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
-        for audioDevice in OPNCoreAudioDeviceLookup.allInputDevices() {
-            guard let name = audioObjectString(audioDevice, selector: kAudioObjectPropertyName) else { continue }
-            let uid = OPNCoreAudioDeviceLookup.uid(of: audioDevice) ?? String(audioDevice)
-            if !devices.contains(where: { $0.uniqueId == uid }) {
-                devices.append(OPNStreamMicrophoneDeviceOption(label: name.isEmpty ? "Microphone" : name, uniqueId: uid))
-            }
-        }
-        return devices
+    /// The microphone picker's rows, from the same enumeration the capture device resolves against.
+    public static func loadMicrophoneDeviceOptions() -> [OPNStreamAudioDeviceOption] {
+        audioDeviceOptions(from: OPNCoreAudioDeviceLookup.allInputDevices(), fallbackLabel: "Microphone")
     }
 
-    /// The stream HUD's and Settings' output picker rows, the synthetic "Default Device" first. The
-    /// same enumeration the audio device resolves a saved output UID through, so a row always
-    /// resolves to the device it names.
-    public static func loadOutputDeviceOptions() -> [OPNStreamOutputDeviceOption] {
-        var devices = [OPNStreamOutputDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
-        for audioDevice in OPNCoreAudioDeviceLookup.allOutputDevices() {
+    /// The stream HUD's and Settings' output picker rows, from the same enumeration playback
+    /// resolves a saved output UID through.
+    public static func loadOutputDeviceOptions() -> [OPNStreamAudioDeviceOption] {
+        audioDeviceOptions(from: OPNCoreAudioDeviceLookup.allOutputDevices(), fallbackLabel: "Output Device")
+    }
+
+    /// The synthetic "Default Device" leads every picker; a device without a name keeps the
+    /// direction's own word rather than an empty row.
+    private static func audioDeviceOptions(from devices: [AudioDeviceID], fallbackLabel: String) -> [OPNStreamAudioDeviceOption] {
+        var options = [OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")]
+        for audioDevice in devices {
             guard let name = audioObjectString(audioDevice, selector: kAudioObjectPropertyName) else { continue }
             let uid = OPNCoreAudioDeviceLookup.uid(of: audioDevice) ?? String(audioDevice)
-            if !devices.contains(where: { $0.uniqueId == uid }) {
-                devices.append(OPNStreamOutputDeviceOption(label: name.isEmpty ? "Output Device" : name, uniqueId: uid))
-            }
+            guard !options.contains(where: { $0.uniqueId == uid }) else { continue }
+            options.append(OPNStreamAudioDeviceOption(label: name.isEmpty ? fallbackLabel : name, uniqueId: uid))
         }
-        return devices
+        return options
     }
 
     /// Output channels on the system default output device, summed over its output streams —

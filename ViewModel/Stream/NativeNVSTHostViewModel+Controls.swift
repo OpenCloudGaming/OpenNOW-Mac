@@ -289,7 +289,7 @@ extension NativeNVSTHostViewModel {
         pendingMicrophoneDeviceUIDs.removeAll()
         microphonePendingDeviceUID = nil
         // Teardown must not leave a stale held key behind: the next session's gate starts closed.
-        microphoneKeyHeld = false
+        isPushToTalkKeyHeld = false
         outputDeviceUpdateTask?.cancel()
         outputDeviceUpdateTask = nil
         outputDevicePendingUID = nil
@@ -646,7 +646,7 @@ extension NativeNVSTHostViewModel {
         // comes up muted), and input is live again. A key held across the recovery is not restored —
         // reopening capture on a stale press is the failure this whole gate exists to prevent.
         nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
-        microphoneKeyHeld = false
+        isPushToTalkKeyHeld = false
         try? await path.setMicrophoneEnabled(nativeMicrophoneCaptureRequested)
         try? await path.setGameVolume(Double(gameVolumePercent) / 100)
         try? await path.setMicrophoneVolume(Double(microphoneVolumePercent) / 100)

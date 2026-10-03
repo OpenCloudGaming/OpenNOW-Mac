@@ -634,7 +634,7 @@ extension NvstNativeBundle {
         audioDevice?.setPreferredOutputDevice(uid: normalized)
     }
 
-    public var outputDeviceState: (uniqueID: String?, isFallback: Bool, hasUsableOutput: Bool) {
+    public var outputDeviceState: (uniqueID: String?, isFallback: Bool, isOutputUsable: Bool) {
         audioDevice?.outputDeviceState ?? (nil, false, false)
     }
 

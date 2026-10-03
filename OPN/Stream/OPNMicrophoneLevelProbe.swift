@@ -133,7 +133,7 @@ final class OPNMicrophoneLevelProbe: @unchecked Sendable {
     /// Resolution lives in `OPNCoreAudioDeviceLookup`, so this pre-flight test and the streaming path
     /// cannot disagree about which device a saved UID names.
     static func inputDevice(matching uniqueId: String?) -> AudioDeviceID {
-        OPNCoreAudioDeviceLookup.inputDevice(matching: uniqueId)
+        OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: uniqueId)
     }
 
     static func defaultInputDevice() -> AudioDeviceID {

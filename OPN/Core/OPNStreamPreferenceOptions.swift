@@ -204,30 +204,14 @@ public struct OPNStreamSurroundModeOption: Equatable, Sendable {
     }
 }
 
-public struct OPNStreamMicrophoneDeviceOption: Equatable, Sendable {
-    public var label: String
-    public var uniqueId: String
-    public var automatic = false
-
-    public init(label: String, uniqueId: String, automatic: Bool = false) {
+/// One row of a CoreAudio device picker: a label, the UID it resolves by, and whether the row is
+/// the synthetic "Default Device". The microphone and output pickers read the same shape.
+public struct OPNStreamAudioDeviceOption: Equatable, Sendable {
+    public let label: String
+    public let uniqueId: String
+    public init(label: String, uniqueId: String) {
         self.label = label
         self.uniqueId = uniqueId
-        self.automatic = automatic
-    }
-}
-
-/// One row of the stream HUD's output picker and the Settings output picker. Same shape as the
-/// microphone option — a label, the CoreAudio UID it resolves by, and whether the row is the
-/// synthetic "Default Device" — because the two pickers are read the same way.
-public struct OPNStreamOutputDeviceOption: Equatable, Sendable {
-    public var label: String
-    public var uniqueId: String
-    public var automatic = false
-
-    public init(label: String, uniqueId: String, automatic: Bool = false) {
-        self.label = label
-        self.uniqueId = uniqueId
-        self.automatic = automatic
     }
 }
 

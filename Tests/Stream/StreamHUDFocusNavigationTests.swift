@@ -143,9 +143,9 @@ struct StreamHUDFocusNavigationTests {
         let (_, model) = makeHUDSurface()
         let dropdownID = NativeNVSTHostViewModel.microphoneDeviceDropdownID
         model.microphoneDeviceOptions = [
-            OPNStreamMicrophoneDeviceOption(label: "Default Device", uniqueId: "", automatic: true),
-            OPNStreamMicrophoneDeviceOption(label: "MacBook Microphone", uniqueId: "built-in"),
-            OPNStreamMicrophoneDeviceOption(label: "USB Mic", uniqueId: "usb"),
+            OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: ""),
+            OPNStreamAudioDeviceOption(label: "MacBook Microphone", uniqueId: "built-in"),
+            OPNStreamAudioDeviceOption(label: "USB Mic", uniqueId: "usb"),
         ]
         model.microphoneDeviceUID = "built-in"
         model.hudFocusID = dropdownID

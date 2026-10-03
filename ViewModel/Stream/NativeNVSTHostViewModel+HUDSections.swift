@@ -50,10 +50,8 @@ extension NativeNVSTHostViewModel {
         return [StreamHUDFocusEntry(id: "replay", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || !isReplayBufferActive || replayBufferState.isSaving, group: "capture", columns: 4, action: saveNativeReplayClip)]
     }
 
-    /// The AUDIO panel's rows in draw order: output above microphone, each device picker a full-width
-    /// row, each volume a two-column row of its mute icon and its slider so up/down steps past the
-    /// whole row while left/right picks the icon or the slider. The level meter is read-only and
-    /// deliberately absent.
+    /// The AUDIO panel's rows in draw order: output above microphone. A volume's icon and slider
+    /// share a two-column row, so up/down steps past the whole control.
     private var audioFocusEntries: [StreamHUDFocusEntry] {
         [
             StreamHUDFocusEntry(id: Self.outputDeviceDropdownID, isDisabled: isOutputDeviceRowDisabled, action: { [weak self] in
@@ -72,14 +70,12 @@ extension NativeNVSTHostViewModel {
         ]
     }
 
-    /// Whether the microphone's mute icon can be pressed: the seat has to carry a microphone, and no
-    /// toggle may already be in flight.
+    /// The seat has to carry a microphone, and no toggle may already be in flight.
     var isMicrophoneMuteRowDisabled: Bool {
         !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil
     }
 
-    /// The gain only reaches transmitted audio, so it needs a microphone this session can capture
-    /// from. It deliberately does not follow the mute override: a muted microphone still has a level.
+    /// Needs a microphone this session can capture from, but deliberately not an unmuted one.
     var isMicrophoneVolumeRowDisabled: Bool {
         !sidebarCapabilities.supports(.microphone) || !microphoneAvailable
     }

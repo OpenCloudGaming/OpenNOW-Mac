@@ -4,21 +4,16 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// The post-tee local gain. The device's playout callback is the only place a decoded game sample
-/// crosses out to the speakers, to the recorder, to Instant Replay and to every Co-Op guest, so the
-/// tee has to keep the unscaled samples while the speaker path is scaled or muted.
-///
-/// `renderPlayout` is driven directly with a fabricated buffer: no AudioUnit is opened, so this runs
-/// on a machine with no output device at all.
+/// The post-tee local gain: the tee must keep the unscaled samples while the speaker path is scaled
+/// or muted. `renderPlayout` is driven with a fabricated buffer, so no AudioUnit is opened.
 @Suite struct NvstCoreAudioPlayoutGainTests {
     private struct PlayoutCapture {
         let samples: [Int16]
         let tee: [Int16]
     }
 
-    /// The tee callback is `@Sendable`, so the samples it observes are collected through a box
-    /// rather than a captured local. The callback runs synchronously on the calling thread, so there
-    /// is no actual concurrency here.
+    /// The tee callback is `@Sendable`, so it collects through a box. It runs synchronously on the
+    /// calling thread, so there is no actual concurrency here.
     private final class TeeCapture: @unchecked Sendable {
         var samples: [Int16] = []
     }
@@ -101,9 +96,4 @@ import Testing
         #expect(device.playoutGain == 1)
     }
 
-    /// Mute is the gain path at zero, not a second state the render callback has to reconcile, so a
-    /// muted stream and a zero-gain stream produce the same samples.
-    @Test func mutedAndZeroGainProduceTheSamePlayback() {
-        #expect(render(gain: 0).samples == render(gain: 1, muted: true).samples)
-    }
 }

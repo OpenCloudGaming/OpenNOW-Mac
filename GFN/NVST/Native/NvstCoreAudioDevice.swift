@@ -45,9 +45,8 @@ public struct NvstCaptureDeviceChange: Equatable, Sendable {
     public let isFallback: Bool
 }
 
-/// Which output device playback is running on, reported when it changes under the session's feet:
-/// the saved device came back, it went away and playback fell back to the system default, or a
-/// switch to a device the picker asked for could not actually be opened.
+/// Which output device playback is running on: the saved device, a fallback, or a switch that
+/// could not be activated.
 public struct NvstOutputDeviceChange: Equatable, Sendable {
     /// The UID playback actually runs on. Nil when CoreAudio reports no default output at all, or
     /// when the resolved device has no UID.
@@ -57,10 +56,10 @@ public struct NvstOutputDeviceChange: Equatable, Sendable {
     /// True when the chosen device is gone and playback is running on the default instead.
     public let isFallback: Bool
     /// False when CoreAudio reports no usable output at all, in which case nothing can be played.
-    public let hasUsableOutput: Bool
+    public let isOutputUsable: Bool
     /// False when a route rebuild could not restart playback on the resolved device. The picker must
     /// not claim a route that was never activated.
-    public let didActivateRoute: Bool
+    public let isRouteActivated: Bool
 }
 
 /// The native audio device the NVST bundle's audio runs through.
@@ -89,9 +88,8 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         set { playoutMuteState.store(newValue, ordering: .relaxed) }
     }
 
-    /// The local playback gain, 0...1, applied after the tee and never above unity. Read on the
-    /// render thread, so the value is held as the bit pattern of a `Float` in an atomic: no lock, no
-    /// allocation and no branch on a shared object in the render callback.
+    /// The local playback gain, 0...1, applied after the tee and never above unity. Held as a
+    /// `Float` bit pattern in an atomic so the render callback reads it without a lock.
     public var playoutGain: Float {
         get { Float(bitPattern: playoutGainBits.load(ordering: .relaxed)) }
         set { playoutGainBits.store(Self.clampedGain(newValue).bitPattern, ordering: .relaxed) }
@@ -149,7 +147,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
     /// Guards the resolved output route for off-queue readers, for the same reason the capture
     /// snapshot is published under its own lock rather than through `audioQueue.sync`.
     let outputStateLock = NSLock()
-    var publishedOutputDeviceState: (uniqueID: String?, isFallback: Bool, hasUsableOutput: Bool) = (nil, false, false)
+    var publishedOutputDeviceState: (uniqueID: String?, isFallback: Bool, isOutputUsable: Bool) = (nil, false, false)
 
     /// The rate the callbacks exchange with the pipelines, always 48 kHz — the rate Opus, the RTP
     /// clock and the jitter buffer all assume. A device that runs at another rate is resampled by
@@ -298,7 +296,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
             let previousDevice = inputDevice
             let wasUsingFallbackDevice = isUsingFallbackInputDevice
             preferredInputDeviceUID = normalizedUID
-            guard OPNCoreAudioDeviceLookup.inputDevice(matching: normalizedUID) == previousDevice else {
+            guard OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: normalizedUID) == previousDevice else {
                 rebuildCapture()
                 notifyCaptureDeviceChange()
                 return
@@ -332,7 +330,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
                 // A device that was plugged in is a row the picker should have, even when it is not
                 // the one capture is on, so this is announced before the resolved-device check.
                 onInputDeviceListChange?()
-                guard OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID) != inputDevice else { return }
+                guard OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: preferredInputDeviceUID) != inputDevice else { return }
                 rebuildCapture()
                 notifyCaptureDeviceChange()
             }
@@ -480,16 +478,16 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         // `captureStateLock`; the resolved device goes out under `deviceStateLock` for off-queue reads.
         captureStateLock.lock()
         defer { captureStateLock.unlock() }
-        inputDevice = OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID)
+        inputDevice = OPNCoreAudioDeviceLookup.resolvedInputDevice(matching: preferredInputDeviceUID)
         inputDeviceUniqueID = OPNCoreAudioDeviceLookup.uid(of: inputDevice)
         isUsingFallbackInputDevice = preferredInputDeviceUID != nil
-            && OPNCoreAudioDeviceLookup.inputDeviceIfPresent(matching: preferredInputDeviceUID) == nil
-        // A saved output that is gone resolves to the default, never a failure, and the saved UID
-        // is kept so the device returns to it. A nil saved UID follows the system default output.
-        outputDevice = OPNCoreAudioDeviceLookup.outputDevice(matching: preferredOutputDeviceUID)
+            && OPNCoreAudioDeviceLookup.inputDevice(matching: preferredInputDeviceUID) == nil
+        // A saved output that is gone resolves to the default; the saved UID is kept so the device
+        // returns to it. A nil saved UID follows the system default output.
+        outputDevice = OPNCoreAudioDeviceLookup.resolvedOutputDevice(matching: preferredOutputDeviceUID)
         outputDeviceUniqueID = OPNCoreAudioDeviceLookup.uid(of: outputDevice)
         isUsingFallbackOutputDevice = preferredOutputDeviceUID != nil
-            && OPNCoreAudioDeviceLookup.outputDeviceIfPresent(matching: preferredOutputDeviceUID) == nil
+            && OPNCoreAudioDeviceLookup.outputDevice(matching: preferredOutputDeviceUID) == nil
         deviceOutputSampleRate = nominalSampleRate(for: outputDevice, fallback: NvstCoreAudioFormat.sampleRate)
         deviceInputSampleRate = nominalSampleRate(for: inputDevice, fallback: NvstCoreAudioFormat.sampleRate)
         outputSampleRate = NvstCoreAudioFormat.sampleRate
@@ -503,7 +501,7 @@ public final class NvstCoreAudioDevice: NSObject, @unchecked Sendable {
         outputStateLock.lock()
         publishedOutputDeviceState = (uniqueID: outputDeviceUniqueID,
                                       isFallback: isUsingFallbackOutputDevice,
-                                      hasUsableOutput: outputDevice != AudioDeviceID(kAudioObjectUnknown))
+                                      isOutputUsable: outputDevice != AudioDeviceID(kAudioObjectUnknown))
         outputStateLock.unlock()
     }
 
@@ -563,9 +561,8 @@ extension NvstCoreAudioDevice {
         return NvstCoreAudioFormat.level(of: samples, count: count)
     }
 
-    /// The local playback gain, folding mute into the same pass: mute is gain zero, so a silenced
-    /// stream never walks the samples twice. Reads two atomics and touches no shared mutable state,
-    /// so it is safe on the render thread.
+    /// Folds mute into the same pass: mute is gain zero, so a silenced stream never walks the
+    /// samples twice. Two atomic reads, no shared mutable state, safe on the render thread.
     private func applyPlayoutGain(to samples: UnsafeMutablePointer<Int16>, count: Int) {
         let gain = isPlayoutMuted ? 0 : playoutGain
         guard gain < 1 else { return }
@@ -676,9 +673,8 @@ extension NvstCoreAudioDevice {
         }
     }
 
-    /// Two listeners, because they answer different questions: a change of the system default
-    /// (which only a "Default Device" selection follows) and a change of the device set (which a
-    /// pinned selection has to re-resolve against, for a fallback and for a device coming back).
+    /// Two listeners: a change of the system default, and a change of the device set that a pinned
+    /// selection has to re-resolve against.
     private func startDefaultOutputMonitoring() {
         let context = Unmanaged.passUnretained(self).toOpaque()
         var defaultAddress = AudioObjectPropertyAddress(
