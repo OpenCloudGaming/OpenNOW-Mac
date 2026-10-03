@@ -28,6 +28,23 @@ extension NvstBifrostFreeTransport {
         }
     }
 
+    /// The output route's own handlers. Like the microphone's, both originate on the CoreAudio
+    /// queue and hop to the main actor, so a consumer may touch the UI.
+    func installOutputDeviceHandlers(_ bundle: NvstNativeBundle) {
+        bundle.onOutputDeviceChange = { [weak self] change in
+            Task {
+                guard let self else { return }
+                await self.outputDeviceHandler?(change)
+            }
+        }
+        bundle.onOutputDeviceListChange = { [weak self] in
+            Task {
+                guard let self else { return }
+                await self.outputDeviceListHandler?()
+            }
+        }
+    }
+
     /// Wires the bundle's channel callbacks back into the transport actor.
     func installBundleHandlers(_ bundle: NvstNativeBundle,
                                sender: NvstFeedbackSender,
@@ -58,6 +75,7 @@ extension NvstBifrostFreeTransport {
             browserEgress?.forwardAudio(audioBufferList: audioBufferList, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
         }
         installMicrophoneHandlers(bundle)
+        installOutputDeviceHandlers(bundle)
         bundle.onPartiallyReliableControlOpen = { [weak self] in
             Task {
                 await self?.withCurrentBundleGeneration(generation) { transport in

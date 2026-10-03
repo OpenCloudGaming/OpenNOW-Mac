@@ -28,6 +28,7 @@ struct CatalogSettingsPreferencesSnapshot: Sendable {
     let selectedRegionUrl: String
     let regionOptions: [OPNStreamRegionOption]
     let microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption]
+    let outputDeviceOptions: [OPNStreamOutputDeviceOption]
 }
 
 @MainActor
@@ -303,6 +304,8 @@ final class CatalogViewModel {
     var unavailableSettingsRegionUrl = ""
     var isRefreshingSettingsRegions = false
     var microphoneDeviceOptions: [OPNStreamMicrophoneDeviceOption] = []
+    /// The output picker's rows, from the same enumeration the stream HUD's output picker uses.
+    var outputDeviceOptions: [OPNStreamOutputDeviceOption] = []
     /// Live state of the Settings microphone test; the probe itself is the CoreAudio tap.
     var microphoneTestActive = false
     var microphoneTestLevel = 0.0

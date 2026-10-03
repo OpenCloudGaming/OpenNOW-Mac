@@ -94,6 +94,11 @@ public final class NvstNativeBundle: @unchecked Sendable {
     public var onMicrophoneDeviceFallback: (@Sendable (NvstCaptureDeviceChange) -> Void)?
     /// A microphone was plugged in or taken away, so the picker's rows are stale.
     public var onMicrophoneDeviceListChange: (@Sendable () -> Void)?
+    /// Playback's resolved route changed, or a switch could not be activated. Carries the copy the
+    /// HUD shows; the saved UID is deliberately not rewritten.
+    public var onOutputDeviceChange: (@Sendable (NvstOutputDeviceChange) -> Void)?
+    /// An output device was plugged in or taken away, so the output picker's rows are stale.
+    public var onOutputDeviceListChange: (@Sendable () -> Void)?
 
     // MARK: - State
 
@@ -126,6 +131,13 @@ public final class NvstNativeBundle: @unchecked Sendable {
     private let identity: NvstDtlsIdentity
     private let logger: (@Sendable (String) -> Void)?
     private var microphoneSetup: MicrophoneSetup?
+    /// The output picker's saved UID, held here because the device is opened long after the host
+    /// applies it: `startAudioDevice` runs on the transport's post-handshake path.
+    private var outputDeviceUniqueID: String?
+    /// Local playback gain, held for the same reason as the output UID: applied when the device is
+    /// opened, and live once it exists.
+    private var gameVolume: Double = 1
+    private var isLocalAudioMuted = false
     private var reservation: NvstUdpPortReservation?
     private var transport: NvstDtlsTransport?
     private var association: NvstSctpAssociation?
@@ -377,7 +389,10 @@ public final class NvstNativeBundle: @unchecked Sendable {
     private func startAudioDevice() {
         let layout = audioLayout
         let device = NvstCoreAudioDevice(playoutChannelCount: layout.channels,
-                                         preferredInputDeviceUID: microphoneSetup?.deviceUniqueID)
+                                         preferredInputDeviceUID: microphoneSetup?.deviceUniqueID,
+                                         preferredOutputDeviceUID: outputDeviceUniqueID)
+        device.playoutGain = Float(gameVolume)
+        device.isPlayoutMuted = isLocalAudioMuted
         // Layout and mixer are read together, once per render, so a fallback landing between two
         // renders cannot pair one width with the other's matrix.
         device.fillPlayout = { [weak self, weak device] destination, sampleCount in
@@ -419,6 +434,8 @@ public final class NvstNativeBundle: @unchecked Sendable {
             onMicrophoneDeviceFallback?(change)
         }
         device.onInputDeviceListChange = { [weak self] in self?.onMicrophoneDeviceListChange?() }
+        device.onOutputDeviceChange = { [weak self] change in self?.onOutputDeviceChange?(change) }
+        device.onOutputDeviceListChange = { [weak self] in self?.onOutputDeviceListChange?() }
         device.isMicrophoneCaptureEnabled = { [weak self] in self?.sendPipeline?.isMuted == false }
         device.start()
         audioDevice = device
@@ -427,18 +444,6 @@ public final class NvstNativeBundle: @unchecked Sendable {
                 + " decode=\(layout.summary) speakers=\(device.playoutSpeakers.map(String.init).joined(separator: ","))"
                 + " inRate=\(Int(device.inputSampleRate)) inChannels=\(device.inputChannels)"
                 + " latencyMs=\(Int((device.outputPathLatencySeconds * 1000).rounded()))")
-    }
-
-    func sendCapturedMicrophone(pointer: UnsafeRawPointer?, frames: UInt32) {
-        guard let pointer, let sendPipeline else { return }
-        let list = pointer.assumingMemoryBound(to: AudioBufferList.self)
-        guard let samples = NvstCoreAudioFormat.stereoCaptureSamples(bufferList: list, frames: frames) else { return }
-        microphoneStatsLock.lock()
-        microphoneCapturedFrames &+= UInt64(frames)
-        microphoneStatsLock.unlock()
-        for datagram in sendPipeline.push(capturedPCM: samples) {
-            try? transport?.sendRaw(datagram)
-        }
     }
 
     private func startAssociation() throws {
@@ -526,6 +531,20 @@ public final class NvstNativeBundle: @unchecked Sendable {
 }
 
 extension NvstNativeBundle {
+    /// The captured PCM crossing into the send pipeline. Lives outside the class body, which is at
+    /// its length budget; the state it reads is private to this file either way.
+    func sendCapturedMicrophone(pointer: UnsafeRawPointer?, frames: UInt32) {
+        guard let pointer, let sendPipeline else { return }
+        let list = pointer.assumingMemoryBound(to: AudioBufferList.self)
+        guard let samples = NvstCoreAudioFormat.stereoCaptureSamples(bufferList: list, frames: frames) else { return }
+        microphoneStatsLock.lock()
+        microphoneCapturedFrames &+= UInt64(frames)
+        microphoneStatsLock.unlock()
+        for datagram in sendPipeline.push(capturedPCM: samples) {
+            try? transport?.sendRaw(datagram)
+        }
+    }
+
     /// Capture evidence for the diagnostics line: frames pulled from the device and the last meter
     /// reading, so a silent capture is visible rather than inferred from an advancing byte count.
     private var microphoneStatistics: (capturedFrames: UInt64, captureLevel: Double) {
@@ -596,7 +615,27 @@ extension NvstNativeBundle {
     /// Silences this Mac's speakers only. Applied in the device after the tee, so a recording and a
     /// Co-Op guest keep hearing the game.
     public func setRemoteAudioMuted(_ muted: Bool) {
+        isLocalAudioMuted = muted
         audioDevice?.isPlayoutMuted = muted
+    }
+
+    /// The local playback gain, 0...1. Applied in the device after the tee, so it changes what these
+    /// speakers play and never what a recording, a replay or a Co-Op guest receives.
+    public func setGameVolume(_ volume: Double) {
+        gameVolume = min(max(volume.isFinite ? volume : 1, 0), 1)
+        audioDevice?.playoutGain = Float(gameVolume)
+    }
+
+    /// Swaps the output device playback runs on. The receive pipeline and the seat's stream are
+    /// untouched: only the playout AudioUnit is rebuilt.
+    public func setOutputDevice(uid: String?) {
+        let normalized = uid.flatMap { $0.isEmpty ? nil : $0 }
+        outputDeviceUniqueID = normalized
+        audioDevice?.setPreferredOutputDevice(uid: normalized)
+    }
+
+    public var outputDeviceState: (uniqueID: String?, isFallback: Bool, hasUsableOutput: Bool) {
+        audioDevice?.outputDeviceState ?? (nil, false, false)
     }
 
     /// Flips the microphone gate. Muting stops packets rather than sending silence, which is what the
@@ -606,6 +645,8 @@ extension NvstNativeBundle {
         sendPipeline?.isMuted = !enabled
     }
 
+    /// The live capture gain, applied to the send pipeline's PCM so the current session's
+    /// transmitted level moves without a reconnect.
     public func setMicrophoneVolume(_ volume: Double) {
         sendPipeline?.gain = Float(min(max(volume.isFinite ? volume : 1, 0), 1))
     }

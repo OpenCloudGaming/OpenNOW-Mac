@@ -216,6 +216,21 @@ public struct OPNStreamMicrophoneDeviceOption: Equatable, Sendable {
     }
 }
 
+/// One row of the stream HUD's output picker and the Settings output picker. Same shape as the
+/// microphone option — a label, the CoreAudio UID it resolves by, and whether the row is the
+/// synthetic "Default Device" — because the two pickers are read the same way.
+public struct OPNStreamOutputDeviceOption: Equatable, Sendable {
+    public var label: String
+    public var uniqueId: String
+    public var automatic = false
+
+    public init(label: String, uniqueId: String, automatic: Bool = false) {
+        self.label = label
+        self.uniqueId = uniqueId
+        self.automatic = automatic
+    }
+}
+
 public struct OPNStreamNetworkPreflightResult: Equatable, Sendable {
     public var streamingBaseUrl = ""
     public var networkTestSessionId = ""
@@ -367,6 +382,9 @@ public struct OPNStreamPreferenceProfile: Equatable, Sendable {
     public var microphoneVolume = 1.0
     public var microphoneMode = "disabled"
     public var microphoneDeviceId = ""
+    /// The saved output device for OpenNOW stream playback, as a CoreAudio UID. Empty is "Default
+    /// Device", which follows the macOS default output for the whole session.
+    public var outputDeviceId = ""
     public var surroundModeIndex = 0
     public var surroundMode = OPNStreamPreferences.surroundModeOptions[0]
     public var microphonePushToTalkKeyCode = 9

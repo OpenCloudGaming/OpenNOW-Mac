@@ -152,16 +152,35 @@ struct StreamHUDFocusNavigationTests {
         return model
     }
 
-    /// The AUDIO panel's two dropdown rows are full-width and sit under the tiles in the order the
-    /// panel draws them, which is what makes the pad's walk follow what is on screen.
-    @Test func theMicrophoneRowsFollowThePanelOrder() {
+    /// The AUDIO panel's rows are drawn in the order the panel lists them — output above microphone,
+    /// each volume row directly under the control it belongs to — which is what makes the pad's walk
+    /// follow what is on screen.
+    @Test func theAudioRowsFollowThePanelOrder() {
         let model = dropdownModel()
-        let ids = model.hudFocusEntries.map(\.id)
-        let modeIndex = ids.firstIndex(of: NativeNVSTHostViewModel.microphoneModeDropdownID)
-        let deviceIndex = ids.firstIndex(of: NativeNVSTHostViewModel.microphoneDeviceDropdownID)
-        #expect(modeIndex != nil)
-        #expect(deviceIndex == modeIndex.map { $0 + 1 }, "the mode row is drawn above the device row")
-        #expect(StreamHUDFocusEntry.rows(of: model.hudFocusEntries).contains { $0.count == 1 && $0[0] == modeIndex })
+        let audioIDs = model.hudFocusEntries.map(\.id).filter { id in
+            id == NativeNVSTHostViewModel.outputDeviceDropdownID
+                || id.hasPrefix("game-volume")
+                || id == NativeNVSTHostViewModel.microphoneDeviceDropdownID
+                || id.hasPrefix("microphone-volume")
+                || id == NativeNVSTHostViewModel.microphoneModeDropdownID
+        }
+        #expect(audioIDs == [
+            NativeNVSTHostViewModel.outputDeviceDropdownID,
+            NativeNVSTHostViewModel.gameVolumeMuteFocusID,
+            NativeNVSTHostViewModel.gameVolumeFocusID,
+            NativeNVSTHostViewModel.microphoneDeviceDropdownID,
+            NativeNVSTHostViewModel.microphoneVolumeMuteFocusID,
+            NativeNVSTHostViewModel.microphoneVolumeFocusID,
+            NativeNVSTHostViewModel.microphoneModeDropdownID,
+        ])
+        // Every device picker is a full-width row of its own, so up/down lands on the row itself
+        // rather than on whatever the grid next to it happened to be.
+        let rows = StreamHUDFocusEntry.rows(of: model.hudFocusEntries)
+        for dropdownID in [NativeNVSTHostViewModel.outputDeviceDropdownID,
+                           NativeNVSTHostViewModel.microphoneDeviceDropdownID,
+                           NativeNVSTHostViewModel.microphoneModeDropdownID] {
+            #expect(rows.contains { $0.count == 1 && model.hudFocusEntries[$0[0]].id == dropdownID })
+        }
     }
 
     @Test func aDropdownOpensOnTheRowInUse() {

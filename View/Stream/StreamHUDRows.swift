@@ -158,6 +158,73 @@ struct StreamHUDSliderRow: View {
     }
 }
 
+/// One AUDIO-panel volume control: a leading mute/unmute icon button, the label, the live
+/// percentage, and the slider. The icon replaces the standalone mute tile the panel used to draw,
+/// so the mute action sits with the level it silences. Both halves are separate pad focus rows —
+/// the icon and the slider each carry their own focus ring — which is why the ring is drawn on the
+/// icon itself rather than on the row.
+struct StreamHUDVolumeRow: View {
+    let label: String
+    /// The state glyph, not the action: slashed while muted, otherwise the speaker/microphone in
+    /// use. A green row means audio is flowing.
+    let systemName: String
+    let percent: Int
+    let isMuted: Bool
+    let isDisabled: Bool
+    var isMuteDisabled = false
+    var isFocused = false
+    var isMuteFocused = false
+    let onToggleMute: () -> Void
+    let onPercentChange: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                muteButton
+                Text(label)
+                    .font(.streamFont(size: 11, weight: .medium))
+                    .foregroundStyle(StreamHUDTheme.textTertiary)
+                Spacer(minLength: 8)
+                Text("\(percent)%")
+                    .font(.streamFont(size: 11, weight: .bold))
+                    .foregroundStyle(StreamHUDTheme.textPrimary)
+                    .frame(minWidth: 32, alignment: .trailing)
+            }
+            Slider(
+                value: Binding(get: { Double(percent) }, set: { onPercentChange(Int($0.rounded())) }),
+                in: 0...100,
+                step: 1
+            )
+            .tint(StreamHUDTheme.accent)
+            .disabled(isDisabled)
+            .accessibilityLabel(label)
+            .accessibilityValue("\(percent) percent")
+        }
+        .hudFocusRing(isFocused)
+        .opacity(isDisabled ? 0.46 : 1)
+    }
+
+    private var muteButton: some View {
+        Button(action: onToggleMute) {
+            Image(systemName: systemName)
+                .font(.streamFont(size: 10, weight: .bold))
+                .foregroundStyle(isMuted ? StreamHUDTheme.warning : StreamHUDTheme.textPrimary)
+                .frame(width: 22, height: 22)
+                .background(Color.white.opacity(isMuteFocused ? 0.16 : 0.07))
+                .overlay {
+                    Rectangle().stroke(isMuteFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isMuteFocused ? 2 : 1)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isMuteDisabled)
+        .opacity(isMuteDisabled ? 0.46 : 1)
+        .accessibilityLabel(isMuted ? "Unmute \(label)" : "Mute \(label)")
+        .accessibilityValue(isMuted ? "Muted" : "Unmuted")
+        .help(isMuted ? "Unmute \(label)" : "Mute \(label)")
+    }
+}
+
 /// Squared segmented control for the stream HUD, replacing `.pickerStyle(.segmented)`.
 ///
 /// The stock style draws AppKit's rounded capsule with its own tint handling, which is the one

@@ -652,6 +652,13 @@ extension CatalogViewModel {
         if restartRunningTest { startMicrophoneTest() }
     }
 
+    /// The stream's own output device, written to the same key the HUD's output picker reads. It
+    /// routes OpenNOW stream playback only: the macOS default output is untouched.
+    func setOutputDeviceId(_ deviceId: String) {
+        OPNStreamPreferences.saveOutputDeviceId(deviceId)
+        loadSettingsPreferences()
+    }
+
     // MARK: - Microphone test
 
     func toggleMicrophoneTest() {

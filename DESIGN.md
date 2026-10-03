@@ -298,6 +298,20 @@ Icon-only square button: 42×38, 15pt bold SF Symbol, Row Fill background (0.14 
 1px Divider stroke. Active: accent background, black icon, accent @ 0.86 stroke.
 Focused (gamepad/keyboard): accent stroke at 2px. Disabled: opacity 0.46.
 
+### Stream HUD Volume Row (`StreamHUDVolumeRow`)
+
+One AUDIO-panel volume control: a leading mute/unmute icon button, the label, the live
+percentage, and a slider on the row below. The icon replaces the standalone mute tile the panel
+used to draw, so the mute action sits with the level it silences.
+
+- Icon button: 22×22, 10pt bold SF Symbol, Row Fill background (0.16 focused), 1px Divider
+  stroke — accent at 2px when focused. Slashed glyph and Warning tint while muted. Disabled:
+  opacity 0.46.
+- Label and percentage use the same 11pt ramp as `StreamHUDSliderRow`; the slider is 0–100% in
+  1% steps, tinted accent, no amplification above unity.
+- The icon and the slider are two separate pad focus rows sharing one visual row, so up/down
+  steps past the whole control while left/right picks the icon or the slider.
+
 ### Stream Dialog Button (`StreamQuitMenuButton`)
 
 Full-width rectangular button, height 38, Hanken Grotesk 12pt bold (tracking 0.4).

@@ -8,6 +8,15 @@ import Foundation
 extension NativeNVSTHostViewModel {
     static let microphoneDeviceDropdownID = "microphone-device"
     static let microphoneModeDropdownID = "microphone-mode"
+    static let outputDeviceDropdownID = "output-device"
+    static let gameVolumeFocusID = "game-volume"
+    static let gameVolumeMuteFocusID = "game-volume-mute"
+    static let microphoneVolumeFocusID = "microphone-volume"
+    static let microphoneVolumeMuteFocusID = "microphone-volume-mute"
+    /// The two entries of one volume row share a group so up/down steps past the whole row rather
+    /// than landing on its second half.
+    static let gameVolumeGroup = "audio-game-volume"
+    static let microphoneVolumeGroup = "audio-microphone-volume"
     static let remoteCoOpQualityDropdownPrefix = "coop-quality-"
 
     // MARK: - Pad-driven dropdowns
@@ -17,6 +26,7 @@ extension NativeNVSTHostViewModel {
     func padDropdownItems(_ dropdownID: String) -> [OPNDropdownPadItem] {
         if dropdownID == Self.microphoneDeviceDropdownID { return microphoneDevicePadItems() }
         if dropdownID == Self.microphoneModeDropdownID { return microphoneModePadItems() }
+        if dropdownID == Self.outputDeviceDropdownID { return outputDevicePadItems() }
         guard dropdownID.hasPrefix(Self.remoteCoOpQualityDropdownPrefix),
               let participantID = UUID(uuidString: String(dropdownID.dropFirst(Self.remoteCoOpQualityDropdownPrefix.count))) else { return [] }
         return remoteCoOpQualityPadItems(participantID: participantID)
@@ -119,6 +129,29 @@ extension NativeNVSTHostViewModel {
         Int((min(max(microphoneLevel, 0), 1) * 100).rounded())
     }
 
+    // MARK: - The output device dropdown
+
+    /// One row per output device, the synthetic "Default Device" (empty UID) first, as Settings
+    /// lists them. The default's label carries the fallback so the HUD never claims a device not in
+    /// use.
+    func outputDevicePadItems() -> [OPNDropdownPadItem] {
+        outputDeviceOptions.map { option in
+            let isFallbackRow = isOutputDeviceFallbackActive && option.uniqueId.isEmpty
+            return OPNDropdownPadItem(
+                id: option.uniqueId,
+                title: isFallbackRow ? "\(option.label) (fallback)" : option.label,
+                isSelected: option.uniqueId == selectedOutputDeviceUID,
+                action: { [weak self] in self?.requestNativeOutputDevice(option.uniqueId) }
+            )
+        }
+    }
+
+    /// The UID the panel marks, or empty for "Default Device". Empty while a change is in flight
+    /// too, so the old row is not marked once the user has chosen a new one.
+    var selectedOutputDeviceUID: String {
+        outputDevicePendingUID ?? outputDeviceUID
+    }
+
     // MARK: - The microphone mode dropdown
 
     /// One row per mode Settings offers, in Settings' order and with Settings' own labels. The mode is
@@ -181,10 +214,15 @@ extension NativeNVSTHostViewModel {
         // microphone's availability, and a mode change must never leave capture open.
         if mode != "voice-activity" { requestNativeMicrophoneEnabled(false, source: "mode") }
         microphoneMode = mode
+        // The chord's held state belongs to the mode that owned it. Reconfiguring the monitor also
+        // releases the view's own state, so a mode change cannot strand a press.
+        microphoneKeyHeld = false
         OPNStreamPreferences.saveMicrophoneMode(mode)
         microphoneAvailable = isMicrophoneSectionNegotiated && mode != "disabled"
         if let nativeView { configurePushToTalkMonitor(for: nativeView, mode: mode) }
-        if mode == "voice-activity" { requestNativeMicrophoneEnabled(true, source: "mode") }
+        // The composed gate, not the mode's default: a user who muted stays muted across a mode
+        // change, and push-to-talk only opens on a held key.
+        reconcileNativeMicrophoneGate(source: "mode")
         publishMicrophoneConfiguration()
         OPNStreamTelemetry.capture("nvst.ui.microphone.mode", level: .info, message: "Native NVST microphone mode changed.", attributes: ["applicationID": configuration.applicationID, "mode": mode])
     }

@@ -23,6 +23,20 @@ public protocol NativeNVSTTransport: Sendable {
     /// mid-stream has to become selectable without the HUD being closed and reopened.
     func setMicrophoneDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async
     func setLocalAudioPlaybackMuted(_ muted: Bool) async throws
+    /// Applies the saved local playback gain, 0...1, to the running session. Never above unity, and
+    /// applied after the game-audio tee so recordings, replay and Co-Op keep the unscaled samples.
+    /// Stored before a session exists, so a launch can set the level it starts with.
+    func setGameVolume(_ volume: Double) async throws
+    /// Applies the saved capture gain, 0...1, to the running session. Stored before a session exists.
+    func setMicrophoneVolume(_ volume: Double) async throws
+    /// Swaps the device stream playback runs on, mid-stream. Only the playout unit is rebuilt: the
+    /// seat's audio stream was fixed at ANNOUNCE. Stored before a session exists.
+    func setOutputDevice(_ uid: String) async throws
+    /// Playback's resolved route changed, or a switch could not be activated. The handler is
+    /// delivered on the main actor; the device reports it from the CoreAudio queue.
+    func setOutputDeviceHandler(_ handler: (@MainActor @Sendable (NvstOutputDeviceChange) -> Void)?) async
+    /// The set of output devices changed, so the picker's rows are stale.
+    func setOutputDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async
     func togglePerformanceOverlay() async throws
     func performanceSnapshot() async -> NativeNVSTPerformanceSnapshot?
     func setMaximumBitrateKbps(_ bitrateKbps: UInt32) async throws
@@ -77,6 +91,11 @@ public extension NativeNVSTTransport {
     func setMicrophoneFallbackHandler(_ handler: (@MainActor @Sendable (String) -> Void)?) async {}
     func setMicrophoneDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {}
     func setLocalAudioPlaybackMuted(_ muted: Bool) async throws { throw NativeNVSTError.notRunning }
+    func setGameVolume(_ volume: Double) async throws {}
+    func setMicrophoneVolume(_ volume: Double) async throws {}
+    func setOutputDevice(_ uid: String) async throws {}
+    func setOutputDeviceHandler(_ handler: (@MainActor @Sendable (NvstOutputDeviceChange) -> Void)?) async {}
+    func setOutputDeviceListHandler(_ handler: (@MainActor @Sendable () -> Void)?) async {}
 
     /// Recording is optional for a transport. The status handler is the only channel the UI
     /// listens on, so a transport that never installs one simply leaves the HUD at `.idle`.

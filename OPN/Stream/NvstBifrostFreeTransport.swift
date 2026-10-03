@@ -123,10 +123,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// native stack was running on a `1920x1080@75` panel and still reported ~15905 µs, which is
     /// 62.9 fps — its 60 fps session, not its 75 Hz screen. Reading the display would have told a
     /// 120 Hz Mac's seat to pace a 60 fps stream at 8333 µs.
-    var sessionFrameTimeMicroseconds: UInt32 {
-        guard let fps = negotiatedFps, fps > 0 else { return Self.targetFrameTimeMicroseconds }
-        return UInt32(1_000_000 / fps)
-    }
     var remoteAudioTrackCount = 0
     /// The microphone configuration the host applies *before* `start`. `bringUpBundle` reads it
     /// to decide whether the bundle negotiates the mic send section; it must never throw (the
@@ -137,6 +133,14 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     var microphoneLevelHandler: (@MainActor @Sendable (Double) -> Void)?
     var microphoneFallbackHandler: (@MainActor @Sendable (String) -> Void)?
     var microphoneDeviceListHandler: (@MainActor @Sendable () -> Void)?
+    /// The saved local playback gain, held across a bring-up so the device opens at the level the
+    /// launch resolved rather than at unity for a frame.
+    var gameVolume: Double = 1
+    /// The saved output device UID, held for the same reason: the device is opened long after the
+    /// host applies the picker's choice.
+    var outputDeviceUniqueID: String?
+    var outputDeviceHandler: (@MainActor @Sendable (NvstOutputDeviceChange) -> Void)?
+    var outputDeviceListHandler: (@MainActor @Sendable () -> Void)?
     /// Whether the bundle's answer really carries the mic send section. `setMicrophoneEnabled`
     /// and the teardown path key off this rather than the preference, so the runtime state can
     /// never claim a channel the negotiation did not create.

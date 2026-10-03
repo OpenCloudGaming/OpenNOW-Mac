@@ -15,27 +15,6 @@ extension NativeNVSTMediaStreamSurface {
         let action: () -> Void
     }
 
-    var nativeHUDAudioTiles: [NativeHUDTile] {
-        [
-            // The glyph shows the current state, not the action: a green tile with a slashed mic read
-            // as "muted" while the microphone was live. Green now means audio is flowing.
-            NativeHUDTile(id: "microphone",
-                          title: model.microphoneEnabled ? "Mute microphone" : "Unmute microphone",
-                          subtitle: nativeMicrophoneStatusText,
-                          systemName: model.microphoneEnabled ? "mic.fill" : "mic.slash.fill",
-                          isActive: model.microphoneEnabled && model.microphoneAvailable,
-                          isDisabled: !model.sidebarCapabilities.supports(.microphone) || !model.microphoneAvailable || model.microphoneUpdateTask != nil,
-                          action: model.toggleNativeMicrophone),
-            NativeHUDTile(id: "localAudioMute",
-                          title: model.nativeLocalAudioMuted ? "Unmute Local Audio" : "Mute Local Audio",
-                          subtitle: model.nativeLocalAudioMuted ? "Muted on this Mac" : "Playing on this Mac",
-                          systemName: model.nativeLocalAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                          isActive: !model.nativeLocalAudioMuted,
-                          isDisabled: !model.isConnected,
-                          action: model.toggleNativeLocalAudioMute),
-        ]
-    }
-
     var nativeHUDCaptureTiles: [NativeHUDTile] {
         [
             NativeHUDTile(id: "recording",
@@ -193,34 +172,70 @@ extension NativeNVSTMediaStreamSurface {
         }
     }
 
+    /// Output above microphone, each device picker a full-width row and each volume a row led by
+    /// its mute icon. The two standalone mute tiles this panel used to draw are gone: the icons own
+    /// those actions now, which is also why the panel no longer draws a tile grid.
     var nativeHUDAudioPanel: some View {
-        let tiles = nativeHUDAudioTiles
-        return StreamHUDSection(
+        StreamHUDSection(
             label: OPNStreamHUDSection.audio.title,
             spacing: 8,
-            caption: nativeHUDCaption(for: tiles, extra: [
-                (NativeNVSTHostViewModel.microphoneModeDropdownID, model.microphoneModeCaption),
+            caption: nativeHUDCaption(for: [], extra: [
+                (NativeNVSTHostViewModel.outputDeviceDropdownID, model.outputDeviceCaption),
+                (NativeNVSTHostViewModel.gameVolumeMuteFocusID, model.gameVolumeMuteCaption),
+                (NativeNVSTHostViewModel.gameVolumeFocusID, model.gameVolumeCaption),
                 (NativeNVSTHostViewModel.microphoneDeviceDropdownID, model.microphoneDeviceCaption),
+                (NativeNVSTHostViewModel.microphoneVolumeMuteFocusID, model.microphoneVolumeMuteCaption),
+                (NativeNVSTHostViewModel.microphoneVolumeFocusID, model.microphoneVolumeCaption),
+                (NativeNVSTHostViewModel.microphoneModeDropdownID, model.microphoneModeCaption),
             ]),
             isCollapsed: model.isHUDSectionCollapsed(.audio),
             isFocused: model.isHUDSectionHeaderFocused(.audio),
             reorderPayload: OPNStreamHUDSection.audio.rawValue,
             onToggle: { model.toggleHUDSection(.audio) }
         ) {
-            nativeHUDTileGrid(tiles)
-            // Below the tiles: full-width rows of their own, because they change settings rather than
-            // toggling a state, and the pad reads each as the row it draws as.
+            hudDropdownRow(
+                label: "Output Device",
+                dropdownID: NativeNVSTHostViewModel.outputDeviceDropdownID,
+                selection: model.selectedOutputDeviceUID,
+                isDisabled: model.isOutputDeviceRowDisabled
+            )
+            StreamHUDVolumeRow(
+                label: "Game Volume",
+                systemName: model.nativeLocalAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                percent: model.gameVolumePercent,
+                isMuted: model.nativeLocalAudioMuted,
+                isDisabled: !model.isConnected,
+                isMuteDisabled: !model.isConnected,
+                isFocused: model.hudFocusID == NativeNVSTHostViewModel.gameVolumeFocusID,
+                isMuteFocused: model.hudFocusID == NativeNVSTHostViewModel.gameVolumeMuteFocusID,
+                onToggleMute: model.toggleNativeLocalAudioMute,
+                onPercentChange: { model.updateNativeGameVolume(percent: $0) }
+            )
+            // Above the microphone rows rather than instead of them, so the rows the pad stands on
+            // stay where they were and the reason is beside what it explains.
             microphoneUnavailableNotice
-            nativeHUDMicrophoneModeRow
             nativeHUDMicrophoneDeviceRow
+            StreamHUDVolumeRow(
+                label: "Microphone Volume",
+                systemName: model.isNativeMicrophoneMuted ? "mic.slash.fill" : "mic.fill",
+                percent: model.microphoneVolumePercent,
+                isMuted: model.isNativeMicrophoneMuted,
+                isDisabled: model.isMicrophoneVolumeRowDisabled,
+                isMuteDisabled: model.isMicrophoneMuteRowDisabled,
+                isFocused: model.hudFocusID == NativeNVSTHostViewModel.microphoneVolumeFocusID,
+                isMuteFocused: model.hudFocusID == NativeNVSTHostViewModel.microphoneVolumeMuteFocusID,
+                onToggleMute: model.toggleNativeMicrophone,
+                onPercentChange: { model.updateNativeMicrophoneVolume(percent: $0) }
+            )
             nativeHUDMicrophoneLevelRow
+            nativeHUDMicrophoneModeRow
         }
     }
 
     /// Off, held-to-talk, or always capturing. Which modes are live depends on whether this session
     /// asked for a microphone section, and the notice above the row says so when they are not.
     var nativeHUDMicrophoneModeRow: some View {
-        microphoneDropdownRow(
+        hudDropdownRow(
             label: "Microphone Mode",
             dropdownID: NativeNVSTHostViewModel.microphoneModeDropdownID,
             selection: model.microphoneMode,
@@ -229,7 +244,7 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     /// One row of the AUDIO panel: the HUD's own dropdown, whose rows carry their own actions.
-    func microphoneDropdownRow(label: String, dropdownID: String, selection: String, isDisabled: Bool) -> some View {
+    func hudDropdownRow(label: String, dropdownID: String, selection: String, isDisabled: Bool) -> some View {
         StreamHUDDropdown(
             label: label,
             rows: model.padDropdownItems(dropdownID),
@@ -245,7 +260,7 @@ extension NativeNVSTMediaStreamSurface {
     /// The microphone the stream captures from: where the picker's saved choice reaches capture, and
     /// where it can be changed without leaving the session.
     var nativeHUDMicrophoneDeviceRow: some View {
-        microphoneDropdownRow(
+        hudDropdownRow(
             label: "Microphone Device",
             dropdownID: NativeNVSTHostViewModel.microphoneDeviceDropdownID,
             selection: model.selectedMicrophoneDeviceUID,

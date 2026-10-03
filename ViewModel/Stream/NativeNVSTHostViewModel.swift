@@ -116,6 +116,28 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// capture is still on.
     var microphonePendingDeviceUID: String?
     var pendingMicrophoneDeviceUIDs: [String] = []
+    /// The user's mute override, independent of the push-to-talk key and of the mode. It is
+    /// session-local: a fresh session starts unmuted.
+    @Published var microphoneMuteOverride = false
+    /// Whether the push-to-talk chord is held. Key state only, never a capture decision on its own:
+    /// `nativeMicrophoneCaptureRequested` composes it with the override and the mode.
+    var microphoneKeyHeld = false
+    /// The capture gain for this session, 0...100, read from the same preference Settings writes.
+    @Published var microphoneVolumePercent = 100
+    /// The output picker's rows, read from the same preference Settings writes.
+    @Published var outputDeviceOptions: [OPNStreamOutputDeviceOption] = [OPNStreamOutputDeviceOption(label: "Default Device", uniqueId: "", automatic: true)]
+    /// The output picker's saved choice for this session, as a UID. Empty is "Default Device".
+    @Published var outputDeviceUID = ""
+    /// The route playback actually runs on, for the fallback label. Empty while unknown.
+    @Published var outputDeviceResolvedUID = ""
+    /// The saved output is gone and playback fell back. Drives the label and the one-off message.
+    @Published var isOutputDeviceFallbackActive = false
+    /// A route change in flight, so the open dropdown marks the intended row rather than the one
+    /// playback is still on.
+    var outputDevicePendingUID: String?
+    var outputDeviceUpdateTask: Task<Void, Never>?
+    /// The local playback gain for this session, 0...100.
+    @Published var gameVolumePercent = 100
     /// Whether this seat carries a microphone at all. `.pending` until the bundle is up, so nothing is
     /// greyed out on the strength of a question that has not been answered yet.
     @Published var microphoneTransportAvailability: NativeNVSTMicrophoneAvailability = .pending
@@ -353,6 +375,17 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         )
         microphoneMode = profile.microphoneMode.lowercased()
         microphoneDeviceUID = profile.microphoneDeviceId
+        // A new session starts with no override and no held key: both are session-local, and
+        // restoring either would open capture the user did not ask for.
+        microphoneMuteOverride = false
+        microphoneKeyHeld = false
+        microphoneVolumePercent = Int((profile.microphoneVolume * 100).rounded())
+        outputDeviceUID = profile.outputDeviceId
+        outputDeviceResolvedUID = ""
+        outputDevicePendingUID = nil
+        isOutputDeviceFallbackActive = false
+        outputDeviceOptions = OPNStreamPreferences.loadOutputDeviceOptions()
+        gameVolumePercent = Int((profile.gameVolume * 100).rounded())
         let microphoneConfiguration = microphoneConfigurationForCurrentMode
         // The HUD's dropdown reads the same saved choice the Settings picker does, so the two agree
         // on the device even before the stream has reported which one capture settled on.
@@ -387,6 +420,11 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         startTask = Task {
             do {
                 try await path.setMicrophoneConfiguration(microphoneConfiguration)
+                // The saved output route and both gains are applied before `start`, so the device
+                // that opens after the handshake already resolves them.
+                try await path.setOutputDevice(outputDeviceUID)
+                try await path.setGameVolume(Double(gameVolumePercent) / 100)
+                try await path.setMicrophoneVolume(Double(microphoneVolumePercent) / 100)
                 let session = try await path.start(configuration: configuration) { progress in
                     await MainActor.run {
                         self.loadingStepIndex = progress.currentStepIndex
@@ -574,6 +612,15 @@ extension NativeNVSTHostViewModel {
             await transport.setMicrophoneDeviceListHandler { [weak self] in
                 guard let self, !self.didEnd else { return }
                 self.refreshMicrophoneDeviceOptions()
+            }
+            // The output route's own live reports: every route change, and every output plug/unplug.
+            await transport.setOutputDeviceHandler { [weak self] change in
+                guard let self, !self.didEnd else { return }
+                self.handleNativeOutputDeviceChange(change)
+            }
+            await transport.setOutputDeviceListHandler { [weak self] in
+                guard let self, !self.didEnd else { return }
+                self.refreshOutputDeviceOptions()
             }
         }
     }

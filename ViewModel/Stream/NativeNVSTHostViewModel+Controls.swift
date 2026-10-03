@@ -165,21 +165,6 @@ extension NativeNVSTHostViewModel {
         }
     }
 
-    func toggleNativeMicrophone() {
-        guard isConnected, !isEnding, !didEnd else { return }
-        guard microphoneAvailable else {
-            microphoneEnabled = false
-            microphoneDesiredEnabled = false
-            showNativeTransientStreamMessage("Microphone is disabled in Settings.")
-            return
-        }
-        guard microphoneMode != "push-to-talk" else {
-            showNativeTransientStreamMessage("Hold the configured Push-to-Talk key to speak.")
-            return
-        }
-        requestNativeMicrophoneEnabled(!microphoneDesiredEnabled, source: "toggle")
-    }
-
     func requestNativeMicrophoneEnabled(_ enabled: Bool, source: String) {
         guard microphoneAvailable, isConnected, !isEnding, !didEnd, let path else { return }
         microphoneDesiredEnabled = enabled
@@ -303,6 +288,11 @@ extension NativeNVSTHostViewModel {
         microphoneUpdateTask = nil
         pendingMicrophoneDeviceUIDs.removeAll()
         microphonePendingDeviceUID = nil
+        // Teardown must not leave a stale held key behind: the next session's gate starts closed.
+        microphoneKeyHeld = false
+        outputDeviceUpdateTask?.cancel()
+        outputDeviceUpdateTask = nil
+        outputDevicePendingUID = nil
         closeHUDDropdown()
         antiAFKMouseMovementTask?.cancel()
         antiAFKMouseMovementTask = nil
@@ -369,6 +359,9 @@ extension NativeNVSTHostViewModel {
             refreshMicrophoneTransportAvailability()
             // Hot-plug: a microphone connected since the HUD was last open is a row now.
             refreshMicrophoneDeviceOptions()
+            // Settings writes the same keys, so the HUD re-reads them on the way in rather than
+            // showing a stale device or level until the next session.
+            refreshNativeAudioPreferences()
             reloadClipboardHistory()
             // Read before the input drop: dropping remote input releases the pointer, and the
             // release is the one place that forgets the override. Without this the HUD silently
@@ -650,9 +643,14 @@ extension NativeNVSTHostViewModel {
             return false
         }
         // A fresh transport: the watchdog starts over, the mic gate is re-applied (the new bundle
-        // comes up muted), and input is live again.
+        // comes up muted), and input is live again. A key held across the recovery is not restored —
+        // reopening capture on a stale press is the failure this whole gate exists to prevent.
         nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
-        try? await path.setMicrophoneEnabled(microphoneEnabled)
+        microphoneKeyHeld = false
+        try? await path.setMicrophoneEnabled(nativeMicrophoneCaptureRequested)
+        try? await path.setGameVolume(Double(gameVolumePercent) / 100)
+        try? await path.setMicrophoneVolume(Double(microphoneVolumePercent) / 100)
+        try? await path.setOutputDevice(outputDeviceUID)
         if isConnected, !unifiedHUDVisible, !streamControlsVisible { nativeView?.remoteInputEnabled = networkPathAvailable }
         showNativeTransientStreamMessage("Reconnected")
         OPNStreamTelemetry.capture("nvst.stream.reconnect.succeeded", level: .info, message: "Native NVST reconnected in place.", attributes: ["applicationID": configuration.applicationID, "reason": reason])

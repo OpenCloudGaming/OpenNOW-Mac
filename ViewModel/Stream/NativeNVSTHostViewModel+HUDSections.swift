@@ -50,19 +50,38 @@ extension NativeNVSTHostViewModel {
         return [StreamHUDFocusEntry(id: "replay", isDisabled: !sidebarCapabilities.supports(.recording) || !isConnected || !isReplayBufferActive || replayBufferState.isSaving, group: "capture", columns: 4, action: saveNativeReplayClip)]
     }
 
+    /// The AUDIO panel's rows in draw order: output above microphone, each device picker a full-width
+    /// row, each volume a two-column row of its mute icon and its slider so up/down steps past the
+    /// whole row while left/right picks the icon or the slider. The level meter is read-only and
+    /// deliberately absent.
     private var audioFocusEntries: [StreamHUDFocusEntry] {
         [
-            StreamHUDFocusEntry(id: "microphone", isDisabled: !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil, group: "audio", columns: 4, action: toggleNativeMicrophone),
-            StreamHUDFocusEntry(id: "localAudioMute", isDisabled: !isConnected, group: "audio", columns: 4, action: toggleNativeLocalAudioMute),
-            // Two full-width rows of their own, in the order the panel draws them. Each confirm opens
-            // a list rather than firing once, so both route through the pad-dropdown state.
-            StreamHUDFocusEntry(id: Self.microphoneModeDropdownID, isDisabled: isMicrophoneModeRowDisabled, action: { [weak self] in
-                self?.togglePadDropdown(Self.microphoneModeDropdownID)
+            StreamHUDFocusEntry(id: Self.outputDeviceDropdownID, isDisabled: isOutputDeviceRowDisabled, action: { [weak self] in
+                self?.togglePadDropdown(Self.outputDeviceDropdownID)
             }),
+            StreamHUDFocusEntry(id: Self.gameVolumeMuteFocusID, isDisabled: !isConnected, group: Self.gameVolumeGroup, columns: 2, action: toggleNativeLocalAudioMute),
+            StreamHUDFocusEntry(id: Self.gameVolumeFocusID, isDisabled: !isConnected, group: Self.gameVolumeGroup, columns: 2, action: cycleNativeGameVolume),
             StreamHUDFocusEntry(id: Self.microphoneDeviceDropdownID, isDisabled: isMicrophoneDeviceRowDisabled, action: { [weak self] in
                 self?.togglePadDropdown(Self.microphoneDeviceDropdownID)
             }),
+            StreamHUDFocusEntry(id: Self.microphoneVolumeMuteFocusID, isDisabled: isMicrophoneMuteRowDisabled, group: Self.microphoneVolumeGroup, columns: 2, action: toggleNativeMicrophone),
+            StreamHUDFocusEntry(id: Self.microphoneVolumeFocusID, isDisabled: isMicrophoneVolumeRowDisabled, group: Self.microphoneVolumeGroup, columns: 2, action: cycleNativeMicrophoneVolume),
+            StreamHUDFocusEntry(id: Self.microphoneModeDropdownID, isDisabled: isMicrophoneModeRowDisabled, action: { [weak self] in
+                self?.togglePadDropdown(Self.microphoneModeDropdownID)
+            }),
         ]
+    }
+
+    /// Whether the microphone's mute icon can be pressed: the seat has to carry a microphone, and no
+    /// toggle may already be in flight.
+    var isMicrophoneMuteRowDisabled: Bool {
+        !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil
+    }
+
+    /// The gain only reaches transmitted audio, so it needs a microphone this session can capture
+    /// from. It deliberately does not follow the mute override: a muted microphone still has a level.
+    var isMicrophoneVolumeRowDisabled: Bool {
+        !sidebarCapabilities.supports(.microphone) || !microphoneAvailable
     }
 
     /// Disabled for every reason the row cannot be used: no microphone in this session's mode, a seat
