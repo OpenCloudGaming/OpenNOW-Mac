@@ -339,4 +339,14 @@ public enum NvstRemoteInput {
         writer.u16LE(enabled ? 1 : 0)
         return packet(type: .hapticsState, body: writer.data)
     }
+
+    /// The seat's Windows pointer settings: packet type 25, `NvstMouseSettingsEvent_t`
+    /// {acceleration, speed} as two big-endian u32, as `RiClientBackend::GetMouseSettingsId` writes it.
+    /// Speed is Windows' 1-20 pointer speed scale.
+    public static func mouseSettings(accelerationEnabled: Bool, speed: UInt32) -> Data {
+        var writer = NvstByteWriter(capacity: 8)
+        writer.u32BE(accelerationEnabled ? 1 : 0)
+        writer.u32BE(speed)
+        return packet(type: .mouseSettings, body: writer.data)
+    }
 }
