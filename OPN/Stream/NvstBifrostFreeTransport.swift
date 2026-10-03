@@ -358,6 +358,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         }
         sessionServerLocation = Self.sessionServerLocation(for: allocation)
         sessionGPUType = Self.sessionGPUType(for: allocation)
+        logger?("NVST prefilter \(Self.prefilterNegotiationSummary(rawSessionJSON: allocation.rawSessionJSON))")
         let profile = Self.resolvedStreamProfile(allocation: allocation,
                                                  configuredFps: configuredFps,
                                                  configuredMaxBitrateKbps: configuredMaxBitrateKbps)

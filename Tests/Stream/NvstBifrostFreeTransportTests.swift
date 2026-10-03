@@ -71,6 +71,16 @@ import Testing
         #expect(NvstBifrostFreeTransport.sessionServerLocation(fromRawSessionJSON: #"{"serverLocation": "  "}"#) == nil)
     }
 
+    /// The official client's session at Auto: the seat finalized mode 2 for a mode 1 request.
+    @Test func thePrefilterSummaryPairsTheRequestWithTheSeatsAnswer() {
+        let session = #"{"sessionRequestData": {"requestedStreamingFeatures": {"prefilterMode": 1, "prefilterSharpness": 0, "prefilterNoiseReduction": 0}}, "finalizedStreamingFeatures": {"prefilterMode": 2, "prefilterSharpness": 0, "prefilterNoiseReduction": 0}}"#
+        #expect(NvstBifrostFreeTransport.prefilterNegotiationSummary(rawSessionJSON: session)
+            == "requested[prefilterMode=1 prefilterSharpness=0 prefilterNoiseReduction=0 prefilterModel=-] "
+            + "finalized[prefilterMode=2 prefilterSharpness=0 prefilterNoiseReduction=0 prefilterModel=-]")
+        #expect(NvstBifrostFreeTransport.prefilterNegotiationSummary(rawSessionJSON: #"{"finalizedStreamingFeatures": null}"#)
+            == "requested[none] finalized[none]")
+    }
+
     @Test func theServerLocationFallsBackToTheZoneEndpointNotAnIp() {
         // CloudMatch leaves serverLocation/zoneName out of this path's session JSON, so the HUD
         // used to fall through to the video peer IP. The region endpoint names the zone.
