@@ -30,6 +30,44 @@ import Testing
     #expect(data.isEmpty)
 }
 
+/// The clear is queued, so the launch path never waits on it and the run's first line still lands
+/// after it. Holding the log queue busy is what makes a synchronous clear fail this test.
+@Test func aNewRunClearsTheLogWithoutBlockingTheLaunchPath() throws {
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+    let logURL = directory.appendingPathComponent("OpenNOW-diagnostics-current.log")
+    try Data("previous-run-log".utf8).write(to: logURL)
+
+    // Hold the log queue until the clear has been called, so a queued clear cannot run yet.
+    let logQueueHoldStarted = DispatchSemaphore(value: 0)
+    let releaseLogQueueHold = DispatchSemaphore(value: 0)
+    OPNDiagnostics.diagnosticsLogQueue.async {
+        logQueueHoldStarted.signal()
+        releaseLogQueueHold.wait()
+    }
+    logQueueHoldStarted.wait()
+
+    let clearCallReturned = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+        OPNDiagnostics.clearDiagnosticsLogForNewRun(at: logURL)
+        clearCallReturned.signal()
+    }
+    let isClearReturnedBeforeTimeout = clearCallReturned.wait(timeout: .now() + 5) == .success
+
+    // A line written the way `appendDiagnosticsLogLine` writes one: on the same serial queue.
+    releaseLogQueueHold.signal()
+    OPNDiagnostics.diagnosticsLogQueue.async {
+        try? Data("first-line-of-new-run\n".utf8).write(to: logURL)
+    }
+    OPNDiagnostics.diagnosticsLogQueue.sync {}
+
+    #expect(isClearReturnedBeforeTimeout)
+    #expect(try String(contentsOf: logURL, encoding: .utf8) == "first-line-of-new-run\n")
+}
+
 /// Addresses and credentials are redacted; identifiers that make a log worth reading are not.
 /// `token=` used to survive this, which is how a live `id_token_hint` reached the diagnostics
 /// file and the paste service the upload path posts to.

@@ -186,9 +186,11 @@ enum OPNDiagnostics {
         }
     }
 
-    public static func clearDiagnosticsLogForNewRun() {
-        diagnosticsLogQueue.sync {
-            clearDiagnosticsLog(at: diagnosticsLogURL())
+    /// Queued, never run on the caller: this is the first statement of `OPNApp.init()`. The serial
+    /// queue orders it before the run's first append, so a fresh run still starts with an empty log.
+    static func clearDiagnosticsLogForNewRun(at url: URL = diagnosticsLogURL()) {
+        diagnosticsLogQueue.async {
+            clearDiagnosticsLog(at: url)
             closeDiagnosticsLogHandle()
         }
     }
