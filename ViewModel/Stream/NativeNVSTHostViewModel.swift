@@ -560,7 +560,9 @@ extension NativeNVSTHostViewModel {
             configuredPrefilterMode: resolvedStreamSettings.prefilterMode,
             configuredPrefilterSharpness: resolvedStreamSettings.prefilterSharpness,
             configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
-            configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
+            // No setting picks a model, so 0 means unset: nil keeps the captured default (4), which the
+            // official client announces with its AI Video Filter on.
+            configuredPrefilterModel: resolvedStreamSettings.prefilterModel > 0 ? resolvedStreamSettings.prefilterModel : nil,
             configuredColorQuality: resolvedStreamSettings.colorQuality,
             configuredVsyncMode: NvstVsyncMode(rawValue: resolvedStreamSettings.vsyncMode) ?? .adaptive,
             isVrrPresentation: isVrrPresentation,
