@@ -5,9 +5,8 @@
 import Foundation
 
 extension LoginViewModel {
-    /// Loads the service-provider list the sign-in picker renders. Called by `bootstrap` when no
-    /// session was restored, and by the paths that show the wall mid-session - a pending sign-in
-    /// request or a sign-out - since a restored session skips the launch lookup.
+    /// Loads the provider list the sign-in picker renders. The picker is the list's only reader, so
+    /// nothing loads it until a session-less launch or a sign-in panel needs it.
     func refreshLoginProviders() {
         guard !isLoadingProviders else { return }
         isLoadingProviders = true

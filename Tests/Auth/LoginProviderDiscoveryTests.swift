@@ -65,6 +65,21 @@ private func makeActiveSession(email: String = "player@example.com") -> LoginSes
     )
 }
 
+private func makeExpiredSession() -> LoginSession {
+    LoginSession(
+        id: "expired-session",
+        accountEmail: "player@example.com",
+        authMethod: "getSessionToken",
+        accessToken: "access",
+        clientToken: "client",
+        idToken: "id",
+        deviceId: "device",
+        expiresAt: Date(timeIntervalSinceNow: -3600),
+        clientTokenExpiresAt: Date(timeIntervalSinceNow: -3600),
+        canContinueOffline: false
+    )
+}
+
 @MainActor
 @Test func providerDiscoveryUsesInjectedService() async throws {
     var digevo = OPNGameProviderEndpoint()
@@ -100,10 +115,9 @@ private func makeActiveSession(email: String = "player@example.com") -> LoginSes
     #expect(viewModel.isLoadingProviders == false)
 }
 
-/// A launch that restored a session lands straight in the catalog, so the lookup that only feeds
-/// the sign-in picker must not run at all.
+/// A restored session lands straight in the catalog, where the picker is unreachable.
 @MainActor
-@Test func restoredSessionSkipsProviderDiscoveryAtLaunch() async throws {
+@Test func aRestoredSessionLaunchIssuesNoProviderLookup() async throws {
     let service = CountingGameProviderInfoService()
     let viewModel = LoginViewModel(providerInfoService: service)
     viewModel.sessions = [makeActiveSession()]
@@ -115,11 +129,13 @@ private func makeActiveSession(email: String = "player@example.com") -> LoginSes
     #expect(service.requestedIdpIds.isEmpty)
 }
 
-/// Without a session the wall is what the launch lands on, so discovery still has to run.
+/// No session and an expired one both land on the login wall, which renders the picker.
 @MainActor
-@Test func signedOutLaunchDiscoversProviders() async throws {
+@Test(arguments: [false, true])
+func aLaunchWithoutUsableSessionDiscoversProviders(isSessionExpired: Bool) async throws {
     let service = CountingGameProviderInfoService()
     let viewModel = LoginViewModel(providerInfoService: service)
+    viewModel.sessions = isSessionExpired ? [makeExpiredSession()] : []
 
     viewModel.bootstrap()
     try await Task.sleep(for: .milliseconds(50))
@@ -128,36 +144,9 @@ private func makeActiveSession(email: String = "player@example.com") -> LoginSes
     #expect(service.requestedIdpIds == [LoginProvider.nvidia.idpId])
 }
 
-/// An expired session puts the wall back up, so that launch still discovers providers.
+/// ADD ACCOUNT opens the sign-in panel over a restored session, so the panel loads the list.
 @MainActor
-@Test func expiredSessionLaunchDiscoversProviders() async throws {
-    let service = CountingGameProviderInfoService()
-    let viewModel = LoginViewModel(providerInfoService: service)
-    let expired = LoginSession(
-        id: "expired-session",
-        accountEmail: "player@example.com",
-        authMethod: "getSessionToken",
-        accessToken: "access",
-        clientToken: "client",
-        idToken: "id",
-        deviceId: "device",
-        expiresAt: Date(timeIntervalSinceNow: -3600),
-        clientTokenExpiresAt: Date(timeIntervalSinceNow: -3600),
-        canContinueOffline: false
-    )
-    viewModel.sessions = [expired]
-
-    viewModel.bootstrap()
-    try await Task.sleep(for: .milliseconds(50))
-
-    #expect(viewModel.activeSession == nil)
-    #expect(service.requestedIdpIds == [LoginProvider.nvidia.idpId])
-}
-
-/// Adding an account puts the sign-in panel over a session that was restored without a provider
-/// lookup, so the panel opening has to ask for the list itself.
-@MainActor
-@Test func midSessionSignInRequestDiscoversProviders() async throws {
+@Test func addingAnAccountMidSessionDiscoversProviders() async throws {
     let service = CountingGameProviderInfoService()
     let viewModel = LoginViewModel(providerInfoService: service)
     viewModel.sessions = [makeActiveSession()]
@@ -171,10 +160,9 @@ private func makeActiveSession(email: String = "player@example.com") -> LoginSes
     #expect(service.requestedIdpIds == [LoginProvider.nvidia.idpId])
 }
 
-/// Signing out uncovers the wall without a relaunch, and the picker it renders has to know the
-/// region's providers rather than the built-in default.
+/// Signing out uncovers the wall without a relaunch, so the picker loads the region's providers.
 @MainActor
-@Test func signOutMidSessionDiscoversProviders() async throws {
+@Test func signingOutMidSessionDiscoversProviders() async throws {
     let service = CountingGameProviderInfoService()
     let viewModel = LoginViewModel(authService: FakeLoginAuthService(outcome: (true, "")), providerInfoService: service)
     let account = LoginAccount(

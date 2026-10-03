@@ -32,15 +32,7 @@ final class LoginViewModel: ObservableObject {
     /// Set when the login wall has to take over while a session is still active: either a switch
     /// hit an account with no saved session, or another account is being added. Neither touches
     /// the session that is signed in — cancelling returns straight to it.
-    @Published private(set) var signInRequest: LoginSignInRequest? {
-        didSet {
-            // The provider picker only exists on the panel this request opens, and a launch that
-            // restored a session no longer discovers providers up front, so a mid-session sign-in
-            // asks for the list as the panel opens.
-            guard signInRequest != nil, oldValue == nil else { return }
-            refreshLoginProviders()
-        }
-    }
+    @Published private(set) var signInRequest: LoginSignInRequest?
 
     let authService: any LoginAuthServing
     let providerInfoService: any GameProviderInfoServing
@@ -107,14 +99,8 @@ final class LoginViewModel: ObservableObject {
         prefillLastAccount()
         acceptedTerms = OPNAppPreferenceStorage.standard.bool(forKey: Self.termsAcceptedKey)
         restoreSavedSessionFromKeychain()
-        // The provider list only feeds the sign-in picker, and a restored session never shows it.
-        // Asking for it on every launch made a signed-in launch pay for a lookup it does not use,
-        // in parallel with the panel fetch the splash is waiting on. The restore runs first so a
-        // session recovered from the keychain counts as restored too, and the paths that put the
-        // wall on screen later ask for the list themselves.
-        if activeSession == nil {
-            refreshLoginProviders()
-        }
+        // The sign-in picker is this list's only reader, and a restored session never shows it.
+        if activeSession == nil { refreshLoginProviders() }
         OPNLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
     }
 
@@ -266,6 +252,7 @@ final class LoginViewModel: ObservableObject {
 
     func beginReauthentication(for account: LoginAccount) {
         selectRememberedAccount(account)
+        refreshLoginProviders()
         successMessage = ""
         validationMessage = "\(account.displayName) is signed out. Sign in again to switch to it."
         signInRequest = .reauthenticate(email: account.email)
@@ -289,6 +276,7 @@ final class LoginViewModel: ObservableObject {
     /// Picks the account's provider and starts the browser leg, which is what its row promises.
     func beginSignInAgain(for account: LoginAccount) {
         selectRememberedAccount(account)
+        refreshLoginProviders()
         successMessage = ""
         validationMessage = ""
         // Keep a switch banner pointed at the account actually being signed in. Do not invent one
@@ -307,6 +295,7 @@ final class LoginViewModel: ObservableObject {
         successMessage = ""
         validationMessage = ""
         signInRequest = .addAccount
+        refreshLoginProviders()
         OPNLog.info(.auth, "Add-account sign-in requested accounts=\(accounts.count)")
     }
 
