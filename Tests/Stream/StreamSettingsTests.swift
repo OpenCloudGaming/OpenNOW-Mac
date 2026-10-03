@@ -173,6 +173,20 @@ struct StreamSettingsTests {
         #expect(!streamProfile(from: offDictionary).enableReflex)
     }
 
+    @Test("match Mac pointer speed reaches the resolved metadata and survives the round trip")
+    func matchMacPointerSpeedReachesTheResolvedMetadata() {
+        let settings = StreamSettingsResolver.resolve(
+            profile: StreamProfile(rawMouseMatchesMacPointerSpeed: true),
+            capabilities: StreamDeviceCapabilities()
+        )
+        let dictionary = settings.dictionary(gameLanguage: "en_US", accountLinked: true, selectedStore: "steam")
+
+        #expect(!StreamProfile().rawMouseMatchesMacPointerSpeed, "the setting is off by default")
+        #expect(settings.rawMouseMatchesMacPointerSpeed)
+        #expect(dictionary["rawMouseMatchesMacPointerSpeed"] as? Bool == true)
+        #expect(streamProfile(from: dictionary).rawMouseMatchesMacPointerSpeed)
+    }
+
     @Test("keeps H265 ten bit color when available")
     func keepsH265TenBitColorWhenAvailable() {
         let settings = StreamSettingsResolver.resolve(
