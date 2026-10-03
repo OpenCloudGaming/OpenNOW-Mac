@@ -65,6 +65,9 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     /// knows it (a hole inside a frame), nil for a finalized RTP loss whose frame is unknown.
     public var onRecoveryNeeded: (@Sendable (UInt32?) -> Void)?
     public var onDrop: (@Sendable (NvstReceiveDrop) -> Void)?
+    /// Sends a retransmission request on the control channel and returns whether it went out.
+    /// Unset, requests fall back to an RTCP NACK on this socket.
+    public var onRetransmissionWanted: (@Sendable ([UInt16]) -> Bool)?
     /// Diagnostics that would otherwise be invisible, such as a feedback timer producing nothing.
     public var onDiagnostic: (@Sendable (String) -> Void)?
 
@@ -412,7 +415,19 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
                 callbackLock.unlock()
                 handler?(reason)
             case .retransmissionWanted(let indices):
-                requestRetransmission(of: indices)
+                callbackLock.lock()
+                let handler = onRetransmissionWanted
+                callbackLock.unlock()
+                guard let handler else {
+                    requestRetransmission(of: indices)
+                    continue
+                }
+                let sequenceNumbers = indices.prefix(NvstRtpNackRequest.maximumSequenceNumbers).map { UInt16(truncatingIfNeeded: $0) }
+                guard handler(sequenceNumbers) else { continue }
+                counterLock.lock()
+                nacksSent += 1
+                nackedPackets += sequenceNumbers.count
+                counterLock.unlock()
             }
         }
     }
