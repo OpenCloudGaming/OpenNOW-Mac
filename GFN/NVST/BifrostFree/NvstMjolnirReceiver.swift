@@ -214,6 +214,11 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     }
 
     /// Asks the peer for a fresh keyframe on this socket's SRTCP path.
+    /// The measured round trip retransmission retries wait for.
+    public func useRetransmissionRoundTrip(milliseconds: Double) {
+        receiver.useRetransmissionRoundTrip(milliseconds: milliseconds)
+    }
+
     public func requestKeyframe() {
         guard let ssrc = receiver.feedbackCounters.boundSSRC else { return }
         let pli = NvstRtcp.pictureLossIndication(senderSSRC: NvstVideoReceiver.clientSSRC, mediaSSRC: ssrc)

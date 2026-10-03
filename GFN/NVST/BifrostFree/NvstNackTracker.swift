@@ -5,12 +5,18 @@ import Foundation
 
 /// Schedules retransmission requests for missing video packets on the official client's timing,
 /// as its log prints it: the first request 1 ms after a packet goes missing, then up to three
-/// retries 4 ms apart, within the 52 ms it holds a frame for them.
+/// retries, each one round trip plus 4 ms after the last (`useRtdForRtpNackToggle`), within the
+/// 52 ms it holds a frame for them. A retry sooner than the round trip asks for a packet that is
+/// already on its way, and the seat sends it again.
 struct NvstNackTracker {
     static let initialDelayNanoseconds: UInt64 = 1_000_000
-    static let retryIntervalNanoseconds: UInt64 = 4_000_000
+    static let extraRetryWaitNanoseconds: UInt64 = 4_000_000
     static let maximumRetries = 3
     static let maximumWaitNanoseconds: UInt64 = 52_000_000
+
+    /// The wait before a retry: the extra wait alone until a round trip has been measured.
+    private(set) var retryIntervalNanoseconds = NvstNackTracker.extraRetryWaitNanoseconds
+    private(set) var retryCount = 0
 
     private struct Request {
         let firstMissedAt: UInt64
@@ -22,6 +28,10 @@ struct NvstNackTracker {
 
     var isEmpty: Bool { requests.isEmpty }
 
+    mutating func useRoundTrip(nanoseconds: UInt64) {
+        retryIntervalNanoseconds = nanoseconds + Self.extraRetryWaitNanoseconds
+    }
+
     /// The missing indices to request now, recording that they were requested.
     mutating func due(missing: [UInt64], now: UInt64) -> [UInt64] {
         var due: [UInt64] = []
@@ -30,11 +40,12 @@ struct NvstNackTracker {
             let isDue: Bool
             if let lastSentAt = request.lastSentAt {
                 isDue = request.sendCount <= Self.maximumRetries
-                    && now &- lastSentAt >= Self.retryIntervalNanoseconds
+                    && now &- lastSentAt >= retryIntervalNanoseconds
             } else {
                 isDue = now &- request.firstMissedAt >= Self.initialDelayNanoseconds
             }
             if isDue {
+                if request.sendCount > 0 { retryCount += 1 }
                 request.lastSentAt = now
                 request.sendCount += 1
                 due.append(index)

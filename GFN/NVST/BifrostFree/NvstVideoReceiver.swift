@@ -60,6 +60,8 @@ public struct NvstReceiverStats: Equatable, Sendable {
     public var replayedPackets: UInt64 = 0
     /// Requested packets that arrived while their gap was still open.
     public var retransmissionRepairedPackets: UInt64 = 0
+    /// Requests repeated for a packet already asked for.
+    public var retransmissionRetries: UInt64 = 0
     /// Packets rebuilt by FEC recovery and injected back into the reorder path.
     public var recoveredPackets: UInt64 = 0
     /// The largest single finalized-loss range, in packets.
@@ -252,6 +254,14 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     }
 
     public var snapshot: NvstReceiverStats { lock.lock(); defer { lock.unlock() }; return stats }
+
+    /// The measured round trip retransmission retries wait for.
+    public func useRetransmissionRoundTrip(milliseconds: Double) {
+        guard milliseconds > 0, milliseconds.isFinite else { return }
+        lock.lock()
+        nackTracker.useRoundTrip(nanoseconds: UInt64(milliseconds * 1_000_000))
+        lock.unlock()
+    }
 
     /// Just the counters the feedback reports need.
     ///
@@ -710,6 +720,7 @@ extension NvstVideoReceiver {
         let limit = NvstRtcp.maximumNackEntries * 17
         let missing = (expected..<newest).lazy.filter { self.reorder[$0] == nil }.prefix(limit)
         let due = nackTracker.due(missing: Array(missing), now: now)
+        stats.retransmissionRetries = UInt64(nackTracker.retryCount)
         if !due.isEmpty { events.append(.retransmissionWanted(due)) }
     }
 

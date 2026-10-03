@@ -20,7 +20,20 @@ struct NvstNackTrackerTests {
             now += 1_000_000
         }
         #expect(sendTimes.count == 1 + NvstNackTracker.maximumRetries)
-        #expect(zip(sendTimes, sendTimes.dropFirst()).allSatisfy { $1 - $0 == NvstNackTracker.retryIntervalNanoseconds })
+        #expect(zip(sendTimes, sendTimes.dropFirst()).allSatisfy { $1 - $0 == NvstNackTracker.extraRetryWaitNanoseconds })
+        #expect(tracker.retryCount == NvstNackTracker.maximumRetries)
+    }
+
+    /// With the round trip known, a retry waits for the answer the first request could bring.
+    @Test func aRetryWaitsOneRoundTripPlusTheExtraWait() {
+        var tracker = NvstNackTracker()
+        tracker.useRoundTrip(nanoseconds: 16_000_000)
+        _ = tracker.due(missing: [7], now: 0)
+        let first = NvstNackTracker.initialDelayNanoseconds
+        #expect(tracker.due(missing: [7], now: first) == [7])
+        #expect(tracker.due(missing: [7], now: first + 19_999_999).isEmpty)
+        #expect(tracker.due(missing: [7], now: first + 20_000_000) == [7])
+        #expect(tracker.retryCount == 1)
     }
 
     @Test func aRequestedArrivalCountsAsARepair() {
