@@ -1,10 +1,5 @@
-//  The running-stream banner's width, which is a page-geometry question rather than a banner one.
-//
-//  The banner is a top `safeAreaInset` on the catalog page's scroll view, and that region is the
-//  scroll view's *frame*. A `ScrollView` is as wide as its widest content - a rail still on its
-//  skeleton is a plain row of fixed-width tiles, so the content runs past the window - and the
-//  banner was therefore laid out centred on that inflated width, which put only its right-hand end
-//  on screen. The page clamps the scroll view to the page width; this is what says so.
+//  The running-stream banner's width: the page clamps its scroll view to the page, because the
+//  banner's `safeAreaInset` region is that frame and a `ScrollView` is as wide as its content.
 
 import AppKit
 import SwiftUI
@@ -14,33 +9,46 @@ import Testing
 @MainActor
 @Suite struct CatalogRunningStreamBannerLayoutTests {
     private static let pageSize = CGSize(width: 900, height: 620)
+    /// The banner is pinned to the top of the page, so row 4 is banner and the bottom row is bare page.
+    private static let bannerSampleRow = 4
+    private static let pageSampleRowFromBottom = 20
+    /// ImageRenderer rasterizes in its own colour space, so rendered pixels are compared to each other.
+    private static let channelTolerance = 0.01
 
     @Test func theBannerReachesBothEdgesOfThePageWhileARailRunsPastIt() throws {
         let bitmap = try renderRunningStreamPage()
-        let leadingEdge = try pixel(bitmap, x: 0, y: 4)
-        let trailingEdge = try pixel(bitmap, x: bitmap.pixelsWide - 1, y: 4)
-        let pageBackground = try pixel(bitmap, x: 0, y: bitmap.pixelsHigh - 20)
+        let leadingEdge = try renderedColor(in: bitmap, x: 0, y: Self.bannerSampleRow)
+        let trailingEdge = try renderedColor(in: bitmap, x: bitmap.pixelsWide - 1, y: Self.bannerSampleRow)
+        let pageBackground = try renderedColor(in: bitmap, x: 0, y: bitmap.pixelsHigh - Self.pageSampleRowFromBottom)
 
         // Both ends of the top band are the banner's chrome ...
         #expect(
-            sameColor(leadingEdge, trailingEdge),
-            "the top band is two colours: \(description(leadingEdge)) at the leading edge, \(description(trailingEdge)) at the trailing one"
+            isSameColor(leadingEdge, trailingEdge),
+            "the top band is two colours: \(rgbTriplet(of: leadingEdge)) leading, \(rgbTriplet(of: trailingEdge)) trailing"
         )
         // ... and it is the banner, not the page showing through where the banner should be.
         #expect(
-            !sameColor(leadingEdge, pageBackground),
+            !isSameColor(leadingEdge, pageBackground),
             "the banner is missing from the leading edge of the page"
         )
     }
 
-    /// The banner is the only thing pinned to the top of the page, and ImageRenderer is enough to
-    /// rasterize it: the inset is drawn even though `ScrollView` content is not, and the layout that
-    /// places it still runs against the content's width - which is the whole point.
+    /// ImageRenderer draws the inset even though it skips `ScrollView` content, and the layout that
+    /// places that inset still runs against the content's width - which is the behaviour under test.
     private func renderRunningStreamPage() throws -> NSBitmapImageRep {
+        let page = CatalogContentView(viewModel: makeRunningStreamViewModel(), isActive: true)
+            .frame(width: Self.pageSize.width, height: Self.pageSize.height)
+        let renderer = ImageRenderer(content: page)
+        renderer.scale = 1
+        let image = try #require(renderer.cgImage, "the page did not render")
+        return NSBitmapImageRep(cgImage: image)
+    }
+
+    /// A running stream over a page whose only rail is still loading: a plain row of six fixed-width
+    /// tiles, which is what makes the scroll content wider than the page.
+    private func makeRunningStreamViewModel() -> CatalogViewModel {
         OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
         let viewModel = makeCatalogViewModelForTesting()
-        // One rail, still loading: a plain row of six fixed-width tiles, which is what makes the
-        // scroll content wider than the page.
         viewModel.cachedCatalogSections = [
             CatalogSectionModel(id: "loading", title: "Loading", games: [], kind: .catalog, isPlaceholder: true)
         ]
@@ -51,29 +59,20 @@ import Testing
             accountLinked: true,
             selectedStore: "STEAM"
         )
-
-        let renderer = ImageRenderer(
-            content: CatalogContentView(viewModel: viewModel, isActive: true)
-                .frame(width: Self.pageSize.width, height: Self.pageSize.height)
-        )
-        renderer.scale = 1
-        let image = try #require(renderer.cgImage, "the page did not render")
-        return NSBitmapImageRep(cgImage: image)
+        return viewModel
     }
 
-    private func pixel(_ bitmap: NSBitmapImageRep, x: Int, y: Int) throws -> NSColor {
+    private func renderedColor(in bitmap: NSBitmapImageRep, x: Int, y: Int) throws -> NSColor {
         try #require(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), "no pixel at \(x),\(y)")
     }
 
-    /// ImageRenderer rasterizes in its own colour space, so the palette's values do not come back
-    /// unchanged; equality between two rendered pixels is what this test can rely on.
-    private func sameColor(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
-        abs(lhs.redComponent - rhs.redComponent) < 0.01
-            && abs(lhs.greenComponent - rhs.greenComponent) < 0.01
-            && abs(lhs.blueComponent - rhs.blueComponent) < 0.01
+    private func isSameColor(_ first: NSColor, _ second: NSColor) -> Bool {
+        abs(first.redComponent - second.redComponent) < Self.channelTolerance
+            && abs(first.greenComponent - second.greenComponent) < Self.channelTolerance
+            && abs(first.blueComponent - second.blueComponent) < Self.channelTolerance
     }
 
-    private func description(_ color: NSColor) -> String {
+    private func rgbTriplet(of color: NSColor) -> String {
         "(\(Int(color.redComponent * 255)),\(Int(color.greenComponent * 255)),\(Int(color.blueComponent * 255)))"
     }
 }

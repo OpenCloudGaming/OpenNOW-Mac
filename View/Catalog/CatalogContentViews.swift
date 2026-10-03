@@ -37,8 +37,8 @@ struct CatalogContentView: View {
                 let sections = viewModel.catalogSections
                 let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
                 ScrollViewReader { proxy in
-                    // No indicator, like the controller page's scroll view and every rail: the page
-                    // never showed one, and now that the frame is the page (below) it would.
+                    // No indicator, like every other scroll surface here: the page only ever lacked
+                    // one because its frame was as wide as the scroll content.
                     ScrollView(.vertical, showsIndicators: false) {
                         // Deliberately eager. A LazyVStack here re-runs
                         // `LazyStack.measureEstimates` on every scroll offset change, and
@@ -199,13 +199,9 @@ struct CatalogContentView: View {
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
                     }
                 }
-                // Clamped to the page, the same way the hero and the session banner clamp their own
-                // width: a `ScrollView` is as wide as its widest content - the rails, until the page
-                // settles - and anything anchored to its frame inherits that. The running-stream
-                // banner is a top `safeAreaInset`, whose region is that frame, so on the inflated
-                // width it was laid out centred on rails that run past the window and only its
-                // right-hand end was ever on screen.
-                .frame(width: viewport.size.width, alignment: .leading)
+                // A `ScrollView` is as wide as its widest content, and the running-stream banner's
+                // `safeAreaInset` region is that frame - so the region is clamped to the page.
+                .frame(maxWidth: viewport.size.width > 0 ? viewport.size.width : .infinity, alignment: .leading)
                 // Sticky, not scrolled: the banner is the one fact that stays true for the whole
                 // session, and a page scrolled down to the rails is exactly when it is needed.
                 // A `safeAreaInset` keeps it pinned above the content - a pinned `Section` header
