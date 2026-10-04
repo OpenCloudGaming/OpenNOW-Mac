@@ -276,7 +276,11 @@ final class OPNGameSession {
     }
 
     func startPreparedStream(_ configuration: StreamLaunchConfiguration) {
-        let ownedConfiguration = configuration.snapshottingOwner(displayName: account.displayName)
+        let mappingGameIdentity = pendingGame?.catalogIdentity ?? ""
+        let ownedConfiguration = configuration.snapshottingSession(
+            ownerDisplayName: account.displayName,
+            mappingGameIdentity: mappingGameIdentity
+        )
         if activeDiscordPresence == nil {
             activeDiscordPresence = discordPresence(for: ownedConfiguration)
         }
@@ -291,7 +295,7 @@ final class OPNGameSession {
         self.configuration = ownedConfiguration
         ControllerMappingStore.shared.beginSession(
             appId: ownedConfiguration.applicationID,
-            catalogIdentity: pendingGame?.catalogIdentity,
+            catalogIdentity: mappingGameIdentity.isEmpty ? nil : mappingGameIdentity,
             title: pendingGame?.title
         )
         clearFlowState()
@@ -307,7 +311,7 @@ final class OPNGameSession {
         phase = .streaming
         if !didNotifySessionReady {
             didNotifySessionReady = true
-            OPNSessionReadyAction.sessionDidBecomeReady(title: progress.title)
+            OPNSessionReadyAction.sessionDidBecomeReady(title: progress.title, sessionID: id)
         }
         if let presence = activeDiscordPresence {
             discordPresence.update(.streaming(presence))

@@ -58,7 +58,7 @@ private let runningConfiguration = StreamLaunchConfiguration(
 
     let catalogB = fixture.remount(for: fixture.accountB)
 
-    #expect(fixture.registry.current === game)
+    #expect(fixture.registry.sessions.contains { $0 === game })
     #expect(fixture.registry.isOwned(by: fixture.accountAID))
     #expect(game.configuration == runningConfiguration)
     #expect(game.isRunning)
@@ -94,65 +94,83 @@ private let runningConfiguration = StreamLaunchConfiguration(
     #expect(fixture.registry.isOwned(by: fixture.accountAID))
 }
 
-/// One local stream at a time, decided before anything is allocated or replaced. A second launch -
-/// from either account - is refused and the game already running is untouched.
+/// One game per account, decided before anything is allocated or replaced. A second game for the
+/// account that already has one is refused, and the game running is untouched.
 @MainActor
-@Test func aSecondLaunchIsRefusedWithoutEndingTheRunningGame() throws {
+@Test func aSecondLaunchForTheSameAccountIsRefusedWithoutEndingItsGame() throws {
     let fixture = DecoupledFixture()
     defer { fixture.tearDown() }
     let game = try #require(makeOwnedGameSessionForTesting(fixture.catalogA))
     game.configuration = runningConfiguration
 
-    let catalogB = fixture.remount(for: fixture.accountB)
-    catalogB.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-1", title: "Manor Lords"))
-
-    #expect(fixture.registry.current === game)
-    #expect(game.configuration == runningConfiguration)
-    #expect(catalogB.activeStreamConfiguration == nil)
-    #expect(catalogB.launchErrorMessage == "Account A is already running a game. Switch to Account A to end it before starting another.")
-
-    // The same account launching again is refused too: the running game is not replaced by itself.
     fixture.catalogA.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-2", title: "Manor Lords"))
-    #expect(fixture.registry.current === game)
+
+    #expect(fixture.registry.sessions.contains { $0 === game })
+    #expect(game.configuration == runningConfiguration)
     #expect(fixture.catalogA.launchErrorMessage == "This account is already running a game. End it from the banner at the top of the page before starting another.")
 }
 
-/// A launch that has not produced a stream yet blocks the slot too, and the refusal has to say so:
+/// The point of one game per account: a second account streams alongside the first instead of being
+/// refused by it.
+@MainActor
+@Test func anotherAccountStreamsAlongsideTheFirst() throws {
+    let fixture = DecoupledFixture()
+    defer { fixture.tearDown() }
+    let gameA = try #require(makeOwnedGameSessionForTesting(fixture.catalogA))
+    gameA.configuration = runningConfiguration
+
+    let catalogB = fixture.remount(for: fixture.accountB)
+    catalogB.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-1", title: "Manor Lords"))
+
+    let accountAID = try #require(fixture.accountA.storedAccountID)
+    let accountBID = try #require(fixture.accountB.storedAccountID)
+    #expect(catalogB.launchErrorMessage.isEmpty)
+    #expect(fixture.registry.sessions.count == 2)
+    #expect(fixture.registry.isOwned(by: accountAID))
+    #expect(fixture.registry.isOwned(by: accountBID))
+    // Both games are still their own: the second launch did not take the first one's place.
+    #expect(gameA.configuration == runningConfiguration)
+    #expect(catalogB.gameSession !== gameA)
+}
+
+/// A launch that has not produced a stream yet holds that account's slot, and the refusal says so:
 /// there is no END control for a game that has not started, only that account's own CANCEL.
 @MainActor
-@Test func aLaunchStillStartingBlocksASecondLaunchAndSaysSo() throws {
+@Test func aLaunchStillStartingBlocksThatAccountsSecondLaunch() throws {
     let fixture = DecoupledFixture()
     defer { fixture.tearDown() }
     let game = try #require(makeOwnedGameSessionForTesting(fixture.catalogA))
     game.phase = .checkingSession
 
-    let catalogB = fixture.remount(for: fixture.accountB)
-    catalogB.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-1", title: "Manor Lords"))
-    #expect(catalogB.launchErrorMessage == "Account A is already starting a game. Switch to Account A to finish or cancel it.")
-
     fixture.catalogA.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-2", title: "Manor Lords"))
     #expect(fixture.catalogA.launchErrorMessage == "This account is already starting a game. Cancel that launch before starting another.")
-    #expect(fixture.registry.current === game)
+
+    // A different account is not waiting on it.
+    let catalogB = fixture.remount(for: fixture.accountB)
+    catalogB.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-1", title: "Manor Lords"))
+    #expect(catalogB.launchErrorMessage.isEmpty)
+    #expect(fixture.registry.sessions.count == 2)
 }
 
-/// Once the slot is free, the launch is admitted for whichever account is browsing now - and it is
-/// that account's session from the start.
+/// An account gets its slot back when its own game ends, and nothing else changes.
 @MainActor
-@Test func theSlotIsReusedByTheNewBrowsingAccountOnceTheGameEnds() throws {
+@Test func anAccountLaunchesAgainOnceItsOwnGameEnds() throws {
     let fixture = DecoupledFixture()
     defer { fixture.tearDown() }
     let game = try #require(makeOwnedGameSessionForTesting(fixture.catalogA))
     game.configuration = runningConfiguration
+    let other = try #require(makeOwnedGameSessionForTesting(fixture.remount(for: fixture.accountB)))
+    other.configuration = runningConfiguration
+
     fixture.registry.end(game)
+    fixture.catalogA.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-2", title: "Manor Lords"))
 
-    let catalogB = fixture.remount(for: fixture.accountB)
-    catalogB.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-1", title: "Manor Lords"))
-
-    let started = try #require(fixture.registry.current)
-    let accountBID = try #require(fixture.accountB.storedAccountID)
-    #expect(started.accountID == accountBID)
-    #expect(catalogB.gameSession === started)
-    #expect(catalogB.launchErrorMessage.isEmpty)
+    let accountAID = try #require(fixture.accountA.storedAccountID)
+    let started = try #require(fixture.registry.session(ownedBy: accountAID))
+    #expect(started !== game)
+    #expect(fixture.catalogA.launchErrorMessage.isEmpty)
+    // The other account's game is still running.
+    #expect(fixture.registry.sessions.count == 2)
 }
 
 /// A finished game writes its history, playtime and summary into its owner's page only. The account
@@ -169,7 +187,7 @@ private let runningConfiguration = StreamLaunchConfiguration(
     game.configuration = runningConfiguration
     game.endStream(success: true, message: "", report: nil)
 
-    #expect(!fixture.registry.isOccupied)
+    #expect(!fixture.registry.hasSessions)
     #expect(catalogB.recentlyPlayed == .empty)
     #expect(catalogB.sessionInsights == nil)
     #expect(fixture.catalogA.recentlyPlayed.games.map(\.title) == ["Cyberpunk 2077"])
@@ -213,7 +231,7 @@ private let runningConfiguration = StreamLaunchConfiguration(
 
     game.cancelStreamLaunch()
 
-    #expect(!fixture.registry.isOccupied)
+    #expect(!fixture.registry.hasSessions)
     #expect(fixture.catalogA.gameSession == nil)
     fixture.catalogA.adoptPendingSessionResult()
     #expect(fixture.catalogA.recentlyPlayed == .empty)

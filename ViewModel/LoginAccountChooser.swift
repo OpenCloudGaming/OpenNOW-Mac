@@ -37,14 +37,21 @@ extension LoginViewModel {
         accountSwitchNotice = nil
     }
 
-    /// A switch never touches the game already running, so say whose it still is: without this the
-    /// reader cannot tell that the game survived the switch.
+    /// A switch never touches the games already running, so say whose they still are: without this
+    /// the reader cannot tell that they survived the switch.
     func announceRunningGameContinues(with account: LoginAccount) {
-        guard let owned = sessionRegistry.current, owned.accountID != account.resolveStableAccountID() else {
+        let selectedID = account.resolveStableAccountID()
+        let owners = sessionRegistry.sessions
+            .filter { $0.accountID != selectedID }
+            .map(\.account.displayName)
+        guard !owners.isEmpty else {
             dismissAccountSwitchNotice()
             return
         }
-        accountSwitchNotice = "Browsing now uses \(account.displayName). Your current game continues using \(owned.account.displayName)."
+        let games = owners.count == 1
+            ? "Your current game continues using \(owners[0])."
+            : "Your current games continue using \(owners.formatted(.list(type: .and)))."
+        accountSwitchNotice = "Browsing now uses \(account.displayName). \(games)"
         accountSwitchNoticeTask?.cancel()
         accountSwitchNoticeTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(12))

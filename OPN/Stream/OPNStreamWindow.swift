@@ -129,19 +129,31 @@ enum OPNStreamWindowFactory {
     /// Set **before** the first `orderFront` - the entire point of owning the window ourselves.
     static let collectionBehavior: NSWindow.CollectionBehavior = [.fullScreenPrimary]
 
-    static func existing() -> OPNStreamWindow? {
-        NSApp.windows.compactMap { $0 as? OPNStreamWindow }.first { $0.identifier?.rawValue == identifier }
+    /// One window per session, so the identifier carries the session: a second stream must not make a
+    /// lookup by identifier ambiguous, and a ready alert has to raise the game that just became ready.
+    static func identifier(for sessionID: UUID) -> String {
+        "\(identifier).\(sessionID.uuidString)"
+    }
+
+    static func existing(sessionID: UUID) -> OPNStreamWindow? {
+        let wanted = identifier(for: sessionID)
+        return streamWindows().first { $0.identifier?.rawValue == wanted }
+    }
+
+    private static func streamWindows() -> [OPNStreamWindow] {
+        let prefix = "\(identifier)."
+        return NSApp.windows.compactMap { $0 as? OPNStreamWindow }.filter { $0.identifier?.rawValue.hasPrefix(prefix) == true }
     }
 
     /// Every window setting that has to be in place before the window is ever ordered in goes here.
-    static func make(defaults: UserDefaults = .standard) -> OPNStreamWindow {
+    static func make(sessionID: UUID, defaults: UserDefaults = .standard) -> OPNStreamWindow {
         let window = OPNStreamWindow(
             contentRect: NSRect(origin: .zero, size: defaultContentSize),
             styleMask: styleMask,
             backing: .buffered,
             defer: false
         )
-        window.identifier = NSUserInterfaceItemIdentifier(identifier)
+        window.identifier = NSUserInterfaceItemIdentifier(identifier(for: sessionID))
         // Full-bleed picture under a transparent titlebar, the same arrangement the catalog window
         // has, and the reason `StreamStageLayout` still reserves the top strip in windowed mode.
         window.titlebarAppearsTransparent = true

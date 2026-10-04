@@ -9,7 +9,7 @@ import Testing
 @MainActor
 private func makeTestStreamWindow() -> (window: OPNStreamWindow, suite: String) {
     let suite = "OpenNOWTests.StreamWindow.\(UUID().uuidString)"
-    return (OPNStreamWindowFactory.make(defaults: UserDefaults(suiteName: suite) ?? .standard), suite)
+    return (OPNStreamWindowFactory.make(sessionID: UUID(), defaults: UserDefaults(suiteName: suite) ?? .standard), suite)
 }
 
 @MainActor

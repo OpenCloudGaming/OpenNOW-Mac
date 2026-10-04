@@ -289,7 +289,7 @@ struct AccountChooserTests {
         OPNAccountPreferences.shouldAskWhichAccountOnStartup = true
         OPNAccountPreferences.shouldAskWhichAccountOnStartup = false
 
-        #expect(fixture.registry.current === game)
+        #expect(fixture.registry.sessions.contains { $0 === game })
         #expect(fixture.registry.isOwned(by: accountAID))
         #expect(game.configuration?.title == "Cyberpunk 2077")
         #expect(fixture.viewModel.accountChooserReason == nil)

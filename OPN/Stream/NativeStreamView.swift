@@ -407,11 +407,14 @@ public final class NativeStreamView: NSView {
     var nativeNVSTRendererEnabled = false
     var nativeNVSTRendererPreparedForShutdown = false
     var nativeNVSTVideoVisible = false
-    let gamepadMonitor = NativeGamepadMonitor()
+    let gamepadMonitor: NativeGamepadMonitor
     var nvstBifrostFreeRenderer: NvstBifrostFreeVideoRenderer?
     var presentationMode = 0
 
-    public override init(frame frameRect: NSRect) {
+    /// The provider is fixed per surface: a stream's mappings come from the game it was launched for,
+    /// which is what keeps two accounts' concurrent games from sharing one game's overrides.
+    init(frame frameRect: NSRect, mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared) {
+        gamepadMonitor = NativeGamepadMonitor(mappingProvider: mappingProvider)
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor

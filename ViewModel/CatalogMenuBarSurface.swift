@@ -12,6 +12,8 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
     /// `StreamSessionLifecycle`, so it cannot disagree with the session that is actually running,
     /// and a teardown that has not reached this view model yet cannot leave a dead session on
     /// screen.
+    var ownedStreamSessionID: UUID? { gameSession?.id }
+
     var menuBarSnapshot: OPNMenuBarSessionSnapshot {
         OPNMenuBarSessionSnapshot(
             phase: menuBarPhase,

@@ -49,6 +49,20 @@ extension CatalogViewModel {
     /// The running stream's artwork, for the page backdrop.
     var runningStreamArtworkURL: URL? { gameSession?.artworkURL }
 
+    /// Brings this account's own stream window forward. Another account's window is not what the
+    /// reader asked for when they click this page's banner.
+    func focusOwnedStreamWindow() {
+        guard let gameSession else { return }
+        OPNStreamWindowPresenter.shared.focus(gameSession.id)
+    }
+
+    /// Ends this account's own stream. Two accounts can stream at once, so the banner cannot mean
+    /// "the last one started".
+    func endOwnedStream() {
+        guard let gameSession else { return }
+        _ = StreamSessionLifecycle.sendCommand(.endSession, to: gameSession.id)
+    }
+
     // MARK: - Launch entry points
 
     func launchSelectedGame() {
@@ -151,9 +165,10 @@ extension CatalogViewModel {
     }
 
     /// Admits an application-owned session for this account, before the vendor is asked for anything
-    /// and before any window is replaced, or reports why it could not.
+    /// and before any window is replaced, or reports why it could not. Another account's game is not
+    /// in the way: the limit is one game per account.
     private func beginOwnedSession() -> OPNGameSession? {
-        guard account.resolveStableAccountID() != nil else {
+        guard let accountID = account.resolveStableAccountID() else {
             reportLaunchFailure("This account has no saved identity to start a game with. Sign in again.")
             return nil
         }
@@ -165,28 +180,22 @@ extension CatalogViewModel {
             discordPresence: discordPresence,
             streamProfile: streamProfile
         ) else {
-            reportLaunchFailure(occupiedSessionMessage)
+            reportLaunchFailure(refusalMessage(for: accountID))
             return nil
         }
         return gameSession
     }
 
-    /// A second launch is refused outright rather than ending the game already running. The message
-    /// has to say whose it is and whether it is running or still starting, and where the control that
-    /// frees it is: only a running game has an END, and only on the owner's page.
-    private var occupiedSessionMessage: String {
-        guard let owned = sessionRegistry.current else { return "" }
-        OPNLog.warning(.launch, "Launch refused: session=\(owned.id) owner=\(owned.accountID) phase=\(owned.phase) running=\(owned.isRunning) heldFor=\(Int(Date().timeIntervalSince(owned.startedAt)))s")
-        let owner = owned.account.displayName
-        let isOwnedByThisAccount = owned.accountID == account.storedAccountID
+    /// A second game for one account is refused outright rather than ending the one already running.
+    /// The message says whether it is running or still starting, and where the control that frees it
+    /// is: only a running game has an END, and it is on this account's own page.
+    private func refusalMessage(for accountID: OPNAccountID) -> String {
+        guard let owned = sessionRegistry.session(ownedBy: accountID) else { return "" }
+        OPNLog.warning(.launch, "Launch refused: session=\(owned.id) owner=\(accountID) phase=\(owned.phase) running=\(owned.isRunning) heldFor=\(Int(Date().timeIntervalSince(owned.startedAt)))s")
         guard owned.isRunning else {
-            return isOwnedByThisAccount
-                ? "This account is already starting a game. Cancel that launch before starting another."
-                : "\(owner) is already starting a game. Switch to \(owner) to finish or cancel it."
+            return "This account is already starting a game. Cancel that launch before starting another."
         }
-        return isOwnedByThisAccount
-            ? "This account is already running a game. End it from the banner at the top of the page before starting another."
-            : "\(owner) is already running a game. Switch to \(owner) to end it before starting another."
+        return "This account is already running a game. End it from the banner at the top of the page before starting another."
     }
 
     func cancelVendorLaunch() {

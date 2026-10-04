@@ -211,8 +211,8 @@ struct CatalogContentView: View {
                         VendorRunningStreamHomeBanner(
                             title: viewModel.runningStreamTitle,
                             availableWidth: viewport.size.width,
-                            onFocus: { OPNStreamWindowPresenter.shared.focus() },
-                            onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
+                            onFocus: { viewModel.focusOwnedStreamWindow() },
+                            onEnd: { viewModel.endOwnedStream() }
                         )
                     }
                 }

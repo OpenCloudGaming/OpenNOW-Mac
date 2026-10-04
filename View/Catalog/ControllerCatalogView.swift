@@ -559,8 +559,8 @@ private struct ControllerGamesPage: View {
                         VendorRunningStreamHomeBanner(
                             title: viewModel.runningStreamTitle,
                             availableWidth: layout.contentWidth,
-                            onFocus: { OPNStreamWindowPresenter.shared.focus() },
-                            onEnd: { _ = StreamSessionLifecycle.sendCommand(.endSession) }
+                            onFocus: { viewModel.focusOwnedStreamWindow() },
+                            onEnd: { viewModel.endOwnedStream() }
                         )
                     }
                 }

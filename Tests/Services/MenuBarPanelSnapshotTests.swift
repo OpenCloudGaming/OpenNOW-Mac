@@ -437,6 +437,9 @@ private struct GlassEvidenceBackdrop: View {
 
 /// A stand-in launch flow: the panel follows whatever it publishes.
 @MainActor @Observable private final class PanelStubSource: OPNMenuBarSessionSource {
+    /// No stream belongs to these stubs, so a command has no session to target.
+    var ownedStreamSessionID: UUID? { nil }
+
     var snapshot = OPNMenuBarSessionSnapshot()
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }
 

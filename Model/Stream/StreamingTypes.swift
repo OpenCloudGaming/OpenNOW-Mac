@@ -43,14 +43,23 @@ extension StreamLaunchConfiguration {
     /// The owning account's display name, snapshotted at launch so a browsing switch cannot relabel
     /// a running game as somebody else's.
     static let owningAccountDisplayNameKey = "owningAccountDisplayName"
+    /// The catalog identity of the game this session runs, snapshotted at launch so its controller
+    /// mappings follow its own game rather than whichever one started last.
+    static let mappingGameIdentityKey = "mappingGameIdentity"
 
     var owningAccountDisplayName: String {
         (metadata[Self.owningAccountDisplayNameKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func snapshottingOwner(displayName: String) -> StreamLaunchConfiguration {
+    var mappingGameIdentity: String {
+        (metadata[Self.mappingGameIdentityKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The session's own identity snapshot: whose game it is, and which game's mappings it uses.
+    func snapshottingSession(ownerDisplayName: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
         var metadata = metadata
-        metadata[Self.owningAccountDisplayNameKey] = displayName
+        metadata[Self.owningAccountDisplayNameKey] = ownerDisplayName
+        metadata[Self.mappingGameIdentityKey] = mappingGameIdentity
         return StreamLaunchConfiguration(
             id: id,
             title: title,

@@ -79,6 +79,9 @@ import Testing
 }
 
 @MainActor @Observable private final class MenuBarLabelTestSource: OPNMenuBarSessionSource {
+    /// No stream belongs to these stubs, so a command has no session to target.
+    var ownedStreamSessionID: UUID? { nil }
+
     let game = OPNMenuBarGame(title: "Menu Bar Regression", appId: "menu-bar-regression")
     var snapshot = OPNMenuBarSessionSnapshot()
     var menuBarSnapshot: OPNMenuBarSessionSnapshot { snapshot }

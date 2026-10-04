@@ -703,6 +703,9 @@ extension MenuBarSessionTests {
 
 /// A stand-in launch flow: the surface follows whatever it publishes, and hands launches back to it.
 @MainActor @Observable final class StubMenuBarSource: OPNMenuBarSessionSource {
+    /// No stream belongs to these stubs, so a command has no session to target.
+    var ownedStreamSessionID: UUID? { nil }
+
     var snapshot = OPNMenuBarSessionSnapshot()
     private(set) var launchedGames: [OPNMenuBarGame] = []
     private(set) var shownPages: [OPNMainWindowPage] = []

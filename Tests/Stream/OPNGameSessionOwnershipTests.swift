@@ -36,20 +36,20 @@ private func beginSession(
     let owned = try #require(beginSession(in: registry, account: account, session: session))
     let accountID = try #require(account.storedAccountID)
 
-    #expect(registry.isOccupied)
+    #expect(registry.hasSessions)
     #expect(registry.isOwned(by: accountID))
     #expect(registry.session(ownedBy: accountID) === owned)
 
     registry.end(owned)
 
-    #expect(!registry.isOccupied)
+    #expect(!registry.hasSessions)
     #expect(!registry.isOwned(by: accountID))
 }
 
-/// One local stream, admitted here. A second launch is refused rather than replacing the game
-/// already running - which is the whole point of deciding admission before the window is replaced.
+/// One game per account, admitted here. A second game for the same account is refused rather than
+/// replacing the one already running; a different account is admitted alongside it.
 @MainActor
-@Test func aSecondLaunchIsRefusedWhileTheSlotIsTaken() throws {
+@Test func aSecondGameForOneAccountIsRefusedWhileThatAccountHasOne() throws {
     let registry = OPNGameSessionRegistry()
     let first = makeLoginAccountForTesting(email: "a@example.com", userId: "user-a")
     let firstSession = makeLoginSessionForTesting(accountEmail: first.email)
@@ -61,13 +61,20 @@ private func beginSession(
     }
 
     let owned = try #require(beginSession(in: registry, account: first, session: firstSession))
-    #expect(beginSession(in: registry, account: second, session: secondSession) == nil)
-
-    // The game already running is untouched, and the slot frees up when it ends.
     let firstID = try #require(first.storedAccountID)
+
+    // The same account again is refused, and the game already running is untouched.
+    #expect(beginSession(in: registry, account: first, session: firstSession) == nil)
     #expect(registry.session(ownedBy: firstID) === owned)
-    registry.end(owned)
+
+    // Another account is admitted beside it.
     #expect(beginSession(in: registry, account: second, session: secondSession) != nil)
+    #expect(registry.sessions.count == 2)
+
+    // And the first account gets its slot back when its own game ends.
+    registry.end(owned)
+    #expect(registry.session(ownedBy: firstID) == nil)
+    #expect(beginSession(in: registry, account: first, session: firstSession) != nil)
 }
 
 /// Ownership is per account. One account's game must not make another account's sign-out look

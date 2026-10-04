@@ -166,7 +166,10 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         streamShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard NSApplication.shared.isActive, StreamSessionLifecycle.hasActiveStream else { return event }
             guard let command = Self.streamCommand(for: event) else { return event }
-            guard StreamSessionLifecycle.sendCommand(command) else { return event }
+            // The stream window the reader is looking at: two accounts can stream at once, and a
+            // shortcut must not reach past the game on screen to the one started most recently.
+            let target = OPNStreamWindowPresenter.shared.focusedSessionID ?? StreamSessionLifecycle.mostRecentlyActivatedID
+            guard let target, StreamSessionLifecycle.sendCommand(command, to: target) else { return event }
             return nil
         }
     }

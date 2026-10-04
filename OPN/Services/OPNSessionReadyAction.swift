@@ -60,7 +60,7 @@ enum OPNSessionReadyAction {
     /// Runs the chosen action unless the app is already frontmost, in which case the stream
     /// surface itself is the announcement. Full screen still needs the app in front, so it raises
     /// the app here and leaves the transition itself to the stream host.
-    static func sessionDidBecomeReady(title: String) {
+    static func sessionDidBecomeReady(title: String, sessionID: UUID) {
         guard !NSApplication.shared.isActive else { return }
         switch mode {
         case .off:
@@ -68,18 +68,19 @@ enum OPNSessionReadyAction {
         case .notification:
             postNotification(title: title)
         case .bringToFront, .fullScreen:
-            bringToFront()
+            bringToFront(sessionID: sessionID)
         }
     }
 
     /// Activates the app and raises its windows. macOS may refuse an activation the user did not
     /// initiate; the Dock bounce is the fallback so the ready state is still visible.
-    private static func bringToFront() {
+    private static func bringToFront(sessionID: UUID) {
         let app = NSApplication.shared
         app.activate(ignoringOtherApps: true)
-        // A ready session appears in the dedicated stream window; raising every window would put the
-        // catalog back on top of the game. With no stream window it is the launch-with-no-stream case.
-        let windowsToRaise = OPNStreamWindowFactory.existing().map { [$0 as NSWindow] }
+        // A ready session appears in its own stream window; raising every window would put the catalog
+        // back on top of the game, and with two accounts streaming, raising the other one would be
+        // just as wrong. With no stream window it is the launch-with-no-stream case.
+        let windowsToRaise = OPNStreamWindowFactory.existing(sessionID: sessionID).map { [$0 as NSWindow] }
             ?? app.windows.filter { $0.isVisible || $0.isMiniaturized }
         windowsToRaise.forEach(raise)
         guard app.isActive else {
