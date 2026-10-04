@@ -89,6 +89,13 @@ final class OPNGameSession {
         Self.playtimeAccountIdentifier(account: account, session: session)
     }
 
+    /// The device id this session streams under. The seat allows one live session per device, so it
+    /// is the owner's rather than the machine's - otherwise a second account is refused as the same
+    /// device as the first.
+    var cloudmatchDeviceId: String {
+        OPNDeviceIdentity.cloudmatchDeviceId(accountID: accountID)
+    }
+
     static func playtimeAccountIdentifier(account: LoginAccount, session: LoginSession) -> String {
         for value in [session.userId, account.userId, account.externalUserId, account.email] {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -188,7 +195,8 @@ final class OPNGameSession {
             idToken: session.idToken,
             userId: launchUserId,
             idpId: launchIdpId,
-            variantIndex: pendingVariantIndex
+            variantIndex: pendingVariantIndex,
+            deviceId: cloudmatchDeviceId
         ) { [weak self] success, message, plan in
             guard let self else { return }
             guard success, let plan else {
@@ -239,7 +247,7 @@ final class OPNGameSession {
         phase = .stoppingSession
         launchFlowMessage = "Ending the current GeForce NOW session..."
         launchFlowError = ""
-        launchBridge.stopActiveSession(activeLaunchSession, accessToken: launchToken) { [weak self] success, message in
+        launchBridge.stopActiveSession(activeLaunchSession, accessToken: launchToken, deviceId: cloudmatchDeviceId) { [weak self] success, message in
             guard let self else { return }
             guard success else {
                 self.phase = .activeSessionPrompt

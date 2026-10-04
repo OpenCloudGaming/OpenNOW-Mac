@@ -50,6 +50,7 @@ struct OPNStreamWindowRootView: View {
                 ) { _ in
                     StreamHostView(
                         configuration: configuration,
+                        cloudmatchDeviceId: session.cloudmatchDeviceId,
                         onProgress: { progress in session.updateProgress(progress) },
                         onRequiredSessionAd: { ad in
                             try await session.presentRequiredAd(ad)

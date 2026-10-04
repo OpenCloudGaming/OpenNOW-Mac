@@ -9,6 +9,7 @@ struct StreamHostView: View {
     private let coordinator: OPNStreamSessionCoordinator
 
     init(configuration: StreamLaunchConfiguration,
+         cloudmatchDeviceId: String,
          onProgress: StreamProgressHandler?,
          onRequiredSessionAd: (@Sendable (StreamSessionAdPresentation) async throws -> Int)? = nil,
          onEnd: @escaping StreamCompletionHandler) {
@@ -19,7 +20,8 @@ struct StreamHostView: View {
             adPresenter: InlineStreamSessionAdPresenter(handler: onRequiredSessionAd),
             progressHandler: { progress in
                 Task { @MainActor in onProgress?(progress) }
-            }
+            },
+            deviceId: cloudmatchDeviceId
         )
     }
 

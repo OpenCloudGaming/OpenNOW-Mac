@@ -74,11 +74,33 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
     let sessionManager: any StreamSessionManaging
     let adPresenter: (any StreamSessionAdPresenter)?
     let progressHandler: (@Sendable (StreamProgress) -> Void)?
+    /// The launching account's own device id: the seat allows one live session per device, so a
+    /// second account streams under its own identity rather than the machine's.
+    let deviceId: String
+    /// What this stream's requests carry, set when its launch starts. Held per coordinator - there is
+    /// one per stream - because the session manager is shared and two accounts can stream at once.
+    private var requestContext: StreamSessionRequestContext?
 
-    init(sessionManager: any StreamSessionManaging = OPNSessionManager.shared, adPresenter: (any StreamSessionAdPresenter)? = nil, progressHandler: (@Sendable (StreamProgress) -> Void)? = nil) {
+    init(sessionManager: any StreamSessionManaging = OPNSessionManager.shared, adPresenter: (any StreamSessionAdPresenter)? = nil, progressHandler: (@Sendable (StreamProgress) -> Void)? = nil, deviceId: String = OPNDeviceIdentity.stableCloudmatchDeviceId()) {
         self.sessionManager = sessionManager
         self.adPresenter = adPresenter
         self.progressHandler = progressHandler
+        self.deviceId = deviceId
+    }
+
+    /// The context this stream's requests run under. Before a launch has set one, only the device and
+    /// the endpoint are known, so a request reports "No access token" rather than borrowing whatever
+    /// account launched last.
+    var currentRequestContext: StreamSessionRequestContext {
+        lock.withLock { requestContext } ?? StreamSessionRequestContext(
+            accessToken: "",
+            streamingBaseURL: OPNStreamPreferences.loadSelectedStreamingBaseUrl(),
+            deviceId: deviceId
+        )
+    }
+
+    func setRequestContext(_ context: StreamSessionRequestContext) {
+        lock.withLock { requestContext = context }
     }
 
     public func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
@@ -158,7 +180,7 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
     public func lookupActiveSessionConflict(excludingSessionID sessionID: String, applicationID: String) async -> StreamSessionConflict? {
         // The server response ([[String: Any]]) is not Sendable, so resolve the blocker and
         // build the (Sendable) conflict from it locally and only hand that back.
-        let (_, sessions, _) = await sessionManager.getActiveSessions()
+        let (_, sessions, _) = await sessionManager.getActiveSessions(context: currentRequestContext)
         let candidates = sessions.filter { string($0["sessionId"]) != sessionID }
         guard !candidates.isEmpty,
               let blocker = sessionManager.selectSessionLimitReuseEntry(candidates, requestedAppId: Int(applicationID) ?? 0) else {
@@ -248,7 +270,8 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
                 accessToken: session.metadata["accessToken"] ?? "",
                 sessionId: session.id,
                 serverIp: session.serverAddress,
-                streamingBaseUrl: session.metadata["streamingBaseUrl"] ?? OPNStreamPreferences.loadSelectedStreamingBaseUrl()
+                streamingBaseUrl: session.metadata["streamingBaseUrl"] ?? OPNStreamPreferences.loadSelectedStreamingBaseUrl(),
+                deviceId: deviceId
             ) { success, error in
                 if success || (session.metadata["accessToken"] ?? "").isEmpty {
                     completion.resume(nil)
@@ -265,7 +288,7 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
         let payload = UDSReportPayload(
             source: .endOfSession,
             locale: OPNLocale.currentGFNLocale(),
-            deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId(),
+            deviceId: deviceId,
             sessionId: session.id,
             sessionDurationInSeconds: sessionDurationSeconds(session)
         )

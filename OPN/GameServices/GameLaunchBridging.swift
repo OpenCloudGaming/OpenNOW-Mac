@@ -2,8 +2,10 @@ import Foundation
 
 @MainActor
 protocol GameLaunchBridging {
-    func prepareLaunchPlan(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, idpId: String, variantIndex: Int, completion: @escaping OPNGameLaunchPlanCompletion)
-    func stopActiveSession(_ session: OPNActiveStreamSessionDescriptor, accessToken: String, completion: @escaping OPNGameLaunchSessionStopCompletion)
+    /// `deviceId` is the launching account's own, so the seat's session lookup answers about that
+    /// account rather than about the machine - two accounts stream under two device identities.
+    func prepareLaunchPlan(game: OPNCatalogGameObject, accessToken: String, idToken: String, userId: String, idpId: String, variantIndex: Int, deviceId: String, completion: @escaping OPNGameLaunchPlanCompletion)
+    func stopActiveSession(_ session: OPNActiveStreamSessionDescriptor, accessToken: String, deviceId: String, completion: @escaping OPNGameLaunchSessionStopCompletion)
 }
 
 protocol GameLaunchServiceConfiguring {

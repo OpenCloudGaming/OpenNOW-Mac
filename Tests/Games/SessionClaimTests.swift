@@ -34,13 +34,11 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-    OPNSessionManager.shared.setAccessToken("token")
-    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
     settings.merge(["resolution": "7680x4320", "appLaunchMode": 2]) { _, new in new }
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false) { success, _, error in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false, context: sessionContext(host: host)) { success, _, error in
             continuation.resume(returning: (success, error))
         }
     }
@@ -93,13 +91,11 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-    OPNSessionManager.shared.setAccessToken("token")
-    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
     settings["transportMode"] = "webrtc"
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false) { success, _, error in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: settings, recoveryMode: false, context: sessionContext(host: host)) { success, _, error in
             continuation.resume(returning: (success, error))
         }
     }
@@ -140,11 +136,9 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-    OPNSessionManager.shared.setAccessToken("token")
-    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false, context: sessionContext(host: host)) { success, info, error in
             continuation.resume(returning: (success, info["isResume"] as? Bool ?? false, error))
         }
     }
@@ -179,11 +173,9 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
-    OPNSessionManager.shared.setAccessToken("token")
-    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, info, error in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false, context: sessionContext(host: host)) { success, info, error in
             continuation.resume(returning: (success, info["isResume"] as? Bool ?? false, error))
         }
     }
@@ -212,11 +204,9 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
         SessionManagerURLProtocol.uninstall(host: host)
     }
 
-    OPNSessionManager.shared.setAccessToken("token")
-    OPNSessionManager.shared.setStreamingBaseUrl("https://\(host)")
 
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false) { success, _, error in
+        OPNSessionManager.shared.claimSession(sessionId: "resume-session", serverIp: host, appId: "123", settings: minimalSettings(), recoveryMode: false, context: sessionContext(host: host)) { success, _, error in
             continuation.resume(returning: (success, error))
         }
     }
@@ -239,9 +229,7 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
-    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings(), context: sessionContext(host: host))
     let result = (createSucceeded, createError)
 
     #expect(result.0 == false)
@@ -259,9 +247,7 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
-    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings(), context: sessionContext(host: host))
     let result = (createSucceeded, createError)
 
     #expect(result.0 == false)
@@ -290,9 +276,7 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
-    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings(), context: sessionContext(host: host))
     let result = (
         createSucceeded,
         createInfo["isSessionLimitConflict"] as? Bool ?? false,
@@ -335,9 +319,7 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
-    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings(), context: sessionContext(host: host))
     let result = (
         createSucceeded,
         createInfo["isSessionLimitConflict"] as? Bool ?? false,
@@ -450,8 +432,6 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
         defer { SessionManagerURLProtocol.uninstall(host: host) }
 
         let manager = OPNSessionManager()
-        manager.setAccessToken("token")
-        manager.setStreamingBaseUrl("https://\(host)")
 
         let pollAd: ((Bool, [String: Any], String)) -> (Bool, String, String, String) = { result in
             let (success, info, error) = result
@@ -459,8 +439,8 @@ private func expectNativeSessionHeaders(_ requests: [URLRequest]) {
             let ad = (adState?["sessionAds"] as? [[String: Any]])?.first
             return (success, ad?["adId"] as? String ?? "", ad?["mediaUrl"] as? String ?? "", error)
         }
-        let first = pollAd(await manager.pollSession(sessionId: "resume-session", serverIp: host))
-        let second = pollAd(await manager.pollSession(sessionId: "resume-session", serverIp: host))
+        let first = pollAd(await manager.pollSession(sessionId: "resume-session", serverIp: host, context: sessionContext(host: host)))
+        let second = pollAd(await manager.pollSession(sessionId: "resume-session", serverIp: host, context: sessionContext(host: host)))
 
         #expect(first.0)
         #expect(first.3.isEmpty)

@@ -194,7 +194,7 @@ import Foundation
 }
 
 @Test func sessionManagerRejectsZeroBeforeTokenValidation() async {
-    let (success, _, error) = await OPNSessionManager.shared.createSession(appId: "0", internalTitle: "Invalid Launch", settings: [:])
+    let (success, _, error) = await OPNSessionManager.shared.createSession(appId: "0", internalTitle: "Invalid Launch", settings: [:], context: sessionContext(host: "example.test"))
     let result = (success, error)
 
     #expect(result.0 == false)
@@ -203,7 +203,7 @@ import Foundation
 
 @Test func sessionManagerRejectsZeroClaimBeforeTokenValidation() async {
     let result = await withCheckedContinuation { continuation in
-        OPNSessionManager.shared.claimSession(sessionId: "session", serverIp: "server", appId: "0", settings: [:], recoveryMode: false) { success, _, error in
+        OPNSessionManager.shared.claimSession(sessionId: "session", serverIp: "server", appId: "0", settings: [:], recoveryMode: false, context: sessionContext(host: "example.test")) { success, _, error in
             continuation.resume(returning: (success, error))
         }
     }
@@ -234,7 +234,7 @@ import Foundation
             game.launchAppId = "123"
             game.title = "Regression Game"
             game.isInLibrary = true
-            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1) { success, message, plan in
+            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) { success, message, plan in
                 continuation.resume(returning: (success, message, plan))
             }
         }
@@ -293,7 +293,7 @@ import Foundation
             game.launchAppId = "123"
             game.title = "Regression Game"
             game.isInLibrary = true
-            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1) { success, message, plan in
+            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) { success, message, plan in
                 continuation.resume(returning: (success, message, plan))
             }
         }
@@ -343,7 +343,7 @@ import Foundation
             game.launchAppId = "123"
             game.title = "Regression Game"
             game.isInLibrary = true
-            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1) { success, message, plan in
+            OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", idpId: "idp", variantIndex: -1, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) { success, message, plan in
                 continuation.resume(returning: (success, message, plan))
             }
         }
@@ -432,7 +432,7 @@ import Foundation
     game.isPatching = true
 
     let result: (Bool, String, OPNGameLaunchPlan?) = await withCheckedContinuation { continuation in
-        OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", variantIndex: -1) { success, message, plan in
+        OPNGameLaunchBridge.shared.prepareLaunchPlan(game: game, accessToken: "access-token", idToken: "id-token", userId: "user", variantIndex: -1, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) { success, message, plan in
             continuation.resume(returning: (success, message, plan))
         }
     }

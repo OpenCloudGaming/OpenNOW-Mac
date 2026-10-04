@@ -38,7 +38,7 @@ enum OPNActiveSessionService {
         OPNAppPreferenceStorage.standard.removeObject(forKey: persistedSessionIdKey)
     }
 
-    static func fetchActiveSessions(accessToken: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @MainActor @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {
+    static func fetchActiveSessions(accessToken: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), deviceId: String = OPNDeviceIdentity.stableCloudmatchDeviceId(), completion: @escaping @MainActor @Sendable (Bool, [OPNActiveSessionObject], String) -> Void) {
         guard !accessToken.isEmpty else {
             Task { @MainActor in completion(false, [], "No access token") }
             return
@@ -48,7 +48,7 @@ enum OPNActiveSessionService {
             return
         }
         let base = normalizedBaseURL(streamingBaseUrl)
-        guard let request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        guard let request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: accessToken, deviceId: deviceId) else {
             Task { @MainActor in completion(false, [], "Invalid sessions URL") }
             return
         }
@@ -82,7 +82,7 @@ enum OPNActiveSessionService {
         }.resume()
     }
 
-    static func stopSession(accessToken: String, sessionId: String, serverIp: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
+    static func stopSession(accessToken: String, sessionId: String, serverIp: String, streamingBaseUrl: String = OPNStreamPreferences.loadSelectedStreamingBaseUrl(), deviceId: String = OPNDeviceIdentity.stableCloudmatchDeviceId(), completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
         guard !accessToken.isEmpty else {
             Task { @MainActor in completion(false, "No access token") }
             return
@@ -97,7 +97,7 @@ enum OPNActiveSessionService {
         }
         clearPersistedActiveSessionId(sessionId)
         let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: streamingBaseUrl, serverIP: serverIp)
-        guard let request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: accessToken, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        guard let request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: accessToken, deviceId: deviceId) else {
             Task { @MainActor in completion(false, "Invalid stop session URL") }
             return
         }

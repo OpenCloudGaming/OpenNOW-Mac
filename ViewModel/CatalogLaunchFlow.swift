@@ -49,6 +49,13 @@ extension CatalogViewModel {
     /// The running stream's artwork, for the page backdrop.
     var runningStreamArtworkURL: URL? { gameSession?.artworkURL }
 
+    /// This account's own device id, so the seat answers about this account rather than about the
+    /// machine: two accounts can stream at once, and each has to look like its own device.
+    var cloudmatchDeviceId: String {
+        account.storedAccountID.map { OPNDeviceIdentity.cloudmatchDeviceId(accountID: $0) }
+            ?? OPNDeviceIdentity.stableCloudmatchDeviceId()
+    }
+
     /// Brings this account's own stream window forward. Another account's window is not what the
     /// reader asked for when they click this page's banner.
     func focusOwnedStreamWindow() {
@@ -251,7 +258,7 @@ extension CatalogViewModel {
         isCheckingHomeSession = true
         let token = launchToken
         let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl()
-        OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl) { [weak self] ok, sessions, _ in
+        OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl, deviceId: cloudmatchDeviceId) { [weak self] ok, sessions, _ in
             guard let self else { return }
             self.isCheckingHomeSession = false
             guard ok, let session = sessions.first(where: \.isResumable) ?? sessions.first else {
@@ -294,7 +301,8 @@ extension CatalogViewModel {
             accessToken: token,
             sessionId: session.sessionId,
             serverIp: session.serverIp,
-            streamingBaseUrl: session.streamingBaseUrl
+            streamingBaseUrl: session.streamingBaseUrl,
+            deviceId: cloudmatchDeviceId
         ) { [weak self] success, message in
             guard let self else { return }
             if !success {
