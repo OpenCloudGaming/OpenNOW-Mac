@@ -5,20 +5,13 @@ import CryptoKit
 import ImageIO
 import SwiftUI
 
-/// The marquee banner is one asset with one rung. The URL is requested at 1920px and both warmers
-/// (`CatalogLaunchPrefetch`, `CatalogImagePrefetch.prewarmHeroRotation`) decode it at 1920, and the
-/// memory cache is keyed by URL rather than by rung, so the view asks for 1920 as well. It used to
-/// take the shared 3840 default - four times the pixels the prefetch had already decoded, or a
-/// duplicate full-size decode when the view won the race. W3-3 tracks the cache side of the same
-/// mismatch.
-enum CatalogMarqueeArtwork {
-    static let decodePixelSize: CGFloat = 1920
-}
-
 struct CatalogHeroRemoteImage: View {
     let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL?
     let contentMode: ContentMode
+    /// Required rather than defaulted, and passed from `CatalogMarqueeArtwork`: this view used to
+    /// inherit the cache's 3840 default, so it and the launch prefetch disagreed about the rung for
+    /// the same URL and whichever ran first decided the hero's decode for the session.
     let maxPixelSize: CGFloat
     let onScrimColorChange: (CatalogMarqueeScrimColor) -> Void
 
@@ -56,6 +49,9 @@ struct CatalogHeroRemoteImage: View {
         // that needs the compressed bytes kept alongside the decoded image.
         if let cached = await imageCache.firstFrameImage(for: url, maxPixelSize: maxPixelSize, retainingSourceData: true) {
             guard !Task.isCancelled else { return }
+            // The decoded size is the thing this fix is about: a hero rung that disagrees with the
+            // prefetch's shows up here as a second, larger decode of the same URL at launch.
+            OPNLog.info(.cache, "Catalog hero artwork url=\(url.absoluteString) rung=\(Int(maxPixelSize)) decodedBytes=\(cached.decodedByteCount)")
             image = cached.image
             hasFailed = false
             isLoading = false

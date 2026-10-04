@@ -29,4 +29,13 @@ struct CatalogArtworkRungTests {
         #expect(CatalogStoreIconArtwork.decodeRung(scale: 1, displayScale: 2) == 84)
         #expect(CatalogStoreIconArtwork.decodeRung(scale: 1.5, displayScale: 2) == 126)
     }
+
+    /// The marquee hero is the one asset whose CDN width and decode rung are both baked into a load
+    /// key that carries the rung: the launch prefetch and the rotation prewarm warm one entry, and a
+    /// view reading at any other rung misses it and decodes the largest artwork on the home screen
+    /// again. The view used to take the shared 3840 default while both warmers decoded 1920.
+    @Test func theMarqueeHeroDecodeRungIsTheWidthItsURLIsRequestedAt() {
+        #expect(CatalogMarqueeArtwork.decodePixelSize == CGFloat(CatalogMarqueeArtwork.requestWidth))
+        #expect(CatalogMarqueeArtwork.decodePixelSize == 1920)
+    }
 }

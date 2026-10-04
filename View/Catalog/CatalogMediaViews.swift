@@ -363,7 +363,6 @@ enum CatalogArtworkResolution {
 /// decides their raster size. The memory cache is keyed by URL rather than by rung, and one icon is
 /// drawn at 14-20pt in the store picker and at 42pt in Settings, so every surface asks for the
 /// largest surface's rung: a per-surface rung would let whichever decoded first decide for the rest.
-/// W3-3 tracks making the cache rung-aware, which would let the small ones ask for less.
 enum CatalogStoreIconArtwork {
     static let maximumPointSize: CGFloat = 42
 

@@ -55,7 +55,7 @@ extension CatalogViewModel {
     /// source bytes the hero band reads them; wordmarks do not need the bytes. Deferred rather than
     /// priority: these are not on the first frame, so they decode one at a time behind it.
     func prewarmHeroRotation(heroURLs: [URL], wordmarkURLs: [URL]) {
-        imageCache.prewarmDeferred(heroURLs, maxPixelSize: 1920, retainingSourceData: true)
+        imageCache.prewarmDeferred(heroURLs, maxPixelSize: CatalogMarqueeArtwork.decodePixelSize, retainingSourceData: true)
         imageCache.prewarmDeferred(wordmarkURLs, maxPixelSize: CGFloat(CatalogLogoArtwork.requestWidth), retainingSourceData: false)
     }
 
