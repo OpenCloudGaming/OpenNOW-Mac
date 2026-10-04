@@ -350,8 +350,8 @@ struct CatalogView: View {
                     CatalogAccountDropdownOverlay(viewModel: viewModel, accounts: accounts, signedOutAccountEmails: signedOutAccountEmails, isPresented: $showsAccountMenu, topInset: measuredCatalogTopInset, onSwitch: onSwitch, onAddAccount: onAddAccount, onSignOut: onSignOut, onForget: onForget)
                         .zIndex(13)
                 }
-                if viewModel.isLaunchFlowVisible {
-                    VendorLaunchFlowOverlay(viewModel: viewModel)
+                if let gameSession = viewModel.gameSession, viewModel.isLaunchFlowVisible {
+                    VendorLaunchFlowOverlay(session: gameSession)
                         .transition(.opacity)
                         .zIndex(20)
                 }
@@ -441,11 +441,6 @@ struct CatalogView: View {
             viewModel.start()
             viewModel.loadIfNeeded()
             consumePendingGameShortcut()
-            // `initial: true` on the observer below can land before this task runs, so the
-            // presentation is re-asserted here as well. `present` is idempotent for the
-            // configuration it already holds, which keeps either order from rebuilding a live
-            // session's hosting view.
-            syncStreamWindowPresentation()
             // The menu bar publishes its snapshot at attach, so wait for the deferred disk work:
             // otherwise it paints empty collections and play history first.
             await viewModel.awaitAccountScopedState()
@@ -464,7 +459,9 @@ struct CatalogView: View {
             viewModel.updateMenuBarAccounts(accounts, signedOutAccountEmails: signedOutAccountEmails)
         }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in
-            syncStreamWindowPresentation()
+            // The stream window presents itself from the application-owned session, so this page has
+            // nothing to hand over. It only gives up its own title while a game is on screen.
+            onWindowTitleChange(nil)
             refreshSyncConflictAlert()
         }
         .onChange(of: themeIdentity, initial: true) { @MainActor _, newIdentity in
@@ -493,22 +490,6 @@ struct CatalogView: View {
             ]
         )
         .preferredColorScheme(preferredColorScheme)
-    }
-
-    /// Hands a live stream to its own window, and takes it away again when the session ends.
-    ///
-    /// The game's title moved with the stream: it is the stream window's title now, and the catalog
-    /// window keeps its own. `present` is idempotent for the configuration it already holds, so the
-    /// catalog rebuilding behind the stream - a theme change, a page switch - cannot re-create the
-    /// hosting view and tear the session down.
-    private func syncStreamWindowPresentation() {
-        guard let configuration = viewModel.activeStreamConfiguration else {
-            OPNStreamWindowPresenter.shared.dismiss()
-            onWindowTitleChange(nil)
-            return
-        }
-        OPNStreamWindowPresenter.shared.present(configuration: configuration, viewModel: viewModel)
-        onWindowTitleChange(nil)
     }
 
     private func consumePendingGameShortcut() {

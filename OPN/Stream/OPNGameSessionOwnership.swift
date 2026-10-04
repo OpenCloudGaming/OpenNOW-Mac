@@ -1,68 +1,101 @@
-//  Who owns a game this application started.
+//  The application-owned record of the game this app is running.
 //
-//  Ownership is fixed when a launch intent is accepted and does not follow the catalog's browsing
-//  selection: switching accounts changes what the catalog browses, never which account's
-//  credentials, provider route and history a starting or running game belongs to. It is held here,
-//  at application scope, rather than on a catalog view model - a catalog is remounted whenever the
-//  selected session changes, so a per-catalog record would be dropped exactly when it is needed.
+//  A session's owner is fixed when its launch intent is accepted and does not follow the catalog's
+//  browsing selection: switching accounts changes what the catalog browses, never which account's
+//  credentials, provider route and history a starting or running game belongs to. The session itself
+//  lives at application scope for the same reason - a catalog is remounted whenever the selected
+//  session changes, so a per-catalog record would be dropped exactly when it is needed.
 //
-//  A record is released only once the local session no longer requires the owner's credentials:
-//  a session stays owned through its whole life, including the teardown that stops it on the
-//  vendor's side and reports the end of it.
+//  One slot, not a list: this release admits a single local stream, and the limit is enforced here,
+//  before any cloud allocation and before any window is replaced, so a second launch is refused
+//  rather than ending the game already running. That is release policy, not an ownership
+//  assumption - the slot is keyed by an explicit account id, never by the browsing selection.
 
 import Foundation
 import Observation
 
-/// One game this application started, and the account whose credentials it runs on.
-///
-/// The local session id is the handle every later lifecycle action targets. It is deliberately not
-/// the vendor's cloud session id: that does not exist until allocation has succeeded, and ownership
-/// has to be frozen before the queue, allocation and ad playback that precede it.
-struct OPNOwnedGameSession: Identifiable, Equatable, Sendable {
-    let id: UUID
-    let accountID: OPNAccountID
-}
-
 /// The application-owned record of running and starting games.
 ///
-/// Main-actor isolated because every writer is a launch or teardown step driven from the main
-/// actor, and every reader is a control that has to agree with them in the same turn - a sign-out
-/// button that is enabled one frame after the purge already ran is the bug this prevents.
+/// Main-actor isolated because every writer is a launch or teardown step driven from the main actor,
+/// and every reader is a control that has to agree with them in the same turn - a sign-out button
+/// that is enabled one frame after the purge already ran is the bug this prevents.
 @MainActor
 @Observable
 final class OPNGameSessionRegistry {
     static let shared = OPNGameSessionRegistry()
 
-    private(set) var sessions: [OPNOwnedGameSession] = []
+    /// Posted whenever the owned session, or the stream it presents, changes. The stream window
+    /// presenter follows this, so the window belongs to the session rather than to a catalog that
+    /// can be replaced underneath it.
+    static let sessionDidChangeNotification = Notification.Name("OPNGameSessionDidChange")
+
+    private(set) var current: OPNGameSession?
 
     init() {}
 
-    /// Freezes ownership at the moment the launch intent is accepted, before any queue, allocation
-    /// or ad playback has begun. Returns the local session id the launch flow releases it by.
-    @discardableResult
-    func claim(accountID: OPNAccountID) -> UUID {
-        let session = OPNOwnedGameSession(id: UUID(), accountID: accountID)
-        sessions.append(session)
-        return session.id
+    var isOccupied: Bool { current != nil }
+
+    /// Starts a launch for `account`, or returns nil when the one-local-stream limit is already
+    /// taken or the account has no stable identity to own a session with. Admission is decided here
+    /// so every launch entry point - the catalog, a shortcut, the menu bar, a resumed session -
+    /// shares it.
+    func begin(
+        account: LoginAccount,
+        session: LoginSession,
+        gameService: any CatalogGameServing,
+        launchBridge: any GameLaunchBridging,
+        discordPresence: any DiscordPresenceServing,
+        streamProfile: OPNStreamPreferenceProfile,
+        results: OPNGameSessionResultStore = .shared
+    ) -> OPNGameSession? {
+        guard current == nil else { return nil }
+        guard let accountID = account.resolveStableAccountID() else {
+            OPNLog.error(.launch, "Launch has no stable account identity to own it account=\(account.email)")
+            return nil
+        }
+        let gameSession = OPNGameSession(
+            account: account,
+            session: session,
+            accountID: accountID,
+            gameService: gameService,
+            launchBridge: launchBridge,
+            discordPresence: discordPresence,
+            streamProfile: streamProfile,
+            registry: self,
+            results: results
+        )
+        current = gameSession
+        notifySessionDidChange()
+        return gameSession
     }
 
-    func release(_ id: UUID) {
-        sessions.removeAll { $0.id == id }
+    /// Releases the slot. Called once the local session no longer requires the owner's credentials.
+    func end(_ gameSession: OPNGameSession) {
+        guard current === gameSession else { return }
+        current = nil
+        notifySessionDidChange()
+    }
+
+    func session(ownedBy accountID: OPNAccountID) -> OPNGameSession? {
+        guard let current, current.accountID == accountID else { return nil }
+        return current
     }
 
     func isOwned(by accountID: OPNAccountID) -> Bool {
-        sessions.contains { $0.accountID == accountID }
+        session(ownedBy: accountID) != nil
     }
 
     /// Carries ownership across an identity upgrade. A legacy row starts on a `localOnly` identity
     /// and moves to its vendor subject the first time a sign-in supplies one; without this, a game
     /// started before that sign-in would belong to an identity nothing resolves to any more, and
     /// its account would look free to sign out of.
-    func rekeyOwnership(from previous: OPNAccountID, to current: OPNAccountID) {
-        guard previous != current else { return }
-        sessions = sessions.map { session in
-            guard session.accountID == previous else { return session }
-            return OPNOwnedGameSession(id: session.id, accountID: current)
-        }
+    func rekeyOwnership(from previous: OPNAccountID, to newIdentity: OPNAccountID) {
+        guard previous != newIdentity, let gameSession = session(ownedBy: previous) else { return }
+        gameSession.rekey(to: newIdentity)
+        notifySessionDidChange()
+    }
+
+    func notifySessionDidChange() {
+        NotificationCenter.default.post(name: Self.sessionDidChangeNotification, object: nil)
     }
 }

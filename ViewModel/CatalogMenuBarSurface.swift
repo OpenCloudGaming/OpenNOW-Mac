@@ -177,11 +177,6 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
 
     /// Resuming a session the menu bar detected but is not streaming locally. The vendor session is
     /// already allocated, so this hands the resume to the same home-page path, with the same guard.
-    func resumeSession() {
-        OPNLog.info(.launch, "Menu bar resuming the resumable session")
-        resumeActiveHomeSession()
-    }
-
     /// Opening the menu is the moment a session started on another device becomes relevant, so the
     /// active-session lookup runs again rather than waiting for the next launch or session end.
     func refreshActiveSession() {

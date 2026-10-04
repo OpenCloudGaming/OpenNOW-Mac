@@ -6,9 +6,10 @@
 //  object and kill a live session - which is why the window is built for it up front rather than the
 //  stream being hosted in the catalog window first.
 //
-//  Everything the stream needs that used to live in the catalog window travels with it: the stage
-//  layout and its titlebar strip, the launch-loading overlay (and the sponsored-break player inside
-//  it), and the window's title. The catalog window stays mounted behind it.
+//  What it reads is the application-owned `OPNGameSession`, not the catalog that started it: the
+//  catalog is remounted whenever the browsing account changes, and this window has to outlive that.
+//  The layout, the launch-loading overlay and the sponsored break all come from the session, so a
+//  browsing switch cannot restyle or retarget a running game.
 //
 
 import AppKit
@@ -17,7 +18,7 @@ import SwiftUI
 
 struct OPNStreamWindowRootView: View {
     let configuration: StreamLaunchConfiguration
-    let viewModel: CatalogViewModel
+    let session: OPNGameSession
     @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScale = OPNInterfacePreferences.defaultUIScale
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
@@ -47,16 +48,16 @@ struct OPNStreamWindowRootView: View {
                 StreamStageLayout(
                     viewport: proxy.size,
                     topInset: windowTopInset,
-                    aspectRatio: CGFloat(viewModel.streamProfile.aspectRatio)
+                    aspectRatio: CGFloat(session.streamProfile.aspectRatio)
                 ) { _ in
                     StreamHostView(
                         configuration: configuration,
-                        onProgress: { progress in viewModel.updateActiveStreamProgress(progress) },
+                        onProgress: { progress in session.updateProgress(progress) },
                         onRequiredSessionAd: { ad in
-                            try await viewModel.presentRequiredStreamAd(ad)
+                            try await session.presentRequiredAd(ad)
                         },
                         onEnd: { success, message, report in
-                            viewModel.finishActiveStream(success: success, message: message, report: report)
+                            session.endStream(success: success, message: message, report: report)
                         }
                     )
                     .id(configuration.id)
@@ -65,8 +66,8 @@ struct OPNStreamWindowRootView: View {
             .background(WindowTopInsetReader { windowTopInset = $0 })
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if viewModel.isStreamLaunchLoadingVisible {
-                VendorStreamLaunchLoadingOverlay(viewModel: viewModel, windowTopInset: windowTopInset)
+            if session.isLaunchLoadingVisible {
+                VendorStreamLaunchLoadingOverlay(session: session, windowTopInset: windowTopInset)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
                     .zIndex(10)
@@ -74,7 +75,7 @@ struct OPNStreamWindowRootView: View {
         }
         .ignoresSafeArea(edges: .all)
         .background(Color.black)
-        .background(StreamWindowAspectConfigurator(aspectRatio: viewModel.streamProfile.aspectRatio, isLocked: true))
+        .background(StreamWindowAspectConfigurator(aspectRatio: session.streamProfile.aspectRatio, isLocked: true))
         .environment(\.opnUIScale, uiScale)
         .preferredColorScheme(preferredColorScheme)
     }

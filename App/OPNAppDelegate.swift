@@ -69,6 +69,9 @@ final class OPNAppDelegate: NSObject, NSApplicationDelegate {
         startApplicationUpdateChecks()
         OPNMainWindowCloseGuard.install()
         OPNDockIconController.install()
+        // The stream window follows the application-owned game session rather than the catalog that
+        // started it, so a browsing switch cannot take the running game's window with it.
+        OPNStreamWindowPresenter.shared.observeOwnedSessions()
         // The Steam Controller HID monitor starts on demand instead of here: nothing needs pad input
         // until a stream starts, controller mode is entered, or the controller settings page opens.
 

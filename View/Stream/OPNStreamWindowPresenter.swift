@@ -5,10 +5,11 @@
 //  view and tear the session down; `dismiss` releases the window, so the next launch gets a freshly
 //  configured one. Nothing here ever re-parents or reuses a hosting view across sessions.
 //
-//  Presentation is driven by the catalog window (`CatalogView`), which owns the launch state, while
-//  the session itself lives in the stream window's content. The catalog window stays mounted
-//  throughout - that is what lets its own menus and pages keep working mid-session, and what retires
-//  the rebuild-and-re-decode cost swapping the stream in used to pay.
+//  Presentation is driven by the application-owned `OPNGameSessionRegistry`, not by the catalog
+//  window: the catalog is remounted whenever the browsing account changes, and the window has to
+//  survive that. The catalog window stays mounted throughout - that is what lets its own menus and
+//  pages keep working mid-session, and what retires the rebuild-and-re-decode cost swapping the
+//  stream in used to pay.
 //
 
 import AppKit
@@ -21,6 +22,8 @@ final class OPNStreamWindowPresenter {
     private(set) var window: OPNStreamWindow?
     private var presentedConfigurationID: UUID?
     private var hostingView: NSHostingView<OPNStreamWindowRootView>?
+    /// Held so the observation is not dropped the moment it is installed.
+    private var sessionChangeObserver: NSObjectProtocol?
 
     /// Per-window full-screen bookkeeping, tracked from `present` so a dismissal that lands
     /// mid-enter is recognised before AppKit sets `.fullScreen`.
@@ -78,19 +81,46 @@ final class OPNStreamWindowPresenter {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func present(configuration: StreamLaunchConfiguration, viewModel: CatalogViewModel) {
+    /// Follows the application-owned game session, so the window belongs to the session rather than
+    /// to the catalog that started it. Installed once, at application launch.
+    ///
+    /// The observer belongs here rather than in a view model because this presenter is the only
+    /// thing that owns an `NSWindow`: its lifetime is the application's, and it is installed once by
+    /// `OPNAppDelegate` rather than from any view body.
+    func observeOwnedSessions() {
+        guard sessionChangeObserver == nil else { return }
+        // swiftlint:disable:next view_owns_long_lived_effect -- application-lifetime AppKit presenter, installed once by the app delegate
+        sessionChangeObserver = NotificationCenter.default.addObserver(
+            forName: OPNGameSessionRegistry.sessionDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncWithOwnedSession() }
+        }
+    }
+
+    /// Presents the owned session's stream window, or takes it away once the session has ended.
+    func syncWithOwnedSession() {
+        guard let session = OPNGameSessionRegistry.shared.current, let configuration = session.configuration else {
+            dismiss()
+            return
+        }
+        present(configuration: configuration, session: session)
+    }
+
+    func present(configuration: StreamLaunchConfiguration, session: OPNGameSession) {
         if presentedConfigurationID == configuration.id, let window, window.isVisible { return }
         dismiss()
 
         let window = OPNStreamWindowFactory.make()
-        let hostingView = NSHostingView(rootView: OPNStreamWindowRootView(configuration: configuration, viewModel: viewModel))
+        let hostingView = NSHostingView(rootView: OPNStreamWindowRootView(configuration: configuration, session: session))
         window.contentView = hostingView
         // The game's title belongs to the window the game is in; the catalog window keeps its own.
         window.title = Self.windowTitle(for: configuration)
         // The close button always asks. See `OPNStreamWindowCloseGuard` for why the window never
         // closes itself, and `requestStreamWindowClose` for what each answer does.
-        window.closeRequestHandler = { [weak self, weak viewModel, weak window] in
-            self?.handleCloseRequest(viewModel: viewModel, window: window) ?? false
+        window.closeRequestHandler = { [weak self, weak session, weak window] in
+            self?.handleCloseRequest(session: session, window: window) ?? false
         }
         OPNStreamWindowCloseGuard.install(on: window)
 
@@ -275,7 +305,7 @@ final class OPNStreamWindowPresenter {
     /// cancels a pending start and answers `completion?(true)` with no dialog on that path, and with
     /// a `nil` completion that answer is a no-op rather than a quit - so the launch is cancelled here
     /// instead, and the window closes.
-    private func handleCloseRequest(viewModel: CatalogViewModel?, window: OPNStreamWindow?) -> Bool {
+    private func handleCloseRequest(session: OPNGameSession?, window: OPNStreamWindow?) -> Bool {
         let surface = window?.sessionSurface
         let decision = Self.closeDecision(isConnected: surface?.isConnected, hasActiveStream: StreamSessionLifecycle.hasActiveStream)
         if case .prompt = decision {
@@ -289,8 +319,8 @@ final class OPNStreamWindowPresenter {
         // Deferred by one main-actor turn on purpose, the same way the main window's guard defers
         // its `orderOut`: tearing a window's content down from inside `windowShouldClose` runs the
         // teardown underneath AppKit's own close handling.
-        Task { @MainActor [weak self, weak viewModel] in
-            viewModel?.cancelActiveStreamLaunch()
+        Task { @MainActor [weak self, weak session] in
+            session?.cancelStreamLaunch()
             self?.dismiss()
         }
         return false

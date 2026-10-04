@@ -518,29 +518,31 @@ import Testing
 
 /// What the catalog hands the surface: the launch flow's phase, and the games the menu can relaunch.
 @MainActor @Suite(.serialized) struct MenuBarCatalogSnapshotTests {
-    @Test func snapshotDescribesTheLaunchFlow() {
-        let model = makeCatalogViewModelForTesting()
+    @Test func snapshotDescribesTheLaunchFlow() throws {
+        let model = makeCatalogViewModelForTesting(sessionRegistry: OPNGameSessionRegistry(), sessionResultStore: OPNGameSessionResultStore())
         #expect(model.menuBarSnapshot.phase == .idle)
         #expect(model.menuBarSnapshot.title.isEmpty)
 
-        model.launchFlowTitle = "Cyberpunk 2077"
-        model.launchFlowState = .checkingSession
+        // The launch flow now lives on the application-owned session, so the snapshot is driven
+        // through it rather than through the catalog.
+        let session = try #require(makeOwnedGameSessionForTesting(model))
+        session.launchFlowTitle = "Cyberpunk 2077"
         #expect(model.menuBarSnapshot.phase == .connecting)
         #expect(model.menuBarSnapshot.title == "Cyberpunk 2077")
 
-        model.launchFlowState = .idle
-        model.activeStreamConfiguration = StreamLaunchConfiguration(
+        session.phase = .startingStream
+        session.configuration = StreamLaunchConfiguration(
             title: "Cyberpunk 2077",
             applicationID: "1093630001",
             accessToken: "t",
             accountLinked: true,
             selectedStore: "steam"
         )
-        model.isActiveStreamLaunchOverlayVisible = true
+        session.isLaunchOverlayVisible = true
         // Allocated but no frame yet: the launch is starting, not queued and not streaming.
         #expect(model.menuBarSnapshot.phase == .starting)
 
-        model.activeStreamProgress = StreamProgress(
+        session.progress = StreamProgress(
             title: "Cyberpunk 2077",
             message: "Queue position: 4",
             steps: StreamLaunchStep.allCases.map(\.title),
@@ -552,7 +554,7 @@ import Testing
 
         // The overlay lingers for a beat after the stream reports ready; from there the surface
         // yields to the lifecycle rather than holding `starting` past the first frame.
-        model.activeStreamProgress = StreamProgress(
+        session.progress = StreamProgress(
             title: "Cyberpunk 2077",
             message: "",
             steps: StreamLaunchStep.allCases.map(\.title),
@@ -563,7 +565,7 @@ import Testing
 
         // A running stream belongs to the lifecycle, not to this snapshot: claiming a phase here
         // would let a teardown that has not reached the view model keep a dead session on screen.
-        model.isActiveStreamLaunchOverlayVisible = false
+        session.isLaunchOverlayVisible = false
         #expect(model.menuBarSnapshot.phase == .idle)
         #expect(model.menuBarSnapshot.title == "Cyberpunk 2077")
     }

@@ -48,65 +48,41 @@ private final class GuardFixture {
         viewModel = LoginViewModel(authService: authService, sessionRegistry: registry)
         viewModel.modelContext = container.mainContext
 
-        account = LoginAccount(
-            email: "player@example.com",
-            displayName: "Player",
-            providerIdpId: LoginProvider.nvidia.idpId,
-            providerName: LoginProvider.nvidia.title,
-            userId: "user-1",
-            isActive: true
-        )
-        session = LoginSession(
-            id: "guard-session",
-            accountEmail: account.email,
-            authMethod: "getSessionToken",
-            accessToken: "access-guard",
-            clientToken: "client-guard",
-            idToken: "id-guard",
-            refreshToken: "refresh-guard",
-            deviceId: "device",
-            expiresAt: Date(timeIntervalSinceNow: 3600),
-            clientTokenExpiresAt: Date(timeIntervalSinceNow: 3600)
-        )
+        account = makeLoginAccountForTesting(email: "player@example.com", displayName: "Player", userId: "user-1")
+        session = makeLoginSessionForTesting(accountEmail: account.email, id: "guard-session", userId: "user-1")
         container.mainContext.insert(account)
         container.mainContext.insert(session)
         viewModel.accounts = [account]
         viewModel.sessions = [session]
     }
 
+    /// Occupies the registry with a session owned by the account, without starting a launch. The
+    /// launch itself would reach the vendor, and the guard is only about ownership.
+    @discardableResult
+    func claimGameSession() -> OPNGameSession? {
+        registry.begin(
+            account: account,
+            session: session,
+            gameService: OPNGameService.shared,
+            launchBridge: OPNGameLaunchBridge.shared,
+            discordPresence: DiscordRichPresence.shared,
+            streamProfile: OPNStreamPreferenceProfile()
+        )
+    }
+
     /// The second saved account every "unrelated account stays mutable" test needs.
     func addSecondAccount() throws -> LoginAccount {
-        let other = LoginAccount(
-            email: "other@example.com",
-            displayName: "Other",
-            providerIdpId: LoginProvider.nvidia.idpId,
-            providerName: LoginProvider.nvidia.title,
-            userId: "user-2",
-            isActive: false
-        )
-        let otherSession = LoginSession(
-            id: "guard-session-other",
-            accountEmail: other.email,
-            authMethod: "getSessionToken",
-            accessToken: "access-other",
-            clientToken: "client-other",
-            idToken: "id-other",
-            refreshToken: "refresh-other",
-            deviceId: "device",
-            expiresAt: Date(timeIntervalSinceNow: 3600),
-            clientTokenExpiresAt: Date(timeIntervalSinceNow: 3600)
-        )
+        let other = makeLoginAccountForTesting(email: "other@example.com", displayName: "Other", userId: "user-2", isActive: false)
+        let otherSession = makeLoginSessionForTesting(accountEmail: other.email, id: "guard-session-other", userId: "user-2")
         container.mainContext.insert(other)
         container.mainContext.insert(otherSession)
         viewModel.accounts.append(other)
         viewModel.sessions.append(otherSession)
-        defer { otherSession.purgeTokens() }
         return other
     }
 
     func tearDown() {
-        session.purgeTokens()
-        for stored in viewModel.sessions where stored.id != session.id {
+        for stored in viewModel.sessions {
             stored.purgeTokens()
         }
     }
@@ -116,8 +92,7 @@ private final class GuardFixture {
 @Test func signOutIsRefusedWhileTheAccountOwnsAGameSession() async throws {
     let fixture = try GuardFixture()
     defer { fixture.tearDown() }
-    let accountID = try #require(fixture.account.resolveStableAccountID())
-    fixture.registry.claim(accountID: accountID)
+    fixture.claimGameSession()
 
     await fixture.viewModel.signOutAccount(fixture.account)
 
@@ -131,8 +106,7 @@ private final class GuardFixture {
 @Test func accountRemovalIsRefusedWhileTheAccountOwnsAGameSession() async throws {
     let fixture = try GuardFixture()
     defer { fixture.tearDown() }
-    let accountID = try #require(fixture.account.resolveStableAccountID())
-    fixture.registry.claim(accountID: accountID)
+    fixture.claimGameSession()
 
     fixture.viewModel.forgetAccount(fixture.account)
 
@@ -148,12 +122,11 @@ private final class GuardFixture {
 @Test func signOutProceedsOnceTheOwnedSessionHasEnded() async throws {
     let fixture = try GuardFixture()
     defer { fixture.tearDown() }
-    let accountID = try #require(fixture.account.resolveStableAccountID())
-    let id = fixture.registry.claim(accountID: accountID)
+    let owned = try #require(fixture.claimGameSession())
     await fixture.viewModel.signOutAccount(fixture.account)
     #expect(fixture.authService.endedSessions.isEmpty)
 
-    fixture.registry.release(id)
+    fixture.registry.end(owned)
     await fixture.viewModel.signOutAccount(fixture.account)
 
     #expect(!fixture.viewModel.hasUsableSession(for: fixture.account))
@@ -168,14 +141,13 @@ private final class GuardFixture {
     let fixture = try GuardFixture()
     defer { fixture.tearDown() }
     let other = try fixture.addSecondAccount()
-    let ownerAccountID = try #require(fixture.account.resolveStableAccountID())
-    fixture.registry.claim(accountID: ownerAccountID)
+    fixture.claimGameSession()
 
     await fixture.viewModel.signOutAccount(other)
 
     #expect(!fixture.viewModel.hasUsableSession(for: other))
     #expect(fixture.authService.endedSessions.map(\.email) == [other.email])
-    #expect(fixture.registry.isOwned(by: ownerAccountID))
+    #expect(fixture.registry.isOwned(by: try #require(fixture.account.storedAccountID)))
     #expect(fixture.viewModel.hasUsableSession(for: fixture.account))
 }
 
@@ -204,7 +176,8 @@ private final class GuardFixture {
     fixture.account.stableAccountID = ""
     let local = try #require(fixture.account.resolveStableAccountID())
     #expect(local.basis == .localOnly)
-    fixture.registry.claim(accountID: local)
+    fixture.claimGameSession()
+    #expect(fixture.registry.isOwned(by: local))
 
     fixture.account.userId = "user-1"
     fixture.viewModel.backfillAccountIdentities()

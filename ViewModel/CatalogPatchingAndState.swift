@@ -341,11 +341,7 @@ extension CatalogViewModel {
     }
 
     static func game(_ game: OPNCatalogGameObject, matchesApplicationID applicationID: String) -> Bool {
-        guard !applicationID.isEmpty else { return false }
-        for value in [game.id, game.uuid, game.launchAppId, game.shortName] where value == applicationID {
-            return true
-        }
-        return game.variants.contains { $0.id == applicationID }
+        OPNGameSession.game(game, matchesApplicationID: applicationID)
     }
 
     static func looseIdentityMatches(_ lhs: OPNCatalogGameObject, _ rhs: OPNCatalogGameObject) -> Bool {
@@ -356,11 +352,7 @@ extension CatalogViewModel {
     }
 
     static func playtimeAccountIdentifier(account: LoginAccount, session: LoginSession) -> String {
-        for value in [session.userId, account.userId, account.externalUserId, account.email] {
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed.lowercased() }
-        }
-        return "default"
+        OPNGameSession.playtimeAccountIdentifier(account: account, session: session)
     }
 
     static func snapshotObject(for game: OPNCatalogGameObject) -> OPNCatalogGameObject {
@@ -435,9 +427,7 @@ extension CatalogViewModel {
     }
 
     static func preferredVariantIndex(for game: OPNCatalogGameObject) -> Int {
-        if let index = game.variants.firstIndex(where: { $0.librarySelected }) { return index }
-        if let index = game.variants.firstIndex(where: { $0.inLibrary }) { return index }
-        return game.variants.isEmpty ? -1 : 0
+        OPNGameSession.preferredVariantIndex(for: game)
     }
 
     static func variantIsOwned(_ variant: OPNCatalogGameVariantObject, in game: OPNCatalogGameObject) -> Bool {

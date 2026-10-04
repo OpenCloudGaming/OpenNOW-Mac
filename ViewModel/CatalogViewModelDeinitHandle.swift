@@ -8,17 +8,12 @@ final class CatalogViewModelDeinitHandle: @unchecked Sendable {
     var patchingPollTask: Task<Void, Never>?
     var collectionsStoreObserver: NSObjectProtocol?
     var homeArrangementObserver: NSObjectProtocol?
-    /// The session ownership this catalog still held when it went away.
+    /// The finished-session results this catalog is waiting on, tagged for its account.
     ///
-    /// A catalog is remounted whenever the selected session changes, and that remount ends the
-    /// stream it was presenting without ever reaching `finishActiveStream` - the ownership would
-    /// then outlive the game and keep its account blocked from signing out for the rest of the
-    /// process's life. Released here as the backstop; the launch flow releases it on every path it
-    /// does complete.
-    var ownedGameSessionID: UUID?
-    /// The registry the ownership above was claimed in. Set once, from the catalog's own injected
-    /// registry, so the release lands in the same one the claim did.
-    var registry: OPNGameSessionRegistry?
+    /// Deliberately the only thing a disappearing catalog releases. A game session outlives the
+    /// catalog that started it - that is what lets an accepted launch and a running stream survive a
+    /// browsing switch - so nothing here may end one.
+    var sessionResultObserver: NSObjectProtocol?
 
     deinit {
         if let collectionsStoreObserver {
@@ -27,9 +22,9 @@ final class CatalogViewModelDeinitHandle: @unchecked Sendable {
         if let homeArrangementObserver {
             NotificationCenter.default.removeObserver(homeArrangementObserver)
         }
-        patchingPollTask?.cancel()
-        if let ownedGameSessionID, let registry {
-            Task { @MainActor in registry.release(ownedGameSessionID) }
+        if let sessionResultObserver {
+            NotificationCenter.default.removeObserver(sessionResultObserver)
         }
+        patchingPollTask?.cancel()
     }
 }
