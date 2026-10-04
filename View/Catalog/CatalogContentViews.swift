@@ -37,7 +37,9 @@ struct CatalogContentView: View {
                 let sections = viewModel.catalogSections
                 let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    // No indicator, like every other scroll surface here: the page only ever lacked
+                    // one because its frame was as wide as the scroll content.
+                    ScrollView(.vertical, showsIndicators: false) {
                         // Deliberately eager. A LazyVStack here re-runs
                         // `LazyStack.measureEstimates` on every scroll offset change, and
                         // estimating a rail means applying its whole view list - every tile in
@@ -197,6 +199,9 @@ struct CatalogContentView: View {
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
                     }
                 }
+                // A `ScrollView` is as wide as its widest content, and the running-stream banner's
+                // `safeAreaInset` region is that frame - so the region is clamped to the page.
+                .frame(maxWidth: viewport.size.width > 0 ? viewport.size.width : .infinity, alignment: .leading)
                 // Sticky, not scrolled: the banner is the one fact that stays true for the whole
                 // session, and a page scrolled down to the rails is exactly when it is needed.
                 // A `safeAreaInset` keeps it pinned above the content - a pinned `Section` header
