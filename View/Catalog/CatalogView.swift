@@ -265,6 +265,7 @@ struct CatalogView: View {
         pendingGameShortcut: Binding<GFNGameShortcut?>,
         onSwitch: @escaping (LoginAccount) -> Void,
         onAddAccount: @escaping () -> Void,
+        onPresentAccountChooser: @escaping () -> Void,
         onSignOut: @escaping (LoginAccount) -> Void,
         onForget: @escaping (LoginAccount) -> Void,
         onRefreshAuth: @escaping () async -> Bool,
@@ -279,7 +280,14 @@ struct CatalogView: View {
         self.onRefreshAuth = onRefreshAuth
         self.onWindowTitleChange = onWindowTitleChange
         _pendingGameShortcut = pendingGameShortcut
-        _viewModel = State(initialValue: CatalogViewModel(account: account, session: session, onSwitchAccount: onSwitch, onAddAccount: onAddAccount, onRefreshAuth: onRefreshAuth))
+        _viewModel = State(initialValue: CatalogViewModel(
+            account: account,
+            session: session,
+            onSwitchAccount: onSwitch,
+            onAddAccount: onAddAccount,
+            onPresentAccountChooser: onPresentAccountChooser,
+            onRefreshAuth: onRefreshAuth
+        ))
     }
 
     var body: some View {

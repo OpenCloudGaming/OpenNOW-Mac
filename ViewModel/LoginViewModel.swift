@@ -33,6 +33,13 @@ final class LoginViewModel: ObservableObject {
     /// hit an account with no saved session, or another account is being added. Neither touches
     /// the session that is signed in — cancelling returns straight to it.
     @Published private(set) var signInRequest: LoginSignInRequest?
+    /// The saved-account chooser, raised either by the startup preference or by "Switch account…".
+    /// One value and one panel, because both are the same question asked at different moments.
+    /// Driven by the operations in `LoginAccountChooser.swift`.
+    @Published var accountChooserReason: AccountChooserReason?
+    /// Shown after a switch that left another account's game running, so the reader can tell the
+    /// game survived it. Cleared by its own timeout or by the reader dismissing it.
+    @Published var accountSwitchNotice: String?
 
     let authService: any LoginAuthServing
     let providerInfoService: any GameProviderInfoServing
@@ -50,6 +57,8 @@ final class LoginViewModel: ObservableObject {
     var accounts: [LoginAccount] = []
     var sessions: [LoginSession] = []
     var devices: [LoginDeviceRegistration] = []
+    /// The notice's own timeout, so a second switch replaces the first notice rather than racing it.
+    var accountSwitchNoticeTask: Task<Void, Never>?
 
     var authStatusSummary: String {
         if isAuthenticating { return JarvisAuthStatus.pendingLogin.rawValue.replacingOccurrences(of: "_", with: " ") }
@@ -106,7 +115,10 @@ final class LoginViewModel: ObservableObject {
         restoreSavedSessionFromKeychain()
         // The sign-in picker is this list's only reader, and a restored session never shows it.
         if activeSession == nil { refreshLoginProviders() }
-        OPNLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth)")
+        // Last, and only when the reader asked to be asked: nothing above this line changes because
+        // the chooser is going to be shown.
+        presentAccountChooserForStartupIfNeeded()
+        OPNLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth) chooser=\(accountChooserReason != nil)")
     }
 
     private static let termsAcceptedKey = "OpenNOW.Login.GFNTermsAccepted"
@@ -223,13 +235,17 @@ final class LoginViewModel: ObservableObject {
     }
 
     func activateAccount(_ account: LoginAccount) {
+        dismissAccountChooser()
         // Signing out purges the tokens but keeps the account row, so a listed account is not
         // necessarily a restorable one. Send those to the login wall instead of failing silently.
         guard hasUsableSession(for: account) else {
             beginReauthentication(for: account)
             return
         }
-        Task { _ = await restoreAccountSession(account) }
+        Task {
+            guard await restoreAccountSession(account) else { return }
+            announceRunningGameContinues(with: account)
+        }
     }
 
     func hasUsableSession(for account: LoginAccount) -> Bool {
@@ -271,11 +287,15 @@ final class LoginViewModel: ObservableObject {
     /// login wall from the catalog, and the row is already there, so reusing it changes state and
     /// starts nothing — a button labelled SIGN IN AGAIN that reads as dead.
     func activateSavedAccount(_ account: LoginAccount) {
+        dismissAccountChooser()
         guard hasUsableSession(for: account) else {
             beginSignInAgain(for: account)
             return
         }
-        Task { _ = await restoreAccountSession(account) }
+        Task {
+            guard await restoreAccountSession(account) else { return }
+            announceRunningGameContinues(with: account)
+        }
     }
 
     /// Picks the account's provider and starts the browser leg, which is what its row promises.
@@ -294,6 +314,7 @@ final class LoginViewModel: ObservableObject {
     /// Signs in an additional account. The account that is signed in keeps its tokens, so it stays
     /// in the list and switchable once the new one is added.
     func beginAddAccount() {
+        dismissAccountChooser()
         email = ""
         selectedProvider = providers.first ?? LoginProvider.nvidia
         rememberSession = true
@@ -503,6 +524,15 @@ struct LoginProvider: Identifiable, Hashable, Sendable {
 enum LoginSignInRequest: Equatable {
     case reauthenticate(email: String)
     case addAccount
+}
+
+/// Why the saved-account chooser is up. The panel is the same either way; the reason is what its
+/// cancel means and what the log line records.
+enum AccountChooserReason: String, Equatable {
+    /// A fresh launch asking, because the reader asked to be asked.
+    case startup
+    /// The profile menu's "Switch account…".
+    case switchAccount
 }
 
 /// A sign-in flow awaiting the terms-of-use gate before it can run.

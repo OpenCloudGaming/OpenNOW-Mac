@@ -375,6 +375,10 @@ final class CatalogViewModel {
     /// menu bar runs the identical path the on-screen dropdown does.
     let onSwitchAccount: (LoginAccount) -> Void
     let onAddAccount: () -> Void
+    /// Raises the saved-account chooser, which lives at the window root because it covers the login
+    /// wall as well as this catalog. The profile menu and the Settings page both open it, so both
+    /// reach the same panel and the same switch operation.
+    let onPresentAccountChooser: () -> Void
     /// The saved accounts and which of them are signed out, fed from the view's SwiftData query. The
     /// menu bar snapshot is derived from these rather than from the live models.
     var menuBarLoginAccounts: [LoginAccount] = []
@@ -419,7 +423,7 @@ final class CatalogViewModel {
     /// Whether that work has landed; `startupContentGate` holds the splash until it has.
     var isAccountScopedStateLoaded = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, sessionResultStore: OPNGameSessionResultStore = .shared, onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, sessionResultStore: OPNGameSessionResultStore = .shared, onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onPresentAccountChooser: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
@@ -431,6 +435,7 @@ final class CatalogViewModel {
         self.sessionResultStore = sessionResultStore
         self.onSwitchAccount = onSwitchAccount
         self.onAddAccount = onAddAccount
+        self.onPresentAccountChooser = onPresentAccountChooser
         self.onRefreshAuth = onRefreshAuth
     }
 

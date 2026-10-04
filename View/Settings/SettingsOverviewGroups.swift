@@ -13,6 +13,7 @@ struct AccountSettingsGroup: View {
         SettingsSection("playtime", "Playtime"),
         SettingsSection("profile", "Profile"),
         SettingsSection("session", "Session"),
+        SettingsSection("startup", "Startup"),
         SettingsSection("stores", "Stores"),
     ]
 

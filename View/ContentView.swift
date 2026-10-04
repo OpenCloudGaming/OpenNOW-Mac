@@ -67,6 +67,30 @@ struct ContentView: View {
                 .id(themeIdentity)
                 .zIndex(95)
 
+            // Above the catalog and the login wall, because the question is which of them should be
+            // on screen; below the splash, so a fresh launch finishes its animation first. Cancelling
+            // picks nothing: whatever was already selected stays selected.
+            if let reason = viewModel.accountChooserReason {
+                AccountChooserOverlay(
+                    accounts: accounts,
+                    activeEmail: viewModel.activeAccount?.email ?? "",
+                    signedOutAccountEmails: viewModel.signedOutAccountEmails,
+                    reason: reason,
+                    // `activateAccount`, not the login wall's `activateSavedAccount`: this panel can
+                    // be up over the catalog, and a signed-out choice has to put the wall in front of
+                    // the reader rather than start a browser sign-in behind it.
+                    onChoose: viewModel.activateAccount,
+                    onAddAccount: viewModel.beginAddAccount,
+                    onCancel: viewModel.dismissAccountChooser
+                )
+                .zIndex(96)
+            }
+
+            if let notice = viewModel.accountSwitchNotice {
+                AccountSwitchNoticeBanner(message: notice, dismiss: viewModel.dismissAccountSwitchNotice)
+                    .zIndex(97)
+            }
+
             if root.isShowingStartupLoading {
                 StartupLoadingView(duration: root.startupAnimationDuration)
                     .transition(.opacity)
@@ -78,6 +102,8 @@ struct ContentView: View {
             // the whole root, so an unrelated LoginView change in the same transaction is not
             // swept into it.
             .animation(.easeInOut(duration: StartupAnimation.fadeDuration), value: root.isShowingStartupLoading)
+            .animation(.snappy, value: viewModel.accountChooserReason)
+            .animation(.snappy, value: viewModel.accountSwitchNotice)
             // Keep the floor low enough for Split View tiles and forced frames:
             // when macOS sizes the window below the SwiftUI minimum, content
             // pins at that minimum and the trailing edge (header avatar, the

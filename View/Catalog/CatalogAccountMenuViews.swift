@@ -51,6 +51,9 @@ struct CatalogAccountDropdownPanel: View {
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
     @State private var pendingForget: LoginAccount?
+    /// Read when the menu opens, so the checkmark is the stored preference rather than a value the
+    /// menu captured the first time it was ever drawn.
+    @State private var asksWhichAccountOnStartup = OPNAccountPreferences.asksWhichAccountOnStartup
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -73,6 +76,32 @@ struct CatalogAccountDropdownPanel: View {
             }
             .padding(.horizontal, OPNDesign.Spacing.contentVertical(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
+
+            VStack(alignment: .leading, spacing: 0) {
+                CatalogAccountDropdownRow(
+                    title: "Switch account…",
+                    subtitle: "Browse with another saved account",
+                    systemImage: "arrow.left.arrow.right",
+                    isActive: false,
+                    role: nil
+                ) {
+                    isPresented = false
+                    viewModel.onPresentAccountChooser()
+                }
+                // A setting rather than an action, and the checkmark is the whole of its state.
+                CatalogAccountDropdownRow(
+                    title: "Ask which account on startup",
+                    subtitle: nil,
+                    systemImage: asksWhichAccountOnStartup ? "checkmark.square.fill" : "square",
+                    isActive: asksWhichAccountOnStartup,
+                    role: nil
+                ) {
+                    asksWhichAccountOnStartup.toggle()
+                    OPNAccountPreferences.asksWhichAccountOnStartup = asksWhichAccountOnStartup
+                }
+            }
+            .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
+            .padding(.bottom, OPNDesign.Spacing.xSmall(scale: uiScale))
 
             CatalogAccountDropdownRow(
                 title: "Manage Account",

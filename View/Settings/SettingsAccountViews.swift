@@ -7,6 +7,9 @@ struct AccountSettingsPage: View {
     @Environment(\.opnUIScale) private var uiScale
     @State private var revealSensitive = false
     @State private var copiedKey = ""
+    /// Mirrors the stored preference so the toggle reflects the change it just made. The profile
+    /// menu writes the same key, and both read it fresh, so the two controls cannot disagree.
+    @State private var asksWhichAccountOnStartup = OPNAccountPreferences.asksWhichAccountOnStartup
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
@@ -56,6 +59,8 @@ struct AccountSettingsPage: View {
                 .settingsSection("profile")
             sessionCard
                 .settingsSection("session")
+            startupCard
+                .settingsSection("startup")
 
             SettingsCard(title: "Playtime Statistics", uiScale: uiScale) {
                 if viewModel.playtimeStatistics.sessionCount == 0 {
@@ -114,6 +119,33 @@ struct AccountSettingsPage: View {
             AboutDetailRow(label: "Membership Usage", value: viewModel.subscriptionStatus.usageText, copyValue: viewModel.subscriptionStatus.usageText, copiedKey: $copiedKey, uiScale: uiScale)
             SettingsDivider(uiScale: uiScale)
             AboutDetailRow(label: "Last Login", value: dateText(viewModel.account.lastLoginAt), copyValue: dateText(viewModel.account.lastLoginAt), copiedKey: $copiedKey, uiScale: uiScale)
+        }
+    }
+
+    private var startupCard: some View {
+        SettingsCard(title: "Startup", uiScale: uiScale) {
+            SettingsToggleRow(
+                title: "Ask Which Account on Startup",
+                subtitle: "Show the saved-account chooser when OpenNOW launches. Off, OpenNOW opens with the account you used last. With one saved account there is nothing to choose, so the chooser stays out of the way either way.",
+                isOn: asksWhichAccountOnStartup,
+                uiScale: uiScale
+            ) { newValue in
+                asksWhichAccountOnStartup = newValue
+                OPNAccountPreferences.asksWhichAccountOnStartup = newValue
+            }
+            SettingsDivider(uiScale: uiScale)
+            HStack(alignment: .center, spacing: 18 * uiScale) {
+                SettingsRowTitle(
+                    title: "Browse with another account",
+                    isNew: false,
+                    help: "Opens the saved-account chooser. Switching changes what OpenNOW browses; a game that is already running keeps using the account that started it.",
+                    uiScale: uiScale
+                )
+                Spacer()
+                SettingsActionButton(title: "SWITCH ACCOUNT…", tone: .secondary, uiScale: uiScale) {
+                    viewModel.onPresentAccountChooser()
+                }
+            }
         }
     }
 
