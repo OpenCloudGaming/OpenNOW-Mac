@@ -9,7 +9,7 @@ struct CatalogHeroRemoteImage: View {
     let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL?
     let contentMode: ContentMode
-    /// Required rather than defaulted, and passed from `CatalogMarqueeHeroArtwork`: this view used to
+    /// Required rather than defaulted, and passed from `CatalogMarqueeArtwork`: this view used to
     /// inherit the cache's 3840 default, so it and the launch prefetch disagreed about the rung for
     /// the same URL and whichever ran first decided the hero's decode for the session.
     let maxPixelSize: CGFloat

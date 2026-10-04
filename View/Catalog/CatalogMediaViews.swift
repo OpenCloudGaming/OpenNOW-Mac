@@ -9,7 +9,9 @@ struct CatalogRemoteImage: View {
     let url: URL?
     let contentMode: ContentMode
     var fallbackIconOffsetX: CGFloat = 0
-    var maxPixelSize: CGFloat = 1920 * 2
+    /// Required, not defaulted: the rung is a property of the surface this image is drawn into, and
+    /// a default here was what let a 58pt badge decode at banner size without saying so.
+    let maxPixelSize: CGFloat
 
     var body: some View {
         CatalogCachedImageView(url: url, contentMode: contentMode, maxPixelSize: maxPixelSize, placeholder: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX, isLoading: true), failure: CatalogImageFallback(iconOffsetX: fallbackIconOffsetX))
@@ -20,7 +22,8 @@ struct CatalogCachedImageView<Placeholder: View, Failure: View>: View {
     let imageCache: any CatalogImageServing = CatalogImageCache.shared
     let url: URL?
     let contentMode: ContentMode
-    var maxPixelSize: CGFloat = 1920 * 2
+    /// Required, not defaulted: see `CatalogRemoteImage`.
+    let maxPixelSize: CGFloat
     let placeholder: Placeholder
     let failure: Failure
 
@@ -343,6 +346,29 @@ enum CatalogArtworkResolution {
         let required = Int((renderedWidth * max(displayScale, 1)).rounded(.up))
         return steps.first { $0 >= required } ?? maximumStep
     }
+
+    /// The decode rung for artwork drawn at `pointSize` - the longest edge the view occupies in
+    /// interface-scale points. One source pixel per device pixel, so a surface that scales with
+    /// Interface Scale gets a rung that scales with it too.
+    ///
+    /// `pixelWidth` rounds up to the CDN's 1600 ladder because a full-bleed band is worth a step of
+    /// headroom; a small surface is not, and rounding a 76pt badge up to 1600 is the waste this
+    /// exists to remove.
+    static func decodeRung(forPointSize pointSize: CGFloat, displayScale: CGFloat) -> CGFloat {
+        max(1, (pointSize * max(displayScale, 1)).rounded(.up))
+    }
+}
+
+/// The store and subscription icons are served as `image/svg+xml`, so the rung - not the source -
+/// decides their raster size. The memory cache is keyed by URL rather than by rung, and one icon is
+/// drawn at 14-20pt in the store picker and at 42pt in Settings, so every surface asks for the
+/// largest surface's rung: a per-surface rung would let whichever decoded first decide for the rest.
+enum CatalogStoreIconArtwork {
+    static let maximumPointSize: CGFloat = 42
+
+    static func decodeRung(scale: CGFloat, displayScale: CGFloat) -> CGFloat {
+        CatalogArtworkResolution.decodeRung(forPointSize: maximumPointSize * scale, displayScale: displayScale)
+    }
 }
 
 struct FlowLayout: Layout {
@@ -395,11 +421,26 @@ struct CatalogRatingBadge: View {
     let game: OPNCatalogGameObject
     let shortRating: String
 
+    @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.displayScale) private var displayScale
+
+    private static let baseWidth: CGFloat = 58
+    private static let baseHeight: CGFloat = 76
+
     var body: some View {
         if let url = URL(string: game.ratingImageUrl), !game.ratingImageUrl.isEmpty {
-            CatalogCachedImageView(url: url, contentMode: .fit, placeholder: fallbackBadge, failure: fallbackBadge)
-                .frame(width: 58, height: 76)
-                .background(.white)
+            // The rating endpoint serves an SVG, and the vector path scales the raster up to the rung
+            // (`rasterizedVectorImage`, capped at 8x), so the rung is the whole cost here: the shared
+            // 3840 default bought a ~3.3MB raster for a badge drawn at 58 x 76pt.
+            CatalogCachedImageView(
+                url: url,
+                contentMode: .fit,
+                maxPixelSize: CatalogArtworkResolution.decodeRung(forPointSize: Self.baseHeight * uiScale, displayScale: displayScale),
+                placeholder: fallbackBadge,
+                failure: fallbackBadge
+            )
+            .frame(width: Self.baseWidth * uiScale, height: Self.baseHeight * uiScale)
+            .background(.white)
         } else {
             fallbackBadge
         }
@@ -408,26 +449,26 @@ struct CatalogRatingBadge: View {
     private var fallbackBadge: some View {
         VStack(spacing: 0) {
             Text(game.ratingLabel.uppercased())
-                .font(.uiSans(size: game.ratingLabel.count > 8 ? 7 : 8, weight: .black))
+                .catalogFont(size: game.ratingLabel.count > 8 ? 7 : 8, weight: .black)
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 4)
+                .padding(.top, 4 * uiScale)
             Spacer(minLength: 0)
             Text(shortRating)
-                .font(.system(size: shortRating.count > 2 ? 24 : 33, weight: .black, design: .default))
+                .font(.system(size: (shortRating.count > 2 ? 24 : 33) * uiScale, weight: .black, design: .default))
                 .foregroundStyle(.black)
                 .minimumScaleFactor(0.65)
             Spacer(minLength: 0)
             Text(game.ratingSystemName.isEmpty ? "CONTENT RATED" : "CONTENT RATED BY")
-                .font(.uiSans(size: 5.5, weight: .black))
+                .catalogFont(size: 5.5, weight: .black)
                 .foregroundStyle(.black)
                 .lineLimit(1)
             Text(game.ratingSystemName.isEmpty ? "" : game.ratingSystemName.uppercased())
-                .font(.uiSans(size: 9, weight: .black))
+                .catalogFont(size: 9, weight: .black)
                 .foregroundStyle(.black)
-                .padding(.bottom, 4)
+                .padding(.bottom, 4 * uiScale)
         }
-        .frame(width: 58, height: 76)
+        .frame(width: Self.baseWidth * uiScale, height: Self.baseHeight * uiScale)
         .background(.white)
         .overlay { Rectangle().stroke(.black, lineWidth: 2) }
     }

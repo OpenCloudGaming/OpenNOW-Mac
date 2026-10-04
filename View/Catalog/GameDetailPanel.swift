@@ -159,7 +159,13 @@ struct GameDetailPanel: View {
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth) {
-                        CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: EmptyView(), failure: EmptyView())
+                        CatalogCachedImageView(
+                            url: logoURL,
+                            contentMode: .fit,
+                            maxPixelSize: CGFloat(CatalogLogoArtwork.requestWidth),
+                            placeholder: EmptyView(),
+                            failure: EmptyView()
+                        )
                         .frame(width: 160, height: 70, alignment: .bottomTrailing)
                         .padding(.trailing, 42)
                         .padding(.bottom, 28)

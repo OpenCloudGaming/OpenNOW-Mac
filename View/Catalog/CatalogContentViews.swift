@@ -260,7 +260,7 @@ struct CatalogContentView: View {
         var seen = Set<String>()
         for offset in 1...min(2, games.count - 1) {
             let game = games[(index + offset) % games.count]
-            appendHeroPrefetchURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeHeroArtwork.requestWidth, urls: &heroURLs, seen: &seen)
+            appendHeroPrefetchURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeArtwork.requestWidth, urls: &heroURLs, seen: &seen)
             appendHeroPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &wordmarkURLs, seen: &seen)
         }
         guard !heroURLs.isEmpty || !wordmarkURLs.isEmpty else { return }
@@ -379,9 +379,9 @@ struct CatalogHeroView: View {
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
                     CatalogHeroRemoteImage(
-                        url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeHeroArtwork.requestWidth),
+                        url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeArtwork.requestWidth),
                         contentMode: .fill,
-                        maxPixelSize: CatalogMarqueeHeroArtwork.decodeRung
+                        maxPixelSize: CatalogMarqueeArtwork.decodePixelSize
                     ) { color in
                         scrimColor = color
                     }
@@ -466,8 +466,14 @@ struct CatalogHeroTitleView: View {
 
     var body: some View {
         if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth) {
-            CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: fallbackTitle.opacity(0), failure: fallbackTitle)
-                .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
+            CatalogCachedImageView(
+                url: logoURL,
+                contentMode: .fit,
+                maxPixelSize: CGFloat(CatalogLogoArtwork.requestWidth),
+                placeholder: fallbackTitle.opacity(0),
+                failure: fallbackTitle
+            )
+            .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
         } else {
             fallbackTitle
         }
