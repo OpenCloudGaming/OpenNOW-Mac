@@ -15,53 +15,20 @@
 
 import SwiftUI
 
-/// The banner for a stream that is live elsewhere in the app.
-///
-/// END routes through `StreamSessionLifecycle`, the same registry the menu bar's End Session and the
-/// PiP control strip use, so all three tear down exactly the same thing.
+/// The banner for a stream that is live elsewhere in the app. END goes through
+/// `StreamSessionLifecycle`, like the menu bar's End Session and the PiP control strip.
 struct VendorRunningStreamHomeBanner: View {
     let title: String
     var availableWidth: CGFloat = 0
     let onFocus: () -> Void
     let onEnd: () -> Void
 
-    @Environment(\.opnUIScale) private var uiScale
-
     var body: some View {
-        HStack(spacing: 0) {
-            Circle()
-                .fill(OPNDesign.accent)
-                .frame(width: 8 * uiScale, height: 8 * uiScale)
-                .padding(.trailing, 10 * uiScale)
-
-            VStack(alignment: .leading, spacing: 2 * uiScale) {
-                Text("STREAM RUNNING")
-                    .catalogFont(size: 10, weight: .bold)
-                    .foregroundStyle(OPNDesign.accentInk)
-                    .tracking(1.2)
-                Text(title)
-                    .catalogFont(size: 14, weight: .bold)
-                    .foregroundStyle(OPNDesign.Text.primary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 16 * uiScale)
-
-            HStack(spacing: 8 * uiScale) {
-                Button("FOCUS") { onFocus() }
-                    .buttonStyle(VendorActiveSessionBannerButtonStyle(primary: true))
-                Button("END") { onEnd() }
-                    .buttonStyle(VendorActiveSessionBannerButtonStyle(primary: false))
-            }
-        }
-        .padding(.horizontal, CatalogVendorLayout.sectionHeaderMargin(scale: uiScale))
-        .padding(.vertical, 10 * uiScale)
-        .frame(maxWidth: availableWidth > 0 ? availableWidth : .infinity, alignment: .leading)
-        .background(OPNDesign.Surface.chrome)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(OPNDesign.Stroke.subtle)
-                .frame(height: 1)
+        VendorStatusBannerChrome(eyebrow: "STREAM RUNNING", title: title, availableWidth: availableWidth) {
+            Button("FOCUS") { onFocus() }
+                .buttonStyle(VendorActiveSessionBannerButtonStyle(primary: true))
+            Button("END") { onEnd() }
+                .buttonStyle(VendorActiveSessionBannerButtonStyle(primary: false))
         }
     }
 }

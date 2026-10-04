@@ -60,7 +60,6 @@ struct CatalogContentView: View {
                                 VendorActiveSessionHomeBanner(
                                     title: viewModel.activeHomeSessionTitle,
                                     isResumable: session.isResumable,
-                                    serverIp: session.serverIp,
                                     availableWidth: viewport.size.width,
                                     onResume: { viewModel.resumeActiveHomeSession() },
                                     onEnd: { viewModel.endActiveHomeSession() }
