@@ -17,6 +17,8 @@ enum OPNGameSessionPhase: Equatable, Sendable {
 @Observable
 final class OPNGameSession {
     let id: UUID
+    /// When the intent was accepted, so a refusal can say how long the slot has been held.
+    let startedAt = Date()
     /// Held as the live models rather than as copies of their tokens, so a refresh the account
     /// performs mid-session is what the next request uses.
     let account: LoginAccount

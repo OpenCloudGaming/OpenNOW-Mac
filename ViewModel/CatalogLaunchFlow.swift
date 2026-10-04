@@ -172,10 +172,11 @@ extension CatalogViewModel {
     }
 
     /// A second launch is refused outright rather than ending the game already running. The message
-    /// has to say whose it is and whether it is running or still starting: only a running game has an
-    /// END control, and it lives on the owner's page.
+    /// has to say whose it is and whether it is running or still starting, and where the control that
+    /// frees it is: only a running game has an END, and only on the owner's page.
     private var occupiedSessionMessage: String {
         guard let owned = sessionRegistry.current else { return "" }
+        OPNLog.warning(.launch, "Launch refused: session=\(owned.id) owner=\(owned.accountID) phase=\(owned.phase) running=\(owned.isRunning) heldFor=\(Int(Date().timeIntervalSince(owned.startedAt)))s")
         let owner = owned.account.displayName
         let isOwnedByThisAccount = owned.accountID == account.storedAccountID
         guard owned.isRunning else {
@@ -184,8 +185,8 @@ extension CatalogViewModel {
                 : "\(owner) is already starting a game. Switch to \(owner) to finish or cancel it."
         }
         return isOwnedByThisAccount
-            ? "This account is already running a game. End that session before starting another."
-            : "\(owner) is already running a game. End that session before starting another."
+            ? "This account is already running a game. End it from the banner at the top of the page before starting another."
+            : "\(owner) is already running a game. Switch to \(owner) to end it before starting another."
     }
 
     func cancelVendorLaunch() {

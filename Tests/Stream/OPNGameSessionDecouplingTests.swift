@@ -109,12 +109,12 @@ private let runningConfiguration = StreamLaunchConfiguration(
     #expect(fixture.registry.current === game)
     #expect(game.configuration == runningConfiguration)
     #expect(catalogB.activeStreamConfiguration == nil)
-    #expect(catalogB.launchErrorMessage == "Account A is already running a game. End that session before starting another.")
+    #expect(catalogB.launchErrorMessage == "Account A is already running a game. Switch to Account A to end it before starting another.")
 
     // The same account launching again is refused too: the running game is not replaced by itself.
     fixture.catalogA.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-2", title: "Manor Lords"))
     #expect(fixture.registry.current === game)
-    #expect(fixture.catalogA.launchErrorMessage == "This account is already running a game. End that session before starting another.")
+    #expect(fixture.catalogA.launchErrorMessage == "This account is already running a game. End it from the banner at the top of the page before starting another.")
 }
 
 /// A launch that has not produced a stream yet blocks the slot too, and the refusal has to say so:
