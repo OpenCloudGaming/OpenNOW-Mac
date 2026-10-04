@@ -36,7 +36,7 @@ import Testing
     /// ImageRenderer draws the inset even though it skips `ScrollView` content, and the layout that
     /// places that inset still runs against the content's width - which is the behaviour under test.
     private func renderRunningStreamPage() throws -> NSBitmapImageRep {
-        let page = CatalogContentView(viewModel: makeRunningStreamViewModel(), isActive: true)
+        let page = CatalogContentView(viewModel: try makeRunningStreamViewModel(), isActive: true)
             .frame(width: Self.pageSize.width, height: Self.pageSize.height)
         let renderer = ImageRenderer(content: page)
         renderer.scale = 1
@@ -46,13 +46,19 @@ import Testing
 
     /// A running stream over a page whose only rail is still loading: a plain row of six fixed-width
     /// tiles, which is what makes the scroll content wider than the page.
-    private func makeRunningStreamViewModel() -> CatalogViewModel {
+    private func makeRunningStreamViewModel() throws -> CatalogViewModel {
         OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-        let viewModel = makeCatalogViewModelForTesting()
+        // Its own registry: the running stream is owned by the application now, and a shared one
+        // would leak this session into every other test in the process.
+        let viewModel = makeCatalogViewModelForTesting(
+            sessionRegistry: OPNGameSessionRegistry(),
+            sessionResultStore: OPNGameSessionResultStore()
+        )
         viewModel.cachedCatalogSections = [
             CatalogSectionModel(id: "loading", title: "Loading", games: [], kind: .catalog, isPlaceholder: true)
         ]
-        viewModel.activeStreamConfiguration = StreamLaunchConfiguration(
+        let session = try #require(makeOwnedGameSessionForTesting(viewModel))
+        session.configuration = StreamLaunchConfiguration(
             title: "The Witcher 3: Wild Hunt - Remastered",
             applicationID: "app-1",
             accessToken: "token",
