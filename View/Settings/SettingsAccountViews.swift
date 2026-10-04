@@ -9,7 +9,7 @@ struct AccountSettingsPage: View {
     @State private var copiedKey = ""
     /// Mirrors the stored preference so the toggle reflects the change it just made. The profile
     /// menu writes the same key, and both read it fresh, so the two controls cannot disagree.
-    @State private var asksWhichAccountOnStartup = OPNAccountPreferences.asksWhichAccountOnStartup
+    @State private var shouldAskOnStartup = OPNAccountPreferences.shouldAskWhichAccountOnStartup
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16 * uiScale) {
@@ -127,11 +127,11 @@ struct AccountSettingsPage: View {
             SettingsToggleRow(
                 title: "Ask Which Account on Startup",
                 subtitle: "Show the saved-account chooser when OpenNOW launches. Off, OpenNOW opens with the account you used last. With one saved account there is nothing to choose, so the chooser stays out of the way either way.",
-                isOn: asksWhichAccountOnStartup,
+                isOn: shouldAskOnStartup,
                 uiScale: uiScale
             ) { newValue in
-                asksWhichAccountOnStartup = newValue
-                OPNAccountPreferences.asksWhichAccountOnStartup = newValue
+                shouldAskOnStartup = newValue
+                OPNAccountPreferences.shouldAskWhichAccountOnStartup = newValue
             }
             SettingsDivider(uiScale: uiScale)
             HStack(alignment: .center, spacing: 18 * uiScale) {

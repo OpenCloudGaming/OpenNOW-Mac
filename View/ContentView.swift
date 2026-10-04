@@ -67,18 +67,15 @@ struct ContentView: View {
                 .id(themeIdentity)
                 .zIndex(95)
 
-            // Above the catalog and the login wall, because the question is which of them should be
-            // on screen; below the splash, so a fresh launch finishes its animation first. Cancelling
-            // picks nothing: whatever was already selected stays selected.
+            // Above the catalog and the login wall, below the startup splash.
             if let reason = viewModel.accountChooserReason {
                 AccountChooserOverlay(
                     accounts: accounts,
                     activeEmail: viewModel.activeAccount?.email ?? "",
                     signedOutAccountEmails: viewModel.signedOutAccountEmails,
                     reason: reason,
-                    // `activateAccount`, not the login wall's `activateSavedAccount`: this panel can
-                    // be up over the catalog, and a signed-out choice has to put the wall in front of
-                    // the reader rather than start a browser sign-in behind it.
+                    // Not `activateSavedAccount`: a signed-out choice here has to raise the login
+                    // wall, because this panel can be up over the catalog.
                     onChoose: viewModel.activateAccount,
                     onAddAccount: viewModel.beginAddAccount,
                     onCancel: viewModel.dismissAccountChooser

@@ -33,12 +33,11 @@ final class LoginViewModel: ObservableObject {
     /// hit an account with no saved session, or another account is being added. Neither touches
     /// the session that is signed in — cancelling returns straight to it.
     @Published private(set) var signInRequest: LoginSignInRequest?
-    /// The saved-account chooser, raised either by the startup preference or by "Switch account…".
-    /// One value and one panel, because both are the same question asked at different moments.
-    /// Driven by the operations in `LoginAccountChooser.swift`.
+    /// The saved-account chooser, raised by the startup preference or by "Switch account…". Driven by
+    /// the operations in `LoginAccountChooser.swift`.
     @Published var accountChooserReason: AccountChooserReason?
-    /// Shown after a switch that left another account's game running, so the reader can tell the
-    /// game survived it. Cleared by its own timeout or by the reader dismissing it.
+    /// Shown after a switch that left another account's game running, so the reader can tell the game
+    /// survived it. Cleared by its own timeout or by the reader dismissing it.
     @Published var accountSwitchNotice: String?
 
     let authService: any LoginAuthServing
@@ -117,7 +116,7 @@ final class LoginViewModel: ObservableObject {
         if activeSession == nil { refreshLoginProviders() }
         // Last, and only when the reader asked to be asked: nothing above this line changes because
         // the chooser is going to be shown.
-        presentAccountChooserForStartupIfNeeded()
+        presentStartupAccountChooser()
         OPNLog.info(.auth, "Login bootstrap completed hasActiveSession=\(activeSession != nil) hasPendingOAuth=\(hasPendingOAuth) chooser=\(accountChooserReason != nil)")
     }
 
@@ -346,8 +345,7 @@ final class LoginViewModel: ObservableObject {
     }
 
     /// Gives every stored row its stable identity, and upgrades a `localOnly` one the first time a
-    /// sign-in has supplied the vendor subject. An upgrade carries any session ownership the old key
-    /// held, or the game would look like it belonged to an account that no longer resolves.
+    /// sign-in supplies the subject, carrying any ownership the old key held.
     func backfillAccountIdentities() {
         guard modelContext != nil else { return }
         var changed = false
@@ -370,9 +368,8 @@ final class LoginViewModel: ObservableObject {
 
     func forgetAccount(_ account: LoginAccount) {
         guard let modelContext else { return }
-        // Refused before anything is read or deleted: removing the row purges the keychain copy the
-        // running game is authenticating with, and the row itself is what a later sign-in would
-        // re-key ownership against.
+        // Before anything is read or deleted: removing the row purges the keychain copy the running
+        // game authenticates with.
         if let reason = OPNAccountMutationGuard.blockReason(for: account.resolveStableAccountID(), registry: sessionRegistry) {
             validationMessage = reason
             OPNLog.warning(.auth, "Account removal refused because the account owns an active game session account=\(account.email)")

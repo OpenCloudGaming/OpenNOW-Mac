@@ -1,8 +1,5 @@
 //  Sign-out and account removal are refused while the account owns a game this application started.
-//
-//  These are the mutations themselves, not the controls that reach them: the catalog dropdown, the
-//  controller catalog and the menu bar all end up here, and the point of the guard is that a path
-//  nobody thought about still cannot pull the credentials out from under a running session.
+//  These are the mutations themselves, not the controls that reach them.
 
 import Foundation
 import SwiftData

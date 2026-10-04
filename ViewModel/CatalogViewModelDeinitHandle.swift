@@ -8,11 +8,8 @@ final class CatalogViewModelDeinitHandle: @unchecked Sendable {
     var patchingPollTask: Task<Void, Never>?
     var collectionsStoreObserver: NSObjectProtocol?
     var homeArrangementObserver: NSObjectProtocol?
-    /// The finished-session results this catalog is waiting on, tagged for its account.
-    ///
-    /// Deliberately the only thing a disappearing catalog releases. A game session outlives the
-    /// catalog that started it - that is what lets an accepted launch and a running stream survive a
-    /// browsing switch - so nothing here may end one.
+    /// The finished-session results this catalog is waiting on, tagged for its account. The only
+    /// thing a disappearing catalog releases: nothing here may end a session that outlives it.
     var sessionResultObserver: NSObjectProtocol?
 
     deinit {

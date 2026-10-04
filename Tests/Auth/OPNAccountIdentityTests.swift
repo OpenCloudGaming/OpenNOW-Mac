@@ -2,10 +2,9 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// The identity is the key ownership is recorded under, so the two ways it can be wrong are the two
-/// things worth asserting: two accounts that share an attribute must not collide, and a record that
-/// never stored the vendor subject must not claim to be the account that did.
-@Test func verifiedIdentityIsTheProviderAndTheVendorSubject() throws {
+/// The identity is the key ownership is recorded under, so the two ways it can be wrong are what
+/// these assert: shared attributes must not collide, and an unverified record must not claim to be.
+@Test func aVerifiedIdentityPairsTheProviderWithItsVendorSubject() throws {
     let identity = try #require(OPNAccountID(providerIdpId: "NVIDIA", vendorSubject: "User-1"))
 
     #expect(identity.basis == .vendorSubject)

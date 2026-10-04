@@ -74,11 +74,8 @@ func makeLoginAccountForTesting(
     )
 }
 
-/// Occupies the registry with a session owned by the model's account, without starting a launch.
-///
-/// The launch itself would reach the vendor; the tests that use this drive the session's own state
-/// transitions (`startPreparedStream`, `updateProgress`, `endStream`) instead, which is exactly the
-/// surface the catalog and the stream window read.
+/// Occupies the registry with a session owned by the model's account, without starting a launch: the
+/// tests drive the session's own state transitions instead, which is what the views read.
 @MainActor
 func makeOwnedGameSessionForTesting(_ model: CatalogViewModel) -> OPNGameSession? {
     model.sessionRegistry.begin(
@@ -93,8 +90,7 @@ func makeOwnedGameSessionForTesting(_ model: CatalogViewModel) -> OPNGameSession
 }
 
 /// A finished-session result for the model's own account, as the application-owned session would
-/// publish it. The catalog's adoption of this is where history, playtime and the summary are
-/// written, so that is what these tests exercise.
+/// publish it. Adopting it is where the catalog writes history, playtime and the summary.
 @MainActor
 func makeSessionResultForTesting(
     accountID: OPNAccountID,

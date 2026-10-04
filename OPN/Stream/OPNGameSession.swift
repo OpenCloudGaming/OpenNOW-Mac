@@ -1,15 +1,5 @@
-//  One local game session, owned by the application rather than by the catalog that started it.
-//
-//  A catalog is remounted whenever the selected browsing account changes. Everything that has to
-//  survive that remount therefore lives here and not on a catalog view model: the accepted launch
-//  intent, the active-session check, the queue and allocation that follow it, the required ad, the
-//  stream window, and the credentials the session runs on. The owner's catalog observes this object;
-//  it never owns it, and it can be gone while the session runs on.
-//
-//  Ownership is frozen at the launch intent, before the seat is even checked, because that is the
-//  last moment at which the owner is unambiguous. It is released only where the local session no
-//  longer needs the account's credentials - which, on the normal end path, is after the vendor-side
-//  stop and the end-of-session report have both completed.
+//  One local game session, owned by the application rather than by the catalog that started it, so a
+//  browsing switch cannot replace the window, the credentials or the provider route it runs on.
 
 import Foundation
 import Observation
@@ -27,13 +17,10 @@ enum OPNGameSessionPhase: Equatable, Sendable {
 @Observable
 final class OPNGameSession {
     let id: UUID
-    /// The owning account and its stored session. Held as the live models rather than as a copy of
-    /// their tokens, so a refresh the account performs mid-session is what the next request uses
-    /// instead of a token frozen at launch.
+    /// Held as the live models rather than as copies of their tokens, so a refresh the account
+    /// performs mid-session is what the next request uses.
     let account: LoginAccount
     let session: LoginSession
-    /// The stream settings this session was launched with, snapshotted so the window it opens frames
-    /// itself from the launch rather than from whatever the browsing catalog has loaded since.
     let streamProfile: OPNStreamPreferenceProfile
 
     private(set) var accountID: OPNAccountID
@@ -59,16 +46,15 @@ final class OPNGameSession {
     private var replacementConfiguration: StreamLaunchConfiguration?
     private var pendingGame: OPNCatalogGameObject?
     private var pendingVariantIndex = -1
-    /// The catalog game the intent was accepted for, kept for the whole session. It is what the
-    /// result is tagged with, and what the vendor-side titles are resolved against.
+    /// The catalog game the intent was accepted for, kept for the whole session: it is what the
+    /// result is tagged with and what vendor-side titles resolve against.
     private var launchedGame: OPNCatalogGameObject?
     private var adContinuation: CheckedContinuation<Int, Error>?
     private var progressGeneration = 0
     private var activeDiscordPresence: DiscordGamePresence?
-    /// One terminal outcome per session, whichever path reaches it first: a stream that ended, a
-    /// launch that was cancelled, or a launch that failed. A late transport report for a session
-    /// that already finished must not publish a second result or reopen the admission slot.
-    private var hasFinished = false
+    /// One terminal outcome per session, whichever path reaches it first, so a late transport report
+    /// cannot publish a second result or reopen the admission slot.
+    private var isFinished = false
 
     init(
         id: UUID = UUID(),
@@ -96,8 +82,7 @@ final class OPNGameSession {
 
     // MARK: - Identity
 
-    /// The account whose history, playtime and summary this session's results belong to. Derived
-    /// from the owner, never from the catalog's current selection.
+    /// The account whose history, playtime and summary this session's results belong to.
     var playtimeAccountIdentifier: String {
         Self.playtimeAccountIdentifier(account: account, session: session)
     }
@@ -105,7 +90,7 @@ final class OPNGameSession {
     static func playtimeAccountIdentifier(account: LoginAccount, session: LoginSession) -> String {
         for value in [session.userId, account.userId, account.externalUserId, account.email] {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed.lowercased() }
+            guard trimmed.isEmpty else { return trimmed.lowercased() }
         }
         return "default"
     }
@@ -118,7 +103,7 @@ final class OPNGameSession {
 
     var title: String {
         let configurationTitle = configuration?.title ?? ""
-        if !configurationTitle.isEmpty { return configurationTitle }
+        guard configurationTitle.isEmpty else { return configurationTitle }
         let flowTitle = launchFlowTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         return flowTitle.isEmpty ? "GeForce NOW" : flowTitle
     }
@@ -131,8 +116,7 @@ final class OPNGameSession {
 
     var canResumeActiveSession: Bool { resumeConfiguration != nil }
 
-    /// The token the launch and every request after it authenticate with. Read through the owner's
-    /// stored session so a refresh that lands mid-launch is picked up.
+    /// Read through the owner's stored session, so a refresh that lands mid-launch is picked up.
     private var launchToken: String {
         session.idToken.isEmpty ? session.accessToken : session.idToken
     }
@@ -166,15 +150,11 @@ final class OPNGameSession {
         continueLaunch()
     }
 
-    /// Resumes a session the vendor already allocated - a seat this Mac paused, or one another
-    /// device is holding. There is no launch plan to resolve: the resume descriptor is the plan.
+    /// Resumes a session the vendor already allocated: there is no launch plan to resolve.
     func beginResume(title: String, applicationID: String, sessionID: String, server: String, game: OPNCatalogGameObject?) {
-        guard !hasFinished else { return }
+        guard !isFinished else { return }
         let resumeTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Current Stream" : title
         OPNLog.info(.launch, "Session \(id) resuming detected session appId=\(applicationID) accountID=\(accountID)")
-        // Carried so the per-game controller mapping is keyed on the catalog identity rather than
-        // the numeric launch app id, and so the finished session lands in the owner's recent list
-        // under the game's own identity.
         pendingGame = game
         launchedGame = game
         launchFlowTitle = resumeTitle
@@ -214,22 +194,33 @@ final class OPNGameSession {
                 self.failLaunch(message.isEmpty ? "Unable to prepare GeForce NOW launch." : message)
                 return
             }
-            switch plan {
-            case .ready(let configuration):
-                OPNLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
-                self.startPreparedStream(Self.mediaConfiguration(from: configuration, membershipTier: self.account.membershipTier))
-            case .activeSession(let active, let resume, let replacement):
-                OPNLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
-                let activeTitle = self.title(forActiveSession: active)
-                self.activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, streamingBaseUrl: active.streamingBaseUrl, title: activeTitle)
-                self.resumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: self.account.membershipTier)
-                self.replacementConfiguration = Self.mediaConfiguration(from: replacement, membershipTier: self.account.membershipTier)
-                self.phase = .activeSessionPrompt
-                self.launchFlowMessage = !resume.resumeSessionId.isEmpty && !resume.resumeServer.isEmpty
-                    ? "A GeForce NOW session is already running. Resume it or end it before launching \(self.launchFlowTitle)."
-                    : "GeForce NOW reports a stale active session that cannot be resumed. End it before launching \(self.launchFlowTitle)."
-            }
+            self.applyLaunchPlan(plan)
         }
+    }
+
+    private func applyLaunchPlan(_ plan: OPNGameLaunchPlan) {
+        switch plan {
+        case .ready(let configuration):
+            OPNLog.info(.launch, "Launch plan ready appId=\(configuration.appId) title=\(configuration.title)")
+            startPreparedStream(Self.mediaConfiguration(from: configuration, membershipTier: account.membershipTier))
+        case .activeSession(let active, let resume, let replacement):
+            presentActiveSessionPrompt(active: active, resume: resume, replacement: replacement)
+        }
+    }
+
+    /// The vendor is already holding a session for this account, so the reader has to end it or
+    /// resume it before the game they asked for can start.
+    private func presentActiveSessionPrompt(active: OPNActiveStreamSessionDescriptor, resume: OPNStreamLaunchConfiguration, replacement: OPNStreamLaunchConfiguration) {
+        OPNLog.info(.launch, "Launch plan found active session activeAppId=\(active.appId) replacementAppId=\(replacement.appId) resumeAppId=\(resume.appId)")
+        let activeTitle = title(forActiveSession: active)
+        activeLaunchSession = OPNActiveStreamSessionDescriptor(sessionId: active.id, appId: active.appId, serverIp: active.serverIp, streamingBaseUrl: active.streamingBaseUrl, title: activeTitle)
+        resumeConfiguration = Self.mediaConfiguration(from: resume, titleOverride: activeTitle, membershipTier: account.membershipTier)
+        replacementConfiguration = Self.mediaConfiguration(from: replacement, membershipTier: account.membershipTier)
+        phase = .activeSessionPrompt
+        let isResumable = !resume.resumeSessionId.isEmpty && !resume.resumeServer.isEmpty
+        launchFlowMessage = isResumable
+            ? "A GeForce NOW session is already running. Resume it or end it before launching \(launchFlowTitle)."
+            : "GeForce NOW reports a stale active session that cannot be resumed. End it before launching \(launchFlowTitle)."
     }
 
     func resumeActiveSession() {
@@ -241,7 +232,6 @@ final class OPNGameSession {
     }
 
     /// Ends the session the vendor is already holding, then starts the one the reader asked for.
-    /// Both halves stay on this session's owner.
     func switchToSelectedGame() {
         guard let activeLaunchSession, let replacement = replacementConfiguration else { return }
         phase = .stoppingSession
@@ -258,20 +248,19 @@ final class OPNGameSession {
         }
     }
 
-    /// Abandons an intent that never produced a stream. The slot is freed so the next launch - from
-    /// either account - can be admitted.
+    /// Abandons an intent that never produced a stream, freeing the slot for the next launch.
     func cancelLaunch() {
-        guard !hasFinished else { return }
-        hasFinished = true
+        guard !isFinished else { return }
+        isFinished = true
         clearFlowState()
         registry.end(self)
     }
 
-    /// Abandons a stream the reader cancelled from its own loading screen or window. Nothing is
-    /// recorded for it, but the owner's catalog is told, because it owns the status line.
+    /// Abandons a stream the reader cancelled. Nothing is recorded, but the owner's catalog is told
+    /// because it owns the status line.
     func cancelStreamLaunch() {
-        guard !hasFinished, let finishedConfiguration = configuration else { return }
-        hasFinished = true
+        guard !isFinished, let finishedConfiguration = configuration else { return }
+        isFinished = true
         progressGeneration += 1
         cancelAdPlayback()
         configuration = nil
@@ -280,13 +269,7 @@ final class OPNGameSession {
         isLaunchOverlayVisible = false
         clearFlowState()
         registry.notifySessionDidChange()
-        publish(
-            configuration: finishedConfiguration,
-            success: false,
-            message: "",
-            report: nil,
-            wasCancelled: true
-        )
+        publish(configuration: finishedConfiguration, success: false, message: "", report: nil, wasCancelled: true)
         registry.end(self)
     }
 
@@ -386,8 +369,8 @@ final class OPNGameSession {
     /// The stream ended. History, playtime and the summary are published to the owner rather than
     /// written here, because the owner's catalog is what holds them in memory and on disk.
     func endStream(success: Bool, message: String, report: StreamReport?) {
-        guard !hasFinished else { return }
-        hasFinished = true
+        guard !isFinished else { return }
+        isFinished = true
         let finishedConfiguration = configuration
         progressGeneration += 1
         cancelAdPlayback()
@@ -399,19 +382,13 @@ final class OPNGameSession {
         isLaunchOverlayVisible = false
         clearFlowState()
         registry.notifySessionDidChange()
-        publish(
-            configuration: finishedConfiguration,
-            success: success,
-            message: message,
-            report: report,
-            wasCancelled: false
-        )
+        publish(configuration: finishedConfiguration, success: success, message: message, report: report, wasCancelled: false)
         registry.end(self)
     }
 
     private func failLaunch(_ message: String) {
-        guard !hasFinished else { return }
-        hasFinished = true
+        guard !isFinished else { return }
+        isFinished = true
         clearFlowState()
         publish(configuration: nil, success: false, message: message, report: nil, wasCancelled: false)
         registry.end(self)
@@ -446,12 +423,12 @@ final class OPNGameSession {
 
     private func title(forActiveSession session: OPNActiveStreamSessionDescriptor) -> String {
         let fallback = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard session.appId > 0 else { return fallback.isEmpty ? "Current Stream" : fallback }
-        if let game = launchedGame, Self.game(game, matchesApplicationID: String(session.appId)) {
-            let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !title.isEmpty { return title }
-        }
-        return fallback.isEmpty ? "Current Stream" : fallback
+        let resolvedFallback = fallback.isEmpty ? "Current Stream" : fallback
+        guard session.appId > 0 else { return resolvedFallback }
+        let applicationID = String(session.appId)
+        guard let game = launchedGame, Self.game(game, matchesApplicationID: applicationID) else { return resolvedFallback }
+        let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? resolvedFallback : title
     }
 
     private func discordPresence(for game: OPNCatalogGameObject) -> DiscordGamePresence {
@@ -459,10 +436,10 @@ final class OPNGameSession {
     }
 
     private func discordPresence(for configuration: StreamLaunchConfiguration) -> DiscordGamePresence {
-        if let game = launchedGame, Self.game(game, matchesApplicationID: configuration.applicationID) {
-            return discordPresence(for: game)
+        guard let game = launchedGame, Self.game(game, matchesApplicationID: configuration.applicationID) else {
+            return DiscordGamePresence(title: configuration.title, artworkURL: nil)
         }
-        return DiscordGamePresence(title: configuration.title, artworkURL: nil)
+        return discordPresence(for: game)
     }
 
     // MARK: - Shared launch helpers

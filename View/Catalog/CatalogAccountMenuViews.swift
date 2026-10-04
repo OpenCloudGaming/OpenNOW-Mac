@@ -53,7 +53,7 @@ struct CatalogAccountDropdownPanel: View {
     @State private var pendingForget: LoginAccount?
     /// Read when the menu opens, so the checkmark is the stored preference rather than a value the
     /// menu captured the first time it was ever drawn.
-    @State private var asksWhichAccountOnStartup = OPNAccountPreferences.asksWhichAccountOnStartup
+    @State private var shouldAskOnStartup = OPNAccountPreferences.shouldAskWhichAccountOnStartup
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -92,12 +92,12 @@ struct CatalogAccountDropdownPanel: View {
                 CatalogAccountDropdownRow(
                     title: "Ask which account on startup",
                     subtitle: nil,
-                    systemImage: asksWhichAccountOnStartup ? "checkmark.square.fill" : "square",
-                    isActive: asksWhichAccountOnStartup,
+                    systemImage: shouldAskOnStartup ? "checkmark.square.fill" : "square",
+                    isActive: shouldAskOnStartup,
                     role: nil
                 ) {
-                    asksWhichAccountOnStartup.toggle()
-                    OPNAccountPreferences.asksWhichAccountOnStartup = asksWhichAccountOnStartup
+                    shouldAskOnStartup.toggle()
+                    OPNAccountPreferences.shouldAskWhichAccountOnStartup = shouldAskOnStartup
                 }
             }
             .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
@@ -147,9 +147,8 @@ struct CatalogAccountDropdownPanel: View {
                         // A signed-out account still has a row here, but nothing to restore: say so
                         // rather than let the switch fail with a message no one sees.
                         let needsSignIn = !isActive && signedOutAccountEmails.contains(account.email)
-                        // Switching to another account stays available; ending this account's game
-                        // does not. The guard refuses both mutations centrally, so the row says why
-                        // rather than offering an action that would be refused.
+                        // Switching to another account stays available; ending this account's game does
+                        // not, so the row says why instead of offering an action the guard refuses.
                         let ownsGame = OPNAccountMutationGuard.blockReason(for: account.storedAccountID, registry: viewModel.sessionRegistry) != nil
                         var trailingActions: [CatalogAccountDropdownRowAction] {
                             guard !ownsGame else { return [] }

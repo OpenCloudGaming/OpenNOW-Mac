@@ -1,19 +1,12 @@
-//  Launching a game: the catalog's side of a launch the application owns.
-//
-//  The session itself lives in `OPNGameSession`, at application scope, because a catalog is
-//  remounted whenever the browsing account changes and an accepted launch intent has to survive
-//  that. What stays here is what is genuinely the catalog's: resolving the game the reader asked
-//  for - a shortcut, a menu-bar row, a queued patch - the vendor's already-running session card on
-//  the home page, and the owner-tagged result the session publishes when it finishes.
+//  Launching a game: the catalog's side of a launch the application owns. The session itself lives in
+//  `OPNGameSession`, at application scope, because a catalog is remounted on a browsing switch.
 
 import Foundation
 import Observation
 
 extension CatalogViewModel {
-    /// The session this catalog's account owns, if any.
-    ///
-    /// Nil when nothing is running, and nil when the running game belongs to another account - which
-    /// is what keeps one account's game off another account's page while it keeps running.
+    /// The session this catalog's account owns, if any. Nil when the running game belongs to another
+    /// account, which is what keeps one account's game off another account's page.
     var gameSession: OPNGameSession? {
         guard let accountID = account.storedAccountID else { return nil }
         return sessionRegistry.session(ownedBy: accountID)
@@ -23,12 +16,8 @@ extension CatalogViewModel {
 
     var isLaunchFlowVisible: Bool { launchFlowState != .idle }
 
-    /// A stream is live in its own window right now.
-    ///
-    /// The catalog stays mounted behind that window for the whole session, so this is what tells the
-    /// page a game is running: it drives the running-session banner and the artwork backdrop, which
-    /// are the only things on the page that know. Distinct from `isActiveHomeSessionVisible`, which
-    /// is a *suspended* seat - there is no stream, just a session waiting to be resumed.
+    /// A stream is live in its own window right now, which is what drives the page's running-session
+    /// banner. Distinct from `isActiveHomeSessionVisible`, a suspended seat with no stream.
     var isStreamRunning: Bool { activeStreamConfiguration != nil }
 
     var activeStreamConfiguration: StreamLaunchConfiguration? { gameSession?.configuration }
@@ -151,21 +140,23 @@ extension CatalogViewModel {
         }
     }
 
-    /// Accepts the intent, then hands it to an application-owned session.
-    ///
-    /// Admission is decided here, before the vendor is asked for anything and before any window is
-    /// replaced: a second launch is refused outright rather than ending the game already running.
-    /// From this point on the session, not this catalog, owns the launch - a browsing switch no
-    /// longer abandons it.
+    /// Accepts the intent, then hands it to an application-owned session. The session, not this
+    /// catalog, owns the launch from here, so a browsing switch no longer abandons it.
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
         OPNLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
-        guard account.resolveStableAccountID() != nil else {
-            reportLaunchFailure("This account has no saved identity to launch with. Sign in again.")
-            return
-        }
-        launchMessage = "Preparing \(game.title.isEmpty ? "game" : game.title)..."
         errorMessage = ""
         launchErrorMessage = ""
+        guard let gameSession = beginOwnedSession() else { return }
+        gameSession.begin(game: game, variantIndex: variantIndex)
+    }
+
+    /// Admits an application-owned session for this account, before the vendor is asked for anything
+    /// and before any window is replaced, or reports why it could not.
+    private func beginOwnedSession() -> OPNGameSession? {
+        guard account.resolveStableAccountID() != nil else {
+            reportLaunchFailure("This account has no saved identity to start a game with. Sign in again.")
+            return nil
+        }
         guard let gameSession = sessionRegistry.begin(
             account: account,
             session: session,
@@ -174,15 +165,19 @@ extension CatalogViewModel {
             discordPresence: discordPresence,
             streamProfile: streamProfile
         ) else {
-            let owner = sessionRegistry.current?.account.displayName ?? ""
-            reportLaunchFailure(owner.isEmpty
-                ? "A game is already running. End the current session before starting another."
-                : "\(owner) is already running a game. End the current session before starting another.")
-            launchMessage = ""
-            return
+            reportLaunchFailure(occupiedSessionMessage)
+            return nil
         }
-        launchMessage = ""
-        gameSession.begin(game: game, variantIndex: variantIndex)
+        return gameSession
+    }
+
+    /// A second launch is refused outright rather than ending the game already running.
+    private var occupiedSessionMessage: String {
+        let owner = sessionRegistry.current?.account.displayName ?? ""
+        guard !owner.isEmpty else {
+            return "A game is already running. End the current session before starting another."
+        }
+        return "\(owner) is already running a game. End the current session before starting another."
     }
 
     func cancelVendorLaunch() {
@@ -255,11 +250,16 @@ extension CatalogViewModel {
         guard let session = activeHomeSession, session.isResumable else { return }
         let applicationID = session.appId > 0 ? String(session.appId) : ""
         let title = activeHomeSessionTitle.isEmpty ? "Current Stream" : activeHomeSessionTitle
-        // Cleared only once the resume is admitted, so a refusal leaves the card the reader pressed
-        // on the page instead of silently taking it away.
-        let game = catalogGame(forApplicationID: applicationID)
-        guard beginResume(title: title, applicationID: applicationID, sessionID: session.sessionId, server: session.serverIp, game: game) else { return }
+        // Cleared only once the resume is admitted, so a refusal leaves the card the reader pressed.
+        guard let gameSession = beginOwnedSession() else { return }
         activeHomeSession = nil
+        gameSession.beginResume(
+            title: title,
+            applicationID: applicationID,
+            sessionID: session.sessionId,
+            server: session.serverIp,
+            game: catalogGame(forApplicationID: applicationID)
+        )
     }
 
     /// Resumes a session detected outside the catalog - the menu bar's own row.
@@ -286,36 +286,10 @@ extension CatalogViewModel {
         }
     }
 
-    @discardableResult
-    private func beginResume(title: String, applicationID: String, sessionID: String, server: String, game: OPNCatalogGameObject?) -> Bool {
-        guard account.resolveStableAccountID() != nil else {
-            reportLaunchFailure("This account has no saved identity to resume with. Sign in again.")
-            return false
-        }
-        guard let gameSession = sessionRegistry.begin(
-            account: account,
-            session: session,
-            gameService: gameService,
-            launchBridge: launchBridge,
-            discordPresence: discordPresence,
-            streamProfile: streamProfile
-        ) else {
-            let owner = sessionRegistry.current?.account.displayName ?? ""
-            reportLaunchFailure(owner.isEmpty
-                ? "A game is already running. End the current session before resuming another."
-                : "\(owner) is already running a game. End the current session before resuming another.")
-            return false
-        }
-        gameSession.beginResume(title: title, applicationID: applicationID, sessionID: sessionID, server: server, game: game)
-        return true
-    }
-
     // MARK: - Results
 
     /// Applies a result the application-owned session published, when it belongs to this catalog's
-    /// account. This is the only place a finished session writes history, playtime, the previous
-    /// session summary or the error banner, so a game that ran on account A can never update the
-    /// page account B is looking at.
+    /// account. The only place a finished session writes history, playtime or the summary.
     func applySessionResult(_ result: OPNGameSessionResult) {
         launchMessage = ""
         if !result.wasCancelled, let configuration = result.configuration {

@@ -1,15 +1,5 @@
-//  The saved-account chooser.
-//
-//  One panel for the two moments that ask the same question: a fresh launch, when the reader has
-//  asked to be asked which account to browse with, and "Switch account…" from the profile menu. It
-//  is raised at the window root, above both the catalog and the login wall, because the question is
-//  about which of them should be on screen.
-//
-//  Choosing runs the same transactional switch every other entry point runs - the login wall's saved
-//  rows, the profile dropdown, the controller catalog and the menu bar all end up in
-//  `LoginViewModel.activateSavedAccount`. Cancelling picks nothing: the account that was already
-//  selected stays selected, and a game that is running keeps running.
-//
+//  The saved-account chooser, raised at the window root for the two moments that ask the same
+//  question: a fresh launch, and the profile menu's "Switch account…".
 
 import SwiftUI
 
@@ -60,14 +50,7 @@ struct AccountChooserOverlay: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(accounts) { account in
-                    AccountChooserRow(
-                        account: account,
-                        isActive: account.email == activeEmail,
-                        isSignedOut: signedOutAccountEmails.contains(account.email),
-                        uiScale: uiScale
-                    ) {
-                        onChoose(account)
-                    }
+                    accountRow(account)
                 }
                 Rectangle()
                     .fill(OPNDesign.Stroke.subtle)
@@ -75,9 +58,10 @@ struct AccountChooserOverlay: View {
                 AccountChooserRow(
                     title: "Add Account",
                     subtitle: "Sign in without signing out",
+                    emphasis: .normal,
+                    avatarEmail: nil,
                     systemImage: "plus",
-                    isActive: false,
-                    isSignedOut: false,
+                    isBrowsing: false,
                     uiScale: uiScale,
                     action: onAddAccount
                 )
@@ -95,20 +79,32 @@ struct AccountChooserOverlay: View {
         .onExitCommand(perform: onCancel)
     }
 
+    private func accountRow(_ account: LoginAccount) -> some View {
+        let isSignedOut = signedOutAccountEmails.contains(account.email)
+        return AccountChooserRow(
+            title: account.displayName,
+            subtitle: isSignedOut ? "Signed out. Sign in again." : account.email,
+            emphasis: isSignedOut ? .warning : .normal,
+            avatarEmail: account.email,
+            systemImage: "",
+            isBrowsing: account.email == activeEmail,
+            uiScale: uiScale,
+            action: { onChoose(account) }
+        )
+    }
+
     private var header: some View {
         HStack(alignment: .top, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             VStack(alignment: .leading, spacing: 6 * uiScale) {
-                Text(reason == .startup ? "STARTUP ACCOUNT" : "SWITCH ACCOUNT")
+                Text(eyebrow)
                     .font(.uiSans(size: 10 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.accent)
                     .tracking(1.1)
-                Text(reason == .startup ? "Which account should OpenNOW browse with?" : "Which account do you want to browse with?")
+                Text(headline)
                     .font(.uiSans(size: 20 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.Text.primary)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(reason == .startup
-                    ? "Your saved accounts stay signed in either way. Switching changes what OpenNOW browses; a game that is already running keeps using the account that started it."
-                    : "Switching changes what OpenNOW browses. A game that is already running keeps using the account that started it.")
+                Text(explanation)
                     .font(.uiSans(size: 12 * uiScale, weight: .medium))
                     .foregroundStyle(OPNDesign.Text.secondary)
                     .lineSpacing(2 * uiScale)
@@ -123,6 +119,30 @@ struct AccountChooserOverlay: View {
         .background(OPNDesign.Surface.appBar)
     }
 
+    private var eyebrow: String {
+        switch reason {
+        case .startup: return "STARTUP ACCOUNT"
+        case .switchAccount: return "SWITCH ACCOUNT"
+        }
+    }
+
+    private var headline: String {
+        switch reason {
+        case .startup: return "Which account should OpenNOW browse with?"
+        case .switchAccount: return "Which account do you want to browse with?"
+        }
+    }
+
+    /// Both moments promise the same thing, so neither may read as a sign-out.
+    private var explanation: String {
+        switch reason {
+        case .startup:
+            return "Your saved accounts stay signed in either way. Switching changes what OpenNOW browses; a game that is already running keeps using the account that started it."
+        case .switchAccount:
+            return "Switching changes what OpenNOW browses. A game that is already running keeps using the account that started it."
+        }
+    }
+
     private var footer: some View {
         HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             Spacer(minLength: 0)
@@ -135,58 +155,42 @@ struct AccountChooserOverlay: View {
     }
 }
 
-/// One row of the chooser: the account's avatar and name, what state it is in, and which one is
-/// currently browsing. A signed-out row is still listed - it is what the reader picked last time -
-/// and choosing it starts the sign-in it needs rather than failing.
+/// One row of the chooser: a saved account with its avatar, or the Add Account action.
 private struct AccountChooserRow: View {
-    var title: String = ""
-    var subtitle: String = ""
-    var systemImage: String = ""
-    let account: LoginAccount?
-    let isActive: Bool
-    let isSignedOut: Bool
+    enum Emphasis {
+        case normal
+        case warning
+    }
+
+    let title: String
+    let subtitle: String?
+    let emphasis: Emphasis
+    let avatarEmail: String?
+    let systemImage: String
+    let isBrowsing: Bool
     let uiScale: CGFloat
     let action: () -> Void
 
     @State private var isHovering = false
-
-    init(account: LoginAccount, isActive: Bool, isSignedOut: Bool, uiScale: CGFloat, action: @escaping () -> Void) {
-        self.account = account
-        self.isActive = isActive
-        self.isSignedOut = isSignedOut
-        self.uiScale = uiScale
-        self.action = action
-    }
-
-    init(title: String, subtitle: String, systemImage: String, isActive: Bool, isSignedOut: Bool, uiScale: CGFloat, action: @escaping () -> Void) {
-        self.title = title
-        self.subtitle = subtitle
-        self.systemImage = systemImage
-        account = nil
-        self.isActive = isActive
-        self.isSignedOut = isSignedOut
-        self.uiScale = uiScale
-        self.action = action
-    }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 leading
                 VStack(alignment: .leading, spacing: 2 * uiScale) {
-                    Text(rowTitle)
+                    Text(title)
                         .font(.uiSans(size: 14 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.Text.primary)
                         .lineLimit(1)
-                    if let rowSubtitle {
-                        Text(rowSubtitle)
+                    if let subtitle {
+                        Text(subtitle)
                             .font(.uiSans(size: 11 * uiScale, weight: .medium))
-                            .foregroundStyle(isSignedOut ? OPNDesign.Semantic.warning : OPNDesign.Text.tertiary)
+                            .foregroundStyle(subtitleColor)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
-                if isActive {
+                if isBrowsing {
                     Text("BROWSING")
                         .font(.uiSans(size: 10 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.onAccent)
@@ -205,12 +209,12 @@ private struct AccountChooserRow: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .opnMotion(OPNDesign.Motion.hover, value: isHovering)
-        .accessibilityLabel(rowTitle)
+        .accessibilityLabel(title)
     }
 
     @ViewBuilder private var leading: some View {
-        if let account {
-            CatalogAccountAvatar(account: account, size: 36 * uiScale)
+        if let avatarEmail {
+            CatalogAccountAvatar(email: avatarEmail, size: 36 * uiScale)
         } else {
             ZStack {
                 Rectangle().fill(OPNDesign.Fill.neutral(0.08))
@@ -222,15 +226,8 @@ private struct AccountChooserRow: View {
         }
     }
 
-    private var rowTitle: String {
-        account?.displayName ?? title
-    }
-
-    private var rowSubtitle: String? {
-        guard let account else { return subtitle.isEmpty ? nil : subtitle }
-        if isSignedOut { return "Signed out. Sign in again." }
-        if isActive { return account.email }
-        return account.email
+    private var subtitleColor: Color {
+        emphasis == .warning ? OPNDesign.Semantic.warning : OPNDesign.Text.tertiary
     }
 }
 
@@ -273,7 +270,6 @@ struct AccountSwitchNoticeBanner: View {
             .padding(.bottom, OPNDesign.Spacing.large(scale: uiScale))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .allowsHitTesting(true)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
     }
 }

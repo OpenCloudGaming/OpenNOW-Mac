@@ -98,7 +98,7 @@ import Foundation
     }
 
     /// A launch that never produced a stream records nothing, and still tells the page why.
-    @Test func aFailedLaunchRecordsNoHistoryAndReportsTheReason() throws {
+    @Test func aFailedLaunchReportsTheReasonWithoutRecordingHistory() throws {
         let model = makeModel()
         // Whatever an earlier run left in the shared preference store, this result must not touch it.
         let previousSessionBefore = model.previousGameSession

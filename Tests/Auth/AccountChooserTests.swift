@@ -1,9 +1,5 @@
-//  The saved-account chooser: the startup gate, the profile menu's "Switch account…", and the two
-//  promises that make it safe to ship - cancelling picks nothing, and nothing about a game that is
-//  already running changes because of a preference or a switch.
-//
-//  One serialized suite: the tests that ask a startup question read and write the same preference
-//  key, and Swift Testing only serializes tests within a suite.
+//  The saved-account chooser: the startup gate, "Switch account…", and the promise that cancelling
+//  picks nothing. One serialized suite, because these tests share the stored startup preference.
 
 import Foundation
 import SwiftData
@@ -94,18 +90,18 @@ private final class ChooserFixture {
 struct AccountChooserTests {
     /// The stored startup preference, so a test that writes it puts the machine back as it found it.
     private func preserveStartupPreference() -> Bool? {
-        guard OPNAppPreferenceStorage.standard.object(forKey: OPNAccountPreferences.asksWhichAccountOnStartupKey) != nil else {
+        guard OPNAppPreferenceStorage.standard.object(forKey: OPNAccountPreferences.shouldAskWhichAccountOnStartupKey) != nil else {
             return nil
         }
-        return OPNAccountPreferences.asksWhichAccountOnStartup
+        return OPNAccountPreferences.shouldAskWhichAccountOnStartup
     }
 
     private func restoreStartupPreference(_ stored: Bool?) {
         guard let stored else {
-            OPNAppPreferenceStorage.standard.removeObject(forKey: OPNAccountPreferences.asksWhichAccountOnStartupKey)
+            OPNAppPreferenceStorage.standard.removeObject(forKey: OPNAccountPreferences.shouldAskWhichAccountOnStartupKey)
             return
         }
-        OPNAccountPreferences.asksWhichAccountOnStartup = stored
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = stored
     }
 
     // MARK: - The stored preference
@@ -115,21 +111,20 @@ struct AccountChooserTests {
     @Test func theStartupChooserPreferenceDefaultsToOff() {
         let stored = preserveStartupPreference()
         defer { restoreStartupPreference(stored) }
-        OPNAppPreferenceStorage.standard.removeObject(forKey: OPNAccountPreferences.asksWhichAccountOnStartupKey)
+        OPNAppPreferenceStorage.standard.removeObject(forKey: OPNAccountPreferences.shouldAskWhichAccountOnStartupKey)
 
-        #expect(!OPNAccountPreferences.asksWhichAccountOnStartup)
-        #expect(!OPNAccountPreferences.asksOnStartup(savedAccountCount: 4))
+        #expect(!OPNAccountPreferences.shouldAskWhichAccountOnStartup)
     }
 
     @Test func theStartupChooserPreferenceRoundTrips() {
         let stored = preserveStartupPreference()
         defer { restoreStartupPreference(stored) }
 
-        OPNAccountPreferences.asksWhichAccountOnStartup = true
-        #expect(OPNAccountPreferences.asksWhichAccountOnStartup)
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = true
+        #expect(OPNAccountPreferences.shouldAskWhichAccountOnStartup)
 
-        OPNAccountPreferences.asksWhichAccountOnStartup = false
-        #expect(!OPNAccountPreferences.asksWhichAccountOnStartup)
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = false
+        #expect(!OPNAccountPreferences.shouldAskWhichAccountOnStartup)
     }
 
     /// The preference needs something to ask about. One saved account and none are both ordinary
@@ -137,11 +132,11 @@ struct AccountChooserTests {
     @Test func theStartupChooserNeedsMoreThanOneSavedAccount() {
         let stored = preserveStartupPreference()
         defer { restoreStartupPreference(stored) }
-        OPNAccountPreferences.asksWhichAccountOnStartup = true
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = true
 
-        #expect(!OPNAccountPreferences.asksOnStartup(savedAccountCount: 0))
-        #expect(!OPNAccountPreferences.asksOnStartup(savedAccountCount: 1))
-        #expect(OPNAccountPreferences.asksOnStartup(savedAccountCount: 2))
+        #expect(!OPNAccountPreferences.shouldAskOnStartup(savedAccountCount: 0))
+        #expect(!OPNAccountPreferences.shouldAskOnStartup(savedAccountCount: 1))
+        #expect(OPNAccountPreferences.shouldAskOnStartup(savedAccountCount: 2))
     }
 
     // MARK: - The startup gate
@@ -149,7 +144,7 @@ struct AccountChooserTests {
     @Test func aFreshLaunchDoesNotAskUnlessTheReaderAsked() throws {
         let stored = preserveStartupPreference()
         defer { restoreStartupPreference(stored) }
-        OPNAccountPreferences.asksWhichAccountOnStartup = false
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = false
 
         let fixture = try ChooserFixture()
         defer { fixture.tearDown() }
@@ -159,10 +154,10 @@ struct AccountChooserTests {
         #expect(fixture.viewModel.accountChooserReason == nil)
     }
 
-    @Test func aFreshLaunchAsksWhenTheReaderAskedAndThereIsAChoice() throws {
+    @Test func aFreshLaunchAsksWhenTheReaderOptedIn() throws {
         let stored = preserveStartupPreference()
         defer { restoreStartupPreference(stored) }
-        OPNAccountPreferences.asksWhichAccountOnStartup = true
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = true
 
         let fixture = try ChooserFixture()
         defer { fixture.tearDown() }
@@ -176,7 +171,7 @@ struct AccountChooserTests {
     @Test func oneSavedAccountKeepsTheOrdinaryStartup() throws {
         let stored = preserveStartupPreference()
         defer { restoreStartupPreference(stored) }
-        OPNAccountPreferences.asksWhichAccountOnStartup = true
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = true
 
         let fixture = try ChooserFixture()
         defer { fixture.tearDown() }
@@ -192,7 +187,7 @@ struct AccountChooserTests {
     @Test func cancellingTheStartupChooserKeepsTheSelectedAccount() throws {
         let stored = preserveStartupPreference()
         defer { restoreStartupPreference(stored) }
-        OPNAccountPreferences.asksWhichAccountOnStartup = true
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = true
 
         let fixture = try ChooserFixture()
         defer { fixture.tearDown() }
@@ -233,9 +228,8 @@ struct AccountChooserTests {
         #expect(fixture.viewModel.signInRequest == .addAccount)
     }
 
-    /// A signed-out selection requires authentication: it sends the reader to the login wall with
-    /// that account selected rather than switching to credentials that are not there. The account
-    /// that is still signed in keeps its session.
+    /// A signed-out selection requires authentication, and the account that is still signed in keeps
+    /// its session.
     @Test func choosingASignedOutAccountAsksForSignInInsteadOfSwitching() throws {
         let fixture = try ChooserFixture(secondAccountUsable: false)
         defer { fixture.tearDown() }
@@ -292,8 +286,8 @@ struct AccountChooserTests {
         )
         let accountAID = try #require(fixture.accountA.storedAccountID)
 
-        OPNAccountPreferences.asksWhichAccountOnStartup = true
-        OPNAccountPreferences.asksWhichAccountOnStartup = false
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = true
+        OPNAccountPreferences.shouldAskWhichAccountOnStartup = false
 
         #expect(fixture.registry.current === game)
         #expect(fixture.registry.isOwned(by: accountAID))

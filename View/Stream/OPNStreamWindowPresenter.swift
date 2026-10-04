@@ -6,10 +6,7 @@
 //  configured one. Nothing here ever re-parents or reuses a hosting view across sessions.
 //
 //  Presentation is driven by the application-owned `OPNGameSessionRegistry`, not by the catalog
-//  window: the catalog is remounted whenever the browsing account changes, and the window has to
-//  survive that. The catalog window stays mounted throughout - that is what lets its own menus and
-//  pages keep working mid-session, and what retires the rebuild-and-re-decode cost swapping the
-//  stream in used to pay.
+//  window, which is remounted whenever the browsing account changes.
 //
 
 import AppKit
@@ -82,11 +79,7 @@ final class OPNStreamWindowPresenter {
     }
 
     /// Follows the application-owned game session, so the window belongs to the session rather than
-    /// to the catalog that started it. Installed once, at application launch.
-    ///
-    /// The observer belongs here rather than in a view model because this presenter is the only
-    /// thing that owns an `NSWindow`: its lifetime is the application's, and it is installed once by
-    /// `OPNAppDelegate` rather than from any view body.
+    /// to the catalog that started it. Installed once, by `OPNAppDelegate`.
     func observeOwnedSessions() {
         guard sessionChangeObserver == nil else { return }
         // swiftlint:disable:next view_owns_long_lived_effect -- application-lifetime AppKit presenter, installed once by the app delegate
@@ -378,11 +371,8 @@ final class OPNStreamWindowPresenter {
         }
     }
 
-    /// The game's title, and the account the session belongs to.
-    ///
-    /// The owner comes from the launch snapshot, not from the catalog's current selection, so
-    /// switching browsing accounts cannot relabel a running game as somebody else's - which is the
-    /// whole point of the label being here rather than on the catalog's own chrome.
+    /// The game's title, and the account the session belongs to. The owner comes from the launch
+    /// snapshot, not from the catalog's current selection.
     private static func windowTitle(for configuration: StreamLaunchConfiguration) -> String {
         let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let game = title.isEmpty ? "GeForce NOW" : title

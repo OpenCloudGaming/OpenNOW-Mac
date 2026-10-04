@@ -172,9 +172,8 @@ enum ControllerActionMenuItem {
 enum ControllerAccountOptionRow: Equatable {
     case signOut
     case forget
-    /// The whole overlay for an account that owns a running game. Neither action is offered, and
-    /// this row says why rather than leaving the pad user with an empty panel; confirming it closes
-    /// the overlay, so it is a reading row, not an action.
+    /// The whole overlay for an account that owns a running game: neither action is offered, so this
+    /// row says why. Confirming it closes the overlay, so it is a reading row, not an action.
     case ownsGameSession
 
     func title(accountDisplayName: String) -> String {

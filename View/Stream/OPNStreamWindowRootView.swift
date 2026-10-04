@@ -6,9 +6,7 @@
 //  object and kill a live session - which is why the window is built for it up front rather than the
 //  stream being hosted in the catalog window first.
 //
-//  What it reads is the application-owned `OPNGameSession`, not the catalog that started it: the
-//  catalog is remounted whenever the browsing account changes, and this window has to outlive that.
-//  The layout, the launch-loading overlay and the sponsored break all come from the session, so a
+//  What it reads is the application-owned `OPNGameSession`, not the catalog that started it, so a
 //  browsing switch cannot restyle or retarget a running game.
 //
 

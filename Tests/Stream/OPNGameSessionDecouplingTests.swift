@@ -1,9 +1,5 @@
 //  The decouple: a game belongs to the account that started it, not to the catalog that is browsing.
-//
-//  A catalog is remounted whenever the selected browsing account changes, so these tests rebuild the
-//  model the way `LoginView` does and assert what has to survive that - the session, its owner, its
-//  window's configuration, its admission slot and its results - plus what must not: the other
-//  account's page.
+//  Each test rebuilds the model the way `LoginView` does, and asserts what survives that.
 
 import Foundation
 import Testing
@@ -144,7 +140,7 @@ private let runningConfiguration = StreamLaunchConfiguration(
 /// A finished game writes its history, playtime and summary into its owner's page only. The account
 /// being browsed at the time cannot be the one that receives them.
 @MainActor
-@Test func aFinishedGameWritesToItsOwnerAndNotToTheSelectedAccount() throws {
+@Test func aFinishedGameNeverWritesToTheSelectedAccount() throws {
     let fixture = DecoupledFixture()
     defer { fixture.tearDown() }
     let catalogB = fixture.remount(for: fixture.accountB)

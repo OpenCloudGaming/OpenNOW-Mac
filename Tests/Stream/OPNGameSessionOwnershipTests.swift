@@ -88,9 +88,8 @@ private func beginSession(
     #expect(OPNAccountMutationGuard.blockReason(for: other, registry: registry) == nil)
 }
 
-/// A legacy row starts on a local-only identity and moves to its vendor subject the first time a
-/// sign-in supplies one. The game it started has to move with it, or the account it actually
-/// belongs to would look free to sign out of.
+/// A legacy row moves from its local-only identity to its vendor subject the first time a sign-in
+/// supplies one, and the game it started moves with it.
 @MainActor
 @Test func upgradingAnIdentityCarriesTheOwnershipClaimedUnderTheOldOne() throws {
     let registry = OPNGameSessionRegistry()
@@ -111,13 +110,13 @@ private func beginSession(
 }
 
 @MainActor
-@Test func theGuardNamesTheReasonAnOwnerCannotBeSignedOutOrRemoved() throws {
+@Test func theGuardExplainsWhyAnOwnerIsProtected() throws {
     let registry = OPNGameSessionRegistry()
     let account = makeLoginAccountForTesting(email: "a@example.com", userId: "user-a")
     let session = makeLoginSessionForTesting(accountEmail: account.email)
     defer { session.purgeTokens() }
     _ = try #require(beginSession(in: registry, account: account, session: session))
 
-    #expect(OPNAccountMutationGuard.blockReason(for: try #require(account.storedAccountID), registry: registry) == OPNAccountMutationGuard.activeGameSessionMessage)
+    #expect(OPNAccountMutationGuard.blockReason(for: account.storedAccountID, registry: registry) == OPNAccountMutationGuard.activeGameSessionMessage)
     #expect(OPNAccountMutationGuard.blockReason(for: nil, registry: registry) == nil)
 }

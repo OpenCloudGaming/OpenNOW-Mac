@@ -17,10 +17,8 @@ final class LoginAccount {
     var lastLoginAt: Date
     var rememberSession: Bool
     var isActive: Bool
-    /// The stable identity ownership, credential namespaces and account-scoped caches are keyed by.
-    /// Email and display name are attributes a vendor can change, so neither can key any of them.
-    /// Empty only on a row written before the identity existed; `resolveStableAccountID()` derives
-    /// and stores it, and an existing value is never re-derived over.
+    /// What ownership and account-scoped caches are keyed by. Empty only on a row written before the
+    /// identity existed, which `resolveStableAccountID()` fills once.
     var stableAccountID: String = ""
 
     init(
@@ -60,13 +58,11 @@ final class LoginAccount {
     }
 
     /// The stored identity alone, for callers that must not write to the model - a view body that
-    /// renders a disabled control, for instance. `LoginViewModel.bootstrap()` fills it for every row
-    /// before any control reads it, and a launch writes it before it can own a session.
+    /// renders a disabled control, for instance.
     var storedAccountID: OPNAccountID? { OPNAccountID(rawValue: stableAccountID) }
 
     /// The row's stable identity, deriving and storing it for a record written before it existed.
-    /// A row with no vendor subject yet keeps a `localOnly` identity rather than borrowing another
-    /// account's, and `LoginViewModel` upgrades it the first time a sign-in supplies the subject.
+    /// A row with no subject yet keeps a `localOnly` identity rather than borrowing another's.
     @discardableResult
     func resolveStableAccountID() -> OPNAccountID? {
         if let stored = OPNAccountID(rawValue: stableAccountID) { return stored }

@@ -376,8 +376,7 @@ final class CatalogViewModel {
     let onSwitchAccount: (LoginAccount) -> Void
     let onAddAccount: () -> Void
     /// Raises the saved-account chooser, which lives at the window root because it covers the login
-    /// wall as well as this catalog. The profile menu and the Settings page both open it, so both
-    /// reach the same panel and the same switch operation.
+    /// wall as well as this catalog. The profile menu and Settings both open that one panel.
     let onPresentAccountChooser: () -> Void
     /// The saved accounts and which of them are signed out, fed from the view's SwiftData query. The
     /// menu bar snapshot is derived from these rather than from the live models.

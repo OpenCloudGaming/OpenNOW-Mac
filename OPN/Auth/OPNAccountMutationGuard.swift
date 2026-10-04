@@ -1,11 +1,5 @@
-//  Whether an account may be signed out or removed right now.
-//
-//  Enforced at the mutation rather than only by disabling the controls that reach it. Sign-out and
-//  removal are each reachable from the catalog's account dropdown, the controller catalog and the
-//  windowless menu bar, and all of them funnel through the same two view-model calls; a disabled
-//  button is a hint, not a guarantee. The check is also re-evaluated immediately before the
-//  credential purge, so a session that started while a confirmation was on screen still blocks the
-//  write instead of being stopped underneath the user.
+//  Whether an account may be signed out or removed right now. Enforced at the mutation rather than
+//  only by the controls that reach it, and re-read immediately before the credential purge.
 
 import Foundation
 

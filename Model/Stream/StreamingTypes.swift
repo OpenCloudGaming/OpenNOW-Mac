@@ -40,10 +40,8 @@ public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Senda
 }
 
 extension StreamLaunchConfiguration {
-    /// The display name of the account whose credentials this session runs on, snapshotted when
-    /// the launch intent is accepted. A session presents itself from this snapshot rather than from
-    /// whichever account the catalog is browsing, so switching accounts cannot relabel a game that
-    /// is already running as somebody else's.
+    /// The owning account's display name, snapshotted at launch so a browsing switch cannot relabel
+    /// a running game as somebody else's.
     static let owningAccountDisplayNameKey = "owningAccountDisplayName"
 
     var owningAccountDisplayName: String {
