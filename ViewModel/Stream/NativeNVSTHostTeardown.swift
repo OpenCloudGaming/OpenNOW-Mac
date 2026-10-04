@@ -54,21 +54,40 @@ extension NativeNVSTHostViewModel {
         nativeView?.onCommand = nil
         nativeView?.shouldHandleCommand = nil
         nativeView?.onScreenKeyboardCapture = nil
-        if let path {
-            Task {
-                // Ends the guests' peers and hands back the neutral pad states they were holding.
-                // Delivered through the dispatcher before it is drained, because after `finish()`
-                // there is nothing left to carry them and whatever a guest had pressed would stay
-                // pressed in the game for as long as the seat keeps the session.
-                let neutralEvents = await stopRemoteCoOpSession()
-                for event in neutralEvents { inputDispatcher?.enqueue(event) }
-                await inputDispatcher?.finish()
-                try? await path.setMicrophoneEnabled(false)
-                _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.")
+        reportUnreportedEnd(path: path, inputDispatcher: inputDispatcher)
+    }
+
+    /// Ends the session locally, then tells the app it ended. Reaching this means the surface went
+    /// away before anything reported the end, so nothing else would free the one-stream slot it
+    /// holds; the report comes last, because the teardown is what still needs the credentials.
+    private func reportUnreportedEnd(path: NativeNVSTStreamingPath?, inputDispatcher: NativeNVSTInputDispatcher?) {
+        let report = StreamReport(
+            title: configuration.title,
+            success: true,
+            reason: .userRequested,
+            message: "",
+            durationSeconds: 0,
+            metadata: ["applicationID": configuration.applicationID, "transport": "nvst"]
+        )
+        guard let path else {
+            Task { @MainActor in
+                _ = await stopRemoteCoOpSession()
+                inputDispatcher?.cancel()
+                onEnd(true, report.message, report)
             }
-        } else {
-            Task { @MainActor in _ = await stopRemoteCoOpSession() }
-            inputDispatcher?.cancel()
+            return
+        }
+        Task {
+            // Ends the guests' peers and hands back the neutral pad states they were holding.
+            // Delivered through the dispatcher before it is drained, because after `finish()`
+            // there is nothing left to carry them and whatever a guest had pressed would stay
+            // pressed in the game for as long as the seat keeps the session.
+            let neutralEvents = await stopRemoteCoOpSession()
+            for event in neutralEvents { inputDispatcher?.enqueue(event) }
+            await inputDispatcher?.finish()
+            try? await path.setMicrophoneEnabled(false)
+            _ = try? await path.stop(reason: .userRequested, message: "Native NVST stream view closed.")
+            onEnd(true, report.message, report)
         }
     }
 

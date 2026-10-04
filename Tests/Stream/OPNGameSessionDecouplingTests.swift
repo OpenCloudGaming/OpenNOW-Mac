@@ -109,12 +109,30 @@ private let runningConfiguration = StreamLaunchConfiguration(
     #expect(fixture.registry.current === game)
     #expect(game.configuration == runningConfiguration)
     #expect(catalogB.activeStreamConfiguration == nil)
-    #expect(!catalogB.launchErrorMessage.isEmpty)
+    #expect(catalogB.launchErrorMessage == "Account A is already running a game. End that session before starting another.")
 
     // The same account launching again is refused too: the running game is not replaced by itself.
     fixture.catalogA.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-2", title: "Manor Lords"))
     #expect(fixture.registry.current === game)
-    #expect(!fixture.catalogA.launchErrorMessage.isEmpty)
+    #expect(fixture.catalogA.launchErrorMessage == "This account is already running a game. End that session before starting another.")
+}
+
+/// A launch that has not produced a stream yet blocks the slot too, and the refusal has to say so:
+/// there is no END control for a game that has not started, only that account's own CANCEL.
+@MainActor
+@Test func aLaunchStillStartingBlocksASecondLaunchAndSaysSo() throws {
+    let fixture = DecoupledFixture()
+    defer { fixture.tearDown() }
+    let game = try #require(makeOwnedGameSessionForTesting(fixture.catalogA))
+    game.phase = .checkingSession
+
+    let catalogB = fixture.remount(for: fixture.accountB)
+    catalogB.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-1", title: "Manor Lords"))
+    #expect(catalogB.launchErrorMessage == "Account A is already starting a game. Switch to Account A to finish or cancel it.")
+
+    fixture.catalogA.beginVendorLaunch(game: makeMaintenanceGameForTesting(id: "id-2", title: "Manor Lords"))
+    #expect(fixture.catalogA.launchErrorMessage == "This account is already starting a game. Cancel that launch before starting another.")
+    #expect(fixture.registry.current === game)
 }
 
 /// Once the slot is free, the launch is admitted for whichever account is browsing now - and it is

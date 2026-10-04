@@ -171,13 +171,21 @@ extension CatalogViewModel {
         return gameSession
     }
 
-    /// A second launch is refused outright rather than ending the game already running.
+    /// A second launch is refused outright rather than ending the game already running. The message
+    /// has to say whose it is and whether it is running or still starting: only a running game has an
+    /// END control, and it lives on the owner's page.
     private var occupiedSessionMessage: String {
-        let owner = sessionRegistry.current?.account.displayName ?? ""
-        guard !owner.isEmpty else {
-            return "A game is already running. End the current session before starting another."
+        guard let owned = sessionRegistry.current else { return "" }
+        let owner = owned.account.displayName
+        let isOwnedByThisAccount = owned.accountID == account.storedAccountID
+        guard owned.isRunning else {
+            return isOwnedByThisAccount
+                ? "This account is already starting a game. Cancel that launch before starting another."
+                : "\(owner) is already starting a game. Switch to \(owner) to finish or cancel it."
         }
-        return "\(owner) is already running a game. End the current session before starting another."
+        return isOwnedByThisAccount
+            ? "This account is already running a game. End that session before starting another."
+            : "\(owner) is already running a game. End that session before starting another."
     }
 
     func cancelVendorLaunch() {

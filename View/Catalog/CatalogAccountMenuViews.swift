@@ -77,21 +77,12 @@ struct CatalogAccountDropdownPanel: View {
             .padding(.horizontal, OPNDesign.Spacing.contentVertical(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
 
+            // No "Switch account…" row: the account list below is already the switch control, and a
+            // second way in only pushed the list down the panel.
             VStack(alignment: .leading, spacing: 0) {
                 CatalogAccountDropdownRow(
-                    title: "Switch account…",
-                    subtitle: "Browse with another saved account",
-                    systemImage: "arrow.left.arrow.right",
-                    isActive: false,
-                    role: nil
-                ) {
-                    isPresented = false
-                    viewModel.onPresentAccountChooser()
-                }
-                // A setting rather than an action, and the checkmark is the whole of its state.
-                CatalogAccountDropdownRow(
-                    title: "Ask which account on startup",
-                    subtitle: nil,
+                    title: "Ask on startup",
+                    subtitle: "Pick the account each launch",
                     systemImage: shouldAskOnStartup ? "checkmark.square.fill" : "square",
                     isActive: shouldAskOnStartup,
                     role: nil
@@ -233,6 +224,22 @@ struct CatalogAccountDropdownRowAction: Identifiable {
 }
 
 struct CatalogAccountDropdownRow: View {
+    /// The square an icon sits in, and the strip held at the trailing edge for the hover actions.
+    /// Shared with `titleWidth(inMenuWidth:scale:)` so the label budget cannot drift from the layout.
+    private static let iconSize: CGFloat = 30
+    private static let trailingReserve: CGFloat = 4
+
+    /// The width this row leaves for its title inside a menu `menuWidth` wide. The panel is a fixed
+    /// width, so a title that does not fit is clipped rather than wrapped.
+    static func titleWidth(inMenuWidth menuWidth: CGFloat, scale: CGFloat) -> CGFloat {
+        menuWidth
+            - 2 * OPNDesign.Spacing.section(scale: scale)
+            - trailingReserve * scale
+            - OPNDesign.Spacing.xSmall(scale: scale)
+            - iconSize * scale
+            - OPNDesign.Spacing.small(scale: scale)
+    }
+
     let title: String
     let subtitle: String?
     let systemImage: String?
@@ -255,7 +262,7 @@ struct CatalogAccountDropdownRow: View {
                                 .catalogFont(size: 13, weight: .bold)
                                 .foregroundStyle(iconColor)
                         }
-                        .frame(width: 30 * uiScale, height: 30 * uiScale)
+                        .frame(width: Self.iconSize * uiScale, height: Self.iconSize * uiScale)
                     }
                     VStack(alignment: .leading, spacing: 2 * uiScale) {
                         Text(title)
@@ -294,7 +301,7 @@ struct CatalogAccountDropdownRow: View {
                 .padding(.trailing, OPNDesign.Spacing.xSmall(scale: uiScale))
                 .accessibilityHidden(true)
             } else {
-                Color.clear.frame(width: OPNDesign.Spacing.controlRow(scale: uiScale) - OPNDesign.Spacing.xSmall(scale: uiScale))
+                Color.clear.frame(width: Self.trailingReserve * uiScale)
             }
         }
         .frame(height: 42 * uiScale)
