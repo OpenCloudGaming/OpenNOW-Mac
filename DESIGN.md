@@ -964,15 +964,19 @@ the whole session, so without this the app has a live game and a page that looks
 - **Banner.** Pinned with a top `safeAreaInset` on the page's scroll view, so it stays visible
 while the page scrolls — the one fact that holds for the whole session, needed most when the user
 has scrolled down to the rails. A pinned `Section` header would require a `LazyVStack`, which the
-home page deliberately avoids. Chrome and control are the active-session banner's
-(`VendorActiveSessionBannerButtonStyle`):
-`OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline along the bottom,
-`CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a 10pt bold accent
-eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold with the stream's own
-status message under it at 11pt Text Secondary. Actions: **FOCUS** (accent fill, the one action the
-session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular). END routes
-through `StreamSessionLifecycle`, so the menu bar, the PiP strip and this button tear down the same
-thing.
+home page deliberately avoids. That inset's region is the scroll view's *frame*, and a `ScrollView`
+is as wide as its widest content — a rail still on its skeleton runs past the window. The page
+therefore clamps the scroll view to the page width (`CatalogContentView`): without that clamp the
+banner was laid out centred on the inflated width, which left only its right-hand end on screen.
+Chrome and control are the active-session banner's, shared through `VendorStatusBannerChrome` and
+`VendorActiveSessionBannerButtonStyle`: `OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline
+along the bottom, `CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a
+10pt bold accent eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold. Two
+lines, not three: the stream's own status message under the title only restated that it plays in
+its own window, and cost the banner a row of height. Actions: **FOCUS** (accent fill, the one
+action the session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular).
+END routes through `StreamSessionLifecycle`, so the menu bar, the PiP strip and this button tear
+down the same thing.
 - **Backdrop.** The running stream's artwork, artwork fill, 18pt blur, then `OPNDesign.Surface.scrim`
 and the same top/bottom black gradient the store picker uses. Behind the page, never hit-testable,
 hidden from accessibility. Games page only — Settings and Recordings share the stack and have
