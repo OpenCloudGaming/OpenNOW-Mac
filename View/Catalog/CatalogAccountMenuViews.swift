@@ -95,6 +95,7 @@ struct CatalogAccountDropdownPanel: View {
                 CatalogAccountForgetConfirmationView(
                     account: pendingForget,
                     isActiveAccount: pendingForget === viewModel.account,
+                    blockReason: OPNAccountMutationGuard.blockReason(for: pendingForget.storedAccountID, registry: viewModel.sessionRegistry),
                     onCancel: { self.pendingForget = nil },
                     onConfirm: {
                         isPresented = false
@@ -117,7 +118,12 @@ struct CatalogAccountDropdownPanel: View {
                         // A signed-out account still has a row here, but nothing to restore: say so
                         // rather than let the switch fail with a message no one sees.
                         let needsSignIn = !isActive && signedOutAccountEmails.contains(account.email)
+                        // Switching to another account stays available; ending this account's game
+                        // does not. The guard refuses both mutations centrally, so the row says why
+                        // rather than offering an action that would be refused.
+                        let ownsGame = OPNAccountMutationGuard.blockReason(for: account.storedAccountID, registry: viewModel.sessionRegistry) != nil
                         var trailingActions: [CatalogAccountDropdownRowAction] {
+                            guard !ownsGame else { return [] }
                             var actions: [CatalogAccountDropdownRowAction] = []
                             if !signedOutAccountEmails.contains(account.email) {
                                 actions.append(CatalogAccountDropdownRowAction(systemImage: "power", accessibilityLabel: "Sign out of \(account.displayName)", isDestructive: false) {
@@ -132,7 +138,7 @@ struct CatalogAccountDropdownPanel: View {
                         }
                         CatalogAccountDropdownRow(
                             title: account.displayName,
-                            subtitle: isActive ? "Signed in" : (needsSignIn ? "Signed out. Sign in again" : nil),
+                            subtitle: Self.subtitle(isActive: isActive, needsSignIn: needsSignIn, ownsGame: ownsGame),
                             systemImage: isActive ? "checkmark" : (needsSignIn ? "person.crop.circle.badge.exclamationmark" : "person"),
                             isActive: isActive,
                             role: nil,
@@ -175,6 +181,16 @@ struct CatalogAccountDropdownPanel: View {
                 .frame(width: 1)
         }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
+    }
+}
+
+private extension CatalogAccountDropdownPanel {
+    /// What the row says under the account's name. A game the account owns outranks the sign-in
+    /// state: it is the reason its two actions are missing.
+    static func subtitle(isActive: Bool, needsSignIn: Bool, ownsGame: Bool) -> String? {
+        guard !ownsGame else { return "Owns the running game. End it to sign out or forget." }
+        if isActive { return "Signed in" }
+        return needsSignIn ? "Signed out. Sign in again" : nil
     }
 }
 
@@ -308,6 +324,9 @@ private struct CatalogAccountDropdownRowActionButton: View {
 private struct CatalogAccountForgetConfirmationView: View {
     let account: LoginAccount
     let isActiveAccount: Bool
+    /// Set while the account owns a game. A session can start after this confirmation is drawn, so
+    /// it is read again here rather than trusted from when the row was built.
+    let blockReason: String?
     let onCancel: () -> Void
     let onConfirm: () -> Void
     @Environment(\.opnUIScale) private var uiScale
@@ -320,18 +339,21 @@ private struct CatalogAccountForgetConfirmationView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                 Text(bodyText)
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .foregroundStyle(blockReason == nil ? OPNDesign.Text.tertiary : OPNDesign.Semantic.destructive)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-                CatalogAccountConfirmButton(title: "Cancel", isDestructive: false, action: onCancel)
-                CatalogAccountConfirmButton(title: "Forget Account", isDestructive: true, action: onConfirm)
+                CatalogAccountConfirmButton(title: blockReason == nil ? "Cancel" : "Close", isDestructive: false, action: onCancel)
+                if blockReason == nil {
+                    CatalogAccountConfirmButton(title: "Forget Account", isDestructive: true, action: onConfirm)
+                }
             }
         }
         .padding(OPNDesign.Spacing.section(scale: uiScale))
     }
 
     private var bodyText: String {
+        if let blockReason { return blockReason }
         let base = "Removes the saved sign-in from this Mac."
         guard isActiveAccount else { return base }
         return base + " You'll be signed out, and you'll need your password next time."

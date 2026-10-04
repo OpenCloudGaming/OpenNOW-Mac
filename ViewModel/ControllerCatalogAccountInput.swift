@@ -65,6 +65,9 @@ extension ControllerCatalogViewModel {
         case .forget:
             accountOptionsStage = .confirmForget
             accountOptionsConfirmIndex = 0
+        case .ownsGameSession:
+            closeAccountOptions()
+            closeActionMenu()
         }
     }
 

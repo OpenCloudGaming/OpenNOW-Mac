@@ -37,10 +37,14 @@ final class LoginViewModel: ObservableObject {
     let authService: any LoginAuthServing
     let providerInfoService: any GameProviderInfoServing
     let jarvisAuthService = JarvisAuthService(transport: JarvisURLSessionTransport())
+    /// Application-owned session ownership, so sign-out and removal can refuse to pull the
+    /// credentials out from under a game this account is running.
+    let sessionRegistry: OPNGameSessionRegistry
 
-    init(authService: any LoginAuthServing = OPNAuthService.shared, providerInfoService: any GameProviderInfoServing = OPNGameService.shared) {
+    init(authService: any LoginAuthServing = OPNAuthService.shared, providerInfoService: any GameProviderInfoServing = OPNGameService.shared, sessionRegistry: OPNGameSessionRegistry = .shared) {
         self.authService = authService
         self.providerInfoService = providerInfoService
+        self.sessionRegistry = sessionRegistry
     }
     var modelContext: ModelContext?
     var accounts: [LoginAccount] = []
@@ -96,6 +100,7 @@ final class LoginViewModel: ObservableObject {
     func bootstrap() {
         OPNLog.info(.auth, "Login bootstrap started accounts=\(accounts.count) sessions=\(sessions.count) devices=\(devices.count)")
         ensureDeviceRegistration()
+        backfillAccountIdentities()
         prefillLastAccount()
         acceptedTerms = OPNAppPreferenceStorage.standard.bool(forKey: Self.termsAcceptedKey)
         restoreSavedSessionFromKeychain()
@@ -319,8 +324,39 @@ final class LoginViewModel: ObservableObject {
         return await restoreAccountSession(activeAccount)
     }
 
+    /// Gives every stored row its stable identity, and upgrades a `localOnly` one the first time a
+    /// sign-in has supplied the vendor subject. An upgrade carries any session ownership the old key
+    /// held, or the game would look like it belonged to an account that no longer resolves.
+    func backfillAccountIdentities() {
+        guard modelContext != nil else { return }
+        var changed = false
+        for account in accounts {
+            let stored = OPNAccountID(rawValue: account.stableAccountID)
+            let resolved = OPNAccountID(providerIdpId: account.providerIdpId, vendorSubject: account.userId, localFallbackSubject: account.email)
+            guard let resolved else { continue }
+            guard let stored else {
+                account.stableAccountID = resolved.rawValue
+                changed = true
+                continue
+            }
+            guard stored.basis == .localOnly, resolved.basis == .vendorSubject else { continue }
+            account.stableAccountID = resolved.rawValue
+            sessionRegistry.rekeyOwnership(from: stored, to: resolved)
+            changed = true
+        }
+        if changed { trySave() }
+    }
+
     func forgetAccount(_ account: LoginAccount) {
         guard let modelContext else { return }
+        // Refused before anything is read or deleted: removing the row purges the keychain copy the
+        // running game is authenticating with, and the row itself is what a later sign-in would
+        // re-key ownership against.
+        if let reason = OPNAccountMutationGuard.blockReason(for: account.resolveStableAccountID(), registry: sessionRegistry) {
+            validationMessage = reason
+            OPNLog.warning(.auth, "Account removal refused because the account owns an active game session account=\(account.email)")
+            return
+        }
         let email = account.email
         // Read before the delete below: a deleted model must not be touched again.
         let userId = account.userId

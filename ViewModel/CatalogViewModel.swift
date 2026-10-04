@@ -422,6 +422,9 @@ final class CatalogViewModel {
     let imageCache: any CatalogImageServing
     let discordPresence: any DiscordPresenceServing
     let systemIntegration: any SystemIntegrationServing
+    /// Application-owned session ownership. Held here rather than on the registry alone so the
+    /// launch flow can carry its own claim across the paths that end it.
+    let sessionRegistry: OPNGameSessionRegistry
     let deinitHandle = CatalogViewModelDeinitHandle()
 
     private var hasStarted = false
@@ -430,7 +433,7 @@ final class CatalogViewModel {
     /// Whether that work has landed; `startupContentGate` holds the splash until it has.
     var isAccountScopedStateLoaded = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
@@ -438,6 +441,8 @@ final class CatalogViewModel {
         self.imageCache = imageCache
         self.discordPresence = discordPresence
         self.systemIntegration = systemIntegration
+        self.sessionRegistry = sessionRegistry
+        deinitHandle.registry = sessionRegistry
         self.onSwitchAccount = onSwitchAccount
         self.onAddAccount = onAddAccount
         self.onRefreshAuth = onRefreshAuth
@@ -747,22 +752,5 @@ extension OPNCatalogPanelSectionObject {
 extension OPNCatalogGameObject {
     var primaryStoreURL: URL? {
         variants.compactMap { URL(string: $0.storeUrl) }.first
-    }
-}
-
-/// Owns the view model's long-lived resources, so releasing the view model releases them here.
-final class CatalogViewModelDeinitHandle: @unchecked Sendable {
-    var patchingPollTask: Task<Void, Never>?
-    var collectionsStoreObserver: NSObjectProtocol?
-    var homeArrangementObserver: NSObjectProtocol?
-
-    deinit {
-        if let collectionsStoreObserver {
-            NotificationCenter.default.removeObserver(collectionsStoreObserver)
-        }
-        if let homeArrangementObserver {
-            NotificationCenter.default.removeObserver(homeArrangementObserver)
-        }
-        patchingPollTask?.cancel()
     }
 }

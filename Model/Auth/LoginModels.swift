@@ -17,6 +17,11 @@ final class LoginAccount {
     var lastLoginAt: Date
     var rememberSession: Bool
     var isActive: Bool
+    /// The stable identity ownership, credential namespaces and account-scoped caches are keyed by.
+    /// Email and display name are attributes a vendor can change, so neither can key any of them.
+    /// Empty only on a row written before the identity existed; `resolveStableAccountID()` derives
+    /// and stores it, and an existing value is never re-derived over.
+    var stableAccountID: String = ""
 
     init(
         email: String,
@@ -32,8 +37,12 @@ final class LoginAccount {
         createdAt: Date = Date(),
         lastLoginAt: Date = Date(),
         rememberSession: Bool = true,
-        isActive: Bool = true
+        isActive: Bool = true,
+        stableAccountID: String = ""
     ) {
+        self.stableAccountID = stableAccountID.isEmpty
+            ? (OPNAccountID(providerIdpId: providerIdpId, vendorSubject: userId, localFallbackSubject: email)?.rawValue ?? "")
+            : stableAccountID
         self.email = email
         self.displayName = displayName
         self.providerIdpId = providerIdpId
@@ -48,6 +57,22 @@ final class LoginAccount {
         self.lastLoginAt = lastLoginAt
         self.rememberSession = rememberSession
         self.isActive = isActive
+    }
+
+    /// The stored identity alone, for callers that must not write to the model - a view body that
+    /// renders a disabled control, for instance. `LoginViewModel.bootstrap()` fills it for every row
+    /// before any control reads it, and a launch writes it before it can own a session.
+    var storedAccountID: OPNAccountID? { OPNAccountID(rawValue: stableAccountID) }
+
+    /// The row's stable identity, deriving and storing it for a record written before it existed.
+    /// A row with no vendor subject yet keeps a `localOnly` identity rather than borrowing another
+    /// account's, and `LoginViewModel` upgrades it the first time a sign-in supplies the subject.
+    @discardableResult
+    func resolveStableAccountID() -> OPNAccountID? {
+        if let stored = OPNAccountID(rawValue: stableAccountID) { return stored }
+        guard let resolved = OPNAccountID(providerIdpId: providerIdpId, vendorSubject: userId, localFallbackSubject: email) else { return nil }
+        stableAccountID = resolved.rawValue
+        return resolved
     }
 }
 

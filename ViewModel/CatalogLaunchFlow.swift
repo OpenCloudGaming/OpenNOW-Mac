@@ -133,6 +133,11 @@ extension CatalogViewModel {
 
     func beginVendorLaunch(game: OPNCatalogGameObject, variantIndex: Int? = nil) {
         OPNLog.info(.launch, "Beginning launch for gameId=\(game.id) uuid=\(game.uuid) launchAppId=\(game.launchAppId) title=\(game.title) requestedVariantIndex=\(variantIndex ?? -1)")
+        // Ownership is frozen here, at the intent, and not when the transport connects: everything
+        // from this point on - the active-session check, the queue, allocation, the required ad,
+        // recovery - runs on this account's credentials, and this is the last moment at which the
+        // owner is unambiguous.
+        claimSessionOwnership(for: game)
         pendingLaunchGame = game
         pendingLaunchVariantIndex = variantIndex ?? Self.preferredVariantIndex(for: game)
         activeLaunchSession = nil
@@ -492,6 +497,9 @@ extension CatalogViewModel {
     }
 
     func startPreparedStream(_ configuration: StreamLaunchConfiguration, message: String) {
+        // The session carries its owner with it, so the window it opens names the account whose
+        // credentials are about to be used rather than whichever account is selected by then.
+        let ownedConfiguration = configuration.snapshottingOwner(displayName: account.displayName)
         if activeDiscordPresence == nil {
             activeDiscordPresence = discordPresence(for: configuration)
         }
@@ -503,8 +511,8 @@ extension CatalogViewModel {
         didNotifySessionReady = false
         activeStreamProgress = StreamProgress(title: configuration.title.isEmpty ? "GeForce NOW" : configuration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         OPNSessionReadyAction.prepareAuthorizationIfNeeded()
-        activeStreamConfiguration = configuration
-        let sessionGame = catalogGame(forApplicationID: configuration.applicationID)
+        activeStreamConfiguration = ownedConfiguration
+        let sessionGame = catalogGame(forApplicationID: ownedConfiguration.applicationID)
         ControllerMappingStore.shared.beginSession(
             appId: configuration.applicationID,
             catalogIdentity: sessionGame?.catalogIdentity,
@@ -623,6 +631,31 @@ extension CatalogViewModel {
         activeSessionReplacementConfiguration = nil
         pendingLaunchGame = nil
         pendingLaunchVariantIndex = -1
+        // Ownership ends with the launch attempt unless a stream took it over. `startPreparedStream`
+        // sets the configuration before calling this, and both `finishActiveStream` and
+        // `cancelActiveStreamLaunch` clear it first, so this is exactly the boundary between "a
+        // launch that produced nothing" and "a session that still needs the account's credentials".
+        if activeStreamConfiguration == nil { releaseSessionOwnership() }
+    }
+
+    /// Freezes ownership of a launch on the account browsing it.
+    private func claimSessionOwnership(for game: OPNCatalogGameObject) {
+        releaseSessionOwnership()
+        guard let accountID = account.resolveStableAccountID() else {
+            OPNLog.error(.launch, "Launch has no stable account identity to own it account=\(account.email)")
+            return
+        }
+        let id = sessionRegistry.claim(accountID: accountID)
+        deinitHandle.ownedGameSessionID = id
+        OPNLog.info(.launch, "Session ownership claimed accountID=\(accountID) title=\(game.title)")
+    }
+
+    /// Drops the claim. Only ever reached where the local session no longer needs the account's
+    /// credentials; the deinit handle is the backstop for a catalog that goes away first.
+    private func releaseSessionOwnership() {
+        guard let id = deinitHandle.ownedGameSessionID else { return }
+        deinitHandle.ownedGameSessionID = nil
+        sessionRegistry.release(id)
     }
 
     nonisolated static func launchRegionOptions(from regions: [OPNStreamRegionOption]) -> [OPNStreamRegionOption] {

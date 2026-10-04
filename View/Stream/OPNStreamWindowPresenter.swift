@@ -348,8 +348,15 @@ final class OPNStreamWindowPresenter {
         }
     }
 
+    /// The game's title, and the account the session belongs to.
+    ///
+    /// The owner comes from the launch snapshot, not from the catalog's current selection, so
+    /// switching browsing accounts cannot relabel a running game as somebody else's - which is the
+    /// whole point of the label being here rather than on the catalog's own chrome.
     private static func windowTitle(for configuration: StreamLaunchConfiguration) -> String {
         let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return title.isEmpty ? "GeForce NOW" : title
+        let game = title.isEmpty ? "GeForce NOW" : title
+        let owner = configuration.owningAccountDisplayName
+        return owner.isEmpty ? game : "\(game) — \(owner)"
     }
 }

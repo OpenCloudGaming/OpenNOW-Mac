@@ -39,6 +39,34 @@ public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Senda
     }
 }
 
+extension StreamLaunchConfiguration {
+    /// The display name of the account whose credentials this session runs on, snapshotted when
+    /// the launch intent is accepted. A session presents itself from this snapshot rather than from
+    /// whichever account the catalog is browsing, so switching accounts cannot relabel a game that
+    /// is already running as somebody else's.
+    static let owningAccountDisplayNameKey = "owningAccountDisplayName"
+
+    var owningAccountDisplayName: String {
+        (metadata[Self.owningAccountDisplayNameKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func snapshottingOwner(displayName: String) -> StreamLaunchConfiguration {
+        var metadata = metadata
+        metadata[Self.owningAccountDisplayNameKey] = displayName
+        return StreamLaunchConfiguration(
+            id: id,
+            title: title,
+            applicationID: applicationID,
+            accessToken: accessToken,
+            accountLinked: accountLinked,
+            selectedStore: selectedStore,
+            resumeSessionID: resumeSessionID,
+            resumeServer: resumeServer,
+            metadata: metadata
+        )
+    }
+}
+
 public enum StreamLaunchStep: Int, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case checkNetworkRoute
     case allocateCloudSession

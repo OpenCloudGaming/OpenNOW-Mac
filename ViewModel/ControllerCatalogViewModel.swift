@@ -401,12 +401,21 @@ final class ControllerCatalogViewModel: ObservableObject {
     }
 
     /// Rows offered by the per-account options overlay. Sign Out is omitted for an account with no
-    /// usable session — there is nothing to end.
+    /// usable session — there is nothing to end. An account that owns a running game offers neither
+    /// action: the guard refuses both, so the overlay explains instead of pretending.
     func accountOptionRows(for account: LoginAccount) -> [ControllerAccountOptionRow] {
+        if ownsGameSession(account) { return [.ownsGameSession] }
         var rows: [ControllerAccountOptionRow] = []
         if !host.signedOutAccountEmails.contains(account.email) { rows.append(.signOut) }
         rows.append(.forget)
         return rows
+    }
+
+    /// Whether the account owns a game this application started. Read from the stored identity, so
+    /// rendering the pad's menu never writes to the account row.
+    func ownsGameSession(_ account: LoginAccount) -> Bool {
+        guard let catalog, let accountID = account.storedAccountID else { return false }
+        return catalog.sessionRegistry.isOwned(by: accountID)
     }
 
     /// The row itself: the action anybody came for, the watch control for a title the vendor has
