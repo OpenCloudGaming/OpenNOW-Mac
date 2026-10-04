@@ -25,8 +25,23 @@ enum CatalogArtworkType {
 
 /// One width for every logo request: the width is baked into the CDN URL and the URL is the image
 /// cache key, so two widths for one asset decode it twice.
+///
+/// The same reasoning fixes the decode rung, which is why every logo surface decodes at this width
+/// rather than at its own drawn size: the memory cache is keyed by URL, not by rung, so a 160pt
+/// overlay asking for less than the 390pt hero title would hand the hero whichever decoded first.
 enum CatalogLogoArtwork {
     static let requestWidth = 620
+}
+
+/// The marquee hero band is one asset with one rung: the width baked into its CDN URL and the
+/// `maxPixelSize` its decode is asked for are the same number, and they have to be. The memory cache
+/// is keyed by URL but the load key carries the rung, so a view decoding at any other rung misses
+/// the entry the launch prefetch and the rotation prewarm warmed and the largest artwork on the home
+/// screen is fetched and decoded again during launch. The view used to take the shared 3840 default
+/// while both warmers decoded 1920.
+enum CatalogMarqueeArtwork {
+    static let requestWidth = 1920
+    static let decodePixelSize: CGFloat = CGFloat(requestWidth)
 }
 
 extension OPNCatalogGameObject {

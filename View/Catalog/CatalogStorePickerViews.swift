@@ -463,8 +463,17 @@ struct CatalogStoreIconImage: View {
     let url: URL?
     let size: CGFloat
 
+    @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.displayScale) private var displayScale
+
     var body: some View {
-        CatalogCachedImageView(url: url, contentMode: .fit, placeholder: Color.clear, failure: Color.clear)
-            .frame(width: size, height: size)
+        CatalogCachedImageView(
+            url: url,
+            contentMode: .fit,
+            maxPixelSize: CatalogStoreIconArtwork.decodeRung(scale: uiScale, displayScale: displayScale),
+            placeholder: Color.clear,
+            failure: Color.clear
+        )
+        .frame(width: size, height: size)
     }
 }

@@ -7,13 +7,14 @@ import Testing
 /// app. The thing to guard is visual: a row is just its title and chips, never a description line.
 @Suite struct SettingsOptionRowSnapshotTests {
     @MainActor
-    private func row(width: CGFloat, scale: CGFloat, subtitle: String, isNew: Bool = false) -> some View {
+    private func row(width: CGFloat, scale: CGFloat, subtitle: String, isNew: Bool = false, betaOptions: [Bool] = [], selectedIndex: Int = 1) -> some View {
         SettingsCard(title: "Session Ready", uiScale: scale) {
             SettingsOptionRow(
                 title: "When the Stream Is Ready",
                 subtitle: subtitle,
                 options: ["Off", "Notification", "Bring to Front", "Full Screen"],
-                selectedIndex: 1,
+                selectedIndex: selectedIndex,
+                betaOptions: betaOptions,
                 isNew: isNew,
                 uiScale: scale
             ) { _ in }
@@ -108,7 +109,7 @@ import Testing
                 title: "Raw Mouse Input",
                 subtitle: "Aim with unaccelerated HID deltas in relative mode instead of the pointer macOS has already accelerated.",
                 isOn: true,
-                isNew: true,
+                isBeta: true,
                 uiScale: scale
             ) { _ in }
             SettingsDivider(uiScale: scale)
@@ -168,6 +169,19 @@ import Testing
         newRenderer.scale = 2
         let newImage = try #require(newRenderer.nsImage, "no NEW-tag render")
         writeSnapshot(newImage, name: "settings-option-row-new.png")
+
+        // One beta option selected (tag rides the accent fill) and one unselected (tag rides the
+        // neutral chip), so both contrast cases are captured.
+        let betaRenderer = ImageRenderer(content: row(width: 1360, scale: 1.0, subtitle: Self.longSubtitle, betaOptions: [false, true, false, true], selectedIndex: 1))
+        betaRenderer.scale = 2
+        let betaImage = try #require(betaRenderer.nsImage, "no BETA-option render")
+        writeSnapshot(betaImage, name: "settings-option-row-beta-option.png")
+        for scale in [1.25, 1.5] {
+            let scaledRenderer = ImageRenderer(content: row(width: 1360 * scale, scale: scale, subtitle: Self.longSubtitle, betaOptions: [false, true, false, true], selectedIndex: 1))
+            scaledRenderer.scale = 2
+            let scaledImage = try #require(scaledRenderer.nsImage, "no BETA-option render at scale \(scale)")
+            writeSnapshot(scaledImage, name: "settings-option-row-beta-option-s\(scale).png")
+        }
 
         let toggleRenderer = ImageRenderer(content: toggleAndFieldCard(width: 1360, scale: 1.0))
         toggleRenderer.scale = 2

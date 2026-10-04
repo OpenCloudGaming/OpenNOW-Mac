@@ -45,6 +45,9 @@ struct SettingsOptionRow: View {
     /// One swatch per option, drawn ahead of its label. Empty for every plain text row; a caller
     /// opts in only when the option IS a colour, so a reader can see it rather than read its name.
     var swatchColors: [Color] = []
+    /// One flag per option: the option's feature is shipped but still settling, so its chip wears
+    /// BETA. Empty for every row whose options are all settled.
+    var betaOptions: [Bool] = []
     var isNew = false
     let uiScale: CGFloat
     let action: (Int) -> Void
@@ -99,6 +102,9 @@ struct SettingsOptionRow: View {
                             Text(options[index])
                                 .font(.settingsFont(size: 12 * uiScale, weight: .bold))
                                 .foregroundStyle(index == selectedIndex ? OPNDesign.onAccent : (optionEnabled ? OPNDesign.Text.secondary : OPNDesign.Text.muted))
+                            if betaOptions.indices.contains(index), betaOptions[index] {
+                                OPNBetaTag(uiScale: uiScale * 0.85, compact: true, isOnAccentFill: index == selectedIndex)
+                            }
                         }
                         .padding(.horizontal, 12 * uiScale)
                         .frame(height: 32 * uiScale)
@@ -192,6 +198,8 @@ struct SettingsToggleRow: View {
     let subtitle: String
     let isOn: Bool
     var isNew = false
+    /// The feature behind the toggle is shipped but still settling, so its title wears BETA.
+    var isBeta = false
     /// The setting is on but this Mac cannot act on it. The tooltip says why; this stops the
     /// control itself from contradicting it.
     var isInert = false
@@ -200,7 +208,7 @@ struct SettingsToggleRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 18 * uiScale) {
-            SettingsRowTitle(title: title, isNew: isNew, help: subtitle, uiScale: uiScale)
+            SettingsRowTitle(title: title, isNew: isNew, isBeta: isBeta, help: subtitle, uiScale: uiScale)
             Spacer()
             Toggle(isOn: Binding(get: { isOn }, set: { action($0) }), isInert: isInert, uiScale: uiScale)
         }

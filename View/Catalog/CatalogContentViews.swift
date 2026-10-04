@@ -37,7 +37,9 @@ struct CatalogContentView: View {
                 let sections = viewModel.catalogSections
                 let isGridDestination = shouldUseGrid(for: viewModel.selectedCatalogDestination)
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    // No indicator, like every other scroll surface here: the page only ever lacked
+                    // one because its frame was as wide as the scroll content.
+                    ScrollView(.vertical, showsIndicators: false) {
                         // Deliberately eager. A LazyVStack here re-runs
                         // `LazyStack.measureEstimates` on every scroll offset change, and
                         // estimating a rail means applying its whole view list - every tile in
@@ -58,7 +60,6 @@ struct CatalogContentView: View {
                                 VendorActiveSessionHomeBanner(
                                     title: viewModel.activeHomeSessionTitle,
                                     isResumable: session.isResumable,
-                                    serverIp: session.serverIp,
                                     availableWidth: viewport.size.width,
                                     onResume: { viewModel.resumeActiveHomeSession() },
                                     onEnd: { viewModel.endActiveHomeSession() }
@@ -197,6 +198,9 @@ struct CatalogContentView: View {
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
                     }
                 }
+                // A `ScrollView` is as wide as its widest content, and the running-stream banner's
+                // `safeAreaInset` region is that frame - so the region is clamped to the page.
+                .frame(maxWidth: viewport.size.width > 0 ? viewport.size.width : .infinity, alignment: .leading)
                 // Sticky, not scrolled: the banner is the one fact that stays true for the whole
                 // session, and a page scrolled down to the rails is exactly when it is needed.
                 // A `safeAreaInset` keeps it pinned above the content - a pinned `Section` header
@@ -256,7 +260,7 @@ struct CatalogContentView: View {
         var seen = Set<String>()
         for offset in 1...min(2, games.count - 1) {
             let game = games[(index + offset) % games.count]
-            appendHeroPrefetchURL(game.bestMarqueeHeroImageURL, width: 1920, urls: &heroURLs, seen: &seen)
+            appendHeroPrefetchURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeArtwork.requestWidth, urls: &heroURLs, seen: &seen)
             appendHeroPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &wordmarkURLs, seen: &seen)
         }
         guard !heroURLs.isEmpty || !wordmarkURLs.isEmpty else { return }
@@ -374,7 +378,11 @@ struct CatalogHeroView: View {
                 let textWidth = CatalogVendorLayout.heroTextWidth(for: bandWidth)
                 ZStack(alignment: .bottom) {
                     CatalogHeroVendorBackgroundScrim(color: scrimColor)
-                    CatalogHeroRemoteImage(url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: 1920), contentMode: .fill) { color in
+                    CatalogHeroRemoteImage(
+                        url: viewModel.optimizedImageURL(game.bestMarqueeHeroImageURL, width: CatalogMarqueeArtwork.requestWidth),
+                        contentMode: .fill,
+                        maxPixelSize: CatalogMarqueeArtwork.decodePixelSize
+                    ) { color in
                         scrimColor = color
                     }
                     .frame(width: max(bandWidth - imageLeading, 1), height: heroHeight)
@@ -458,8 +466,14 @@ struct CatalogHeroTitleView: View {
 
     var body: some View {
         if let logoURL = viewModel.optimizedImageURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth) {
-            CatalogCachedImageView(url: logoURL, contentMode: .fit, placeholder: fallbackTitle.opacity(0), failure: fallbackTitle)
-                .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
+            CatalogCachedImageView(
+                url: logoURL,
+                contentMode: .fit,
+                maxPixelSize: CGFloat(CatalogLogoArtwork.requestWidth),
+                placeholder: fallbackTitle.opacity(0),
+                failure: fallbackTitle
+            )
+            .frame(maxWidth: 390 * uiScale, maxHeight: 150 * uiScale)
         } else {
             fallbackTitle
         }
