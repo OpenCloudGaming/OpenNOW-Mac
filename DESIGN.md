@@ -972,12 +972,11 @@ Chrome and control are the active-session banner's, shared through `VendorStatus
 `VendorActiveSessionBannerButtonStyle`: `OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline
 along the bottom, `CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a
 10pt bold accent eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold. Two
-lines, not three:
-the stream's own status message under the title only restated that it plays in its own window, and
-cost the banner a row of height. Actions: **FOCUS** (accent fill, the one action the
-session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular). END routes
-through `StreamSessionLifecycle`, so the menu bar, the PiP strip and this button tear down the same
-thing.
+lines, not three: the stream's own status message under the title only restated that it plays in
+its own window, and cost the banner a row of height. Actions: **FOCUS** (accent fill, the one
+action the session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular).
+END routes through `StreamSessionLifecycle`, so the menu bar, the PiP strip and this button tear
+down the same thing.
 - **Backdrop.** The running stream's artwork, artwork fill, 18pt blur, then `OPNDesign.Surface.scrim`
 and the same top/bottom black gradient the store picker uses. Behind the page, never hit-testable,
 hidden from accessibility. Games page only — Settings and Recordings share the stack and have
