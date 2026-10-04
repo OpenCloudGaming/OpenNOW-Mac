@@ -255,6 +255,10 @@ extension OPNSessionManager {
             completion(false, [:], limitedModeMessage)
             return
         }
+        if let perDeviceMessage = CloudMatchResponseParser.sessionLimitPerDeviceMessage(data) {
+            completion(false, [:], perDeviceMessage)
+            return
+        }
         completion(false, [:], fallback)
     }
 

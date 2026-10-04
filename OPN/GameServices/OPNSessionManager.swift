@@ -172,6 +172,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         if let requestLimitMessage = CloudMatchResponseParser.requestLimitExceededMessage(data) {
             return (false, [:], requestLimitMessage)
         }
+        // Ahead of the session-limit branch below, which would otherwise read this as "this account
+        // already has a session" and hand back a conflict with nothing to resolve.
+        if let perDeviceMessage = CloudMatchResponseParser.sessionLimitPerDeviceMessage(data) {
+            return (false, [:], perDeviceMessage)
+        }
         guard let json = CloudMatchResponseParser.jsonDictionary(data),
               CloudMatchResponseParser.isSessionLimitExceededResponse(json),
               let selected = selectSessionLimitReuseEntry(activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: requestedAppId) else {

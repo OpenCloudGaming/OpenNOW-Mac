@@ -173,6 +173,32 @@ private struct MockCloudMatchTransport: CloudMatchHTTPTransport {
     #expect(CloudMatchResponseParser.requestLimitExceededMessage(successData()) == nil)
 }
 
+/// The seat counts one live session per device, so a second account launching from this Mac is
+/// refused with no session of its own to resume or end. Measured against a live refusal: the same
+/// payload carries `otherUserSessions: []`, which is why the generic session-limit branch has
+/// nothing to hand back.
+@Test func cloudMatchNamesThePerDeviceSessionLimit() throws {
+    let refusal = try JSONSerialization.data(withJSONObject: [
+        "session": ["sessionId": "87579ffd-d187-4221-8831-2868e09c6e1a"],
+        "requestStatus": [
+            "unifiedErrorCode": 1257316382,
+            "serverId": "NP-TYO-01",
+            "statusDescription": "SESSION_LIMIT_PER_DEVICE_EXCEEDED_STATUS 4AF1201E",
+            "statusCode": 50,
+        ],
+        "otherUserSessions": [],
+    ])
+
+    let message = try #require(CloudMatchResponseParser.sessionLimitPerDeviceMessage(refusal))
+    #expect(message.contains("one session per device"))
+    // The generic branch would have read this as this account's own session, which is the bug: it
+    // sees `SESSION_LIMIT` in the description and an empty session list to resolve against.
+    #expect(CloudMatchResponseParser.isSessionLimitExceededResponse(
+        try #require(CloudMatchResponseParser.jsonDictionary(refusal))
+    ))
+    #expect(CloudMatchResponseParser.sessionLimitPerDeviceMessage(successData()) == nil)
+}
+
 private func successData() -> Data {
     (try? JSONSerialization.data(withJSONObject: ["requestStatus": ["statusCode": 1, "statusDescription": "SUCCESS"]])) ?? Data()
 }

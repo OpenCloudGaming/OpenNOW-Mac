@@ -363,3 +363,31 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(result.2.isEmpty)
     }
 }
+
+/// The seat counts one live session per device, and says so with an empty session list. That has to
+/// read as the device limit rather than fall through to the raw body - which is exactly what a second
+/// account launching from this Mac got, because the generic session-limit branch matches
+/// `SESSION_LIMIT` and then has no session of this account's own to resolve against.
+@Test func aPerDeviceSessionLimitIsNotReadAsThisAccountsOwnSession() throws {
+    let refusal = try JSONSerialization.data(withJSONObject: [
+        "session": ["sessionId": "87579ffd-d187-4221-8831-2868e09c6e1a"],
+        "requestStatus": [
+            "unifiedErrorCode": 1257316382,
+            "serverId": "NP-TYO-01",
+            "statusDescription": "SESSION_LIMIT_PER_DEVICE_EXCEEDED_STATUS 4AF1201E",
+            "statusCode": 50,
+        ],
+        "otherUserSessions": [],
+    ])
+
+    let (succeeded, conflict, message) = OPNSessionManager().createSessionFailure(
+        data: refusal,
+        statusCode: 403,
+        baseUrl: "https://prod.cloudmatchbeta.nvidiagrid.net/",
+        requestedAppId: 103500271
+    )
+
+    #expect(!succeeded)
+    #expect(conflict.isEmpty)
+    #expect(message.contains("one session per device"))
+}
