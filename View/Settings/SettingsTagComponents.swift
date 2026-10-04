@@ -19,6 +19,8 @@ enum SettingsTagMetrics {
 struct SettingsRowTitle: View {
     let title: String
     let isNew: Bool
+    /// The feature behind the row is shipped but still settling, so its title wears BETA.
+    var isBeta = false
     /// When non-empty, a question mark rides beside the title and shows this text as a hover
     /// tooltip. Settings rows carry their explanation here rather than on a second line.
     var help: String = ""
@@ -29,6 +31,7 @@ struct SettingsRowTitle: View {
             Text(title)
                 .font(.settingsFont(size: 15 * uiScale, weight: .bold))
                 .foregroundStyle(OPNDesign.Text.primary)
+            if isBeta { OPNBetaTag(uiScale: uiScale * 0.85, compact: true) }
             if isNew { OPNNewTag(uiScale: uiScale) }
             if !help.isEmpty {
                 SettingsHelpIcon(title: title, help: help, uiScale: uiScale)
@@ -147,6 +150,9 @@ struct OPNBetaTag: View {
     /// What the tag says. BETA is the default; a feature behind a Labs flag wears EXPERIMENTAL, and
     /// the chrome is otherwise identical so a trial reads the same wherever it appears.
     var label = "BETA"
+    /// The tag rides inside a control already filled with the accent — a selected option chip —
+    /// where the tinted chrome would sit on its own colour. There it takes the fill's own ink.
+    var isOnAccentFill = false
 
     var body: some View {
         Text(label)
@@ -163,11 +169,13 @@ struct OPNBetaTag: View {
     private var leadingPadding: CGFloat { compact ? 4 : 5 }
 
     private var foreground: Color {
+        if isOnAccentFill { return OPNDesign.onAccent }
         if prominent { return OPNDesign.onAccent }
         return OPNDesign.accentInk
     }
 
     private var background: Color {
+        if isOnAccentFill { return OPNDesign.onAccent.opacity(0.18) }
         if prominent { return OPNDesign.accent }
         return OPNDesign.accent.opacity(compact ? 0.16 : 0.20)
     }

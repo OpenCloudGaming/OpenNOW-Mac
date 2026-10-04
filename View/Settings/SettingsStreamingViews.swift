@@ -101,6 +101,11 @@ struct ResolutionUpscalingSettingsPage: View {
         }
     }
 
+    /// VRR is the one pacing mode still settling; its chip wears BETA while it does.
+    var presentationModeBetaOptions: [Bool] {
+        OPNStreamPreferences.presentationModeOptions.map { $0.value == OPNVideoPresentationMode.vrr.rawValue }
+    }
+
     var body: some View {
         SettingsStack(spacing: 16 * uiScale) {
             SettingsCard(title: "MetalFX Upscaling", uiScale: uiScale) {
@@ -115,7 +120,7 @@ struct ResolutionUpscalingSettingsPage: View {
             .settingsSection("upscaling")
 
             SettingsCard(title: "Presentation", uiScale: uiScale) {
-                SettingsOptionRow(title: "Frame Pacing", subtitle: presentationModeSubtitle, options: OPNStreamPreferences.presentationModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.presentationModeIndex, uiScale: uiScale, action: viewModel.setPresentationModeIndex)
+                SettingsOptionRow(title: "Frame Pacing", subtitle: presentationModeSubtitle, options: OPNStreamPreferences.presentationModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.presentationModeIndex, betaOptions: presentationModeBetaOptions, uiScale: uiScale, action: viewModel.setPresentationModeIndex)
             }
             .settingsSection("presentation")
 

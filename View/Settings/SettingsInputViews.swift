@@ -47,7 +47,7 @@ struct InputSettingsPage: View {
         SettingsCard(title: "Mouse & Keyboard", uiScale: uiScale) {
             SettingsToggleRow(title: "Direct Mouse Input", subtitle: Self.directMouseInputSubtitle, isOn: viewModel.streamProfile.directMouseInput, uiScale: uiScale, action: viewModel.setDirectMouseInputEnabled)
             SettingsDivider(uiScale: uiScale)
-            SettingsToggleRow(title: "Raw Mouse Input", subtitle: "Aim with unaccelerated HID deltas in relative mode instead of the pointer macOS has already accelerated. Reading mouse counts needs the Input Monitoring permission; without it the stream keeps the accelerated pointer. Mouse Sensitivity still applies.", isOn: viewModel.streamProfile.rawMouseInput, uiScale: uiScale, action: viewModel.setRawMouseInputEnabled)
+            SettingsToggleRow(title: "Raw Mouse Input", subtitle: "Aim with unaccelerated HID deltas in relative mode instead of the pointer macOS has already accelerated. Reading mouse counts needs the Input Monitoring permission; without it the stream keeps the accelerated pointer. Mouse Sensitivity still applies.", isOn: viewModel.streamProfile.rawMouseInput, isBeta: true, uiScale: uiScale, action: viewModel.setRawMouseInputEnabled)
             if viewModel.streamProfile.rawMouseInput, !inputMonitoringGranted {
                 SettingsDivider(uiScale: uiScale)
                 rawMouseInputPermissionRow

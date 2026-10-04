@@ -827,6 +827,14 @@ tint (compact) for shipped-but-rough features. **NEW** is black text on solid ac
 added in the current release; rows opt in with `isNew:` and declare their release in
 `OPNNewSettings.Row`, which hides the tag once the setting is changed or the next release ships.
 
+Rows opt into the trial with `isBeta:` on `SettingsRowTitle` / `SettingsToggleRow`. A picker can also
+mark a single choice: `SettingsOptionRow` takes `betaOptions`, one flag per option, so the tagged chip
+reads `VRR BETA` while its settled siblings stay plain. That is the one place the tag rides a row
+rather than a card — a mixed picker whose beta choice has no card of its own — and it is per-option
+rather than per-row so the other choices are not painted beta. A selected chip is already filled with
+the accent, so its tag sets `isOnAccentFill`: `onAccent` text on an 18 % `onAccent` box, since the
+standard accent tint would sit on its own colour.
+
 ### Tooltip (`opnTooltip`)
 
 A flat balloon annotation that drops below a control while the pointer rests on it, used where the
