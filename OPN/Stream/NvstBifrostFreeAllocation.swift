@@ -67,24 +67,18 @@ extension NvstBifrostFreeTransport {
         return profile
     }
 
-    /// `host:port` or bare host → host.
-    /// What the session asked of the seat's prefilter and what the seat finalized, the pair the
-    /// official client logs as "Prefilter:: Client request … Server response …". The finalized
-    /// values are the only sign of whether the seat runs the filter at all.
+    /// The prefilter the seat finalized, its half of what the official client logs as "Prefilter::
+    /// Client request … Server response …". The only sign of whether the seat runs the filter; the
+    /// request is in the announce, since the session response does not repeat it.
     static func prefilterNegotiationSummary(rawSessionJSON json: String) -> String {
         guard let data = json.data(using: .utf8),
-              let session = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return "unknown: no session JSON" }
-        let requestData = session["sessionRequestData"] as? [String: Any]
-        let requested = requestData?["requestedStreamingFeatures"] as? [String: Any]
-        let finalized = session["finalizedStreamingFeatures"] as? [String: Any]
-        func describe(_ features: [String: Any]?) -> String {
-            guard let features else { return "none" }
-            let fields = ["prefilterMode", "prefilterSharpness", "prefilterNoiseReduction", "prefilterModel"]
-            return fields.map { "\($0)=\(features[$0].map { "\($0)" } ?? "-")" }.joined(separator: " ")
-        }
-        return "requested[\(describe(requested))] finalized[\(describe(finalized))]"
+              let session = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return "finalized[unknown: no session JSON]" }
+        guard let finalized = session["finalizedStreamingFeatures"] as? [String: Any] else { return "finalized[none]" }
+        let fields = ["prefilterMode", "prefilterSharpness", "prefilterNoiseReduction"]
+        return "finalized[" + fields.map { "\($0)=\(finalized[$0].map { "\($0)" } ?? "-")" }.joined(separator: " ") + "]"
     }
 
+    /// `host:port` or bare host → host.
     static func host(from signalingServer: String) -> String? {
         let trimmed = signalingServer.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }

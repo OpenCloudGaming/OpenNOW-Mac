@@ -71,14 +71,13 @@ import Testing
         #expect(NvstBifrostFreeTransport.sessionServerLocation(fromRawSessionJSON: #"{"serverLocation": "  "}"#) == nil)
     }
 
-    /// The official client's session at Auto: the seat finalized mode 2 for a mode 1 request.
-    @Test func thePrefilterSummaryPairsTheRequestWithTheSeatsAnswer() {
-        let session = #"{"sessionRequestData": {"requestedStreamingFeatures": {"prefilterMode": 1, "prefilterSharpness": 0, "prefilterNoiseReduction": 0}}, "finalizedStreamingFeatures": {"prefilterMode": 2, "prefilterSharpness": 0, "prefilterNoiseReduction": 0}}"#
+    /// The seat's answer at Auto, as it finalized it for the official client: mode 2.
+    @Test func thePrefilterSummaryReportsTheSeatsAnswer() {
+        let session = #"{"finalizedStreamingFeatures": {"prefilterMode": 2, "prefilterSharpness": 0, "prefilterNoiseReduction": 0}}"#
         #expect(NvstBifrostFreeTransport.prefilterNegotiationSummary(rawSessionJSON: session)
-            == "requested[prefilterMode=1 prefilterSharpness=0 prefilterNoiseReduction=0 prefilterModel=-] "
-            + "finalized[prefilterMode=2 prefilterSharpness=0 prefilterNoiseReduction=0 prefilterModel=-]")
+            == "finalized[prefilterMode=2 prefilterSharpness=0 prefilterNoiseReduction=0]")
         #expect(NvstBifrostFreeTransport.prefilterNegotiationSummary(rawSessionJSON: #"{"finalizedStreamingFeatures": null}"#)
-            == "requested[none] finalized[none]")
+            == "finalized[none]")
     }
 
     @Test func theServerLocationFallsBackToTheZoneEndpointNotAnIp() {
