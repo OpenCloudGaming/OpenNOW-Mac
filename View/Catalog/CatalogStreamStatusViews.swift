@@ -43,14 +43,6 @@ struct VendorRunningStreamHomeBanner: View {
                     .catalogFont(size: 14, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.primary)
                     .lineLimit(1)
-                // Deliberately constant rather than the last progress message: that is whatever the
-                // launch said on its way past ("Starting GeForce NOW stream..."), and a running
-                // stream showing that reads as a stall. What is true for the whole session is where
-                // the picture is.
-                Text("Playing in its own window")
-                    .catalogFont(size: 11)
-                    .foregroundStyle(OPNDesign.Text.secondary)
-                    .lineLimit(1)
             }
 
             Spacer(minLength: 16 * uiScale)
