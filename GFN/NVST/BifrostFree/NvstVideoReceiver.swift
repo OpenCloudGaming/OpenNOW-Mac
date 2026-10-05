@@ -747,6 +747,7 @@ extension NvstVideoReceiver {
         if let lastNackScanAt, now &- lastNackScanAt < NvstNackTracker.initialDelayNanoseconds { return }
         guard let newest = reorder.keys.max(), newest > expected else { return }
         lastNackScanAt = now
+        disableRetransmissionWaitIfUnanswered(now: now)
         // No more than one request can name, or the rest would count as requested without being sent.
         let limit = NvstRtpNackRequest.maximumSequenceNumbers
         let missing = (expected..<newest).lazy.filter { self.reorder[$0] == nil }.prefix(limit)
@@ -754,18 +755,22 @@ extension NvstVideoReceiver {
         stats.retransmissionRetries = UInt64(nackTracker.retryCount)
         guard !due.isEmpty else { return }
         stats.retransmissionRequestsSent += 1
-        let firstRequestAt = firstRetransmissionRequestAt ?? now
-        firstRetransmissionRequestAt = firstRequestAt
+        firstRetransmissionRequestAt = firstRetransmissionRequestAt ?? now
         events.append(.retransmissionWanted(due))
-        // A seat that has repaired none of the requests it was sent is not going to: stop holding
-        // gaps for an answer that never comes, which is what the wait costs when it is wrong.
-        if !retransmissionWaitDisabled,
-           stats.retransmissionRequestsSent >= Self.retransmissionWaitDisableRequestCount,
-           stats.retransmissionRepairedPackets == 0,
-           now &- firstRequestAt >= Self.retransmissionWaitDisableDelayNanoseconds {
-            retransmissionWaitDisabled = true
-            stats.retransmissionWaitDisabled = true
-        }
+    }
+
+    /// A seat that has repaired none of the requests it was sent is not going to: stop holding gaps
+    /// for an answer that never comes, which is what the wait costs when it is wrong. Every scan
+    /// asks, not only the ones that send a request, so a session whose requests have all gone out
+    /// stops holding the gaps behind them instead of waiting for a further request to judge it by.
+    private func disableRetransmissionWaitIfUnanswered(now: UInt64) {
+        guard !retransmissionWaitDisabled,
+              stats.retransmissionRequestsSent >= Self.retransmissionWaitDisableRequestCount,
+              stats.retransmissionRepairedPackets == 0,
+              let firstRequestAt = firstRetransmissionRequestAt,
+              now &- firstRequestAt >= Self.retransmissionWaitDisableDelayNanoseconds else { return }
+        retransmissionWaitDisabled = true
+        stats.retransmissionWaitDisabled = true
     }
 
     private func recordRecovery(first: UInt64, last: UInt64, events: inout [NvstReceiveEvent]) {

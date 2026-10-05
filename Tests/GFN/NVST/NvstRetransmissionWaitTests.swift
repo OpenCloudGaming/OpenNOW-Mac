@@ -73,6 +73,52 @@ struct NvstRetransmissionWaitTests {
         #expect(recoveries == 1)
     }
 
+    /// The verdict is reached on time, not only when another request happens to go out: eight
+    /// requests, no repair, 200 ms, and the next scan ends the wait even though it sends nothing.
+    @Test func theWaitIsDisabledWithoutAnotherRequestGoingOut() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        // A measured round trip, so a retry brings the request count up inside a few short gaps.
+        receiver.useRetransmissionRoundTrip(milliseconds: 4)
+        let retryInterval = NvstNackTracker.extraRetryWaitNanoseconds + 4_000_000
+        let media: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x65]
+        func feed(_ sequence: UInt16) throws -> [NvstReceiveEvent] {
+            receiver.process(datagram: try NvstReceiverFixtures.seal(
+                NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
+                sequence: sequence, handoff: handoff))
+        }
+        var sequence: UInt16 = 1
+        _ = try feed(sequence)
+        // Four one-packet holes, each requested and retried once before its hold expires. Every
+        // request goes out inside the first 70 ms and none of them is ever repaired.
+        for _ in 0..<4 {
+            sequence += 2
+            _ = try feed(sequence)
+            clock.withLock { $0 += NvstNackTracker.initialDelayNanoseconds }
+            sequence += 1
+            _ = try feed(sequence)
+            clock.withLock { $0 += retryInterval }
+            sequence += 1
+            _ = try feed(sequence)
+            clock.withLock { $0 += retryInterval }
+            sequence += 1
+            _ = try feed(sequence)
+        }
+        let asked = receiver.snapshot
+        #expect(asked.retransmissionRequestsSent == NvstVideoReceiver.retransmissionWaitDisableRequestCount)
+        #expect(asked.retransmissionRepairedPackets == 0)
+        #expect(!asked.retransmissionWaitDisabled)
+
+        // Past the delay, the next scan sends nothing and still ends the wait.
+        clock.withLock { $0 = 202_000_000 }
+        sequence += 2
+        _ = try feed(sequence)
+        let stats = receiver.snapshot
+        #expect(stats.retransmissionRequestsSent == asked.retransmissionRequestsSent)
+        #expect(stats.retransmissionWaitDisabled)
+    }
+
     /// A packet the seat never sent but FEC rebuilt is not a retransmission arriving: crediting it
     /// would keep the wait enabled for a seat that answers nothing, and overstate the repair count.
     @Test func anFecRebuildOfARequestedPacketIsNotCreditedToTheRequest() throws {
