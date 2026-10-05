@@ -134,7 +134,7 @@ struct ResolutionUpscalingSettingsPage: View {
             .settingsSection("pillarbox")
 
             SettingsCard(title: "Image Enhancement", uiScale: uiScale) {
-                SettingsOptionRow(title: "Prefilter Mode", subtitle: "Applies GFN-style prefiltering before presentation.", options: OPNStreamPreferences.prefilterModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.prefilterModeIndex, uiScale: uiScale, action: viewModel.setPrefilterModeIndex)
+                SettingsOptionRow(title: "Prefilter Mode", subtitle: "The server denoises and sharpens each frame before encoding it, like GeForce NOW's AI Video Filter. Needs an Ultimate membership. Sharpness and Denoise apply in Custom.", options: OPNStreamPreferences.prefilterModeOptions.map(\.label), selectedIndex: viewModel.streamProfile.prefilterModeIndex, uiScale: uiScale, action: viewModel.setPrefilterModeIndex)
                 SettingsDivider(uiScale: uiScale)
                 SettingsSliderRow(title: "Prefilter Sharpness", valueText: "\(viewModel.streamProfile.prefilterSharpness)", value: Double(viewModel.streamProfile.prefilterSharpness), range: 0...10, uiScale: uiScale, action: viewModel.setPrefilterSharpness)
                 SettingsDivider(uiScale: uiScale)

@@ -68,7 +68,7 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("Pillarbox Fill", .video, "pillarbox", keywords: [
             "black bars", "letterbox", "blur", "stretch", "crop", "16:9", "edge dimming", "dim",
         ]),
-        SettingsSearchEntry("Prefilter Mode", .video, "enhancement", keywords: ["sharpen", "server", "ai"]),
+        SettingsSearchEntry("Prefilter Mode", .video, "enhancement", keywords: ["ai video filter", "sharpen", "denoise", "server", "ai", "avf"]),
         SettingsSearchEntry("Prefilter Sharpness", .video, "enhancement", keywords: ["sharpen", "clarity"]),
         SettingsSearchEntry("Prefilter Denoise", .video, "enhancement", keywords: ["noise", "grain"]),
     ]

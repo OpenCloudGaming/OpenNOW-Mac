@@ -20,7 +20,7 @@ struct NvstMjolnirFeedbackTests {
 
     @Test func aGapBeyondTheReorderWindowRequestsRecoveryAndNeverEmitsAPartialFrame() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { 0 })
         let sof = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 1, frameIndex: 1, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 1, handoff: handoff)
         #expect(NvstReceiverFixtures.frames(receiver.process(datagram: sof)).isEmpty)
         // Jump far past the window: the reference chain is broken.
@@ -60,7 +60,7 @@ struct NvstMjolnirFeedbackTests {
     /// producing nothing looks like a slow stream rather than a dead feedback plane.
     @Test func aReceiverReportIsProducedOnceAnSsrcIsBound() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { 0 })
         // No SSRC bound yet, so nothing to report about.
         #expect(receiver.pollReceiverReport() == nil)
 
@@ -81,7 +81,7 @@ struct NvstMjolnirFeedbackTests {
     /// The sender's rate control reads these, so they have to be real.
     @Test func receiverReportsCarryRealReceptionStatistics() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 8)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { 0 })
         for sequence in UInt16(1)...UInt16(6) {
             let datagram = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x05,
                                            media: [0x00, 0x00, 0x00, 0x01, 0x65]),
@@ -105,7 +105,7 @@ struct NvstMjolnirFeedbackTests {
 
     @Test func outOfOrderPacketsAreDeliveredInSequence() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 8)
-        let receiver = try NvstVideoReceiver(handoff: handoff)
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { 0 })
         let sof = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 1, frameIndex: 3, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65]), sequence: 1, handoff: handoff)
         let eof = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 3, frameIndex: 3, flags: 0x03, media: [0xcc]), sequence: 3, handoff: handoff)
         let middle = try NvstReceiverFixtures.seal(NvstReceiverFixtures.packet(sequence: 2, frameIndex: 3, flags: 0x01, media: [0xbb]), sequence: 2, handoff: handoff)
@@ -120,7 +120,7 @@ struct NvstMjolnirFeedbackTests {
 
     @Test func fecRepairPacketsAreCountedNotDecoded() throws {
         let handoff = NvstReceiverFixtures.makeHandoff()
-        let receiver = try NvstVideoReceiver(handoff: handoff)
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { 0 })
         let repair = NvstVideoPacketTests.buildPacket(sequence: 1, frameIndex: 1, flags: 0x05, media: [0x00, 0x00, 0x00, 0x01, 0x65], fecWord: 0x00c0_3420)
         let events = receiver.process(datagram: try NvstReceiverFixtures.seal(repair, sequence: 1, handoff: handoff))
         #expect(NvstReceiverFixtures.frames(events).isEmpty)
@@ -129,7 +129,7 @@ struct NvstMjolnirFeedbackTests {
 
     @Test func srtcpReceiverReportsWaitForTheMediaSsrcThenRespectTheInterval() throws {
         let handoff = NvstReceiverFixtures.makeHandoff()
-        let receiver = try NvstVideoReceiver(handoff: handoff)
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { 0 })
         let origin = Date(timeIntervalSince1970: 1_000_000)
         // No authenticated packet yet: nothing to report about.
         #expect(receiver.pollReceiverReport(now: origin) == nil)

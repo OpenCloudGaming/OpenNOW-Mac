@@ -247,6 +247,13 @@ public struct StreamProfile: Equatable, Sendable {
     }
 }
 
+/// The prefilter model the user picked, or nil when none is set: 0 is the stored default for
+/// "unset", which the session request and the announce both leave out, as the official client does.
+func chosenPrefilterModel(_ configuredModel: Int) -> Int? {
+    guard configuredModel > 0 else { return nil }
+    return configuredModel
+}
+
 public struct ResolvedStreamSettings: Equatable, Sendable {
     public var resolution: String
     public var fps: Int

@@ -358,6 +358,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         }
         sessionServerLocation = Self.sessionServerLocation(for: allocation)
         sessionGPUType = Self.sessionGPUType(for: allocation)
+        logger?("NVST prefilter \(Self.prefilterNegotiationSummary(rawSessionJSON: allocation.rawSessionJSON))")
         let profile = Self.resolvedStreamProfile(allocation: allocation,
                                                  configuredFps: configuredFps,
                                                  configuredMaxBitrateKbps: configuredMaxBitrateKbps)
@@ -475,7 +476,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         logger?("NVST audio tracks=\(bundle?.remoteAudioTrackCount ?? 0) pktIn=\(audio?.packets ?? 0) bytesIn=\(audio?.bytes ?? 0)"
                 + " samples=\(audio?.samples ?? 0) concealed=\(audio?.concealed ?? 0) discarded=\(audio?.discarded ?? 0) ssrc=\(audio?.ssrc.map(String.init) ?? "-")")
         let video = videoPipeline?.snapshot ?? NvstVideoPipeline.Counters()
-        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) rtpLoss=\(stats.finalizedLossPackets) parityLoss=\(stats.parityOnlyLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padDropped=\(gamepadPacketsDroppedForUnannouncedPad) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) \(perSecondSeries(stats: stats, included: includingPerSecondSeries)) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
+        logger?("NVST counters auth=\(stats.authenticatedPackets) fec=\(stats.fecPackets) dropped=\(stats.droppedPackets) replayed=\(stats.replayedPackets) late=\(stats.latePackets) dup=\(stats.duplicatePackets) nackRepaired=\(stats.retransmissionRepairedPackets) nackRetries=\(stats.retransmissionRetries) nackOut=\(stats.retransmissionRequestsSent) nackWaitOff=\(stats.retransmissionWaitDisabled) rtpLoss=\(stats.finalizedLossPackets) parityLoss=\(stats.parityOnlyLossPackets) frames=\(stats.framesEmitted) keyframes=\(stats.keyframesEmitted) recoveries=\(stats.recoveries) sofFlagged=\(stats.startOfFrameFlagged) sofOk=\(stats.startOfFrameAccepted) abandoned=\(stats.abandonedFrames) rrFail=\(stats.receiverReportFailures)\(stats.lastReceiverReportFailure.map { " rrErr=\($0)" } ?? "") multiBlock=\(stats.multiBlockPackets) maxBlock=\(stats.highestFecLastBlock) decoded=\(decoder?.decodedFrameCount ?? 0) decodeFailed=\(decoder?.failedFrameCount ?? 0) decodeErr=\(decoder?.failureStatusSummary ?? "-") noParamSets=\(video.missingParameterSetFrames) idrOut=\(idrRequestsSent) invalidOut=\(invalidationsSent) inputOut=\(inputEventsSent) padOut=\(gamepadPacketsSent) padFail=\(gamepadSendFailures) padDropped=\(gamepadPacketsDroppedForUnannouncedPad) padReg=\(didRegisterGamepad) textTyped=\(textCharactersTyped) textDroppedBytes=\(textBytesDropped) inputReady=\(bundle?.isInputReady == true) rrOut=\(stats.receiverReportsSent) frac=\(stats.lastFractionLost) lost=\(stats.lastCumulativeLost) jitter=\(stats.lastJitter) seqSpan=\(stats.sequenceSpan) negFps=\(negotiatedFps.map(String.init) ?? "nil") mediaSeconds=\(String(format: "%.2f", Double(stats.lastRtpTimestamp &- (stats.firstRtpTimestamp ?? 0)) / Double(NvstVideoToolboxDecoder.clockRate))) fidxChanges=\(stats.frameIndexChanges) \(perSecondSeries(stats: stats, included: includingPerSecondSeries)) paceOut=\(video.pacingReportsSent) paceFail=\(video.pacingReportFailures) ackOut=\(video.frameAcksSent) ackFail=\(video.frameAckFailures) qosOut=\(qosReportsSent) qosFail=\(qosReportFailures) rtpStatsOut=\(rtpStatsReportsSent) ccStatsOut=\(controlStatsReportsSent) ssrc=\(stats.boundSSRC.map { String(format: "0x%08x", $0) } ?? "-")")
         // Which pipeline stage a latency spike lives in. `peak*` are per-stage session maxima, so a
         // single 500 ms stall is still visible after the average has recovered.
         logger?(String(format: "NVST frame stages slow=%d frames=%llu resyncs=%d skipped=%d abandoned=%d lastLatency=%.1fms inputSendTotal=%.0fms inputSendPeak=%.1fms",
@@ -487,6 +488,9 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 + " decoderSessions=\(decoder?.sessionCreationCount ?? 0)"
                 + " hwDecode=\(decoder?.isHardwareAccelerated == true)"
                 + " decode\(decoder?.stageTimingSummary ?? "-")")
+        if let controlRoundTrip = await session?.controlRoundTripMilliseconds() {
+            receiver.useRetransmissionRoundTrip(milliseconds: controlRoundTrip)
+        }
         await logHudCounters(receiver: receiver, stats: stats)
     }
 
@@ -581,33 +585,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
 
     public func terminalEvents() async -> AsyncStream<NativeNVSTTransportTermination> {
         terminationStream ?? AsyncStream { $0.finish() }
-    }
-
-    public func diagnosticMetadata() async -> [String: String] {
-        let stats = receiver?.stats
-        return [
-            "transport": "nvst-bifrost-free",
-            "nvidiaLibraries": "none",
-            "rtspSession": session?.sessionIdentifier ?? "-",
-            "rtspSteps": session?.steps.joined(separator: ",") ?? "-",
-            "videoPeer": lastHandoff.map { "\($0.videoPeerIP):\($0.videoPeerPort)" } ?? "-",
-            "mjolnirPort": lastHandoff.flatMap { $0.mjolnirUDPPort.map(String.init) } ?? "-",
-            "srtpProfile": lastHandoff?.srtpProfile.rawValue ?? "-",
-            "codec": lastHandoff?.codec.rawValue ?? "-",
-            "authenticatedPackets": String(stats?.authenticatedPackets ?? 0),
-            "fecPackets": String(stats?.fecPackets ?? 0),
-            "droppedPackets": String(stats?.droppedPackets ?? 0),
-            "framesAssembled": String(stats?.framesEmitted ?? 0),
-            "keyframes": String(stats?.keyframesEmitted ?? 0),
-            "recoveries": String(stats?.recoveries ?? 0),
-            "framesDecoded": String(decoder?.decodedFrameCount ?? 0),
-            "framesFailed": String(decoder?.failedFrameCount ?? 0),
-            "mjolnirInbound": receiver?.inbound.summary ?? "-",
-            "hapticEvents": String(hapticEventsReceived),
-            "hdrMode": lastHdrMode?.summary ?? "-",
-            "bundle": bundle?.diagnosticSummary ?? "-",
-            "bundleProbe": bundleProbe?.snapshot.summary ?? "-",
-        ]
     }
 
     // Cursors for the periodic performance snapshot, kept next to the rest of the actor's
@@ -834,5 +811,38 @@ extension NvstBifrostFreeTransport {
         lastInvalidationAt = nil
         inputSequence = 0
         gamepadSequences.removeAll()
+    }
+}
+
+// MARK: - Diagnostics
+
+extension NvstBifrostFreeTransport {
+    /// What this session negotiated, what the receiver and decoder have seen, and the seat's own
+    /// mode notifications — the transport's half of the HUD's diagnostic snapshot.
+    public func diagnosticMetadata() async -> [String: String] {
+        let stats = receiver?.stats
+        return [
+            "transport": "nvst-bifrost-free",
+            "nvidiaLibraries": "none",
+            "rtspSession": session?.sessionIdentifier ?? "-",
+            "rtspSteps": session?.steps.joined(separator: ",") ?? "-",
+            "videoPeer": lastHandoff.map { "\($0.videoPeerIP):\($0.videoPeerPort)" } ?? "-",
+            "mjolnirPort": lastHandoff.flatMap { $0.mjolnirUDPPort.map(String.init) } ?? "-",
+            "srtpProfile": lastHandoff?.srtpProfile.rawValue ?? "-",
+            "codec": lastHandoff?.codec.rawValue ?? "-",
+            "authenticatedPackets": String(stats?.authenticatedPackets ?? 0),
+            "fecPackets": String(stats?.fecPackets ?? 0),
+            "droppedPackets": String(stats?.droppedPackets ?? 0),
+            "framesAssembled": String(stats?.framesEmitted ?? 0),
+            "keyframes": String(stats?.keyframesEmitted ?? 0),
+            "recoveries": String(stats?.recoveries ?? 0),
+            "framesDecoded": String(decoder?.decodedFrameCount ?? 0),
+            "framesFailed": String(decoder?.failedFrameCount ?? 0),
+            "mjolnirInbound": receiver?.inbound.summary ?? "-",
+            "hapticEvents": String(hapticEventsReceived),
+            "hdrMode": lastHdrMode?.summary ?? "-",
+            "bundle": bundle?.diagnosticSummary ?? "-",
+            "bundleProbe": bundleProbe?.snapshot.summary ?? "-",
+        ]
     }
 }

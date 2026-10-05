@@ -136,4 +136,32 @@ struct SrtpCryptographyTests {
         #expect(forwardAccepted)
         #expect(forward.estimatedIndex(for: 0) == 0x0001_0000)
     }
+
+    /// A retransmission returns a round trip after the loss, thousands of packets behind the
+    /// newest at video rates; a window that small rejected every one of them as a replay.
+    @Test func aWideReplayWindowAcceptsALateRetransmissionOnce() {
+        var window = SrtpReplayWindow(size: 2048)
+        #expect(window.size == 2048)
+        let newest = window.accept(5_000)
+        let resent = window.accept(4_000)
+        let again = window.accept(4_000)
+        let tooOld = window.accept(5_000 - 2048)
+        #expect(newest)
+        #expect(resent)
+        #expect(!again)
+        #expect(!tooOld)
+        let slid = window.accept(6_000)
+        let behindSlid = window.accept(4_100)
+        #expect(slid)
+        #expect(behindSlid)
+    }
+
+    @Test func theDefaultReplayWindowKeepsRfc3711sSixtyFour() {
+        var window = SrtpReplayWindow()
+        #expect(window.size == 64)
+        let newest = window.accept(200)
+        #expect(newest)
+        #expect(window.wouldAccept(137))
+        #expect(!window.wouldAccept(136))
+    }
 }
