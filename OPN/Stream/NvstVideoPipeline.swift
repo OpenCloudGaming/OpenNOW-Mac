@@ -675,3 +675,14 @@ extension NvstVideoPipeline {
         lock.unlock()
     }
 }
+
+extension NvstVideoPipeline {
+    /// Asks the seat to resend these video packets. False until the bundle is up.
+    public func requestRetransmission(of sequenceNumbers: [UInt16]) -> Bool {
+        lock.lock()
+        let channel = bundle
+        lock.unlock()
+        guard let channel else { return false }
+        return channel.sendPartiallyReliableControl(NvstRtpNackRequest(sequenceNumbers: sequenceNumbers).command)
+    }
+}

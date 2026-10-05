@@ -102,6 +102,9 @@ extension NvstBifrostFreeTransport {
         let pipeline = makeVideoPipeline(handoff: handoff, decoder: decoder, receiver: receiver, mediaContinuation: mediaContinuation)
         videoPipeline = pipeline
         receiver.onAccessUnit = { [weak pipeline] unit in pipeline?.submit(unit) }
+        receiver.onRetransmissionWanted = { [weak pipeline] sequenceNumbers in
+            pipeline?.requestRetransmission(of: sequenceNumbers) ?? false
+        }
         receiver.onRecoveryNeeded = { [weak self, weak receiver] brokenFrameIndex in
             // Reached only for gaps too wide to repair by retransmission; the receiver NACKs the
             // rest itself. A broken reference chain then only recovers with a fresh keyframe.
