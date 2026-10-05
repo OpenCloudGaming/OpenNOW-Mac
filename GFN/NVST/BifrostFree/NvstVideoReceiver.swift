@@ -58,10 +58,15 @@ public struct NvstReceiverStats: Equatable, Sendable {
     public var duplicatePackets: UInt64 = 0
     /// Packets the SRTP replay window rejected: already seen, or older than the window.
     public var replayedPackets: UInt64 = 0
-    /// Requested packets that arrived while their gap was still open.
+    /// Requested packets that arrived over SRTP while their gap was still open.
     public var retransmissionRepairedPackets: UInt64 = 0
     /// Requests repeated for a packet already asked for.
     public var retransmissionRetries: UInt64 = 0
+    /// Retransmission requests emitted for packets still missing from an open gap.
+    public var retransmissionRequestsSent: UInt64 = 0
+    /// The retransmission wait was switched off: requests went out and none was ever repaired,
+    /// so the seat is not answering them and a gap must not be held for an answer that never comes.
+    public var retransmissionWaitDisabled = false
     /// Packets rebuilt by FEC recovery and injected back into the reorder path.
     public var recoveredPackets: UInt64 = 0
     /// The largest single finalized-loss range, in packets.
@@ -155,6 +160,13 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// client's NACK queue length. RFC 3711's 64 is 7.5 ms at ~8,500 packets/s, less than one
     /// round trip, so every resent packet was rejected as a replay.
     public static let replayWindowPackets = 2048
+    /// Requests after which a seat that has repaired nothing is treated as one that will not.
+    public static let retransmissionWaitDisableRequestCount: UInt64 = 8
+    /// ...and how long after the first request that verdict is allowed to be reached, so a resend
+    /// still in flight is never mistaken for one that is not coming.
+    public static let retransmissionWaitDisableDelayNanoseconds: UInt64 = 200_000_000
+    /// A round trip measurement beyond this is not one to derive a retry or a hold from.
+    private static let maximumRoundTripMilliseconds = 10_000.0
 
     public enum ReceiverError: LocalizedError, Equatable, Sendable {
         case unsupportedProfile(String)
@@ -179,6 +191,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     private var nackTracker = NvstNackTracker()
     /// When missing packets were last scanned for; nil makes the next packet scan at once.
     private var lastNackScanAt: UInt64?
+    /// When the first retransmission request went out, for the disable rule's settling delay.
+    private var firstRetransmissionRequestAt: UInt64?
+    /// Set once requests have gone unanswered long enough to stop holding gaps for them.
+    private var retransmissionWaitDisabled = false
     private var reorder: [UInt64: NvstRtpVideoPacket] = [:]
     private var nextIndex: UInt64?
     private var openGap: (index: UInt64, since: UInt64)?
@@ -255,11 +271,12 @@ public final class NvstVideoReceiver: @unchecked Sendable {
 
     public var snapshot: NvstReceiverStats { lock.lock(); defer { lock.unlock() }; return stats }
 
-    /// The measured round trip retransmission retries wait for.
+    /// The measured round trip the retransmission retries and the gap hold follow.
     public func useRetransmissionRoundTrip(milliseconds: Double) {
         guard milliseconds > 0, milliseconds.isFinite else { return }
+        let clamped = min(milliseconds, Self.maximumRoundTripMilliseconds)
         lock.lock()
-        nackTracker.useRoundTrip(nanoseconds: UInt64(milliseconds * 1_000_000))
+        nackTracker.useRoundTrip(nanoseconds: UInt64(clamped * 1_000_000))
         lock.unlock()
     }
 
@@ -291,6 +308,9 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         nextIndex = nil
         nackTracker.reset()
         lastNackScanAt = nil
+        firstRetransmissionRequestAt = nil
+        retransmissionWaitDisabled = false
+        stats.retransmissionWaitDisabled = false
         reassembler.reset()
     }
 
@@ -385,7 +405,9 @@ public final class NvstVideoReceiver: @unchecked Sendable {
         var events: [NvstReceiveEvent] = []
         let assembleStart = DispatchTime.now().uptimeNanoseconds
         defer { stageNanoseconds.assemble += DispatchTime.now().uptimeNanoseconds - assembleStart }
-        let ordered = arrivals.flatMap { pushReorder(index: $0.index, packet: $0.packet, events: &events) }
+        let ordered = arrivals.flatMap {
+            pushReorder(index: $0.index, packet: $0.packet, isFecRecovered: $0.isFecRecovered, events: &events)
+        }
         stageNanoseconds.reorder += DispatchTime.now().uptimeNanoseconds - assembleStart
         for candidate in ordered {
             reassembleLocked(candidate, events: &events)
@@ -422,13 +444,13 @@ public final class NvstVideoReceiver: @unchecked Sendable {
     /// ordinary duplicate.
     private func arrivalsLocked(plaintext: Data,
                                 packet: NvstRtpVideoPacket,
-                                extendedIndex: UInt64) -> [(index: UInt64, packet: NvstRtpVideoPacket)] {
-        var arrivals: [(index: UInt64, packet: NvstRtpVideoPacket)] = [(extendedIndex, packet)]
+                                extendedIndex: UInt64) -> [(index: UInt64, packet: NvstRtpVideoPacket, isFecRecovered: Bool)] {
+        var arrivals: [(index: UInt64, packet: NvstRtpVideoPacket, isFecRecovered: Bool)] = [(extendedIndex, packet, false)]
         for recoveredPlaintext in fecRecovery.observe(plaintext: plaintext, packet: packet) {
             guard let repaired = try? NvstVideoPacketParser.parse(recoveredPlaintext),
                   repaired.ssrc == boundSSRC else { continue }
             stats.recoveredPackets += 1
-            arrivals.append((replay.estimatedIndex(for: repaired.sequenceNumber), repaired))
+            arrivals.append((replay.estimatedIndex(for: repaired.sequenceNumber), repaired, true))
         }
         return arrivals
     }
@@ -660,7 +682,10 @@ public final class NvstVideoReceiver: @unchecked Sendable {
 extension NvstVideoReceiver {
     // MARK: - Reorder
 
-    private func pushReorder(index: UInt64, packet: NvstRtpVideoPacket, events: inout [NvstReceiveEvent]) -> [NvstRtpVideoPacket] {
+    private func pushReorder(index: UInt64,
+                             packet: NvstRtpVideoPacket,
+                             isFecRecovered: Bool,
+                             events: inout [NvstReceiveEvent]) -> [NvstRtpVideoPacket] {
         let expected = nextIndex ?? index
         if nextIndex == nil { nextIndex = index }
         if index < expected {
@@ -682,7 +707,12 @@ extension NvstVideoReceiver {
                 lastNackScanAt = nil
             }
         }
-        if !nackTracker.isEmpty, nackTracker.arrived(index) { stats.retransmissionRepairedPackets += 1 }
+        // Only a packet that came in over SRTP can be credited to the request. An FEC rebuild of a
+        // requested packet is not the retransmission arriving, and counting it as one would keep
+        // the hold enabled for a seat that answers nothing.
+        if !nackTracker.isEmpty, nackTracker.arrived(index), !isFecRecovered {
+            stats.retransmissionRepairedPackets += 1
+        }
         // Armed FEC holds a gap past the plain reorder window: a block's parity trails an early-frame
         // hole by up to `fecRepairReorderWindow` packets, so only the wall-clock bound ends it.
         let isPastFecWait = index > expected && isPastFecRepairWait()
@@ -722,7 +752,20 @@ extension NvstVideoReceiver {
         let missing = (expected..<newest).lazy.filter { self.reorder[$0] == nil }.prefix(limit)
         let due = nackTracker.due(missing: Array(missing), now: now)
         stats.retransmissionRetries = UInt64(nackTracker.retryCount)
-        if !due.isEmpty { events.append(.retransmissionWanted(due)) }
+        guard !due.isEmpty else { return }
+        stats.retransmissionRequestsSent += 1
+        let firstRequestAt = firstRetransmissionRequestAt ?? now
+        firstRetransmissionRequestAt = firstRequestAt
+        events.append(.retransmissionWanted(due))
+        // A seat that has repaired none of the requests it was sent is not going to: stop holding
+        // gaps for an answer that never comes, which is what the wait costs when it is wrong.
+        if !retransmissionWaitDisabled,
+           stats.retransmissionRequestsSent >= Self.retransmissionWaitDisableRequestCount,
+           stats.retransmissionRepairedPackets == 0,
+           now &- firstRequestAt >= Self.retransmissionWaitDisableDelayNanoseconds {
+            retransmissionWaitDisabled = true
+            stats.retransmissionWaitDisabled = true
+        }
     }
 
     private func recordRecovery(first: UInt64, last: UInt64, events: inout [NvstReceiveEvent]) {
@@ -771,6 +814,7 @@ extension NvstVideoReceiver {
 
     /// Whether the open gap's first packet was requested and may still be resent in time.
     private func isWithinRetransmissionWait() -> Bool {
+        guard !retransmissionWaitDisabled else { return false }
         guard let expected = nextIndex else { return false }
         return nackTracker.isAwaitingRetransmission(of: expected, now: uptimeNanoseconds())
     }

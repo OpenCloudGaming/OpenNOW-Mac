@@ -200,7 +200,7 @@ struct NvstMjolnirReceiverTests {
         for sequence in UInt16(4)...UInt16(8) {
             #expect(NvstReceiverFixtures.recoveries(try feed(sequence)) == 0)
         }
-        clock.withLock { $0 = NvstNackTracker.maximumWaitNanoseconds }
+        clock.withLock { $0 = NvstNackTracker.defaultWaitNanoseconds }
         #expect(NvstReceiverFixtures.recoveries(try feed(9)) == 1)
         #expect(receiver.snapshot.finalizedLossPackets == 1)
     }
