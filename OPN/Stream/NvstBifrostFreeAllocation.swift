@@ -72,10 +72,18 @@ extension NvstBifrostFreeTransport {
     /// request is in the announce, since the session response does not repeat it.
     static func prefilterNegotiationSummary(rawSessionJSON json: String) -> String {
         guard let data = json.data(using: .utf8),
-              let session = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return "finalized[unknown: no session JSON]" }
-        guard let finalized = session["finalizedStreamingFeatures"] as? [String: Any] else { return "finalized[none]" }
-        let fields = ["prefilterMode", "prefilterSharpness", "prefilterNoiseReduction"]
-        return "finalized[" + fields.map { "\($0)=\(finalized[$0].map { "\($0)" } ?? "-")" }.joined(separator: " ") + "]"
+              let session = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return "finalized[unknown: no session JSON]"
+        }
+        guard let finalized = session["finalizedStreamingFeatures"] as? [String: Any] else {
+            return "finalized[none]"
+        }
+        let reportedFields = ["prefilterMode", "prefilterSharpness", "prefilterNoiseReduction"]
+        let reportedValues = reportedFields.map { field -> String in
+            guard let value = finalized[field] else { return "\(field)=-" }
+            return "\(field)=\(value)"
+        }
+        return "finalized[\(reportedValues.joined(separator: " "))]"
     }
 
     /// `host:port` or bare host → host.
