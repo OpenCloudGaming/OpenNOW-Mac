@@ -560,7 +560,7 @@ extension NativeNVSTHostViewModel {
             configuredPrefilterMode: resolvedStreamSettings.prefilterMode,
             configuredPrefilterSharpness: resolvedStreamSettings.prefilterSharpness,
             configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
-            configuredPrefilterModel: resolvedStreamSettings.prefilterModel,
+            configuredPrefilterModel: chosenPrefilterModel(resolvedStreamSettings.prefilterModel),
             configuredColorQuality: resolvedStreamSettings.colorQuality,
             configuredVsyncMode: NvstVsyncMode(rawValue: resolvedStreamSettings.vsyncMode) ?? .adaptive,
             isVrrPresentation: isVrrPresentation,

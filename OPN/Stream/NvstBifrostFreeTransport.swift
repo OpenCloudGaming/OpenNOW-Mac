@@ -358,6 +358,7 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         }
         sessionServerLocation = Self.sessionServerLocation(for: allocation)
         sessionGPUType = Self.sessionGPUType(for: allocation)
+        logger?("NVST prefilter \(Self.prefilterNegotiationSummary(rawSessionJSON: allocation.rawSessionJSON))")
         let profile = Self.resolvedStreamProfile(allocation: allocation,
                                                  configuredFps: configuredFps,
                                                  configuredMaxBitrateKbps: configuredMaxBitrateKbps)
@@ -586,33 +587,6 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         terminationStream ?? AsyncStream { $0.finish() }
     }
 
-    public func diagnosticMetadata() async -> [String: String] {
-        let stats = receiver?.stats
-        return [
-            "transport": "nvst-bifrost-free",
-            "nvidiaLibraries": "none",
-            "rtspSession": session?.sessionIdentifier ?? "-",
-            "rtspSteps": session?.steps.joined(separator: ",") ?? "-",
-            "videoPeer": lastHandoff.map { "\($0.videoPeerIP):\($0.videoPeerPort)" } ?? "-",
-            "mjolnirPort": lastHandoff.flatMap { $0.mjolnirUDPPort.map(String.init) } ?? "-",
-            "srtpProfile": lastHandoff?.srtpProfile.rawValue ?? "-",
-            "codec": lastHandoff?.codec.rawValue ?? "-",
-            "authenticatedPackets": String(stats?.authenticatedPackets ?? 0),
-            "fecPackets": String(stats?.fecPackets ?? 0),
-            "droppedPackets": String(stats?.droppedPackets ?? 0),
-            "framesAssembled": String(stats?.framesEmitted ?? 0),
-            "keyframes": String(stats?.keyframesEmitted ?? 0),
-            "recoveries": String(stats?.recoveries ?? 0),
-            "framesDecoded": String(decoder?.decodedFrameCount ?? 0),
-            "framesFailed": String(decoder?.failedFrameCount ?? 0),
-            "mjolnirInbound": receiver?.inbound.summary ?? "-",
-            "hapticEvents": String(hapticEventsReceived),
-            "hdrMode": lastHdrMode?.summary ?? "-",
-            "bundle": bundle?.diagnosticSummary ?? "-",
-            "bundleProbe": bundleProbe?.snapshot.summary ?? "-",
-        ]
-    }
-
     // Cursors for the periodic performance snapshot, kept next to the rest of the actor's
     // state; the code that reads them lives in NvstBifrostFreeInput.swift.
     var inputSendTotalMs = 0.0
@@ -837,5 +811,38 @@ extension NvstBifrostFreeTransport {
         lastInvalidationAt = nil
         inputSequence = 0
         gamepadSequences.removeAll()
+    }
+}
+
+// MARK: - Diagnostics
+
+extension NvstBifrostFreeTransport {
+    /// What this session negotiated, what the receiver and decoder have seen, and the seat's own
+    /// mode notifications — the transport's half of the HUD's diagnostic snapshot.
+    public func diagnosticMetadata() async -> [String: String] {
+        let stats = receiver?.stats
+        return [
+            "transport": "nvst-bifrost-free",
+            "nvidiaLibraries": "none",
+            "rtspSession": session?.sessionIdentifier ?? "-",
+            "rtspSteps": session?.steps.joined(separator: ",") ?? "-",
+            "videoPeer": lastHandoff.map { "\($0.videoPeerIP):\($0.videoPeerPort)" } ?? "-",
+            "mjolnirPort": lastHandoff.flatMap { $0.mjolnirUDPPort.map(String.init) } ?? "-",
+            "srtpProfile": lastHandoff?.srtpProfile.rawValue ?? "-",
+            "codec": lastHandoff?.codec.rawValue ?? "-",
+            "authenticatedPackets": String(stats?.authenticatedPackets ?? 0),
+            "fecPackets": String(stats?.fecPackets ?? 0),
+            "droppedPackets": String(stats?.droppedPackets ?? 0),
+            "framesAssembled": String(stats?.framesEmitted ?? 0),
+            "keyframes": String(stats?.keyframesEmitted ?? 0),
+            "recoveries": String(stats?.recoveries ?? 0),
+            "framesDecoded": String(decoder?.decodedFrameCount ?? 0),
+            "framesFailed": String(decoder?.failedFrameCount ?? 0),
+            "mjolnirInbound": receiver?.inbound.summary ?? "-",
+            "hapticEvents": String(hapticEventsReceived),
+            "hdrMode": lastHdrMode?.summary ?? "-",
+            "bundle": bundle?.diagnosticSummary ?? "-",
+            "bundleProbe": bundleProbe?.snapshot.summary ?? "-",
+        ]
     }
 }

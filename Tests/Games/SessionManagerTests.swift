@@ -363,3 +363,19 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(result.2.isEmpty)
     }
 }
+
+/// The official client's Auto request carries mode, sharpness and noise reduction but no model.
+@Test func sessionRequestLeavesAnUnsetPrefilterModelOut() {
+    let manager = OPNSessionManager()
+    let auto = manager.requestedStreamingFeatures(["prefilterMode": 1, "prefilterModel": 0], hdrEnabled: false)
+    #expect(auto["prefilterMode"] as? Int == 1)
+    #expect(auto["prefilterSharpness"] as? Int == 0)
+    #expect(auto["prefilterNoiseReduction"] as? Int == 0)
+    #expect(auto["prefilterModel"] == nil)
+}
+
+@Test func sessionRequestCarriesTheChosenPrefilterModel() {
+    let manager = OPNSessionManager()
+    let custom = manager.requestedStreamingFeatures(["prefilterMode": 2, "prefilterModel": 4], hdrEnabled: false)
+    #expect(custom["prefilterModel"] as? Int == 4)
+}

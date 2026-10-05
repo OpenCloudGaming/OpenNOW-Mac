@@ -126,7 +126,7 @@ extension OPNSessionManager {
     let bitDepth = colorQuality == "10bit_420" || colorQuality == "10bit_444" ? 1 : 0
     let chromaFormat = colorQuality == "8bit_444" || colorQuality == "10bit_444" ? 1 : 0
     let requestedMaxBitrateKbps = min(max(int(settings["maxBitrateMbps"], fallback: 50), 1), 1_000) * 1_000
-    return [
+    var features: [String: Any] = [
         "maxBitrateKbps": requestedMaxBitrateKbps,
         "reflex": bool(settings["enableReflex"], fallback: true),
         "bitDepth": bitDepth,
@@ -143,11 +143,14 @@ extension OPNSessionManager {
         "prefilterMode": min(max(int(settings["prefilterMode"]), 0), 2),
         "prefilterSharpness": min(max(int(settings["prefilterSharpness"]), 0), 10),
         "prefilterNoiseReduction": min(max(int(settings["prefilterDenoise"]), 0), 10),
-        "prefilterModel": max(int(settings["prefilterModel"]), 0),
         "hudStreamingMode": min(max(int(settings["hudStreamingMode"]), 0), 2),
         "sdrColorSpace": min(max(int(settings["sdrColorSpace"], fallback: 2), 0), 2),
         "hdrColorSpace": min(max(int(settings["hdrColorSpace"]), 0), 2),
     ]
+    if let prefilterModel = chosenPrefilterModel(int(settings["prefilterModel"])) {
+        features["prefilterModel"] = prefilterModel
+    }
+    return features
     }
 
     func sessionTransportPolicy(_ settings: [String: Any]) -> [String: Any]? {

@@ -482,6 +482,14 @@ import Testing
         #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterModel:4"))
     }
 
+    @Test func anUnsetPrefilterModelKeepsTheCapturedBaselineInTheAnnounce() {
+        // Auto and Custom both leave the model unset, and the seat reads an announced 0 as no
+        // filter, so the captured default stays until a setting picks one.
+        let body = NvstRtspSdp.buildAnnounceSdp(.init(prefilterMode: 2))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterMode:2"))
+        #expect(body.contains("a=x-nv-video[0].prefilterParams.prefilterModel:4"))
+    }
+
     /// Client control frames are masked, as RFC 6455 requires. The keepalive itself is an RTSP
     /// OPTIONS, not a ping: a live seat closes the connection within milliseconds of a client ping
     /// (measured 2026-09-04). The encoder stays for answering the seat's own pings.
