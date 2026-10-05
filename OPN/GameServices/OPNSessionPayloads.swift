@@ -147,9 +147,9 @@ extension OPNSessionManager {
         "sdrColorSpace": min(max(int(settings["sdrColorSpace"], fallback: 2), 0), 2),
         "hdrColorSpace": min(max(int(settings["hdrColorSpace"]), 0), 2),
     ]
-    // The official client's request carries no model; an unset one stays out the same way.
-    let prefilterModel = int(settings["prefilterModel"])
-    if prefilterModel > 0 { features["prefilterModel"] = prefilterModel }
+    if let prefilterModel = chosenPrefilterModel(int(settings["prefilterModel"])) {
+        features["prefilterModel"] = prefilterModel
+    }
     return features
     }
 

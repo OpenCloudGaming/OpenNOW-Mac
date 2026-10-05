@@ -551,9 +551,6 @@ extension NativeNVSTHostViewModel {
             OPNStreamTelemetry.capture("nvst.bifrost_free", level: .info,
                                          message: "NVST diagnostic log at \(logURL.path)")
         }
-        // No setting picks a model, so 0 means unset: nil keeps the captured default (4), which the
-        // official client announces with its AI Video Filter on.
-        let announcedPrefilterModel = resolvedStreamSettings.prefilterModel > 0 ? resolvedStreamSettings.prefilterModel : nil
         let transport: any NativeNVSTTransport = NvstBifrostFreeTransport(
             pixelBufferSink: { pixelBuffer, presentationTime, isKeyframe in
                 bifrostFreeSink.render(pixelBuffer: pixelBuffer, presentationTime: presentationTime, isKeyframe: isKeyframe)
@@ -563,7 +560,7 @@ extension NativeNVSTHostViewModel {
             configuredPrefilterMode: resolvedStreamSettings.prefilterMode,
             configuredPrefilterSharpness: resolvedStreamSettings.prefilterSharpness,
             configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
-            configuredPrefilterModel: announcedPrefilterModel,
+            configuredPrefilterModel: chosenPrefilterModel(resolvedStreamSettings.prefilterModel),
             configuredColorQuality: resolvedStreamSettings.colorQuality,
             configuredVsyncMode: NvstVsyncMode(rawValue: resolvedStreamSettings.vsyncMode) ?? .adaptive,
             isVrrPresentation: isVrrPresentation,

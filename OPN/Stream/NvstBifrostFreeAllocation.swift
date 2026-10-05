@@ -67,9 +67,8 @@ extension NvstBifrostFreeTransport {
         return profile
     }
 
-    /// The prefilter the seat finalized, its half of what the official client logs as "Prefilter::
-    /// Client request … Server response …". The only sign of whether the seat runs the filter; the
-    /// request is in the announce, since the session response does not repeat it.
+    /// The prefilter the seat finalized, its half of the official client's "Prefilter:: Client
+    /// request … Server response …" log line; the request itself is in the announce, not here.
     static func prefilterNegotiationSummary(rawSessionJSON json: String) -> String {
         guard let data = json.data(using: .utf8),
               let session = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {

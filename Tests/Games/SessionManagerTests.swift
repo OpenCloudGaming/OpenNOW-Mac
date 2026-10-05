@@ -372,6 +372,10 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     #expect(auto["prefilterSharpness"] as? Int == 0)
     #expect(auto["prefilterNoiseReduction"] as? Int == 0)
     #expect(auto["prefilterModel"] == nil)
-    let chosen = manager.requestedStreamingFeatures(["prefilterMode": 2, "prefilterModel": 4], hdrEnabled: false)
-    #expect(chosen["prefilterModel"] as? Int == 4)
+}
+
+@Test func sessionRequestCarriesTheChosenPrefilterModel() {
+    let manager = OPNSessionManager()
+    let custom = manager.requestedStreamingFeatures(["prefilterMode": 2, "prefilterModel": 4], hdrEnabled: false)
+    #expect(custom["prefilterModel"] as? Int == 4)
 }
