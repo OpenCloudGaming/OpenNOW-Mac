@@ -49,11 +49,14 @@ extension CatalogViewModel {
     /// The running stream's artwork, for the page backdrop.
     var runningStreamArtworkURL: URL? { gameSession?.artworkURL }
 
-    /// This account's own device id, so the seat answers about this account rather than about the
-    /// machine: two accounts can stream at once, and each has to look like its own device.
-    var cloudmatchDeviceId: String {
-        account.storedAccountID.map { OPNDeviceIdentity.cloudmatchDeviceId(accountID: $0) }
-            ?? OPNDeviceIdentity.stableCloudmatchDeviceId()
+    /// This account's own device id, resolved exactly as a launch resolves it - including the
+    /// legacy-row migration - so a launch and this account's session lookups cannot end up on two
+    /// different devices.
+    func resolveCloudmatchDeviceId() -> String {
+        guard let accountID = account.resolveStableAccountID() else {
+            return OPNDeviceIdentity.stableCloudmatchDeviceId()
+        }
+        return OPNDeviceIdentity.cloudmatchDeviceId(accountID: accountID)
     }
 
     /// Brings this account's own stream window forward. Another account's window is not what the
@@ -258,7 +261,7 @@ extension CatalogViewModel {
         isCheckingHomeSession = true
         let token = launchToken
         let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl()
-        OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl, deviceId: cloudmatchDeviceId) { [weak self] ok, sessions, _ in
+        OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl, deviceId: resolveCloudmatchDeviceId()) { [weak self] ok, sessions, _ in
             guard let self else { return }
             self.isCheckingHomeSession = false
             guard ok, let session = sessions.first(where: \.isResumable) ?? sessions.first else {
@@ -302,7 +305,7 @@ extension CatalogViewModel {
             sessionId: session.sessionId,
             serverIp: session.serverIp,
             streamingBaseUrl: session.streamingBaseUrl,
-            deviceId: cloudmatchDeviceId
+            deviceId: resolveCloudmatchDeviceId()
         ) { [weak self] success, message in
             guard let self else { return }
             if !success {

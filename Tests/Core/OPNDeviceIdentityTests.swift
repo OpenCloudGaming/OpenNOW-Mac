@@ -28,6 +28,22 @@ import Testing
         #expect(OPNDeviceIdentity.cloudmatchDeviceId(accountID: jarvis) != OPNDeviceIdentity.cloudmatchDeviceId(accountID: starfleet))
     }
 
+    /// A launch resolves the identity through `resolveStableAccountID`, which migrates a legacy row.
+    /// The account's own session lookups have to resolve it the same way, or the two ask the seat
+    /// about two different devices and the lookup misses the session the launch created.
+    @MainActor
+    @Test func theAccountSessionLookupsResolveTheSameDeviceALaunchDoes() throws {
+        let account = makeLoginAccountForTesting(email: "legacy@example.com", userId: "user-legacy")
+        account.stableAccountID = ""
+        let catalog = makeCatalogViewModelForTesting(account: account)
+
+        let resolved = catalog.resolveCloudmatchDeviceId()
+
+        let accountID = try #require(account.storedAccountID)
+        #expect(resolved == OPNDeviceIdentity.cloudmatchDeviceId(accountID: accountID))
+        #expect(resolved != OPNDeviceIdentity.stableCloudmatchDeviceId())
+    }
+
     /// The seat expects this field to look like a device id.
     @Test func theAccountDeviceLooksLikeADeviceId() throws {
         let device = OPNDeviceIdentity.cloudmatchDeviceId(accountID: try account("user-a"))

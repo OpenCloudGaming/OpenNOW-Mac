@@ -413,8 +413,9 @@ import Foundation
     }
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
+    let deviceId = OPNDeviceIdentity.cloudmatchDeviceId(accountID: try! #require(OPNAccountID(providerIdpId: "nvidia", vendorSubject: "user-a")))
     let result = await withCheckedContinuation { continuation in
-        OPNActiveSessionService.stopSession(accessToken: "token", sessionId: "active-session", serverIp: host, streamingBaseUrl: "https://\(host)") { success, error in
+        OPNActiveSessionService.stopSession(accessToken: "token", sessionId: "active-session", serverIp: host, streamingBaseUrl: "https://\(host)", deviceId: deviceId) { success, error in
             continuation.resume(returning: (success, error))
         }
     }
@@ -422,6 +423,11 @@ import Foundation
     #expect(result.0 == true)
     #expect(result.1.isEmpty)
     #expect(SessionManagerURLProtocol.recordedRequests(host: host).map(\.httpMethod) == ["DELETE", "GET", "GET"])
+    // The termination poll asks about the device that owns the session, not the machine's: on the
+    // machine's it can miss the session still ending and report success at once.
+    let polls = SessionManagerURLProtocol.recordedRequests(host: host).filter { $0.httpMethod == "GET" }
+    #expect(polls.allSatisfy { $0.value(forHTTPHeaderField: "x-device-id") == deviceId })
+    #expect(polls.allSatisfy { $0.value(forHTTPHeaderField: "x-device-id") != OPNDeviceIdentity.stableCloudmatchDeviceId() })
     }
 }
 

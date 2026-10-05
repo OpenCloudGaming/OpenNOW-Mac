@@ -121,13 +121,13 @@ enum OPNActiveSessionService {
                 completion(false, CloudMatchResponseParser.requestStatusError(data: data, fallback: "Unable to end the active session."))
                 return
             }
-            waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, attempt: 0, completion: completion)
+            waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, deviceId: deviceId, attempt: 0, completion: completion)
             }
         }.resume()
     }
 
-    private static func waitForTermination(accessToken: String, sessionId: String, streamingBaseUrl: String, attempt: Int, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
-        fetchActiveSessions(accessToken: accessToken, streamingBaseUrl: streamingBaseUrl) { success, sessions, error in
+    private static func waitForTermination(accessToken: String, sessionId: String, streamingBaseUrl: String, deviceId: String, attempt: Int, completion: @escaping @MainActor @Sendable (Bool, String) -> Void) {
+        fetchActiveSessions(accessToken: accessToken, streamingBaseUrl: streamingBaseUrl, deviceId: deviceId) { success, sessions, error in
             guard success else {
                 completion(false, error.isEmpty ? "Unable to confirm that the active session ended." : error)
                 return
@@ -142,7 +142,7 @@ enum OPNActiveSessionService {
             }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(Int(terminationPollDelay * 1000)))
-                waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, attempt: attempt + 1, completion: completion)
+                waitForTermination(accessToken: accessToken, sessionId: sessionId, streamingBaseUrl: streamingBaseUrl, deviceId: deviceId, attempt: attempt + 1, completion: completion)
             }
         }
     }

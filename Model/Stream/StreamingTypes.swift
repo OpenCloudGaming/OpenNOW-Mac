@@ -55,8 +55,11 @@ extension StreamLaunchConfiguration {
         (metadata[Self.mappingGameIdentityKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The session's own identity snapshot: whose game it is, and which game's mappings it uses.
-    func snapshottingSession(ownerDisplayName: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
+    /// The session's own identity snapshot: the local session id every lifecycle action is targeted
+    /// by, whose game it is, and which game's mappings it uses. The id has to come from the session
+    /// that owns the launch - the stream surface registers its commands under the configuration's id,
+    /// so a different one here would leave every targeted control reaching nothing.
+    func snapshottingSession(id: UUID, ownerDisplayName: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
         var metadata = metadata
         metadata[Self.owningAccountDisplayNameKey] = ownerDisplayName
         metadata[Self.mappingGameIdentityKey] = mappingGameIdentity

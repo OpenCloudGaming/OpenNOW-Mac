@@ -262,6 +262,7 @@ final class OPNGameSession {
     func cancelLaunch() {
         guard !isFinished else { return }
         isFinished = true
+        clearDiscordPresence()
         clearFlowState()
         registry.end(self)
     }
@@ -277,6 +278,7 @@ final class OPNGameSession {
         ControllerMappingStore.shared.endSession()
         progress = nil
         isLaunchOverlayVisible = false
+        clearDiscordPresence()
         clearFlowState()
         registry.notifySessionDidChange()
         publish(configuration: finishedConfiguration, success: false, message: "", report: nil, wasCancelled: true)
@@ -284,10 +286,17 @@ final class OPNGameSession {
     }
 
     func startPreparedStream(_ configuration: StreamLaunchConfiguration) {
-        let mappingGameIdentity = pendingGame?.catalogIdentity ?? ""
+        // The store resolves the identity the mappings follow: the catalog's when the launch knew the
+        // game, otherwise the index a previous launch wrote - which is all a resume has.
+        ControllerMappingStore.shared.beginSession(
+            appId: configuration.applicationID,
+            catalogIdentity: pendingGame?.catalogIdentity,
+            title: pendingGame?.title
+        )
         let ownedConfiguration = configuration.snapshottingSession(
+            id: id,
             ownerDisplayName: account.displayName,
-            mappingGameIdentity: mappingGameIdentity
+            mappingGameIdentity: ControllerMappingStore.shared.currentGameIdentity ?? ""
         )
         if activeDiscordPresence == nil {
             activeDiscordPresence = discordPresence(for: ownedConfiguration)
@@ -301,11 +310,6 @@ final class OPNGameSession {
         progress = StreamProgress(title: ownedConfiguration.title.isEmpty ? "GeForce NOW" : ownedConfiguration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         OPNSessionReadyAction.prepareAuthorizationIfNeeded()
         self.configuration = ownedConfiguration
-        ControllerMappingStore.shared.beginSession(
-            appId: ownedConfiguration.applicationID,
-            catalogIdentity: mappingGameIdentity.isEmpty ? nil : mappingGameIdentity,
-            title: pendingGame?.title
-        )
         clearFlowState()
         registry.notifySessionDidChange()
     }
@@ -403,6 +407,7 @@ final class OPNGameSession {
     private func failLaunch(_ message: String) {
         guard !isFinished else { return }
         isFinished = true
+        clearDiscordPresence()
         clearFlowState()
         publish(configuration: nil, success: false, message: message, report: nil, wasCancelled: false)
         registry.end(self)
@@ -420,17 +425,6 @@ final class OPNGameSession {
                 wasCancelled: wasCancelled
             )
         )
-    }
-
-    private func clearFlowState() {
-        launchFlowTitle = ""
-        launchFlowMessage = ""
-        launchFlowError = ""
-        activeLaunchSession = nil
-        resumeConfiguration = nil
-        replacementConfiguration = nil
-        pendingGame = nil
-        pendingVariantIndex = -1
     }
 
     // MARK: - Titles and presence
@@ -488,5 +482,27 @@ final class OPNGameSession {
             return true
         }
         return game.variants.contains { $0.id == applicationID }
+    }
+}
+
+/// What the session clears and publishes as it ends.
+private extension OPNGameSession {
+    /// A launch that ends before its stream does still has to take its "launching <game>" line back
+    /// down, or Discord keeps showing a game that is not starting.
+    private func clearDiscordPresence() {
+        guard activeDiscordPresence != nil else { return }
+        activeDiscordPresence = nil
+        discordPresence.update(.idle)
+    }
+
+    private func clearFlowState() {
+        launchFlowTitle = ""
+        launchFlowMessage = ""
+        launchFlowError = ""
+        activeLaunchSession = nil
+        resumeConfiguration = nil
+        replacementConfiguration = nil
+        pendingGame = nil
+        pendingVariantIndex = -1
     }
 }
