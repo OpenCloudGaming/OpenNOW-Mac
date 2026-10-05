@@ -427,8 +427,13 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
                     requestRetransmission(of: indices)
                     continue
                 }
-                let sequenceNumbers = indices.prefix(NvstRtpNackRequest.maximumSequenceNumbers).map { UInt16(truncatingIfNeeded: $0) }
-                guard handler(sequenceNumbers) else { continue }
+                let sequenceNumbers = indices.map { UInt16(truncatingIfNeeded: $0) }
+                // The tracker already counts these as requested, so a request the control channel
+                // could not take still goes out, as the RTCP NACK.
+                guard handler(sequenceNumbers) else {
+                    requestRetransmission(of: indices)
+                    continue
+                }
                 counterLock.lock()
                 nacksSent += 1
                 nackedPackets += sequenceNumbers.count

@@ -717,7 +717,8 @@ extension NvstVideoReceiver {
         if let lastNackScanAt, now &- lastNackScanAt < NvstNackTracker.initialDelayNanoseconds { return }
         guard let newest = reorder.keys.max(), newest > expected else { return }
         lastNackScanAt = now
-        let limit = NvstRtcp.maximumNackEntries * 17
+        // No more than one request can name, or the rest would count as requested without being sent.
+        let limit = NvstRtpNackRequest.maximumSequenceNumbers
         let missing = (expected..<newest).lazy.filter { self.reorder[$0] == nil }.prefix(limit)
         let due = nackTracker.due(missing: Array(missing), now: now)
         stats.retransmissionRetries = UInt64(nackTracker.retryCount)

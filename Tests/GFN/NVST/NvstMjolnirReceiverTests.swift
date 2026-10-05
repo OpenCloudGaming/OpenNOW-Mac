@@ -162,6 +162,27 @@ struct NvstMjolnirReceiverTests {
         #expect(stats.replayedPackets == 0)
     }
 
+    /// One request names at most 64 packets, so a wider gap asks for its first 64 and no more: a
+    /// packet counted as requested but never named would hold its gap open for nothing.
+    @Test func aWideGapRequestsOnlyWhatOneRequestCanName() throws {
+        let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 128)
+        let clock = OSAllocatedUnfairLock(initialState: UInt64(0))
+        let receiver = try NvstVideoReceiver(handoff: handoff, uptimeNanoseconds: { clock.withLock { $0 } })
+        let media: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x65]
+        func feed(_ sequence: UInt16) throws -> [NvstReceiveEvent] {
+            receiver.process(datagram: try NvstReceiverFixtures.seal(
+                NvstReceiverFixtures.packet(sequence: sequence, frameIndex: UInt32(sequence), flags: 0x07, media: media),
+                sequence: sequence, handoff: handoff))
+        }
+        _ = try feed(1)
+        _ = try feed(102)
+        clock.withLock { $0 = NvstNackTracker.initialDelayNanoseconds }
+        let requested = try feed(103).flatMap { event -> [UInt64] in
+            if case .retransmissionWanted(let indices) = event { return indices } else { return [] }
+        }
+        #expect(requested == Array(2...65))
+    }
+
     /// A resend that never comes ends the wait: the gap is loss once its request has expired.
     @Test func aRequestedPacketThatNeverArrivesBecomesLossAfterTheWait() throws {
         let handoff = NvstReceiverFixtures.makeHandoff(reorderWindow: 4)
