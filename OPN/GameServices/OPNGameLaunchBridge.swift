@@ -169,11 +169,8 @@ public final class OPNGameLaunchBridge {
         return activeAppId == appId || activeAppId == game.id || activeAppId == game.launchAppId || game.variants.contains { $0.id == activeAppId }
     }
 
-    /// The images the loading screen rotates through, in preference order. `launchMetadata` ships
-    /// this list to the vendor and the loading screen picks one of them by hashing the session id, so
-    /// the session can warm that exact frame at `begin` - while the plan is still a network round trip
-    /// away - by asking for the same list here. Two definitions of the list would warm a frame that
-    /// never appears.
+    /// The images the loading screen picks from, in preference order. `launchMetadata` ships this same
+    /// list to the vendor, so a second definition would warm a frame that never appears.
     static func loadingScreenshotURLs(for game: OPNCatalogGameObject) -> [String] {
         var imageUrls: [String] = []
         var seen = Set<String>()

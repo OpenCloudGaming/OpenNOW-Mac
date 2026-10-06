@@ -1,57 +1,35 @@
 import SwiftUI
 
 extension StreamLaunchConfiguration {
-    /// The launch's own screenshots, shipped to the vendor as metadata, one of which the loading
-    /// screen draws behind its scrim.
     var loadingArtworkURL: URL? {
-        let urls = (metadata["loadingScreenshotUrls"] ?? "")
-            .split(separator: "\n")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        return StreamLaunchArtwork.url(candidates: urls, seed: id)
+        let candidates = (metadata["loadingScreenshotUrls"] ?? "").split(separator: "\n").map(String.init)
+        return StreamLaunchArtwork.selectedURL(candidates: candidates, seed: id)
     }
 }
 
-/// The launch artwork is the most expensive image on the stream-start path, and it used to be the
-/// only one drawn outside `CatalogImageCache`: a full-resolution screenshot, fetched and decoded,
-/// then blurred to near-invisibility. An 18pt blur leaves nothing but a low-frequency wash behind,
-/// so the rung - not the source - is what the screen actually shows, and the rung is small.
-///
-/// The CDN width and the decode rung are the same number, and they have to be. The URL keys the
-/// cache entry while the rung is part of the load key, so a view decoding at any other rung misses
-/// the entry the launch warmed and fetches the artwork a second time - the bug the marquee hero
-/// carries a comment about.
+/// The launch artwork is a full-bleed screenshot blurred by 18pt, so the rung - not the source - is
+/// what the screen shows. The vendor URL is used as parsed: its CDN `;f=webp;w=` rung is already on it.
 enum StreamLaunchArtwork {
-    /// 256 resolves at the blur's own scale rather than below it: on a 5120pt-wide window at 2x a
-    /// source pixel covers 40 device pixels - 20pt of frame, against the 18pt blur radius. Half this
-    /// rung would put a source pixel at 40pt, twice the blur, and the screen would show the rung's
-    /// soft blocks instead of the wash. The blur is a fixed 18pt that does not scale with Interface
-    /// Scale, so this rung does not either: it is the ratio between the two that the eye reads, and
-    /// that ratio is the same at every scale.
-    static let requestWidth = 256
-    static let decodePixelSize = CGFloat(requestWidth)
+    /// 256 resolves at the blur's own scale: on a 5120pt-wide window at 2x a source pixel covers
+    /// 20pt of frame against the 18pt blur radius, where 128 would put it at 40pt.
+    static let decodePixelSize: CGFloat = 256
 
     /// One screenshot per launch, picked by the session's own id so two launches of the same game do
     /// not open on the same frame.
-    static func url(candidates: [String], seed: UUID) -> URL? {
-        guard !candidates.isEmpty else { return nil }
-        let hashed = seed.uuidString.utf8.reduce(UInt(0)) { ($0 &* 31) &+ UInt($1) }
-        return url(from: candidates[Int(hashed % UInt(candidates.count))])
+    static func selectedURL(candidates: [String], seed: UUID) -> URL? {
+        let usableCandidates = candidates
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !usableCandidates.isEmpty else { return nil }
+        let hashedSeed = seed.uuidString.utf8.reduce(UInt(0)) { ($0 &* 31) &+ UInt($1) }
+        return URL(string: usableCandidates[Int(hashedSeed % UInt(usableCandidates.count))])
     }
 
-    /// Rewrites the vendor's full-resolution screenshot down to the rung above before it is ever
-    /// fetched, so the download is a thumbnail too. A host the CDN does not resize is left alone.
-    static func url(from rawValue: String) -> URL? {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        return URL(string: OPNGameService.optimizeImageURL(trimmed, width: requestWidth))
-    }
-
-    /// Warms the artwork on the reserved first-frame lane, so the screen's own read joins this
-    /// decode instead of queueing a second one behind the launch's other work.
-    static func prewarm(_ url: URL?, cache: any CatalogImageServing = CatalogImageCache.shared) {
+    /// Warms the artwork on the reserved first-frame lane, so the screen's read joins this decode
+    /// instead of queueing a second one behind the launch's other work.
+    static func prewarm(_ url: URL?) {
         guard let url else { return }
-        cache.prefetchPriority([url], maxPixelSize: decodePixelSize, retainingSourceData: false)
+        CatalogImageCache.shared.prefetchPriority([url], maxPixelSize: decodePixelSize, retainingSourceData: false)
     }
 }
 
@@ -168,10 +146,8 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
     // MARK: - Artwork
 
-    /// Cached, and cached at `StreamLaunchArtwork.decodePixelSize` - the rung the launch already
-    /// warmed. `EmptyView` on both branches on purpose: the screen sits on black and fades the art in
-    /// behind its scrim, so a skeleton or a failure icon here would be a flash of chrome the surface
-    /// never had. Artwork that is missing or fails to fetch simply leaves the black background.
+    /// Empty placeholder and failure on purpose: the screen sits on black, so missing artwork leaves
+    /// the black background rather than a flash of chrome the surface never had.
     private func artworkLayer(proxy: GeometryProxy) -> some View {
         Group {
             if let artworkURL {
