@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.15.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.14.0...v0.15.0) (2026-10-06)
+
+
+### Features
+
+* add dock streaming icon ([19d387a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/19d387ae6eaeff091cae90ac199f91aeed792246))
+* add gamepad api option for xbox and playstation controllers ([#67](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/67)) ([993c769](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/993c7690793b2b3544c4eea09db09bcc394f1bde))
+* add maintenance catalog status ([1de2eb2](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1de2eb2b8251be6e8186813ca44881a7c643b2d2))
+* add maintenance title watch ([#59](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/59)) ([1752ea3](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1752ea3e1ccfabeebfd21686da43e7a13016c6d3))
+* add stream audio output picker, volume sliders and ptt mute override ([#93](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/93)) ([53616d7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/53616d762bb2ae0495d96e77b92244c9906d95be))
+* add vrr frame pacing, real 5.1 surround and smooth raw mouse input ([#68](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/68)) ([88bae7e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/88bae7e663ff108b4a87691d0965111fb76e658f))
+* drag-out, share, copy and quick look for the capture libraries ([#56](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/56)) ([33e69d7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/33e69d7c18ea7d46b58439523f5f8baf861b2615))
+* **experimental:** add stream clipboard ([#55](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/55)) ([93b1c2e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/93b1c2e88eea85f783ce237fb64666335fc68ed4))
+* fold settings tooltip into icon ([f996ef1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f996ef10622656d74c2ba46d60f9f32aca900c06))
+* group settings capture into categories ([ab56c84](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/ab56c843285d6ef92d1805f8bbb50df19636cab3))
+* **quiver:** web transport session, stream lifecycle and bound buffers ([#63](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/63)) ([8f7f5b7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8f7f5b7fcb6dcdd5c29799c15b41b637f8b7b559))
+* sample phys_footprint at four launch and stream milestones ([#64](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/64)) ([2697a90](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/2697a901c04f1bc0bc3efab69588b5f4f519686a))
+
+
+### Bug Fixes
+
+* add game mode ([#57](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/57)) ([0c09f8b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0c09f8ba202cebb507337da8690965cc6305b03f))
+* announce the official prefilter model with the server prefilter on ([#99](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/99)) ([681c4e9](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/681c4e9a39bef5c612263abedccb6724674ddf4f))
+* build Release with whole-module optimization ([#75](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/75)) ([a4144fc](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a4144fc217a413091a2ae3be61f5b579260a0227))
+* catalog view tile for maintenance and offline games ([5396ea1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/5396ea1f7f326c3e58583b45822c295b01e139e2))
+* enable thin lot and disable previews in release ([#76](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/76)) ([8255720](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8255720d31f3497ca483f0658a21fb844afa853f))
+* gate the launch-time login provider refresh on no session ([#88](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/88)) ([f7a8bd7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f7a8bd78f7f96219b3f2ab2d877d01bb3bdc0b8e))
+* hud mic highlight ([caf3439](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/caf34394cdde886f94643af3ff2825beaa7398ce))
+* manual update check ([e9ed29d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e9ed29dc9b0f7b0f6c7b8ac25c21a24c6a3a3d62))
+* manual update check ([#60](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/60)) ([3e13751](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/3e13751d85d9808315972725b73f2bfde8475c2e))
+* pin the marquee hero to one artwork rung ([#95](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/95)) ([e20097b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e20097be8b175d58c08ff615f9796ecf4eb03dd1))
+* raw mouse input pointer speed ([#85](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/85)) ([dae184c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/dae184cceeee322ef2a0c6eb9a2781d63c245123))
+* remove duplicated catalog graph prefetch ([#83](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/83)) ([4c253af](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/4c253af0824c1a851319fa5c30d59966e0870fba))
+* repair retransmissions lost video packets ([#98](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/98)) ([d7a64f7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/d7a64f79cda0113e4ba6d3c4b654cfbfa2af91c9))
+* route idle IME control keys to the seat and draw the composing bar ([#61](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/61)) ([2eac7f8](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/2eac7f8761fc42ad2647bf8bfac0bf0f8d2d6218))
+* settings toggle row ([75f2ca9](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/75f2ca9be6cb8203f506fb0a45f684f6032f5107))
+* smooth VRR frame pacing in optimised builds ([#84](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/84)) ([92a60bc](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/92a60bce44cbc586fb37daedf6ebccbec7b332bd))
+* splash screen overlap ([3319175](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/33191754bd802f187cd57de2af19e8bc6def7342))
+* steam controller pad flicker ([1ff58b0](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1ff58b07e47d8ee5fcb34cc71b66b2bf0a2f6629))
+* stop stream stutter and long freezes after packet loss ([#66](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/66)) ([1a5bc7c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1a5bc7cbd9798bed214673386ad799f3ca4db8dd))
+* stop the capture rebuild deadlocking the audio queue and blinding the NVST heartbeat ([849beff](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/849beff59d1f179b259382c66b44c650859d93e6))
+* take catalog browse titles and artwork from the app-metadata endpoint ([619abf5](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/619abf5d831ed382efc070bc519f8c12dda714d4))
+* the running-stream banner's width and drop its status line ([#94](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/94)) ([8363325](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/83633254f474653ee1812449e1543a9804ee67ed))
+* unhealthy session proxy not self healing ([14669a1](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/14669a17ff4ce6b5232ad0ff3a9131bb3e642dba))
+
 ## [0.14.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.13.0...v0.14.0) (2026-09-27)
 
 
