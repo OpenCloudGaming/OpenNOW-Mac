@@ -8,21 +8,19 @@ extension StreamLaunchConfiguration {
 }
 
 /// The launch artwork is a full-bleed screenshot blurred by 18pt, so the rung - not the source - is
-/// what the screen shows. The vendor URL is used as parsed: its CDN `;f=webp;w=` rung is already on it.
+/// what the screen shows. The vendor URL keeps its own shape; only its CDN rung is replaced.
 enum StreamLaunchArtwork {
     /// 256 resolves at the blur's own scale: on a 5120pt-wide window at 2x a source pixel covers
     /// 20pt of frame against the 18pt blur radius, where 128 would put it at 40pt.
     static let decodePixelSize: CGFloat = 256
 
     /// One screenshot per launch, picked by the session's own id so two launches of the same game do
-    /// not open on the same frame.
+    /// not open on the same frame. A candidate the cache cannot fetch is skipped, not chosen.
     static func selectedURL(candidates: [String], seed: UUID) -> URL? {
-        let usableCandidates = candidates
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+        let usableCandidates = candidates.compactMap { fetchableURL(from: $0) }
         guard !usableCandidates.isEmpty else { return nil }
         let hashedSeed = seed.uuidString.utf8.reduce(UInt(0)) { ($0 &* 31) &+ UInt($1) }
-        return URL(string: usableCandidates[Int(hashedSeed % UInt(usableCandidates.count))])
+        return urlAtDecodeRung(usableCandidates[Int(hashedSeed % UInt(usableCandidates.count))])
     }
 
     /// Warms the artwork on the reserved first-frame lane, so the screen's read joins this decode
@@ -30,6 +28,27 @@ enum StreamLaunchArtwork {
     static func prewarm(_ url: URL?) {
         guard let url else { return }
         CatalogImageCache.shared.prefetchPriority([url], maxPixelSize: decodePixelSize, retainingSourceData: false)
+    }
+
+    /// The cache fetches this URL, so a relative or non-HTTP candidate fails its download and leaves
+    /// the screen black while another candidate was fetchable.
+    private static func fetchableURL(from candidate: String) -> URL? {
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), url.host?.isEmpty == false else { return nil }
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+        return url
+    }
+
+    /// Replaces the `;f=webp;w=` rung `OPNGameService+Parsing` put on the vendor URL, so the download
+    /// is the same size as the decode. A URL without that exact suffix is used as it stands: appending
+    /// a rung produced a URL the CDN does not serve.
+    private static func urlAtDecodeRung(_ url: URL) -> URL {
+        let value = url.absoluteString
+        guard let rungStart = value.range(of: ";f=webp;w=", options: .backwards) else { return url }
+        let rungValue = value[rungStart.upperBound...]
+        guard !rungValue.isEmpty, rungValue.allSatisfy(\.isNumber) else { return url }
+        let rewritten = value.replacingCharacters(in: rungStart.upperBound..., with: String(Int(decodePixelSize)))
+        return URL(string: rewritten) ?? url
     }
 }
 

@@ -32,17 +32,34 @@ struct StreamLaunchArtworkTests {
         #expect(configuration.loadingArtworkURL == warmed)
     }
 
-    /// `OPNGameService+Parsing` already put the CDN's `;f=webp;w=` rung on every URL it stored, so a
-    /// second one appended here is a URL the CDN does not serve and the screen stays black.
-    @Test func theVendorURLIsUsedVerbatim() {
+    /// The rung the catalog asked for is replaced rather than appended to, so the download matches the
+    /// decode instead of fetching the 1200-wide rung, and the URL stays one the CDN serves.
+    @Test func theVendorRungIsReplacedWithTheDecodeRung() {
         let parsed = "https://img.nvidiagrid.net/shot.jpg;f=webp;w=1200"
         let url = StreamLaunchArtwork.selectedURL(candidates: [parsed], seed: UUID())
-        #expect(url?.absoluteString == parsed)
+        #expect(url?.absoluteString == "https://img.nvidiagrid.net/shot.jpg;f=webp;w=256")
+    }
+
+    @Test func aURLWithoutACDNRungIsUsedAsItStands() {
+        let url = StreamLaunchArtwork.selectedURL(candidates: ["https://example.com/art.png"], seed: UUID())
+        #expect(url?.absoluteString == "https://example.com/art.png")
     }
 
     @Test func paddingAroundAVendorURLIsIgnored() {
         let url = StreamLaunchArtwork.selectedURL(candidates: ["  https://img.nvidiagrid.net/a.jpg  "], seed: UUID())
         #expect(url?.absoluteString == "https://img.nvidiagrid.net/a.jpg")
+    }
+
+    /// A relative or non-HTTP candidate cannot be fetched, and picking one would leave the screen black
+    /// while a fetchable candidate sat behind it.
+    @Test func aCandidateTheCacheCannotFetchIsSkipped() {
+        let candidates = [
+            "/screenshots/shot.jpg",
+            "ftp://img.nvidiagrid.net/shot.jpg",
+            "https://img.nvidiagrid.net/shot.jpg;f=webp;w=1200"
+        ]
+        let url = StreamLaunchArtwork.selectedURL(candidates: candidates, seed: UUID())
+        #expect(url?.absoluteString == "https://img.nvidiagrid.net/shot.jpg;f=webp;w=256")
     }
 
     @Test func theSameSeedPicksTheSameFrameEveryTime() {
@@ -57,9 +74,9 @@ struct StreamLaunchArtworkTests {
         #expect(first == StreamLaunchArtwork.selectedURL(candidates: candidates, seed: seed))
     }
 
-    @Test func noCandidatesMeansNoArtwork() {
+    @Test func noUsableCandidateMeansNoArtwork() {
         #expect(StreamLaunchArtwork.selectedURL(candidates: [], seed: UUID()) == nil)
-        #expect(StreamLaunchArtwork.selectedURL(candidates: ["", "   "], seed: UUID()) == nil)
+        #expect(StreamLaunchArtwork.selectedURL(candidates: ["", "   ", "/relative.jpg"], seed: UUID()) == nil)
     }
 
     @Test func aLaunchWithNoScreenshotsHasNoArtwork() {
