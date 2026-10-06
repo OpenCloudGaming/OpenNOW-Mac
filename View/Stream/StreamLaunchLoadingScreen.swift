@@ -146,8 +146,8 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
 
     // MARK: - Artwork
 
-    /// Empty placeholder and failure on purpose: the screen sits on black, so missing artwork leaves
-    /// the black background rather than a flash of chrome the surface never had.
+    /// `Color.clear`, not `EmptyView`: an empty placeholder leaves the container sizeless while the
+    /// artwork loads, and the oversized frame below then lays the image out at zero size.
     private func artworkLayer(proxy: GeometryProxy) -> some View {
         Group {
             if let artworkURL {
@@ -155,8 +155,8 @@ struct StreamLaunchLoadingScreen<Accessory: View>: View {
                     url: artworkURL,
                     contentMode: .fill,
                     maxPixelSize: StreamLaunchArtwork.decodePixelSize,
-                    placeholder: EmptyView(),
-                    failure: EmptyView()
+                    placeholder: Color.clear,
+                    failure: Color.clear
                 )
                 .frame(width: proxy.size.width + 14, height: proxy.size.height + 14)
                 .blur(radius: 18)
