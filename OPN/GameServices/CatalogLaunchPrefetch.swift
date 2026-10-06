@@ -2,23 +2,27 @@ import Foundation
 
 /// Decides when the launch prefetch may drop the catalog graphs it retains for the home page.
 /// They duplicate the view model's own copy, so they go once it has adopted every delivery.
-struct CatalogLaunchPrefetchRetention {
+///
+/// Deliveries are counted by key, not by callback. The panel pipeline redelivers each panel once
+/// metadata enrichment completes, and counting those redeliveries spent the whole budget before
+/// the favorites and library lists arrived, which stranded their rails on skeletons.
+struct CatalogLaunchPrefetchRetention<DeliveryKey: Hashable> {
     private(set) var isLaunchResultsAdopted = false
     private(set) var isHandoverFinished = false
-    private var pendingDeliveryCount = 0
+    private var outstandingDeliveryKeys: Set<DeliveryKey> = []
 
-    /// False before adoption and while a delivery is outstanding: either would strand a rail.
+    /// False before adoption and while any delivery is outstanding: either would strand a rail.
     var isReadyToReleaseRetainedGraphs: Bool {
-        isLaunchResultsAdopted && pendingDeliveryCount == 0 && !isHandoverFinished
+        isLaunchResultsAdopted && outstandingDeliveryKeys.isEmpty && !isHandoverFinished
     }
 
-    mutating func recordDeliveriesStarted(_ count: Int) {
-        guard !isHandoverFinished, count > 0 else { return }
-        pendingDeliveryCount += count
+    mutating func recordDeliveriesStarted(_ keys: some Sequence<DeliveryKey>) {
+        guard !isHandoverFinished else { return }
+        outstandingDeliveryKeys.formUnion(keys)
     }
 
-    mutating func recordDeliveryFinished() {
-        pendingDeliveryCount = max(0, pendingDeliveryCount - 1)
+    mutating func recordDeliveryFinished(_ key: DeliveryKey) {
+        outstandingDeliveryKeys.remove(key)
     }
 
     mutating func recordLaunchResultsAdopted() {
@@ -28,7 +32,7 @@ struct CatalogLaunchPrefetchRetention {
 
     mutating func recordHandoverFinished() {
         isHandoverFinished = true
-        pendingDeliveryCount = 0
+        outstandingDeliveryKeys = []
     }
 }
 
@@ -73,6 +77,11 @@ final class CatalogLaunchPrefetch {
         var isEmpty: Bool { !marquee && !main && !favorites && !library }
     }
 
+    private enum DeliveryKey: Hashable {
+        case panel(PanelKind)
+        case gameList(GameListKind)
+    }
+
     private enum FetchState {
         case idle
         case inFlight
@@ -89,7 +98,7 @@ final class CatalogLaunchPrefetch {
     private var gameLists: [GameListKind: [OPNCatalogGameObject]] = [:]
     private var gameListStates: [GameListKind: FetchState] = [:]
     private var observer: ((Event) -> Void)?
-    private var retention = CatalogLaunchPrefetchRetention()
+    private var retention = CatalogLaunchPrefetchRetention<DeliveryKey>()
     var startedAt: ContinuousClock.Instant?
     private var didPrefetchHeroImages = false
     private var didPrefetchRailImages = false
@@ -107,7 +116,8 @@ final class CatalogLaunchPrefetch {
         self.accountIdentifier = accountIdentifier
         for kind in PanelKind.allCases { panelStates[kind] = .inFlight }
         for kind in GameListKind.allCases { gameListStates[kind] = .inFlight }
-        retention.recordDeliveriesStarted(PanelKind.allCases.count + GameListKind.allCases.count)
+        let deliveryKeys = PanelKind.allCases.map(DeliveryKey.panel) + GameListKind.allCases.map(DeliveryKey.gameList)
+        retention.recordDeliveriesStarted(deliveryKeys)
         startedAt = ContinuousClock.now
         StartupReadiness.shared.noteProgress()
         // Also prewarms the vpcId lookup, which every catalog query waits on.
@@ -174,7 +184,7 @@ final class CatalogLaunchPrefetch {
         guard !accountIdentifier.isEmpty else { return }
         guard !retention.isHandoverFinished else { return }
         self.accountIdentifier = accountIdentifier
-        retention.recordDeliveriesStarted(PanelKind.allCases.count)
+        retention.recordDeliveriesStarted(PanelKind.allCases.map(DeliveryKey.panel))
         for kind in PanelKind.allCases {
             gameService.loadCachedPanels(cacheKind: kind.rawValue, accountIdentifier: accountIdentifier) { [weak self] cachedPanels in
                 let panels = cachedPanels.map { $0.map(OPNCatalogPanelObject.init) } ?? []
@@ -186,7 +196,7 @@ final class CatalogLaunchPrefetch {
     }
 
     private func applyCachedPanels(_ cached: [OPNCatalogPanelObject], for kind: PanelKind) {
-        defer { finishDelivery() }
+        defer { finishDelivery(.panel(kind)) }
         guard !retention.isHandoverFinished, !cached.isEmpty, (panels[kind] ?? []).isEmpty else { return }
         panels[kind] = cached
         StartupReadiness.shared.noteProgress()
@@ -232,15 +242,19 @@ final class CatalogLaunchPrefetch {
         dropRetainedGraphs()
     }
 
-    /// One launch delivery - a fetch or a panel cache read - has landed.
-    private func finishDelivery() {
-        retention.recordDeliveryFinished()
+    /// One launch delivery - a fetch or a panel cache read - has landed. A kind redelivers when
+    /// metadata enrichment completes, so the retention counts it once through its key.
+    private func finishDelivery(_ key: DeliveryKey) {
+        retention.recordDeliveryFinished(key)
         releaseRetainedGraphsWhenReady()
     }
 
     private func handlePanels(kind: PanelKind, success: Bool, panels newPanels: [OPNCatalogPanelObject], error: String) {
-        defer { finishDelivery() }
-        guard !retention.isHandoverFinished else { return }
+        defer { finishDelivery(.panel(kind)) }
+        guard !retention.isHandoverFinished else {
+            logStrandedDelivery(kind: kind.rawValue, state: panelStates[kind])
+            return
+        }
         guard success, !newPanels.isEmpty else {
             let message = error.isEmpty ? "No \(kind.rawValue) panels returned." : error
             panelStates[kind] = .failed
@@ -261,8 +275,11 @@ final class CatalogLaunchPrefetch {
     // Unlike panels, an empty result is a legitimate outcome here (the account just has no
     // favorites, or owns nothing yet) rather than something to retry as a failure.
     private func handleGameList(kind: GameListKind, success: Bool, games: [OPNCatalogGameObject], error: String) {
-        defer { finishDelivery() }
-        guard !retention.isHandoverFinished else { return }
+        defer { finishDelivery(.gameList(kind)) }
+        guard !retention.isHandoverFinished else {
+            logStrandedDelivery(kind: kind.rawValue, state: gameListStates[kind])
+            return
+        }
         guard success else {
             gameListStates[kind] = .failed
             guard (gameLists[kind] ?? []).isEmpty else { return }
@@ -283,6 +300,13 @@ final class CatalogLaunchPrefetch {
         let elapsedMs = Int(elapsed.seconds * 1000) + Int(elapsed.attoseconds / 1_000_000_000_000_000)
         let kindSuffix = kind.map { " kind=\($0)" } ?? ""
         OPNLog.info(.catalog, "Launch \(label) prefetch delivered\(kindSuffix) elapsed=\(elapsedMs)ms \(unit)=\(count)")
+    }
+
+    /// A delivery dropped after the graphs were released only strands a rail when that kind never
+    /// landed; the redelivery of an already-delivered kind after enrichment is expected.
+    private func logStrandedDelivery(kind: String, state: FetchState?) {
+        guard state == .inFlight else { return }
+        OPNLog.warning(.catalog, "Launch prefetch released the catalog graphs before \(kind) delivered")
     }
 
     private func isActiveState(_ state: FetchState?) -> Bool {
