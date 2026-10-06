@@ -192,6 +192,10 @@ protocol OPNMenuBarSessionSource: AnyObject {
     /// Brings one of the window's own pages forward. A page belongs to the window and nothing outside
     /// it can put one on screen, so the surface asks rather than acts.
     func showMainPage(_ page: OPNMainWindowPage)
+    /// The session the attached window's own account owns, so a menu bar control acts on the game
+    /// that window is showing rather than on whichever account streamed most recently.
+    var ownedStreamSessionID: UUID? { get }
+
     /// Switches the signed-in account, the same action the catalog's account dropdown offers. The
     /// switch belongs to the window because it re-points the auth session the whole app shares.
     func switchAccount(_ account: OPNMenuBarAccount)

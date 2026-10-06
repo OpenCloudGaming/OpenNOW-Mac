@@ -47,66 +47,81 @@ import Foundation
         #expect(model.catalogSections.first?.id != "jump-back-in")
     }
 
-    @Test func finishingAStreamRecordsTheGameForTheRail() {
+    @Test func finishingAStreamRecordsTheGameForTheRail() throws {
         let model = makeModel()
-        model.catalogGames = [OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))]
-        model.startPreparedStream(
-            StreamLaunchConfiguration(
-                title: "Manor Lords",
-                applicationID: "app-1",
-                accessToken: "t",
-                accountLinked: false,
-                selectedStore: "steam"
-            ),
-            message: "Starting..."
-        )
+        let game = OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))
+        model.catalogGames = [game]
 
-        model.finishActiveStream(success: true, message: "", report: nil)
+        model.applySessionResult(makeSessionResultForTesting(
+            accountID: try #require(model.account.storedAccountID),
+            configuration: Self.manorLordsConfiguration,
+            launchedGame: game,
+            success: true
+        ))
 
         #expect(model.recentlyPlayed.games.map(\.title) == ["Manor Lords"])
         #expect(model.catalogSections.first?.id == "jump-back-in")
     }
 
-    @Test func finishingAStreamRecordsTheGameUnderItsCatalogIdentity() {
+    @Test func finishingAStreamRecordsTheGameUnderItsCatalogIdentity() throws {
         let model = makeModel()
-        model.catalogGames = [OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))]
-        model.startPreparedStream(
-            StreamLaunchConfiguration(
-                title: "Manor Lords",
-                applicationID: "app-1",
-                accessToken: "t",
-                accountLinked: false,
-                selectedStore: "steam"
-            ),
-            message: "Starting..."
-        )
+        let game = OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))
+        model.catalogGames = [game]
 
-        model.finishActiveStream(success: true, message: "", report: nil)
+        model.applySessionResult(makeSessionResultForTesting(
+            accountID: try #require(model.account.storedAccountID),
+            configuration: Self.manorLordsConfiguration,
+            launchedGame: game,
+            success: true
+        ))
 
         // The catalog identity, not the numeric launch app id, so the entry merges with the vendor's
         // server-side history for the same game instead of doubling it.
         #expect(model.recentlyPlayed.games.first?.appId == "id-1")
     }
 
-    @Test func aFailedLaunchDoesNotClaimTheRail() {
+    @Test func aFailedStreamDoesNotClaimTheRail() throws {
         let model = makeModel()
-        model.catalogGames = [OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))]
-        model.startPreparedStream(
-            StreamLaunchConfiguration(
-                title: "Manor Lords",
-                applicationID: "app-1",
-                accessToken: "t",
-                accountLinked: false,
-                selectedStore: "steam"
-            ),
-            message: "Starting..."
-        )
+        let game = OPNCatalogGameObject(game: Self.gameInfo(id: "id-1", title: "Manor Lords", launchAppId: "app-1"))
+        model.catalogGames = [game]
 
-        model.finishActiveStream(success: false, message: "Seat refused the title.", report: nil)
+        model.applySessionResult(makeSessionResultForTesting(
+            accountID: try #require(model.account.storedAccountID),
+            configuration: Self.manorLordsConfiguration,
+            launchedGame: game,
+            success: false,
+            message: "Seat refused the title."
+        ))
 
         #expect(model.recentlyPlayed == .empty)
         #expect(model.catalogSections.first?.id != "jump-back-in")
     }
+
+    /// A launch that never produced a stream records nothing, and still tells the page why.
+    @Test func aFailedLaunchReportsTheReasonWithoutRecordingHistory() throws {
+        let model = makeModel()
+        // Whatever an earlier run left in the shared preference store, this result must not touch it.
+        let previousSessionBefore = model.previousGameSession
+
+        model.applySessionResult(makeSessionResultForTesting(
+            accountID: try #require(model.account.storedAccountID),
+            configuration: nil,
+            success: false,
+            message: "Unable to prepare GeForce NOW launch."
+        ))
+
+        #expect(model.recentlyPlayed == .empty)
+        #expect(model.previousGameSession == previousSessionBefore)
+        #expect(model.displayedErrorMessage == "Unable to prepare GeForce NOW launch.")
+    }
+
+    private static let manorLordsConfiguration = StreamLaunchConfiguration(
+        title: "Manor Lords",
+        applicationID: "app-1",
+        accessToken: "t",
+        accountLinked: false,
+        selectedStore: "steam"
+    )
 
     private static func gameInfo(id: String, title: String, launchAppId: String) -> OPNGameInfo {
         var game = OPNGameInfo()

@@ -263,9 +263,12 @@ final class OPNMenuBarSessionModel: ObservableObject {
     // MARK: - Commands
 
     /// Every control routes through `StreamSessionLifecycle`, exactly as the in-app shortcuts do, so
-    /// a session state cannot drift between the two surfaces.
+    /// a session state cannot drift between the two surfaces. It targets the attached window's own
+    /// session, because two accounts can stream at once; with no window to ask, it falls back to the
+    /// session started most recently, which is what a windowless surface has always meant.
     func send(_ command: StreamCommand) {
-        _ = StreamSessionLifecycle.sendCommand(command)
+        guard let target = source?.ownedStreamSessionID ?? StreamSessionLifecycle.mostRecentlyActivatedID else { return }
+        _ = StreamSessionLifecycle.sendCommand(command, to: target)
     }
 
     func pauseSession() {

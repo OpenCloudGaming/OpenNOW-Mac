@@ -6,8 +6,11 @@ import Foundation
 
 extension OPNStreamSessionCoordinator {
     func allocateSession(configuration: StreamLaunchConfiguration, launch: PreparedStreamLaunch) async throws -> AllocatedStreamSession {
-        sessionManager.setAccessToken(configuration.accessToken)
-        sessionManager.setStreamingBaseUrl(launch.streamingBaseUrl)
+        setRequestContext(StreamSessionRequestContext(
+            accessToken: configuration.accessToken,
+            streamingBaseURL: launch.streamingBaseUrl,
+            deviceId: deviceId
+        ))
 
         if configuration.resumesExistingSession {
             let claimed = try await claimSession(configuration: configuration, settings: launch.settings)
@@ -25,7 +28,7 @@ extension OPNStreamSessionCoordinator {
     }
 
     func createSession(configuration: StreamLaunchConfiguration, settings: [String: Any]) async throws -> AllocatedStreamSession {
-        let (success, info, error) = await sessionManager.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "OpenNOW" : configuration.title, settings: settings)
+        let (success, info, error) = await sessionManager.createSession(appId: configuration.applicationID, internalTitle: configuration.title.isEmpty ? "OpenNOW" : configuration.title, settings: settings, context: currentRequestContext)
         if success {
             return AllocatedStreamSession(info)
         } else if info["isSessionLimitConflict"] as? Bool == true {
@@ -46,7 +49,7 @@ extension OPNStreamSessionCoordinator {
         // doing, so the claim log no longer reports `recovery=false` for every resumed session.
         let isRecovery = !configuration.resumeSessionID.isEmpty
         return try await withCheckedThrowingContinuation { continuation in
-            sessionManager.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: isRecovery) { success, info, error in
+            sessionManager.claimSession(sessionId: configuration.resumeSessionID, serverIp: configuration.resumeServer, appId: configuration.applicationID, settings: settings, recoveryMode: isRecovery, context: currentRequestContext) { success, info, error in
                 if success {
                     continuation.resume(returning: AllocatedStreamSession(info))
                 } else {
@@ -139,7 +142,7 @@ extension OPNStreamSessionCoordinator {
     }
 
     func reportSessionAd(session: AllocatedStreamSession, ad: AllocatedSessionAd, action: String, watchedTimeInMs: Int, cancelReason: String) async throws -> AllocatedStreamSession {
-        let (success, info, error) = await sessionManager.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason)
+        let (success, info, error) = await sessionManager.reportSessionAd(session: session.reportableSession, adId: ad.adId, action: action, watchedTimeInMs: watchedTimeInMs, pausedTimeInMs: -1, cancelReason: cancelReason, context: currentRequestContext)
         if success {
             return AllocatedStreamSession(info)
         } else {
@@ -148,7 +151,7 @@ extension OPNStreamSessionCoordinator {
     }
 
     func pollSession(sessionId: String, serverIp: String) async throws -> AllocatedStreamSession {
-        let (success, info, error) = await sessionManager.pollSession(sessionId: sessionId, serverIp: serverIp)
+        let (success, info, error) = await sessionManager.pollSession(sessionId: sessionId, serverIp: serverIp, context: currentRequestContext)
         if success {
             return AllocatedStreamSession(info)
         } else {

@@ -45,6 +45,19 @@ public enum StreamSessionLifecycle {
         !activeStreamIDs.isEmpty
     }
 
+    /// Whether this one session's surface is still live. Two accounts can stream at once, so a
+    /// surface that cannot name itself has to ask about its own session rather than about the app.
+    public static func isActive(_ id: UUID) -> Bool {
+        activeStreamIDs.contains(id)
+    }
+
+    /// The session an untargeted command reaches: the one started most recently. Only the app-wide
+    /// surfaces use this - the quit prompt and the keyboard shortcuts; anything that belongs to one
+    /// stream targets that stream with `sendCommand(_:to:)`.
+    public static var mostRecentlyActivatedID: UUID? {
+        activeStreamIDs.last
+    }
+
     public static func activate(_ id: UUID,
                                 quitRequestHandler: @escaping StreamSessionQuitRequestHandler,
                                 commandHandler: StreamCommandHandler? = nil,
@@ -72,6 +85,14 @@ public enum StreamSessionLifecycle {
 
     public static func sendCommand(_ command: StreamCommand) -> Bool {
         guard let id = activeStreamIDs.last, let handler = commandHandlers[id] else { return false }
+        handler(command)
+        return true
+    }
+
+    /// Sends a command to one named session, so a control on account A's page cannot end the game
+    /// account B is playing.
+    public static func sendCommand(_ command: StreamCommand, to id: UUID) -> Bool {
+        guard let handler = commandHandlers[id] else { return false }
         handler(command)
         return true
     }

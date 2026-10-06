@@ -60,8 +60,6 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
     settings["networkTestSessionId"] = "stale-session-id"
     settings["enablePersistingInGameSettings"] = true
@@ -76,7 +74,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     settings["hdrColorSpace"] = 2
     settings["resolution"] = "7680x4320"
 
-    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings, context: sessionContext(host: host))
     let result = (createSucceeded, createError)
 
     let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
@@ -108,14 +106,12 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
     settings["transportPolicy"] = 1
     settings["relayProtocol"] = 2
     settings["relayLocation"] = 1
 
-    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings, context: sessionContext(host: host))
     let result = (createSucceeded, createError)
 
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
@@ -139,12 +135,10 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
     settings["appLaunchMode"] = 2
 
-    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings, context: sessionContext(host: host))
 
     let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
     let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
@@ -166,12 +160,10 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
     var settings = minimalSettings()
     settings["transportMode"] = "webrtc"
 
-    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings)
+    let (createSucceeded, _, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: settings, context: sessionContext(host: host))
     let result = (createSucceeded, createError)
 
     let request = try #require(SessionManagerURLProtocol.recordedRequests(host: host).first)
@@ -208,9 +200,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
-    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings())
+    let (createSucceeded, createInfo, createError) = await manager.createSession(appId: "123", internalTitle: "Test Game", settings: minimalSettings(), context: sessionContext(host: host))
     let result = (createSucceeded, createInfo["rawSessionJSON"] as? String, createError)
 
     let rawSessionJSON = try #require(result.1)
@@ -250,10 +240,8 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
 
-    let (pollSucceeded, pollInfo, pollError) = await manager.pollSession(sessionId: "resume-session", serverIp: host)
+    let (pollSucceeded, pollInfo, pollError) = await manager.pollSession(sessionId: "resume-session", serverIp: host, context: sessionContext(host: host))
     let pollMedia = pollInfo["mediaConnectionInfo"] as? [String: Any] ?? [:]
     let result = (pollSucceeded, pollMedia["ip"] as? String ?? "", pollMedia["port"] as? Int ?? 0, pollError)
 
@@ -352,15 +340,84 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     defer { SessionManagerURLProtocol.uninstall(host: host) }
 
     let manager = OPNSessionManager()
-    manager.setAccessToken("token")
-    manager.setStreamingBaseUrl("https://\(host)")
 
-    let (pollSucceeded, pollInfo, pollError) = await manager.pollSession(sessionId: "resume-session", serverIp: host)
+    let (pollSucceeded, pollInfo, pollError) = await manager.pollSession(sessionId: "resume-session", serverIp: host, context: sessionContext(host: host))
     let result = (pollSucceeded, pollInfo["remainingSessionLimitSeconds"] as? Int ?? 0, pollError)
 
     #expect(result.0 == true)
     #expect(result.1 == 7200)
     #expect(result.2.isEmpty)
+    }
+}
+
+/// The seat counts one live session per device, and says so with an empty session list. That has to
+/// read as the device limit rather than fall through to the raw body - which is exactly what a second
+/// account launching from this Mac got, because the generic session-limit branch matches
+/// `SESSION_LIMIT` and then has no session of this account's own to resolve against.
+@Test func aPerDeviceSessionLimitIsNotReadAsThisAccountsOwnSession() throws {
+    let refusal = try JSONSerialization.data(withJSONObject: [
+        "session": ["sessionId": "87579ffd-d187-4221-8831-2868e09c6e1a"],
+        "requestStatus": [
+            "unifiedErrorCode": 1257316382,
+            "serverId": "NP-TYO-01",
+            "statusDescription": "SESSION_LIMIT_PER_DEVICE_EXCEEDED_STATUS 4AF1201E",
+            "statusCode": 50,
+        ],
+        "otherUserSessions": [],
+    ])
+
+    let (succeeded, conflict, message) = OPNSessionManager().createSessionFailure(
+        data: refusal,
+        statusCode: 403,
+        baseUrl: "https://prod.cloudmatchbeta.nvidiagrid.net/",
+        requestedAppId: 103500271
+    )
+
+    #expect(!succeeded)
+    #expect(conflict.isEmpty)
+    #expect(message.contains("one session per device"))
+}
+
+/// What one test session's requests carry. The manager no longer parks credentials, so every call
+/// names the account it belongs to - which is also what lets two accounts stream at once.
+func sessionContext(host: String, accessToken: String = "token") -> StreamSessionRequestContext {
+    StreamSessionRequestContext(
+        accessToken: accessToken,
+        streamingBaseURL: "https://\(host)",
+        deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()
+    )
+}
+
+/// The seat allows one live session per device, so the create request has to carry the launching
+/// account's own device hash: two accounts sharing the machine's would look like one device and the
+/// second session would be refused.
+@Test func sessionManagerCreatesUnderTheAccountsOwnDevice() async throws {
+    try await networkTestIsolationLock.withLock {
+        let host = "create-device-scope.example.test"
+        SessionManagerURLProtocol.install(host: host) { _ in
+            SessionManagerURLProtocol.response(json: sessionResponse(statusCode: 1, sessionStatus: 2, controlHost: host))
+        }
+        defer { SessionManagerURLProtocol.uninstall(host: host) }
+
+        let accountID = try #require(OPNAccountID(providerIdpId: "nvidia", vendorSubject: "user-a"))
+        let context = StreamSessionRequestContext(
+            accessToken: "token",
+            streamingBaseURL: "https://\(host)",
+            deviceId: OPNDeviceIdentity.cloudmatchDeviceId(accountID: accountID)
+        )
+
+        let (succeeded, _, error) = await OPNSessionManager().createSession(
+            appId: "123",
+            internalTitle: "Test Game",
+            settings: minimalSettings(),
+            context: context
+        )
+
+        let payload = try #require(SessionManagerURLProtocol.recordedJSONBodies(host: host).first)
+        let requestData = try #require(payload["sessionRequestData"] as? [String: Any])
+        #expect(succeeded, "\(error)")
+        #expect(requestData["deviceHashId"] as? String == context.deviceId)
+        #expect(requestData["deviceHashId"] as? String != OPNDeviceIdentity.stableCloudmatchDeviceId())
     }
 }
 

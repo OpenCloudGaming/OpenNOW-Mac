@@ -7,35 +7,30 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
     // Reachable from the manager's extensions in the neighbouring files; nothing outside the
     // manager touches them.
     let lock = NSLock()
-    var accessToken = ""
     var streamingBaseUrl = defaultBaseUrl
     var adStatesBySessionId: [String: [String: Any]] = [:]
 
     static let defaultBaseUrl = CloudMatch.productionBaseURLString
     static let persistedActiveSessionIdKey = "OpenNOW.Stream.ActiveSessionId"
 
-    func setAccessToken(_ token: String) {
-        lock.withLock { accessToken = token }
-    }
-
     func setStreamingBaseUrl(_ url: String) {
         lock.withLock { streamingBaseUrl = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: url, serverIP: "") }
     }
 
-    func createSession(appId: String, internalTitle: String, settings: [String: Any]) async -> (Bool, [String: Any], String) {
+    func createSession(appId: String, internalTitle: String, settings: [String: Any], context: StreamSessionRequestContext) async -> (Bool, [String: Any], String) {
         guard let launchAppId = OPNLaunchAppId.resolve(appId) else {
             OPNDiagnostics.logWarningMessage(OPNDiagnostics.formattedLogMessage(level: "warning", area: "SessionManager", message: "Refusing session creation with invalid appId=\(escapedLogString(appId.trimmingCharacters(in: .whitespacesAndNewlines)))"))
             return (false, [:], "This game does not include a launchable GeForce NOW app id.")
         }
-        let token = currentAccessToken()
+        let token = context.accessToken
         guard !token.isEmpty else {
             return (false, [:], "No access token")
         }
 
         clearPersistedActiveSessionId("")
-        let baseUrl = currentStreamingBaseUrl()
+        let baseUrl = context.streamingBaseURL
         let clientId = UUID().uuidString.lowercased()
-        let deviceId = OPNDeviceIdentity.stableCloudmatchDeviceId()
+        let deviceId = context.deviceId
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let effectiveSettings = settingsByApplyingCloudVariables(settings, capabilities: capabilities)
         logInGameSettingsPersistenceRequest(effectiveSettings)
@@ -172,6 +167,11 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         if let requestLimitMessage = CloudMatchResponseParser.requestLimitExceededMessage(data) {
             return (false, [:], requestLimitMessage)
         }
+        // Ahead of the session-limit branch below, which would otherwise read this as "this account
+        // already has a session" and hand back a conflict with nothing to resolve.
+        if let perDeviceMessage = CloudMatchResponseParser.sessionLimitPerDeviceMessage(data) {
+            return (false, [:], perDeviceMessage)
+        }
         guard let json = CloudMatchResponseParser.jsonDictionary(data),
               CloudMatchResponseParser.isSessionLimitExceededResponse(json),
               let selected = selectSessionLimitReuseEntry(activeSessionEntries(from: array(json["otherUserSessions"]), streamingBaseUrl: baseUrl), requestedAppId: requestedAppId) else {
@@ -187,16 +187,16 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         return (false, conflict, message)
     }
 
-    func pollSession(sessionId: String, serverIp: String) async -> (Bool, [String: Any], String) {
-        let token = currentAccessToken()
+    func pollSession(sessionId: String, serverIp: String, context: StreamSessionRequestContext) async -> (Bool, [String: Any], String) {
+        let token = context.accessToken
         guard !token.isEmpty else {
             return (false, [:], "No access token")
         }
         guard isValidSessionId(sessionId) else {
             return (false, [:], "Invalid session id for poll: \(escapedLogString(sessionId))")
         }
-        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        guard let request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: context.streamingBaseURL, serverIP: serverIp)
+        guard let request = CloudMatchRequestFactory.pollSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: context.deviceId) else {
             return (false, [:], "Invalid poll URL")
         }
         let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.pollSession")
@@ -225,40 +225,13 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         return (true, info, "")
     }
 
-    func stopSession(sessionId: String, serverIp: String) async -> (Bool, String) {
-        let token = currentAccessToken()
-        guard !token.isEmpty else {
-            return (false, "No access token")
-        }
-        clearPersistedActiveSessionId(sessionId)
-        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: currentStreamingBaseUrl(), serverIP: serverIp)
-        guard let request = CloudMatchRequestFactory.stopSessionRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
-            return (false, "Invalid stop session URL")
-        }
-        let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.stopSession")
-        let data: Data?
-        let response: URLResponse
-        do {
-            (data, response) = try await OPNSessionProxySessionProvider.shared.data(for: request, purpose: .session)
-            OPNNetworkLog.finish(operation: "cloudmatch.stopSession", startedAt: networkStart, data: data, response: response, error: nil)
-        } catch {
-            OPNNetworkLog.finish(operation: "cloudmatch.stopSession", startedAt: networkStart, data: nil, response: nil, error: error)
-            return (false, error.localizedDescription)
-        }
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            return (false, "HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0): \(body)")
-        }
-        return (true, "")
-    }
-
-    func getActiveSessions() async -> (Bool, [[String: Any]], String) {
-        let token = currentAccessToken()
+    func getActiveSessions(context: StreamSessionRequestContext) async -> (Bool, [[String: Any]], String) {
+        let token = context.accessToken
         guard !token.isEmpty else {
             return (false, [], "No access token")
         }
-        let base = currentStreamingBaseUrl()
-        guard let request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: token, deviceId: OPNDeviceIdentity.stableCloudmatchDeviceId()) else {
+        let base = context.streamingBaseURL
+        guard let request = CloudMatchRequestFactory.activeSessionsRequest(baseURLString: base, accessToken: token, deviceId: context.deviceId) else {
             return (false, [], "Invalid sessions URL")
         }
         let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.activeSessions")
@@ -280,8 +253,8 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         return (true, activeSessionEntries(from: array(json["sessions"]), streamingBaseUrl: base), "")
     }
 
-    func reportSessionAd(session: [String: Any], adId: String, action: String, watchedTimeInMs: Int, pausedTimeInMs: Int, cancelReason: String) async -> (Bool, [String: Any], String) {
-        let token = currentAccessToken()
+    func reportSessionAd(session: [String: Any], adId: String, action: String, watchedTimeInMs: Int, pausedTimeInMs: Int, cancelReason: String, context: StreamSessionRequestContext) async -> (Bool, [String: Any], String) {
+        let token = context.accessToken
         let sessionId = string(session["sessionId"])
         let actionCode = adActionCode(action)
         guard !token.isEmpty else {
@@ -290,7 +263,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         guard !sessionId.isEmpty, !adId.isEmpty, actionCode != 0 else {
             return (false, [:], "Invalid ad update request")
         }
-        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: string(session["streamingBaseUrl"]).isEmpty ? currentStreamingBaseUrl() : string(session["streamingBaseUrl"]), serverIP: string(session["serverIp"]))
+        let base = CloudMatchRequestFactory.resolvedSessionBaseURL(streamingBaseURL: string(session["streamingBaseUrl"]).isEmpty ? context.streamingBaseURL : string(session["streamingBaseUrl"]), serverIP: string(session["serverIp"]))
         var adUpdate: [String: Any] = ["adId": adId, "adAction": actionCode, "clientTimestamp": Int(Date().timeIntervalSince1970)]
         if watchedTimeInMs >= 0 { adUpdate["watchedTimeInMs"] = watchedTimeInMs }
         if pausedTimeInMs >= 0 { adUpdate["pausedTimeInMs"] = pausedTimeInMs }
@@ -301,7 +274,7 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
         } catch {
             return (false, [:], "Failed to encode ad update request")
         }
-        guard let request = CloudMatchRequestFactory.adUpdateRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: string(session["deviceId"]).isEmpty ? OPNDeviceIdentity.stableCloudmatchDeviceId() : string(session["deviceId"]), body: bodyData) else {
+        guard let request = CloudMatchRequestFactory.adUpdateRequest(baseURLString: base, sessionId: sessionId, accessToken: token, deviceId: string(session["deviceId"]).isEmpty ? context.deviceId : string(session["deviceId"]), body: bodyData) else {
             return (false, [:], "Invalid ad update URL")
         }
         let networkStart = OPNNetworkLog.start(request, operation: "cloudmatch.reportSessionAd")

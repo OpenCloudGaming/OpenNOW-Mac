@@ -268,20 +268,12 @@ final class CatalogViewModel {
     /// Which entitlement row of the selected variant the user picked: nil falls back to the
     /// variant's default row (store when owned, otherwise subscription).
     var selectedRowIsSubscription: Bool?
-    var activeStreamConfiguration: StreamLaunchConfiguration?
-    var activeStreamProgress: StreamProgress?
-    /// One ready alert per launch: allocation and the transport each publish a ready progress.
-    var didNotifySessionReady = false
-    var isActiveStreamLaunchOverlayVisible = false
     /// True while the pointer is over a game tile. The page-wide "tap anywhere else to close the
     /// details" gesture runs alongside the tile's own tap, so a click on the open tile closed the
     /// panel and the tile's toggle then reopened it — the details never closed from the tile.
     var isPointerInsideGameTile = false
-    var launchFlowState = CatalogLaunchFlowState.idle
-    var launchFlowTitle = ""
-    var launchFlowMessage = ""
-    var launchFlowError = ""
-    var activeLaunchSession: OPNActiveStreamSessionDescriptor?
+    /// A seat the vendor still holds for this browsing account, waiting to be resumed. Not a local
+    /// stream: the game session for one of those lives in `OPNGameSession`, at application scope.
     var activeHomeSession: OPNActiveSessionObject?
     var streamProfile = OPNStreamPreferenceProfile()
     var captureLocations = CatalogCaptureLocationState()
@@ -375,7 +367,6 @@ final class CatalogViewModel {
     var expandedSectionIds: Set<String> = []
     var accountSubscriptions: [String] = []
     var subscriptionDefinitions: [CatalogSubscriptionDefinition] = []
-    var activeStreamAdPlayback: CatalogStreamAdPlayback?
 
     let account: LoginAccount
     let session: LoginSession
@@ -384,6 +375,9 @@ final class CatalogViewModel {
     /// menu bar runs the identical path the on-screen dropdown does.
     let onSwitchAccount: (LoginAccount) -> Void
     let onAddAccount: () -> Void
+    /// Raises the saved-account chooser, which lives at the window root because it covers the login
+    /// wall as well as this catalog. The profile menu and Settings both open that one panel.
+    let onPresentAccountChooser: () -> Void
     /// The saved accounts and which of them are signed out, fed from the view's SwiftData query. The
     /// menu bar snapshot is derived from these rather than from the live models.
     var menuBarLoginAccounts: [LoginAccount] = []
@@ -400,14 +394,7 @@ final class CatalogViewModel {
     private var secondaryCatalogLoadsTask: Task<Void, Never>?
     var authRefreshInFlight = false
     private var searchDebounceTask: Task<Void, Never>?
-    var pendingLaunchGame: OPNCatalogGameObject?
-    var pendingLaunchVariantIndex = -1
-    var activeDiscordPresence: DiscordGamePresence?
-    var activeSessionResumeConfiguration: StreamLaunchConfiguration?
-    var activeSessionReplacementConfiguration: StreamLaunchConfiguration?
     var isCheckingHomeSession = false
-    var streamProgressGeneration = 0
-    var activeStreamAdContinuation: CheckedContinuation<Int, Error>?
     var settingsPreferencesGeneration = 0
     var selectedGameRevealSequence = 0
     var settingsPreferencesTask: Task<Void, Never>?
@@ -422,6 +409,11 @@ final class CatalogViewModel {
     let imageCache: any CatalogImageServing
     let discordPresence: any DiscordPresenceServing
     let systemIntegration: any SystemIntegrationServing
+    /// Application-owned session ownership. This catalog reads the session its own account owns; it
+    /// never holds one, because a browsing switch remounts this model mid-session.
+    let sessionRegistry: OPNGameSessionRegistry
+    /// Where a finished session's owner-tagged result waits for this catalog.
+    let sessionResultStore: OPNGameSessionResultStore
     let deinitHandle = CatalogViewModelDeinitHandle()
 
     private var hasStarted = false
@@ -430,7 +422,7 @@ final class CatalogViewModel {
     /// Whether that work has landed; `startupContentGate` holds the splash until it has.
     var isAccountScopedStateLoaded = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, sessionResultStore: OPNGameSessionResultStore = .shared, onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onPresentAccountChooser: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
@@ -438,8 +430,11 @@ final class CatalogViewModel {
         self.imageCache = imageCache
         self.discordPresence = discordPresence
         self.systemIntegration = systemIntegration
+        self.sessionRegistry = sessionRegistry
+        self.sessionResultStore = sessionResultStore
         self.onSwitchAccount = onSwitchAccount
         self.onAddAccount = onAddAccount
+        self.onPresentAccountChooser = onPresentAccountChooser
         self.onRefreshAuth = onRefreshAuth
     }
 
@@ -466,6 +461,10 @@ final class CatalogViewModel {
         loadMaintenanceWatches()
         observeCollectionsStoreChanges()
         observeHomeArrangementChanges()
+        observeSessionResults()
+        // A game that ended while this catalog was not mounted still lands in its owner's history
+        // the next time the account is opened.
+        adoptPendingSessionResult()
         startAccountScopedStateLoad()
     }
 
@@ -747,22 +746,5 @@ extension OPNCatalogPanelSectionObject {
 extension OPNCatalogGameObject {
     var primaryStoreURL: URL? {
         variants.compactMap { URL(string: $0.storeUrl) }.first
-    }
-}
-
-/// Owns the view model's long-lived resources, so releasing the view model releases them here.
-final class CatalogViewModelDeinitHandle: @unchecked Sendable {
-    var patchingPollTask: Task<Void, Never>?
-    var collectionsStoreObserver: NSObjectProtocol?
-    var homeArrangementObserver: NSObjectProtocol?
-
-    deinit {
-        if let collectionsStoreObserver {
-            NotificationCenter.default.removeObserver(collectionsStoreObserver)
-        }
-        if let homeArrangementObserver {
-            NotificationCenter.default.removeObserver(homeArrangementObserver)
-        }
-        patchingPollTask?.cancel()
     }
 }

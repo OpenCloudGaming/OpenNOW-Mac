@@ -31,7 +31,11 @@ enum SettingsSearchIndex {
     /// lies about where the setting is: rows that exist only inside a modal wizard, and rows that
     /// appear only once another setting is switched on. The second kind hands its words to the
     /// control that gates it, so searching "socks" still reaches the session proxy.
-    static let entries: [SettingsSearchEntry] = videoEntries + audioEntries + inputEntries + keybindingEntries + captureEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries + cloudSyncEntries
+    static let entries: [SettingsSearchEntry] = accountEntries + videoEntries + audioEntries + inputEntries + keybindingEntries + captureEntries + networkEntries + themeEntries + generalEntries + remoteCoOpEntries + cloudSyncEntries
+
+    private static let accountEntries: [SettingsSearchEntry] = [
+        SettingsSearchEntry("Ask Which Account on Startup", .account, "startup", keywords: ["chooser", "switch account", "saved accounts", "which account", "startup", "sign in"]),
+    ]
 
     private static let keybindingEntries: [SettingsSearchEntry] = KeybindingAction.allCases.map { action in
         SettingsSearchEntry(action.title, .keybindings, action.section.rawValue, keywords: ["shortcut", "hotkey", "keyboard", "binding", "rebind"])

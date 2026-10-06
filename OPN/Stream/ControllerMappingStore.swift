@@ -35,7 +35,13 @@ public final class ControllerMappingStore: ObservableObject {
     /// Enabled override for the running game, else the family default, else `nil` for passthrough.
     /// An override naming a profile absent locally falls through instead of failing.
     func profile(for family: ControllerFamily) -> ControllerMappingProfile? {
-        if let override = activeOverride(for: family), let overrideProfile = profile(id: override.profileID, family: family) {
+        profile(for: family, gameIdentity: currentGameIdentity)
+    }
+
+    /// The same resolution for one named game, so a stream that is not the game Settings is looking
+    /// at still resolves its own overrides.
+    func profile(for family: ControllerFamily, gameIdentity: String?) -> ControllerMappingProfile? {
+        if let override = activeOverride(for: family, gameIdentity: gameIdentity), let overrideProfile = profile(id: override.profileID, family: family) {
             return overrideProfile
         }
         guard let defaultProfileID = defaultProfileIDs[family] else { return nil }
@@ -44,8 +50,12 @@ public final class ControllerMappingStore: ObservableObject {
 
     /// The enabled, locally-resolvable override for the running game and family, if any.
     func activeOverride(for family: ControllerFamily) -> ControllerMappingGameOverride? {
-        guard let currentGameIdentity,
-              let gameOverride = gameOverrides.override(forGameIdentity: currentGameIdentity, family: family),
+        activeOverride(for: family, gameIdentity: currentGameIdentity)
+    }
+
+    func activeOverride(for family: ControllerFamily, gameIdentity: String?) -> ControllerMappingGameOverride? {
+        guard let gameIdentity,
+              let gameOverride = gameOverrides.override(forGameIdentity: gameIdentity, family: family),
               gameOverride.isEnabled,
               profile(id: gameOverride.profileID, family: family) != nil else { return nil }
         return gameOverride

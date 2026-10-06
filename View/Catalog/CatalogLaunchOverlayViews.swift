@@ -6,7 +6,7 @@ import ImageIO
 import SwiftUI
 
 struct VendorLaunchFlowOverlay: View {
-    let viewModel: CatalogViewModel
+    let session: OPNGameSession
 
     var body: some View {
         ZStack {
@@ -20,12 +20,12 @@ struct VendorLaunchFlowOverlay: View {
             )
             .ignoresSafeArea()
 
-            switch viewModel.launchFlowState {
+            switch session.phase {
             case .activeSessionPrompt:
-                VendorActiveSessionCard(viewModel: viewModel)
+                VendorActiveSessionCard(session: session)
             case .checkingSession, .stoppingSession, .startingStream:
-                VendorLaunchProgressCard(viewModel: viewModel)
-            case .idle:
+                VendorLaunchProgressCard(session: session)
+            case .streaming:
                 EmptyView()
             }
         }
@@ -33,13 +33,13 @@ struct VendorLaunchFlowOverlay: View {
 }
 
 struct VendorActiveSessionCard: View {
-    let viewModel: CatalogViewModel
+    let session: OPNGameSession
 
     var body: some View {
-        VendorLaunchPanel(title: "Active Session", subtitle: viewModel.activeLaunchSession?.title ?? "Current Stream") {
+        VendorLaunchPanel(title: "Active Session", subtitle: session.activeLaunchSession?.title ?? "Current Stream") {
             VStack(alignment: .leading, spacing: 18) {
-                VendorLaunchStepHeader(index: "2", title: "Session Already Running", message: viewModel.launchFlowMessage)
-                if let active = viewModel.activeLaunchSession {
+                VendorLaunchStepHeader(index: "2", title: "Session Already Running", message: session.launchFlowMessage)
+                if let active = session.activeLaunchSession {
                     VStack(alignment: .leading, spacing: 10) {
                         VendorLaunchSessionRow(label: "Current session", value: active.title)
                         VendorLaunchSessionRow(label: "App ID", value: active.appId > 0 ? String(active.appId) : "Unknown")
@@ -49,18 +49,18 @@ struct VendorActiveSessionCard: View {
                     .background(OPNDesign.Fill.neutral(0.055))
                     .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
                 }
-                if !viewModel.launchFlowError.isEmpty {
-                    VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
+                if !session.launchFlowError.isEmpty {
+                    VendorLaunchInlineMessage(message: session.launchFlowError, warning: true)
                 }
                 HStack(spacing: 12) {
-                    Button("CANCEL") { viewModel.cancelVendorLaunch() }
+                    Button("CANCEL") { session.cancelLaunch() }
                         .buttonStyle(VendorLaunchSecondaryButtonStyle())
                     Spacer()
-                    if viewModel.canResumeActiveLaunchSession {
-                        Button("RESUME SESSION") { viewModel.resumeActiveLaunchSession() }
+                    if session.canResumeActiveSession {
+                        Button("RESUME SESSION") { session.resumeActiveSession() }
                             .buttonStyle(VendorLaunchSecondaryButtonStyle())
                     }
-                    Button("END AND LAUNCH") { viewModel.switchToSelectedGame() }
+                    Button("END AND LAUNCH") { session.switchToSelectedGame() }
                         .buttonStyle(VendorLaunchPrimaryButtonStyle())
                 }
             }
@@ -69,55 +69,55 @@ struct VendorActiveSessionCard: View {
 }
 
 struct VendorLaunchProgressCard: View {
-    let viewModel: CatalogViewModel
+    let session: OPNGameSession
 
     var body: some View {
-        VendorLaunchPanel(title: "Launching", subtitle: viewModel.launchFlowTitle) {
+        VendorLaunchPanel(title: "Launching", subtitle: session.launchFlowTitle) {
             VStack(alignment: .leading, spacing: 14) {
                 Text(progressTitle)
                     .font(.catalogText(size: 18, weight: .bold))
                     .foregroundStyle(OPNDesign.Text.primary)
                 VendorIndeterminateProgressBar()
                     .frame(height: 4)
-                if !viewModel.launchFlowError.isEmpty {
-                    VendorLaunchInlineMessage(message: viewModel.launchFlowError, warning: true)
+                if !session.launchFlowError.isEmpty {
+                    VendorLaunchInlineMessage(message: session.launchFlowError, warning: true)
                 }
             }
         }
     }
 
     private var progressTitle: String {
-        switch viewModel.launchFlowState {
+        switch session.phase {
         case .checkingSession: return "Checking Session"
         case .stoppingSession: return "Ending Session"
         case .startingStream: return "Starting Stream"
-        default: return "Preparing Launch"
+        case .activeSessionPrompt, .streaming: return "Preparing Launch"
         }
     }
 }
 
 struct VendorStreamLaunchLoadingOverlay: View {
-    let viewModel: CatalogViewModel
+    let session: OPNGameSession
     let windowTopInset: CGFloat
 
     var body: some View {
-        let progress = viewModel.activeStreamProgress
-        let configuration = viewModel.activeStreamConfiguration
+        let progress = session.progress
+        let configuration = session.configuration
         StreamLaunchLoadingScreen(
             title: progress?.title.isEmpty == false ? progress?.title ?? "GeForce NOW" : "GeForce NOW",
             stepIndex: progress?.currentStepIndex ?? -1,
             artworkURL: configuration?.loadingArtworkURL,
             queuePosition: progress?.queuePosition,
-            accessoryPresented: viewModel.activeStreamAdPlayback != nil,
-            stageOverride: viewModel.activeStreamAdPlayback != nil ? "Sponsored break" : nil,
-            cancelAction: viewModel.cancelActiveStreamLaunch,
+            accessoryPresented: session.adPlayback != nil,
+            stageOverride: session.adPlayback != nil ? "Sponsored break" : nil,
+            cancelAction: session.cancelStreamLaunch,
             windowTopInset: windowTopInset
         ) {
-            if let ad = viewModel.activeStreamAdPlayback {
+            if let ad = session.adPlayback {
                 VendorEmbeddedSessionAdPlayer(
                     ad: ad,
-                    onFinished: { watchedTimeInMs in viewModel.finishRequiredStreamAdPlayback(watchedTimeInMs: watchedTimeInMs) },
-                    onFailed: { message in viewModel.failRequiredStreamAdPlayback(message) }
+                    onFinished: { watchedTimeInMs in session.finishRequiredAdPlayback(watchedTimeInMs: watchedTimeInMs) },
+                    onFailed: { message in session.failRequiredAdPlayback(message) }
                 )
             }
         }

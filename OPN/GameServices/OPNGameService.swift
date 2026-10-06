@@ -114,7 +114,6 @@ final class OPNGameService: @unchecked Sendable {
     func setUserId(_ id: String) { userId = id }
     func setStreamingBaseUrl(_ url: String) {
         streamingBaseUrl = url
-        sessionManager.setStreamingBaseUrl(url)
     }
     func providerStreamingBaseURL() -> String { providerStreamingBaseUrl.isEmpty ? Self.defaultStreamingBaseUrl : providerStreamingBaseUrl }
 

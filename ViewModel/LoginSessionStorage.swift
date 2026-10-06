@@ -58,6 +58,9 @@ extension LoginViewModel {
                      expiry: expiry,
                      clientExpiry: clientExpiry)
         primaryDevice.lastUsedAt = now
+        // The sign-in is where a vendor subject first becomes known for an existing row, so it is
+        // also where a legacy `localOnly` identity can be upgraded to the verified one.
+        backfillAccountIdentities()
         trySave()
         cancelReauthentication()
         refreshSignedOutAccounts()

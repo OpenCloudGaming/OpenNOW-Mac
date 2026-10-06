@@ -51,6 +51,9 @@ struct CatalogAccountDropdownPanel: View {
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
     @State private var pendingForget: LoginAccount?
+    /// Read when the menu opens, so the checkmark is the stored preference rather than a value the
+    /// menu captured the first time it was ever drawn.
+    @State private var shouldAskOnStartup = OPNAccountPreferences.shouldAskWhichAccountOnStartup
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -74,6 +77,23 @@ struct CatalogAccountDropdownPanel: View {
             .padding(.horizontal, OPNDesign.Spacing.contentVertical(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
 
+            // No "Switch account…" row: the account list below is already the switch control, and a
+            // second way in only pushed the list down the panel.
+            VStack(alignment: .leading, spacing: 0) {
+                CatalogAccountDropdownRow(
+                    title: "Ask on startup",
+                    subtitle: "Pick the account each launch",
+                    systemImage: shouldAskOnStartup ? "checkmark.square.fill" : "square",
+                    isActive: shouldAskOnStartup,
+                    role: nil
+                ) {
+                    shouldAskOnStartup.toggle()
+                    OPNAccountPreferences.shouldAskWhichAccountOnStartup = shouldAskOnStartup
+                }
+            }
+            .padding(.horizontal, OPNDesign.Spacing.section(scale: uiScale))
+            .padding(.bottom, OPNDesign.Spacing.xSmall(scale: uiScale))
+
             CatalogAccountDropdownRow(
                 title: "Manage Account",
                 subtitle: nil,
@@ -95,6 +115,7 @@ struct CatalogAccountDropdownPanel: View {
                 CatalogAccountForgetConfirmationView(
                     account: pendingForget,
                     isActiveAccount: pendingForget === viewModel.account,
+                    blockReason: OPNAccountMutationGuard.blockReason(for: pendingForget.storedAccountID, registry: viewModel.sessionRegistry),
                     onCancel: { self.pendingForget = nil },
                     onConfirm: {
                         isPresented = false
@@ -117,7 +138,11 @@ struct CatalogAccountDropdownPanel: View {
                         // A signed-out account still has a row here, but nothing to restore: say so
                         // rather than let the switch fail with a message no one sees.
                         let needsSignIn = !isActive && signedOutAccountEmails.contains(account.email)
+                        // Switching to another account stays available; ending this account's game does
+                        // not, so the row says why instead of offering an action the guard refuses.
+                        let ownsGame = OPNAccountMutationGuard.blockReason(for: account.storedAccountID, registry: viewModel.sessionRegistry) != nil
                         var trailingActions: [CatalogAccountDropdownRowAction] {
+                            guard !ownsGame else { return [] }
                             var actions: [CatalogAccountDropdownRowAction] = []
                             if !signedOutAccountEmails.contains(account.email) {
                                 actions.append(CatalogAccountDropdownRowAction(systemImage: "power", accessibilityLabel: "Sign out of \(account.displayName)", isDestructive: false) {
@@ -132,7 +157,7 @@ struct CatalogAccountDropdownPanel: View {
                         }
                         CatalogAccountDropdownRow(
                             title: account.displayName,
-                            subtitle: isActive ? "Signed in" : (needsSignIn ? "Signed out. Sign in again" : nil),
+                            subtitle: Self.subtitle(isActive: isActive, needsSignIn: needsSignIn, ownsGame: ownsGame),
                             systemImage: isActive ? "checkmark" : (needsSignIn ? "person.crop.circle.badge.exclamationmark" : "person"),
                             isActive: isActive,
                             role: nil,
@@ -178,6 +203,16 @@ struct CatalogAccountDropdownPanel: View {
     }
 }
 
+private extension CatalogAccountDropdownPanel {
+    /// What the row says under the account's name. A game the account owns outranks the sign-in
+    /// state: it is the reason its two actions are missing.
+    static func subtitle(isActive: Bool, needsSignIn: Bool, ownsGame: Bool) -> String? {
+        guard !ownsGame else { return "Owns the running game. End it to sign out or forget." }
+        if isActive { return "Signed in" }
+        return needsSignIn ? "Signed out. Sign in again" : nil
+    }
+}
+
 /// One trailing icon button on a `CatalogAccountDropdownRow`, e.g. Sign Out or Forget. Each is its
 /// own tap target so pressing it never also fires the row's own action.
 struct CatalogAccountDropdownRowAction: Identifiable {
@@ -189,6 +224,22 @@ struct CatalogAccountDropdownRowAction: Identifiable {
 }
 
 struct CatalogAccountDropdownRow: View {
+    /// The square an icon sits in, and the strip held at the trailing edge for the hover actions.
+    /// Shared with `titleWidth(inMenuWidth:scale:)` so the label budget cannot drift from the layout.
+    private static let iconSize: CGFloat = 30
+    private static let trailingReserve: CGFloat = 4
+
+    /// The width this row leaves for its title inside a menu `menuWidth` wide. The panel is a fixed
+    /// width, so a title that does not fit is clipped rather than wrapped.
+    static func titleWidth(inMenuWidth menuWidth: CGFloat, scale: CGFloat) -> CGFloat {
+        menuWidth
+            - 2 * OPNDesign.Spacing.section(scale: scale)
+            - trailingReserve * scale
+            - OPNDesign.Spacing.xSmall(scale: scale)
+            - iconSize * scale
+            - OPNDesign.Spacing.small(scale: scale)
+    }
+
     let title: String
     let subtitle: String?
     let systemImage: String?
@@ -211,7 +262,7 @@ struct CatalogAccountDropdownRow: View {
                                 .catalogFont(size: 13, weight: .bold)
                                 .foregroundStyle(iconColor)
                         }
-                        .frame(width: 30 * uiScale, height: 30 * uiScale)
+                        .frame(width: Self.iconSize * uiScale, height: Self.iconSize * uiScale)
                     }
                     VStack(alignment: .leading, spacing: 2 * uiScale) {
                         Text(title)
@@ -250,7 +301,7 @@ struct CatalogAccountDropdownRow: View {
                 .padding(.trailing, OPNDesign.Spacing.xSmall(scale: uiScale))
                 .accessibilityHidden(true)
             } else {
-                Color.clear.frame(width: OPNDesign.Spacing.controlRow(scale: uiScale) - OPNDesign.Spacing.xSmall(scale: uiScale))
+                Color.clear.frame(width: Self.trailingReserve * uiScale)
             }
         }
         .frame(height: 42 * uiScale)
@@ -308,6 +359,9 @@ private struct CatalogAccountDropdownRowActionButton: View {
 private struct CatalogAccountForgetConfirmationView: View {
     let account: LoginAccount
     let isActiveAccount: Bool
+    /// Set while the account owns a game. A session can start after this confirmation is drawn, so
+    /// it is read again here rather than trusted from when the row was built.
+    let blockReason: String?
     let onCancel: () -> Void
     let onConfirm: () -> Void
     @Environment(\.opnUIScale) private var uiScale
@@ -320,18 +374,21 @@ private struct CatalogAccountForgetConfirmationView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                 Text(bodyText)
                     .catalogFont(size: 12, weight: .medium)
-                    .foregroundStyle(OPNDesign.Text.tertiary)
+                    .foregroundStyle(blockReason == nil ? OPNDesign.Text.tertiary : OPNDesign.Semantic.destructive)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-                CatalogAccountConfirmButton(title: "Cancel", isDestructive: false, action: onCancel)
-                CatalogAccountConfirmButton(title: "Forget Account", isDestructive: true, action: onConfirm)
+                CatalogAccountConfirmButton(title: blockReason == nil ? "Cancel" : "Close", isDestructive: false, action: onCancel)
+                if blockReason == nil {
+                    CatalogAccountConfirmButton(title: "Forget Account", isDestructive: true, action: onConfirm)
+                }
             }
         }
         .padding(OPNDesign.Spacing.section(scale: uiScale))
     }
 
     private var bodyText: String {
+        if let blockReason { return blockReason }
         let base = "Removes the saved sign-in from this Mac."
         guard isActiveAccount else { return base }
         return base + " You'll be signed out, and you'll need your password next time."

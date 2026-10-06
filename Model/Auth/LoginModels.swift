@@ -17,6 +17,9 @@ final class LoginAccount {
     var lastLoginAt: Date
     var rememberSession: Bool
     var isActive: Bool
+    /// What ownership and account-scoped caches are keyed by. Empty only on a row written before the
+    /// identity existed, which `resolveStableAccountID()` fills once.
+    var stableAccountID: String = ""
 
     init(
         email: String,
@@ -32,8 +35,12 @@ final class LoginAccount {
         createdAt: Date = Date(),
         lastLoginAt: Date = Date(),
         rememberSession: Bool = true,
-        isActive: Bool = true
+        isActive: Bool = true,
+        stableAccountID: String = ""
     ) {
+        self.stableAccountID = stableAccountID.isEmpty
+            ? (OPNAccountID(providerIdpId: providerIdpId, vendorSubject: userId, localFallbackSubject: email)?.rawValue ?? "")
+            : stableAccountID
         self.email = email
         self.displayName = displayName
         self.providerIdpId = providerIdpId
@@ -48,6 +55,20 @@ final class LoginAccount {
         self.lastLoginAt = lastLoginAt
         self.rememberSession = rememberSession
         self.isActive = isActive
+    }
+
+    /// The stored identity alone, for callers that must not write to the model - a view body that
+    /// renders a disabled control, for instance.
+    var storedAccountID: OPNAccountID? { OPNAccountID(rawValue: stableAccountID) }
+
+    /// The row's stable identity, deriving and storing it for a record written before it existed.
+    /// A row with no subject yet keeps a `localOnly` identity rather than borrowing another's.
+    @discardableResult
+    func resolveStableAccountID() -> OPNAccountID? {
+        if let stored = OPNAccountID(rawValue: stableAccountID) { return stored }
+        guard let resolved = OPNAccountID(providerIdpId: providerIdpId, vendorSubject: userId, localFallbackSubject: email) else { return nil }
+        stableAccountID = resolved.rawValue
+        return resolved
     }
 }
 

@@ -39,6 +39,44 @@ public struct StreamLaunchConfiguration: Identifiable, Codable, Equatable, Senda
     }
 }
 
+extension StreamLaunchConfiguration {
+    /// The owning account's display name, snapshotted at launch so a browsing switch cannot relabel
+    /// a running game as somebody else's.
+    static let owningAccountDisplayNameKey = "owningAccountDisplayName"
+    /// The catalog identity of the game this session runs, snapshotted at launch so its controller
+    /// mappings follow its own game rather than whichever one started last.
+    static let mappingGameIdentityKey = "mappingGameIdentity"
+
+    var owningAccountDisplayName: String {
+        (metadata[Self.owningAccountDisplayNameKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var mappingGameIdentity: String {
+        (metadata[Self.mappingGameIdentityKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The session's own identity snapshot: the local session id every lifecycle action is targeted
+    /// by, whose game it is, and which game's mappings it uses. The id has to come from the session
+    /// that owns the launch - the stream surface registers its commands under the configuration's id,
+    /// so a different one here would leave every targeted control reaching nothing.
+    func snapshottingSession(id: UUID, ownerDisplayName: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
+        var metadata = metadata
+        metadata[Self.owningAccountDisplayNameKey] = ownerDisplayName
+        metadata[Self.mappingGameIdentityKey] = mappingGameIdentity
+        return StreamLaunchConfiguration(
+            id: id,
+            title: title,
+            applicationID: applicationID,
+            accessToken: accessToken,
+            accountLinked: accountLinked,
+            selectedStore: selectedStore,
+            resumeSessionID: resumeSessionID,
+            resumeServer: resumeServer,
+            metadata: metadata
+        )
+    }
+}
+
 public enum StreamLaunchStep: Int, CaseIterable, Codable, Equatable, Hashable, Sendable {
     case checkNetworkRoute
     case allocateCloudSession

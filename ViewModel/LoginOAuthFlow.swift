@@ -234,6 +234,13 @@ extension LoginViewModel {
     }
 
     func signOutAccount(_ account: LoginAccount) async {
+        // Re-read here rather than when the confirmation was drawn: a session that started in
+        // between still blocks. Signing out takes the keychain copy the running game uses.
+        if let reason = OPNAccountMutationGuard.blockReason(for: account.resolveStableAccountID(), registry: sessionRegistry) {
+            validationMessage = reason
+            OPNLog.warning(.auth, "Sign-out refused because the account owns an active game session account=\(account.email)")
+            return
+        }
         OPNLog.info(.auth, "Signing out account=\(account.email)")
         // Invalidate anything already in flight before the purge below, so a refresh or restore that
         // completes afterwards cannot recreate the account or write its tokens back.

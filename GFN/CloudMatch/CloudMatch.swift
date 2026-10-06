@@ -549,6 +549,18 @@ public enum CloudMatchResponseParser {
         return status.statusCode == 34 || status.statusDescription.contains("SESSION_NOT_PAUSED")
     }
 
+    /// The seat counts one live session per device, and each account streams under its own device
+    /// id, so this refusal means the account already holds a session on this Mac and there is nothing
+    /// of its own to resume.
+    public static func sessionLimitPerDeviceMessage(_ data: Data?) -> String? {
+        guard let data, let json = jsonDictionary(data) else { return nil }
+        let status = requestStatus(from: json)
+        let description = status.statusDescription.uppercased()
+        let isPerDeviceLimit = description.contains("SESSION_LIMIT_PER_DEVICE") || description.contains("4AF1201E")
+        guard isPerDeviceLimit else { return nil }
+        return "GeForce NOW allows one session per device, and this account already has a session on this Mac. End that session before starting another."
+    }
+
     public static func limitedModeStreamingMessage(_ data: Data?) -> String? {
         guard let data, let json = jsonDictionary(data) else { return nil }
         let status = requestStatus(from: json)

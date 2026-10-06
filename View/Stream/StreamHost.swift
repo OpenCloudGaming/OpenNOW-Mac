@@ -9,6 +9,7 @@ struct StreamHostView: View {
     private let coordinator: OPNStreamSessionCoordinator
 
     init(configuration: StreamLaunchConfiguration,
+         cloudmatchDeviceId: String,
          onProgress: StreamProgressHandler?,
          onRequiredSessionAd: (@Sendable (StreamSessionAdPresentation) async throws -> Int)? = nil,
          onEnd: @escaping StreamCompletionHandler) {
@@ -19,7 +20,8 @@ struct StreamHostView: View {
             adPresenter: InlineStreamSessionAdPresenter(handler: onRequiredSessionAd),
             progressHandler: { progress in
                 Task { @MainActor in onProgress?(progress) }
-            }
+            },
+            deviceId: cloudmatchDeviceId
         )
     }
 
@@ -77,6 +79,7 @@ struct NativeNVSTMediaStreamSurface: View {
             // not. `resolveIfReady` latches on `didResolve` and `startWhenIdle` has its own guards,
             // so arriving a turn later is safe.
             NativeNVSTStreamHostView(
+                mappingGameIdentity: configuration.mappingGameIdentity,
                 onResolve: { view in
                     Task { @MainActor in
                         model.nativeView = view
@@ -158,11 +161,14 @@ struct NativeNVSTMediaStreamSurface: View {
 }
 
 private struct NativeNVSTStreamHostView: NSViewRepresentable {
+    /// The game this surface is streaming, so its pad mappings resolve from its own overrides rather
+    /// than from whichever game's session started last.
+    let mappingGameIdentity: String
     let onResolve: @MainActor (NativeStreamView) -> Void
     var onWindowChanged: @MainActor (NSWindow?) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NativeNVSTSurfaceContainerView {
-        let view = NativeNVSTSurfaceContainerView(frame: .zero)
+        let view = NativeNVSTSurfaceContainerView(frame: .zero, mappingGameIdentity: mappingGameIdentity)
         view.onResolve = onResolve
         view.onWindowChanged = onWindowChanged
         return view
@@ -188,12 +194,13 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
     }
 
     final class NativeNVSTSurfaceContainerView: NSView {
-        let streamView = NativeStreamView(frame: .zero)
+        let streamView: NativeStreamView
         var onResolve: (@MainActor (NativeStreamView) -> Void)?
         var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
         private var didResolve = false
 
-        override init(frame frameRect: NSRect) {
+        init(frame frameRect: NSRect, mappingGameIdentity: String) {
+            streamView = NativeStreamView(frame: .zero, mappingProvider: ControllerMappingGameProvider(gameIdentity: mappingGameIdentity))
             super.init(frame: frameRect)
             wantsLayer = true
             layer?.backgroundColor = NSColor.black.cgColor

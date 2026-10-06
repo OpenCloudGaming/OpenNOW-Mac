@@ -172,11 +172,15 @@ enum ControllerActionMenuItem {
 enum ControllerAccountOptionRow: Equatable {
     case signOut
     case forget
+    /// The whole overlay for an account that owns a running game: neither action is offered, so this
+    /// row says why. Confirming it closes the overlay, so it is a reading row, not an action.
+    case ownsGameSession
 
     func title(accountDisplayName: String) -> String {
         switch self {
         case .signOut: return "Sign Out of \(accountDisplayName)"
         case .forget: return "Forget \(accountDisplayName)"
+        case .ownsGameSession: return "Owns the running game. End it first."
         }
     }
 
@@ -184,6 +188,7 @@ enum ControllerAccountOptionRow: Equatable {
         switch self {
         case .signOut: return "rectangle.portrait.and.arrow.right"
         case .forget: return "xmark.circle"
+        case .ownsGameSession: return "exclamationmark.triangle"
         }
     }
 

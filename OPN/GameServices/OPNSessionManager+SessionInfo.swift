@@ -258,7 +258,6 @@ extension OPNSessionManager {
         return validSessions.first
     }
 
-    func currentAccessToken() -> String { lock.withLock { accessToken } }
     func currentStreamingBaseUrl() -> String { lock.withLock { streamingBaseUrl.isEmpty ? Self.defaultBaseUrl : streamingBaseUrl } }
 
     /// How long the claim poll waits for the seat to publish its RTSPS control endpoint before

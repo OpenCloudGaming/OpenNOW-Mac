@@ -67,6 +67,27 @@ struct ContentView: View {
                 .id(themeIdentity)
                 .zIndex(95)
 
+            // Above the catalog and the login wall, below the startup splash.
+            if let reason = viewModel.accountChooserReason {
+                AccountChooserOverlay(
+                    accounts: accounts,
+                    activeEmail: viewModel.activeAccount?.email ?? "",
+                    signedOutAccountEmails: viewModel.signedOutAccountEmails,
+                    reason: reason,
+                    // Not `activateSavedAccount`: a signed-out choice here has to raise the login
+                    // wall, because this panel can be up over the catalog.
+                    onChoose: viewModel.activateAccount,
+                    onAddAccount: viewModel.beginAddAccount,
+                    onCancel: viewModel.dismissAccountChooser
+                )
+                .zIndex(96)
+            }
+
+            if let notice = viewModel.accountSwitchNotice {
+                AccountSwitchNoticeBanner(message: notice, dismiss: viewModel.dismissAccountSwitchNotice)
+                    .zIndex(97)
+            }
+
             if root.isShowingStartupLoading {
                 StartupLoadingView(duration: root.startupAnimationDuration)
                     .transition(.opacity)
@@ -78,6 +99,8 @@ struct ContentView: View {
             // the whole root, so an unrelated LoginView change in the same transaction is not
             // swept into it.
             .animation(.easeInOut(duration: StartupAnimation.fadeDuration), value: root.isShowingStartupLoading)
+            .animation(.snappy, value: viewModel.accountChooserReason)
+            .animation(.snappy, value: viewModel.accountSwitchNotice)
             // Keep the floor low enough for Split View tiles and forced frames:
             // when macOS sizes the window below the SwiftUI minimum, content
             // pins at that minimum and the trailing edge (header avatar, the

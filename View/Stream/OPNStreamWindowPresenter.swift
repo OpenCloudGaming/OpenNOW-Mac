@@ -5,10 +5,8 @@
 //  view and tear the session down; `dismiss` releases the window, so the next launch gets a freshly
 //  configured one. Nothing here ever re-parents or reuses a hosting view across sessions.
 //
-//  Presentation is driven by the catalog window (`CatalogView`), which owns the launch state, while
-//  the session itself lives in the stream window's content. The catalog window stays mounted
-//  throughout - that is what lets its own menus and pages keep working mid-session, and what retires
-//  the rebuild-and-re-decode cost swapping the stream in used to pay.
+//  Presentation is driven by the application-owned `OPNGameSessionRegistry`, not by the catalog
+//  window, which is remounted whenever the browsing account changes.
 //
 
 import AppKit
@@ -18,9 +16,13 @@ import SwiftUI
 final class OPNStreamWindowPresenter {
     static let shared = OPNStreamWindowPresenter()
 
-    private(set) var window: OPNStreamWindow?
-    private var presentedConfigurationID: UUID?
-    private var hostingView: NSHostingView<OPNStreamWindowRootView>?
+    /// One window per session, keyed by the session's own id: two accounts can stream at once, and
+    /// each window belongs to the session that opened it.
+    private(set) var windows: [UUID: OPNStreamWindow] = [:]
+    private var presentedConfigurationIDs: [UUID: UUID] = [:]
+    private var hostingViews: [UUID: NSHostingView<OPNStreamWindowRootView>] = [:]
+    /// Held so the observation is not dropped the moment it is installed.
+    private var sessionChangeObserver: NSObjectProtocol?
 
     /// Per-window full-screen bookkeeping, tracked from `present` so a dismissal that lands
     /// mid-enter is recognised before AppKit sets `.fullScreen`.
@@ -46,6 +48,20 @@ final class OPNStreamWindowPresenter {
         }
     }
 
+    /// Moves `frame` clear of the windows already on screen, one step at a time. Pure, so the rule is
+    /// assertable without a window server.
+    static func cascadedFrame(for frame: NSRect, taken: [NSRect]) -> NSRect {
+        let step: CGFloat = 26
+        var candidate = frame
+        for _ in 0..<12 {
+            let isTaken = taken.contains { abs($0.origin.x - candidate.origin.x) < 1 && abs($0.origin.y - candidate.origin.y) < 1 }
+            guard isTaken else { break }
+            candidate.origin.x += step
+            candidate.origin.y -= step
+        }
+        return candidate
+    }
+
     /// Which full-screen transition a window is in the middle of, if any.
     enum FullScreenTransition: Equatable {
         case none
@@ -64,39 +80,79 @@ final class OPNStreamWindowPresenter {
     /// Held strongly: a window must outlive its dismissal until the exit lands.
     private var presentations: [ObjectIdentifier: WindowPresentation] = [:]
 
-    /// Whether a stream window is on screen. Read by the catalog so a surface that belongs to the
+    /// Whether any stream window is on screen. Read by the catalog so a surface that belongs to a
     /// session (the iCloud conflict prompt) keeps out of the way.
-    var isPresented: Bool { window != nil }
+    var isPresented: Bool { !windows.isEmpty }
 
-    /// Brings the stream window forward. The catalog's running-session banner and the Dock's own
+    /// The session whose window the reader is looking at, for the app-wide shortcuts that act on "the
+    /// stream". Nil when the key window is not a stream window.
+    var focusedSessionID: UUID? {
+        guard let keyWindow = NSApp.keyWindow else { return nil }
+        return windows.first { $0.value === keyWindow }?.key
+    }
+
+    /// Brings one session's window forward. The catalog's running-session banner and the Dock's own
     /// affordances both mean "show me the game" when they are clicked, and a PiP window comes back
     /// as itself rather than being restored first.
-    func focus() {
-        guard let window else { return }
+    func focus(_ sessionID: UUID) {
+        guard let window = windows[sessionID] else { return }
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func present(configuration: StreamLaunchConfiguration, viewModel: CatalogViewModel) {
-        if presentedConfigurationID == configuration.id, let window, window.isVisible { return }
-        dismiss()
+    /// Follows the application-owned game session, so the window belongs to the session rather than
+    /// to the catalog that started it. Installed once, by `OPNAppDelegate`.
+    func observeOwnedSessions() {
+        guard sessionChangeObserver == nil else { return }
+        // swiftlint:disable:next view_owns_long_lived_effect -- application-lifetime AppKit presenter, installed once by the app delegate
+        sessionChangeObserver = NotificationCenter.default.addObserver(
+            forName: OPNGameSessionRegistry.sessionDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncWithOwnedSessions() }
+        }
+    }
 
-        let window = OPNStreamWindowFactory.make()
-        let hostingView = NSHostingView(rootView: OPNStreamWindowRootView(configuration: configuration, viewModel: viewModel))
+    /// Brings every owned session's window up to date: one window per session that has a stream, and
+    /// no window for a session that has ended.
+    func syncWithOwnedSessions() {
+        let owned = OPNGameSessionRegistry.shared.sessions
+        for session in owned {
+            guard let configuration = session.configuration else { continue }
+            present(configuration: configuration, session: session)
+        }
+        let liveSessionIDs = Set(owned.filter { $0.configuration != nil }.map(\.id))
+        let endedSessionIDs = windows.keys.filter { !liveSessionIDs.contains($0) }
+        for sessionID in endedSessionIDs {
+            dismiss(sessionID)
+        }
+    }
+
+    func present(configuration: StreamLaunchConfiguration, session: OPNGameSession) {
+        if presentedConfigurationIDs[session.id] == configuration.id, let window = windows[session.id], window.isVisible { return }
+        dismiss(session.id)
+
+        let window = OPNStreamWindowFactory.make(sessionID: session.id)
+        // Both windows remember the same placement, so a second stream would open exactly on top of
+        // the first and read as a replacement. Cascaded clear, the way macOS does it.
+        let cascaded = Self.cascadedFrame(for: window.frame, taken: windows.values.map(\.frame))
+        window.setFrame(OPNStreamWindowFrameStore.onScreen(cascaded), display: false)
+        let hostingView = NSHostingView(rootView: OPNStreamWindowRootView(configuration: configuration, session: session))
         window.contentView = hostingView
         // The game's title belongs to the window the game is in; the catalog window keeps its own.
         window.title = Self.windowTitle(for: configuration)
         // The close button always asks. See `OPNStreamWindowCloseGuard` for why the window never
         // closes itself, and `requestStreamWindowClose` for what each answer does.
-        window.closeRequestHandler = { [weak self, weak viewModel, weak window] in
-            self?.handleCloseRequest(viewModel: viewModel, window: window) ?? false
+        window.closeRequestHandler = { [weak self, weak session, weak window] in
+            self?.handleCloseRequest(session: session, window: window) ?? false
         }
         OPNStreamWindowCloseGuard.install(on: window)
 
-        self.window = window
-        self.hostingView = hostingView
-        presentedConfigurationID = configuration.id
+        windows[session.id] = window
+        hostingViews[session.id] = hostingView
+        presentedConfigurationIDs[session.id] = configuration.id
         // Tracked for the window's whole life so a mid-enter dismissal sees the transition.
         track(window)
         // A launch is not a "show me" action. `OPNMainWindow.present(activating:)` sets the rule the
@@ -109,16 +165,16 @@ final class OPNStreamWindowPresenter {
         case .takeKey: window.makeKeyAndOrderFront(nil)
         case .orderFrontWithoutActivating: window.orderFront(nil)
         }
-        OPNLog.info(.launch, "Stream window presented for \(configuration.applicationID)")
+        OPNLog.info(.launch, "Stream window presented for \(configuration.applicationID) session=\(session.id)")
     }
 
-    func dismiss() {
-        guard let window else { return }
-        // A close button or a cancellation can both land here for the same ending; the second call
-        // has nothing left to do.
-        presentedConfigurationID = nil
-        hostingView = nil
-        self.window = nil
+    /// Takes one session's window away. A close button or a cancellation can both land here for the
+    /// same ending; the second call has nothing left to do.
+    func dismiss(_ sessionID: UUID) {
+        guard let window = windows[sessionID] else { return }
+        presentedConfigurationIDs[sessionID] = nil
+        hostingViews[sessionID] = nil
+        windows[sessionID] = nil
         OPNStreamWindowCloseGuard.uninstall(from: window)
         window.closeRequestHandler = nil
         window.sessionSurface = nil
@@ -275,11 +331,14 @@ final class OPNStreamWindowPresenter {
     /// cancels a pending start and answers `completion?(true)` with no dialog on that path, and with
     /// a `nil` completion that answer is a no-op rather than a quit - so the launch is cancelled here
     /// instead, and the window closes.
-    private func handleCloseRequest(viewModel: CatalogViewModel?, window: OPNStreamWindow?) -> Bool {
+    private func handleCloseRequest(session: OPNGameSession?, window: OPNStreamWindow?) -> Bool {
         let surface = window?.sessionSurface
-        let decision = Self.closeDecision(isConnected: surface?.isConnected, hasActiveStream: StreamSessionLifecycle.hasActiveStream)
+        // This session's own surface, not the app's: another account's live stream must not make a
+        // half-started launch here prompt about ending anything.
+        let hasActiveStream = session.map { StreamSessionLifecycle.isActive($0.id) } ?? false
+        let decision = Self.closeDecision(isConnected: surface?.isConnected, hasActiveStream: hasActiveStream)
         if case .prompt = decision {
-            presentClosePrompt(for: surface)
+            presentClosePrompt(for: surface, sessionID: session?.id)
             return true
         }
         // Nothing to prompt about: the pending start is cancelled through the same not-connected
@@ -289,18 +348,20 @@ final class OPNStreamWindowPresenter {
         // Deferred by one main-actor turn on purpose, the same way the main window's guard defers
         // its `orderOut`: tearing a window's content down from inside `windowShouldClose` runs the
         // teardown underneath AppKit's own close handling.
-        Task { @MainActor [weak self, weak viewModel] in
-            viewModel?.cancelActiveStreamLaunch()
-            self?.dismiss()
+        Task { @MainActor [weak self, weak session] in
+            session?.cancelStreamLaunch()
+            guard let sessionID = session?.id else { return }
+            self?.dismiss(sessionID)
         }
         return false
     }
 
     /// Raises the stream controls panel. With no reachable surface the panel is raised through the
     /// registry every other out-of-window surface uses - same panel, same three answers.
-    private func presentClosePrompt(for surface: (any OPNStreamWindowSessionSurface)?) {
+    private func presentClosePrompt(for surface: (any OPNStreamWindowSessionSurface)?, sessionID: UUID?) {
         guard let surface else {
-            _ = StreamSessionLifecycle.sendCommand(.showQuitMenu)
+            guard let sessionID else { return }
+            _ = StreamSessionLifecycle.sendCommand(.showQuitMenu, to: sessionID)
             return
         }
         surface.showStreamControls(completion: nil)
@@ -348,8 +409,12 @@ final class OPNStreamWindowPresenter {
         }
     }
 
+    /// The game's title, and the account the session belongs to. The owner comes from the launch
+    /// snapshot, not from the catalog's current selection.
     private static func windowTitle(for configuration: StreamLaunchConfiguration) -> String {
         let title = configuration.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        return title.isEmpty ? "GeForce NOW" : title
+        let game = title.isEmpty ? "GeForce NOW" : title
+        let owner = configuration.owningAccountDisplayName
+        return owner.isEmpty ? game : "\(game) — \(owner)"
     }
 }
