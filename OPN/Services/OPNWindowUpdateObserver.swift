@@ -1,9 +1,5 @@
-//  Watches an `NSWindow` for update passes.
-//
-//  A type rather than a bare `NotificationCenter` registration at the call site: the observation's
-//  lifetime is this object's, so it is torn down when its owner goes away instead of relying on
-//  every call site to remember. `View/` may not own a notification observer directly.
-//
+//  Watches an `NSWindow` for update passes. A type rather than a bare registration at the call site,
+//  so the observation's lifetime is its owner's and `View/` never owns a notification observer.
 
 import AppKit
 import Foundation

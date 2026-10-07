@@ -54,8 +54,8 @@ import Testing
         window.contentView?.addSubview(densityView)
 
         let targetScale: CGFloat = 2.5
-        let didChange = densityView.applyDensity(targetScale: targetScale)
-        #expect(didChange)
+        let isChanged = densityView.applyDensity(targetScale: targetScale)
+        #expect(isChanged)
 
         guard let rootLayer = hostingView.layer else {
             Issue.record("Expected hosting view to have a root layer")
@@ -82,7 +82,7 @@ import Testing
         let booster = OPNInterfaceScaleDensityView(scale: 1)
         window.contentView?.addSubview(booster)
 
-        #expect(booster.isCorrecting == false)
+        #expect(booster.isCorrectingDensity == false)
     }
 
     @Test func boosterCorrectsWhileAMagnifiedSurfaceIsOnScreen() {
@@ -90,27 +90,25 @@ import Testing
         let booster = OPNInterfaceScaleDensityView(scale: 1.5)
         window.contentView?.addSubview(booster)
 
-        #expect(booster.isCorrecting)
+        #expect(booster.isCorrectingDensity)
     }
 
-    /// The correction used to be a run-loop observer throttled inside its own handler, so the wake
-    /// was paid on every main run-loop pass and the window was re-walked ten times a second for the
-    /// life of the window. It now retires once the tree holds still, and a redraw - the moment
-    /// SwiftUI can put a fresh `CGDrawingLayer` into the magnified subtree - brings it back.
+    /// The walk retires once the tree holds still, and a redraw - when SwiftUI can put a fresh
+    /// `CGDrawingLayer` into the magnified subtree - brings it back.
     @Test func boosterRetiresWhileIdleAndRestartsOnARedraw() {
         let window = makeMagnifiedWindow()
         let booster = OPNInterfaceScaleDensityView(scale: 1.5)
         window.contentView?.addSubview(booster)
-        #expect(booster.isCorrecting)
+        #expect(booster.isCorrectingDensity)
 
         let deadline = Date().addingTimeInterval(5)
-        while booster.isCorrecting, Date() < deadline {
+        while booster.isCorrectingDensity, Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
-        #expect(booster.isCorrecting == false)
+        #expect(booster.isCorrectingDensity == false)
 
         NotificationCenter.default.post(name: NSWindow.didUpdateNotification, object: window)
-        #expect(booster.isCorrecting)
+        #expect(booster.isCorrectingDensity)
     }
 }
 
@@ -118,31 +116,31 @@ import Testing
     @Test func keepsTheActiveCadenceWhileTheTreeChanges() {
         var schedule = OPNDensitySettleSchedule(now: 0)
 
-        #expect(schedule.nextDelay(now: 0.1, didChange: true) == OPNDensitySettleSchedule.activeInterval)
-        #expect(schedule.nextDelay(now: 0.2, didChange: true) == OPNDensitySettleSchedule.activeInterval)
+        #expect(schedule.delayUntilNextWalk(now: 0.1, isChanged: true) == OPNDensitySettleSchedule.activeInterval)
+        #expect(schedule.delayUntilNextWalk(now: 0.2, isChanged: true) == OPNDensitySettleSchedule.activeInterval)
     }
 
     @Test func backsOffAndRetiresOnceTheTreeHoldsStill() {
         var schedule = OPNDensitySettleSchedule(now: 0)
 
-        #expect(schedule.nextDelay(now: 0.1, didChange: false) == 0.2)
-        #expect(schedule.nextDelay(now: 0.3, didChange: false) == 0.4)
-        #expect(schedule.nextDelay(now: 0.7, didChange: false) == 0.8)
-        #expect(schedule.nextDelay(now: 1.5, didChange: false) == nil)
+        #expect(schedule.delayUntilNextWalk(now: 0.1, isChanged: false) == 0.2)
+        #expect(schedule.delayUntilNextWalk(now: 0.3, isChanged: false) == 0.4)
+        #expect(schedule.delayUntilNextWalk(now: 0.7, isChanged: false) == 0.8)
+        #expect(schedule.delayUntilNextWalk(now: 1.5, isChanged: false) == nil)
     }
 
-    @Test func aSignalKeepsTheCorrectionAlive() {
-        var signalled = OPNDensitySettleSchedule(now: 0)
+    @Test func anExternalChangeKeepsTheCorrectionAlive() {
+        var changed = OPNDensitySettleSchedule(now: 0)
         var quiet = OPNDensitySettleSchedule(now: 0)
-        signalled.signal(now: 1.0)
+        changed.keepWalking(now: 1.0)
 
         for time in [0.1, 0.3, 0.7] {
-            _ = quiet.nextDelay(now: time, didChange: false)
-            _ = signalled.nextDelay(now: time, didChange: false)
+            _ = quiet.delayUntilNextWalk(now: time, isChanged: false)
+            _ = changed.delayUntilNextWalk(now: time, isChanged: false)
         }
 
-        #expect(quiet.nextDelay(now: 1.5, didChange: false) == nil)
-        #expect(signalled.nextDelay(now: 1.5, didChange: false) != nil)
+        #expect(quiet.delayUntilNextWalk(now: 1.5, isChanged: false) == nil)
+        #expect(changed.delayUntilNextWalk(now: 1.5, isChanged: false) != nil)
     }
 }
 

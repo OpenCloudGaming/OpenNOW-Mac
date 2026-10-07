@@ -1,10 +1,5 @@
-//  The interface-scale density correction.
-//
-//  `scaleEffect` alone rasterises text at display density and upscales the bitmap, so a magnified
-//  subtree needs every non-Metal layer's `contentsScale` re-pinned at zoom density. The correction
-//  is a settling walk, not a permanent observer: it follows a scale change and each window redraw,
-//  then retires once the tree holds still, so an idle window pays for nothing.
-//
+//  The interface-scale density correction: a settling walk, not a permanent observer, so an idle
+//  window pays neither a run-loop pass nor a layer walk.
 
 import AppKit
 import Darwin
@@ -26,8 +21,7 @@ private final class OPNMagnifiedSurfaceRegistry {
         surfaces.allObjects.contains { $0.window != nil }
     }
 
-    /// Also the detach path: a marker that left the window is still registered but no longer counts,
-    /// so re-announcing it on every window change is what retires the correction.
+    /// Also the detach path: a marker that left the window is still registered but no longer counts.
     func announceSurface(_ surface: NSView) {
         surfaces.add(surface)
         notifyChange()
@@ -71,11 +65,8 @@ final class OPNMagnifiedSurfaceMarkerView: NSView {
         OPNMagnifiedSurfaceRegistry.shared.announceSurface(self)
     }
 
-    /// Presence is all it is for; it must never take a mouse event. It mounts as a full-size
-    /// background of every magnified subtree, and one of those is the stream's overlay layer,
-    /// which sits above the video surface: hit-testable, it swallowed every mouse-down and scroll
-    /// the stream needed. Movement survived on the surface's tracking area and keys on the
-    /// responder chain, so the whole thing read as "clicks stopped working in the stream".
+    /// Presence is all it is for; a hit-testable marker swallowed every mouse-down and scroll the
+    /// stream needed, which read as "clicks stopped working in the stream".
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
@@ -98,55 +89,53 @@ struct OPNInterfaceScaleDensityBooster: NSViewRepresentable {
     }
 }
 
-/// Decides when the density correction walks the window and when it retires. A type of its own
-/// because this schedule is what used to run for the life of the window: every pass it returns a
-/// delay, and `nil` is the signal that the tree has held still and the correction is done.
+/// Decides how long the density correction keeps walking. One walk is a whole-window layer pass, so
+/// the schedule backs off while passes change nothing and retires once the tree has held still.
 struct OPNDensitySettleSchedule {
-    /// How often the tree is corrected while it is still changing.
+    /// How often the tree is walked while it is still changing.
     static let activeInterval: CFTimeInterval = 0.1
-    /// How long the tree has to hold still before the correction retires.
+    /// How long the tree has to hold still before the walk retires.
     static let settledInterval: CFTimeInterval = 0.8
 
-    private(set) var interval: CFTimeInterval = OPNDensitySettleSchedule.activeInterval
+    private(set) var walkInterval: CFTimeInterval = OPNDensitySettleSchedule.activeInterval
     private var lastChangeTime: CFAbsoluteTime
 
     init(now: CFAbsoluteTime) {
         lastChangeTime = now
     }
 
-    /// Records a pass and returns the delay before the next one, or `nil` when the tree has held
-    /// still for `settledInterval`.
-    mutating func nextDelay(now: CFAbsoluteTime, didChange: Bool) -> CFTimeInterval? {
-        if didChange {
-            interval = Self.activeInterval
-            lastChangeTime = now
-        } else {
-            interval = min(interval * 2, Self.settledInterval)
+    /// Records one walk and returns the delay before the next, or nil once the tree has held still.
+    mutating func delayUntilNextWalk(now: CFAbsoluteTime, isChanged: Bool) -> CFTimeInterval? {
+        guard isChanged else {
+            walkInterval = min(walkInterval * 2, Self.settledInterval)
+            return isTreeSettled(now: now) ? nil : walkInterval
         }
-        guard now - lastChangeTime >= Self.settledInterval, interval >= Self.settledInterval else {
-            return interval
-        }
-        return nil
+        walkInterval = Self.activeInterval
+        lastChangeTime = now
+        return walkInterval
     }
 
-    /// A window redraw or a newly magnified subtree: the tree may have changed, so the correction
-    /// stays alive for another `settledInterval`.
-    mutating func signal(now: CFAbsoluteTime) {
+    /// A window redraw or a newly magnified subtree: the tree may have changed, so keep walking.
+    mutating func keepWalking(now: CFAbsoluteTime) {
         lastChangeTime = now
+    }
+
+    private func isTreeSettled(now: CFAbsoluteTime) -> Bool {
+        now - lastChangeTime >= Self.settledInterval
     }
 }
 
 final class OPNInterfaceScaleDensityView: NSView {
     var scale: CGFloat {
-        didSet { reconfigure() }
+        didSet { updateCorrection() }
     }
 
-    /// Whether a correction pass is currently scheduled. False means the tree is left alone.
-    var isCorrecting: Bool { settle != nil }
+    /// Whether a correction walk is currently scheduled. False means the tree is left alone.
+    var isCorrectingDensity: Bool { settleSchedule != nil }
 
     nonisolated(unsafe) private var settleTimer: Timer?
+    private var settleSchedule: OPNDensitySettleSchedule?
     private var windowUpdateObserver: OPNWindowUpdateObserver?
-    private var settle: OPNDensitySettleSchedule?
 
     init(scale: CGFloat) {
         self.scale = scale
@@ -159,15 +148,15 @@ final class OPNInterfaceScaleDensityView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         OPNMagnifiedSurfaceRegistry.shared.setChangeHandler(for: self) { [weak self] in
-            self?.magnifiedSurfacesDidChange()
+            self?.updateCorrection()
         }
         observeWindowUpdates()
-        reconfigure()
+        updateCorrection()
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        reconfigure()
+        updateCorrection()
     }
 
     func restoreNaturalDensity() {
@@ -180,26 +169,10 @@ final class OPNInterfaceScaleDensityView: NSView {
         windowUpdateObserver = nil
     }
 
-    /// A scale, window or backing change rebuilds the magnified subtree at the new density, so the
-    /// correction has to run again until the tree holds still.
-    private func reconfigure() {
-        stopSettling()
-        guard window != nil else { return }
-        // Only magnified content is rasterised at the wrong density. Walking the window for the
-        // catalog, settings or recordings re-renders correct layers at 2.1x the pixels for nothing.
-        guard scale != 1, OPNMagnifiedSurfaceRegistry.shared.isAnySurfaceMagnified else {
-            restoreNaturalDensity()
-            return
-        }
-        beginSettling()
-    }
-
-    /// A magnified subtree mounted or unmounted. The correction also retires itself the first time
-    /// a pass finds nothing magnified left, because a subtree can be torn down whole without its
-    /// marker being dismantled.
-    private func magnifiedSurfacesDidChange() {
-        guard window != nil else { return }
-        guard scale != 1, OPNMagnifiedSurfaceRegistry.shared.isAnySurfaceMagnified else {
+    /// A scale, window, backing or magnified-surface change rebuilds the tree at the new density, so
+    /// the walk starts again; without one of those, the walk retires and the density goes natural.
+    private func updateCorrection() {
+        guard isDensityCorrectionNeeded else {
             stopSettling()
             restoreNaturalDensity()
             return
@@ -207,36 +180,36 @@ final class OPNInterfaceScaleDensityView: NSView {
         beginSettling()
     }
 
-    /// AppKit posts this only when the window actually redrew, which is when SwiftUI may have put a
-    /// fresh `CGDrawingLayer` into a magnified subtree. The stream video never posts it: frames
-    /// reach the display through `CAMetalLayer`, not through the AppKit update cycle.
-    private func windowDidUpdate() {
-        guard window != nil, scale != 1,
-              OPNMagnifiedSurfaceRegistry.shared.isAnySurfaceMagnified else { return }
-        guard settle != nil else {
+    /// AppKit posts a window update only when the window actually redrew, which is when SwiftUI may
+    /// have put a fresh `CGDrawingLayer` into a magnified subtree; stream frames never post it.
+    private func handleWindowUpdate() {
+        guard isDensityCorrectionNeeded else { return }
+        guard settleSchedule != nil else {
             beginSettling()
             return
         }
-        // A pass is already in flight and will pick the redraw up, so it only pushes out the point
-        // at which the correction retires.
-        settle?.signal(now: CFAbsoluteTimeGetCurrent())
+        settleSchedule?.keepWalking(now: CFAbsoluteTimeGetCurrent())
+    }
+
+    /// Only magnified content rasterises at the wrong density; walking the window for the catalog,
+    /// settings or recordings would re-render correct layers at 2.1x the pixels for nothing.
+    private var isDensityCorrectionNeeded: Bool {
+        window != nil && scale != 1 && OPNMagnifiedSurfaceRegistry.shared.isAnySurfaceMagnified
     }
 
     private func observeWindowUpdates() {
         windowUpdateObserver = nil
         guard let window else { return }
         windowUpdateObserver = OPNWindowUpdateObserver(window: window) { [weak self] in
-            self?.windowDidUpdate()
+            self?.handleWindowUpdate()
         }
     }
 
-    /// Corrects the tree now, then keeps correcting it until it has gone unchanged for
-    /// `settledInterval`, and stops there. Nothing is left registered while the tree is settled, so
-    /// an idle window costs neither a run-loop pass nor a layer walk.
+    /// Walks now, then keeps walking until the tree has held still for the settle interval. Nothing
+    /// stays registered once it retires, so an idle window costs no run-loop pass and no walk.
     private func beginSettling() {
-        settle = OPNDensitySettleSchedule(now: CFAbsoluteTimeGetCurrent())
-        // A live resize rebuilds the tree faster than a walk can follow it, and walking it there is
-        // the cost this correction exists to avoid. The tick picks the correction up when it ends.
+        settleSchedule = OPNDensitySettleSchedule(now: CFAbsoluteTimeGetCurrent())
+        // A live resize rebuilds the tree faster than a walk can follow it; the next pass picks it up.
         if window?.inLiveResize != true {
             applyDensity(targetScale: effectiveTargetScale())
         }
@@ -244,10 +217,10 @@ final class OPNInterfaceScaleDensityView: NSView {
     }
 
     private func scheduleNextWalk() {
-        guard let settle else { return }
+        guard let settleSchedule else { return }
         settleTimer?.invalidate()
-        let timer = Timer(timeInterval: settle.interval, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.settleTick() }
+        let timer = Timer(timeInterval: settleSchedule.walkInterval, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.performScheduledWalk() }
         }
         // Leeway, so the system can coalesce the wake with whatever else the run loop is doing.
         timer.tolerance = OPNDensitySettleSchedule.activeInterval
@@ -255,28 +228,31 @@ final class OPNInterfaceScaleDensityView: NSView {
         settleTimer = timer
     }
 
-    private func settleTick() {
+    private func performScheduledWalk() {
         settleTimer = nil
         guard let window else {
             stopSettling()
             return
         }
         guard !window.inLiveResize else {
-            settle?.signal(now: CFAbsoluteTimeGetCurrent())
+            settleSchedule?.keepWalking(now: CFAbsoluteTimeGetCurrent())
             scheduleNextWalk()
             return
         }
-        guard scale != 1, OPNMagnifiedSurfaceRegistry.shared.isAnySurfaceMagnified else {
+        guard isDensityCorrectionNeeded else {
             stopSettling()
             restoreNaturalDensity()
             return
         }
-        guard var schedule = settle else { return }
-        let nextDelay = schedule.nextDelay(
+        guard var schedule = settleSchedule else {
+            stopSettling()
+            return
+        }
+        let nextDelay = schedule.delayUntilNextWalk(
             now: CFAbsoluteTimeGetCurrent(),
-            didChange: applyDensity(targetScale: effectiveTargetScale())
+            isChanged: applyDensity(targetScale: effectiveTargetScale())
         )
-        settle = schedule
+        settleSchedule = schedule
         guard nextDelay != nil else {
             stopSettling()
             return
@@ -287,7 +263,7 @@ final class OPNInterfaceScaleDensityView: NSView {
     private func stopSettling() {
         settleTimer?.invalidate()
         settleTimer = nil
-        settle = nil
+        settleSchedule = nil
     }
 
     private func effectiveTargetScale() -> CGFloat {
@@ -299,9 +275,9 @@ final class OPNInterfaceScaleDensityView: NSView {
         guard let root = window?.contentView?.layer else { return false }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        let didChange = forceContentsScale(root, targetScale: targetScale)
+        let isChanged = forceContentsScale(root, targetScale: targetScale)
         CATransaction.commit()
-        return didChange
+        return isChanged
     }
 
     /// Resolved on the first walk, not at launch: a `static let` is initialised on first access,
@@ -338,18 +314,18 @@ final class OPNInterfaceScaleDensityView: NSView {
     @discardableResult
     private func forceContentsScale(_ layer: CALayer, targetScale: CGFloat) -> Bool {
         if layer is CAMetalLayer { return false }
-        var didChange = false
+        var isChanged = false
         if Self.isDrawingLayer(layer), abs(layer.contentsScale - targetScale) > 0.0001 {
             layer.contentsScale = targetScale
             layer.setNeedsDisplay()
             markOwningHostingViewDirty(layer)
-            didChange = true
+            isChanged = true
         }
-        guard let sublayers = layer.sublayers else { return didChange }
+        guard let sublayers = layer.sublayers else { return isChanged }
         for sublayer in sublayers where forceContentsScale(sublayer, targetScale: targetScale) {
-            didChange = true
+            isChanged = true
         }
-        return didChange
+        return isChanged
     }
 
     private func markOwningHostingViewDirty(_ layer: CALayer) {
