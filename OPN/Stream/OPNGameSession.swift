@@ -156,6 +156,10 @@ final class OPNGameSession {
         activeDiscordPresence = presence
         discordPresence.update(.launching(presence))
         OPNLog.info(.launch, "Session \(id) launching gameId=\(game.id) appId=\(game.launchAppId) accountID=\(accountID)")
+        // Warm the loading screen's artwork while the launch plan is still a network round trip away.
+        // The frame is picked from this list by the session id its configuration is snapshotted with.
+        let artworkCandidates = OPNGameLaunchBridge.loadingScreenshotURLs(for: game)
+        StreamLaunchArtwork.prewarm(StreamLaunchArtwork.selectedURL(candidates: artworkCandidates, seed: id))
         continueLaunch()
     }
 

@@ -169,7 +169,9 @@ public final class OPNGameLaunchBridge {
         return activeAppId == appId || activeAppId == game.id || activeAppId == game.launchAppId || game.variants.contains { $0.id == activeAppId }
     }
 
-    private static func launchMetadata(for game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject? = nil, userId: String = "", idpId: String = "") -> [String: String] {
+    /// The images the loading screen picks from, in preference order. `launchMetadata` ships this same
+    /// list to the vendor, so a second definition would warm a frame that never appears.
+    static func loadingScreenshotURLs(for game: OPNCatalogGameObject) -> [String] {
         var imageUrls: [String] = []
         var seen = Set<String>()
 
@@ -192,6 +194,11 @@ public final class OPNGameLaunchBridge {
         appendValues(forKey: "FEATURE_IMAGE")
         append(game.heroImageUrl)
         append(game.imageUrl)
+        return imageUrls
+    }
+
+    private static func launchMetadata(for game: OPNCatalogGameObject, selectedVariant: OPNCatalogGameVariantObject? = nil, userId: String = "", idpId: String = "") -> [String: String] {
+        let imageUrls = loadingScreenshotURLs(for: game)
 
         var metadata: [String: String] = [:]
         if !userId.isEmpty { metadata["userId"] = userId }
