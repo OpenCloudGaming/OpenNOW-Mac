@@ -186,7 +186,9 @@ final class RemoteCoOpNativeGuestMediaEngine: @unchecked Sendable {
     private func startReporter() {
         reporter?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 1, repeating: 1)
+        // Leeway on purpose: a once-a-second stats line has no deadline, and a timer with none forces
+        // a wakeup the system cannot coalesce with anything else.
+        timer.schedule(deadline: .now() + 1, repeating: 1, leeway: .milliseconds(100))
         timer.setEventHandler { [weak self] in self?.reportWindow() }
         timer.resume()
         reporter = timer
