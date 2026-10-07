@@ -3,6 +3,9 @@
 //  poll sees the state it believes it already sent. Fixed by sending each state more than once:
 //  packets carry absolute pad state, so a duplicate is a no-op.
 //
+//  This policy is the only reason the sender owns a timer: `nextSendDelayNanoseconds` names the next
+//  moment a copy is due, and `nil` lets that timer stay unarmed.
+//
 
 import Foundation
 
@@ -15,6 +18,20 @@ public struct OPNRemoteCoOpGuestInputRedundancyPolicy: Equatable, Sendable {
     private var lastSentAtNanoseconds: UInt64?
 
     public init() {}
+
+    /// When the caller should next tick this policy, or `nil` when it has nothing outstanding and its
+    /// timer can stay unarmed. `redundantSendIntervalNanoseconds` is the gap between the copies.
+    public func nextSendDelayNanoseconds(nowNanoseconds: UInt64,
+                                         redundantSendIntervalNanoseconds: UInt64) -> UInt64? {
+        guard let lastSentAtNanoseconds else { return nil }
+        // A zero interval would put the copies back to back, which is the loss the spread exists for.
+        guard pendingRedundantSends == 0 else { return max(1, redundantSendIntervalNanoseconds) }
+        // Guarded against a backwards reading, exactly as `shouldSend` is.
+        guard nowNanoseconds >= lastSentAtNanoseconds else { return Self.keepaliveNanoseconds }
+        let elapsedNanoseconds = nowNanoseconds - lastSentAtNanoseconds
+        guard elapsedNanoseconds < Self.keepaliveNanoseconds else { return 0 }
+        return Self.keepaliveNanoseconds - elapsedNanoseconds
+    }
 
     /// `allowRedundantSend` is true only from the safety timer; repeating from the HID callback would
     /// multiply the pad's own report rate.

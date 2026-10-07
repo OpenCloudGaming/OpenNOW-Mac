@@ -7,7 +7,7 @@
 //
 //  Sampling is event-driven. A 60 Hz timer put 0-16.7 ms on every input before it reached the socket,
 //  more than the whole end-to-end budget; `valueChangedHandler` fires on the HID report instead. The
-//  200 Hz timer that remains is a safety net, not a sampler - see `OPNRemoteCoOpGuestInputRedundancy`.
+//  timer that remains only delivers the copies `OPNRemoteCoOpGuestInputRedundancy` asks for, on demand.
 //
 //  Two controller sources, matching the host. `GCController` misses the Steam Controller 2 entirely,
 //  which is raw HID; that path reuses `ControllerBindingEngine` so a guest gets the host's own
@@ -31,8 +31,9 @@ public final class OPNRemoteCoOpNativeGuestInputSender: @unchecked Sendable {
         var rightStickY: Float
     }
 
-    /// The safety-net poll interval. Not the sample rate - `valueChangedHandler` is.
-    private static let safetyPollInterval = 1.0 / 200.0
+    /// The gap between the redundant copies of one change, and the ceiling on how fast the safety
+    /// timer runs while input is arriving. Not the sample rate - `valueChangedHandler` is.
+    private static let redundantSendIntervalNanoseconds: UInt64 = 20_000_000
 
     private let participantID: UUID
     private let send: @Sendable (OPNRemoteCoOpInputPacket) -> Void
@@ -81,10 +82,16 @@ public final class OPNRemoteCoOpNativeGuestInputSender: @unchecked Sendable {
             }
         ]
         let timer = DispatchSource.makeTimerSource(queue: queue)
-        // First fire one interval out, so the handler cannot run while the commit below holds the lock.
-        timer.schedule(deadline: .now() + Self.safetyPollInterval, repeating: Self.safetyPollInterval, leeway: .milliseconds(1))
+        // One-shot, re-armed on demand. First fire one interval out so the handler cannot run while
+        // the commit below holds the lock; after that the timer exists only while the policy has work.
+        timer.schedule(deadline: .now() + .nanoseconds(Int(Self.redundantSendIntervalNanoseconds)),
+                       leeway: .milliseconds(1))
+        // Unconditional re-arm: a tick that finds nothing to send would otherwise leave the one-shot
+        // timer unarmed for good. The send path arms too, onto the same absolute deadline.
         timer.setEventHandler { [weak self] in
-            self?.emitCurrentState(allowRedundantSend: true)
+            guard let self else { return }
+            self.emitCurrentState(allowRedundantSend: true)
+            self.armSafetyTimer()
         }
 
         // Stored *and* resumed in one critical section. `stop()` can land in the gap after `isRunning`
@@ -193,6 +200,19 @@ public final class OPNRemoteCoOpNativeGuestInputSender: @unchecked Sendable {
         }
     }
 
+    /// Arms the one-shot safety timer for the next moment the policy has work, and leaves it unarmed
+    /// when it does not. The handler re-reads the live pad, so a missed HID event is still caught.
+    private func armSafetyTimer() {
+        lock.withLock {
+            guard isRunning, let timer else { return }
+            guard let delayNanoseconds = redundancy.nextSendDelayNanoseconds(
+                nowNanoseconds: DispatchTime.now().uptimeNanoseconds,
+                redundantSendIntervalNanoseconds: Self.redundantSendIntervalNanoseconds
+            ) else { return }
+            timer.schedule(deadline: .now() + .nanoseconds(Int(delayNanoseconds)), leeway: .milliseconds(1))
+        }
+    }
+
     private func reportControllerAvailability() {
         let available = !Self.connectedGamepads().isEmpty || SteamControllerHIDMonitor.connectedControllerCount > 0
         let shouldReport = lock.withLock { () -> Bool in
@@ -264,6 +284,7 @@ public final class OPNRemoteCoOpNativeGuestInputSender: @unchecked Sendable {
         }
         guard let packet else { return }
         send(packet)
+        armSafetyTimer()
     }
 }
 
