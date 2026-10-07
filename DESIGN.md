@@ -162,8 +162,9 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 - **Text fidelity**: `scaleEffect` alone rasterizes text at display density and upscales
   the bitmap (progressively blurrier as scale grows). `OPNInterfaceScaleDensityBooster`
   (mounted once at the `ContentView` root) keeps every non-Metal window layer's
-  `contentsScale` pinned at `uiScale × window.backingScaleFactor` via a run-loop observer,
-  forcing SwiftUI to re-render text and vector content at zoom density. It skips
+  `contentsScale` pinned at `uiScale × window.backingScaleFactor` by a settling walk that follows
+  each scale change and window redraw and retires once the tree holds still, forcing SwiftUI to
+  re-render text and vector content at zoom density. It skips
   `CAMetalLayer` (the stream video) and restores natural density at 100 %. Layers with
   direct bitmap content (game art, `ImageLayer`) are never display-invalidated —
   re-rendering would blank them; only empty or re-renderable (`CGDrawingLayer`) layers
