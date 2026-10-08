@@ -57,8 +57,8 @@ struct RemoteCoOpRelayWizard: View {
         }
         .padding(24 * uiScale)
         .frame(width: 560 * uiScale, alignment: .leading)
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 
     private var header: some View {
@@ -284,8 +284,8 @@ struct RemoteCoOpRelayWizard: View {
             .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(OPNDesign.Fill.neutral(0.06))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.06)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
     }
 }

@@ -251,8 +251,8 @@ struct RecordingsView: View {
                         .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.Text.primary)
                         .frame(width: 40 * uiScale, height: 40 * uiScale)
-                        .background(OPNDesign.Stroke.subtle)
-                        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
+                        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .help("Refresh recordings")
@@ -288,8 +288,8 @@ struct RecordingsView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
-                    .background(RecordingsLayout.card)
-                    .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(RecordingsLayout.card))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
                 }
 
                 Spacer()
@@ -435,8 +435,8 @@ private struct RecordingMetric: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10 * uiScale)
-        .background(RecordingsLayout.card)
-        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(RecordingsLayout.card))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
     }
 }
 
@@ -463,8 +463,8 @@ private struct RecordingSearchField: View {
         }
         .padding(.horizontal, 12 * uiScale)
         .frame(height: 40 * uiScale)
-        .background(OPNDesign.Stroke.subtle)
-        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
     }
 }
 
@@ -486,8 +486,8 @@ private struct RecordingFilterChip: View {
             .foregroundStyle(isActive ? .black.opacity(0.86) : isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.09 : 0.055))
-            .overlay { Rectangle().stroke(isActive ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.09 : 0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isActive ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -536,9 +536,16 @@ private struct RecordingRow: View {
                 }
             }
             .padding(13 * uiScale)
-            .background(background)
-            .overlay(alignment: .leading) { Rectangle().fill(isSelected ? OPNDesign.accent : .clear).frame(width: 3) }
-            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent.opacity(0.48) : OPNDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(background))
+            // The selection strip rides the card's own corners rather than squaring off past them.
+            .overlay {
+                HStack(spacing: 0) {
+                    Rectangle().fill(isSelected ? OPNDesign.accent : .clear).frame(width: 3)
+                    Spacer(minLength: 0)
+                }
+                .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            }
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent.opacity(0.48) : OPNDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -595,7 +602,9 @@ private struct RecordingThumbnail: View {
                 .frame(height: 15 * uiScale)
                 .background(OPNDesign.accent)
         }
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        // Clip after the badge so its corner follows the thumbnail rather than squaring past it.
+        .clipShape(OPNCornerShape(role: .tile, scale: uiScale))
+        .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .task(id: recording.id) {
             thumbnail = await RecordingThumbnailLoader.thumbnail(for: recording)
         }

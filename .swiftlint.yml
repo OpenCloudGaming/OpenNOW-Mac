@@ -145,9 +145,16 @@ custom_rules:
   # `excluded_match_kinds` keeps every rule off comments and string literals; without it a doc
   # comment explaining a rule trips the rule.
 
+  # Corner geometry is preference-driven: DESIGN.md Radius names `OPNCornerShape(role:scale:)` and
+  # `OPNDesign.Corner` as the one place a radius is written down, and `View/OPNDesign.swift` is the
+  # one file allowed to construct it. The rule still fails on arbitrary rounding - a raw
+  # `RoundedRectangle`, `Capsule`, or `cornerRadius` anywhere else - while the centralized shape is
+  # spelled with `Path(roundedRect:cornerSize:)`, which this regex never matches.
   design_no_corner_radius:
     name: "Corner radius on chrome"
     included: ".*/View/.*\\.swift"
+    excluded:
+      - "View/OPNDesign.swift"
     regex: '(RoundedRectangle|UnevenRoundedRectangle|Capsule)\s*\(|\.cornerRadius\(|cornerRadius:'
     excluded_match_kinds:
       - comment
@@ -156,7 +163,7 @@ custom_rules:
       - comment.mark
       - comment.url
       - string
-    message: "DESIGN.md Radius: panels, buttons, fields and cards are plain Rectangles with a 1px stroke. Documented exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason."
+    message: "DESIGN.md Radius: corner geometry is preference-driven. Draw app-owned fills, borders, clips and focus outlines with `OPNCornerShape(role:scale:)` (roles: control, tile, card, panel) instead of a Rectangle, and never write a radius literal at a call site. Documented fixed exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason."
     severity: error
 
   design_no_native_picker:

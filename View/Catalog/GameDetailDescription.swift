@@ -39,8 +39,8 @@ extension GameDetailPanel {
                 .foregroundStyle(isMoreInfoHovering ? .black.opacity(0.88) : OPNDesign.Text.primary)
                 .padding(.horizontal, 13 * uiScale)
                 .frame(height: 34 * uiScale)
-                .background(isMoreInfoHovering ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10))
-                .overlay { Rectangle().strokeBorder(isMoreInfoHovering ? OPNDesign.accent : OPNDesign.Stroke.strong, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isMoreInfoHovering ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isMoreInfoHovering ? OPNDesign.accent : OPNDesign.Stroke.strong, lineWidth: 1) }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

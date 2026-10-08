@@ -16,8 +16,9 @@ struct AccountSettingsPage: View {
             SettingsCard(title: "Membership", uiScale: uiScale) {
                 HStack(alignment: .top, spacing: 20 * uiScale) {
                     ZStack {
-                        SettingsVendorLayout.cardRaised
-                            .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
+                        OPNCornerShape(role: .card, scale: uiScale)
+                            .fill(SettingsVendorLayout.cardRaised)
+                            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
                         SettingsAccountAvatar(email: viewModel.account.email, size: 58 * uiScale)
                     }
                     .frame(width: 92 * uiScale, height: 92 * uiScale)
@@ -232,9 +233,14 @@ struct AccountHealthBadge: View {
         }
         .padding(.horizontal, 14 * uiScale)
         .frame(width: 172 * uiScale, height: 64 * uiScale, alignment: .leading)
-        .background(SettingsVendorLayout.cardRaised)
-        .overlay(alignment: .leading) { Rectangle().fill(positive ? OPNDesign.accent : OPNDesign.Semantic.warning).frame(width: 3 * uiScale) }
-        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.35) : OPNDesign.Semantic.warning.opacity(0.30), lineWidth: 1) }
+        .background {
+            ZStack(alignment: .leading) {
+                SettingsVendorLayout.cardRaised
+                Rectangle().fill(positive ? OPNDesign.accent : OPNDesign.Semantic.warning).frame(width: 3 * uiScale)
+            }
+            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+        }
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(positive ? OPNDesign.accent.opacity(0.35) : OPNDesign.Semantic.warning.opacity(0.30), lineWidth: 1) }
     }
 }
 
@@ -253,8 +259,8 @@ struct SettingsRevealButton: View {
                 .tracking(0.8)
                 .padding(.horizontal, 13 * uiScale)
                 .frame(height: 32 * uiScale)
-                .background(revealed ? OPNDesign.accent.opacity(isHovering ? 0.90 : 1) : (isHovering ? OPNDesign.Stroke.subtle : OPNDesign.Fill.neutral(0.065)))
-                .overlay { Rectangle().stroke(revealed ? OPNDesign.accent : (isHovering ? OPNDesign.Stroke.strong : OPNDesign.Stroke.regular), lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(revealed ? OPNDesign.accent.opacity(isHovering ? 0.90 : 1) : (isHovering ? OPNDesign.Stroke.subtle : OPNDesign.Fill.neutral(0.065))))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(revealed ? OPNDesign.accent : (isHovering ? OPNDesign.Stroke.strong : OPNDesign.Stroke.regular), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -323,8 +329,8 @@ struct AccountStatusTile: View {
         .padding(.horizontal, 14 * uiScale)
         .padding(.vertical, 12 * uiScale)
         .frame(width: 188 * uiScale, height: 74 * uiScale, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(positive ? 0.065 : 0.045))
-        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.32) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(positive ? 0.065 : 0.045)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(positive ? OPNDesign.accent.opacity(0.32) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -349,8 +355,8 @@ struct AccountEmptyState: View {
             Spacer(minLength: 0)
         }
         .padding(12 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.045)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -375,7 +381,7 @@ struct SettingsStatisticTile: View {
         .padding(.horizontal, 14 * uiScale)
         .padding(.vertical, 12 * uiScale)
         .frame(width: (emphasized ? 206 : 164) * uiScale, height: 78 * uiScale, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(emphasized ? 0.075 : 0.052))
-        .overlay { Rectangle().stroke(emphasized ? OPNDesign.accent.opacity(0.36) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(emphasized ? 0.075 : 0.052)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(emphasized ? OPNDesign.accent.opacity(0.36) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

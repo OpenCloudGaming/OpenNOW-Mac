@@ -188,7 +188,7 @@ struct CatalogAccountDropdownPanel: View {
             }
         }
         .frame(width: CatalogVendorLayout.accountMenuWidth(scale: uiScale), alignment: .topLeading)
-        .background(OPNDesign.Surface.overlay.opacity(0.985))
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.overlay.opacity(0.985)))
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(OPNDesign.accent)
@@ -199,6 +199,9 @@ struct CatalogAccountDropdownPanel: View {
                 .fill(OPNDesign.Stroke.subtle)
                 .frame(width: 1)
         }
+        // The accent bar and trailing rule are contained by the panel's own corners; the shadow is
+        // applied after the clip so it is not cut off.
+        .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
     }
 }
@@ -256,7 +259,7 @@ struct CatalogAccountDropdownRow: View {
                 HStack(spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                     if let systemImage {
                         ZStack {
-                            Rectangle()
+                            OPNCornerShape(role: .tile, scale: uiScale)
                                 .fill(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                             Image(systemName: systemImage)
                                 .catalogFont(size: 13, weight: .bold)
@@ -339,7 +342,7 @@ private struct CatalogAccountDropdownRowActionButton: View {
                 .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(tintColor)
                 .frame(width: 26 * uiScale, height: 26 * uiScale)
-                .background(OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)

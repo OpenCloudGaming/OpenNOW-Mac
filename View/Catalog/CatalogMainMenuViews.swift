@@ -111,7 +111,7 @@ struct CatalogMainMenuPanel: View {
             }
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
-        .background(OPNDesign.Surface.overlay.opacity(0.985))
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.overlay.opacity(0.985)))
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(OPNDesign.Stroke.subtle)
@@ -122,6 +122,9 @@ struct CatalogMainMenuPanel: View {
                 .fill(OPNDesign.accent)
                 .frame(height: 2)
         }
+        // The trailing rule and top accent bar are contained by the panel's own corners; the shadow
+        // is applied after the clip so it is not cut off.
+        .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
     }
 
@@ -210,8 +213,8 @@ struct CatalogMainMenuPlaytimeCard: View {
                     .lineLimit(1)
             }
             .padding(OPNDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OPNDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.055)))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 
@@ -257,7 +260,7 @@ struct CatalogMainMenuRow: View {
         Button(action: action) {
             HStack(spacing: 13 * uiScale) {
                 ZStack {
-                    Rectangle()
+                    OPNCornerShape(role: .tile, scale: uiScale)
                         .fill(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
                     if isLoading {
                         ProgressView()
@@ -295,12 +298,14 @@ struct CatalogMainMenuRow: View {
             .padding(.trailing, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: (compact ? 38 : 50) * uiScale)
-            .background(rowBackground)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(rowBackground))
             .overlay(alignment: .leading) {
                 Rectangle()
                     .fill(isActive ? OPNDesign.accent : Color.clear)
                     .frame(width: 3)
             }
+            // The leading accent bar follows the row's corners; the hit area stays the full frame.
+            .clipShape(OPNCornerShape(role: .control, scale: uiScale))
             .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)

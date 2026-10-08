@@ -348,8 +348,8 @@ struct CatalogSeeMoreTile: View {
                     .foregroundStyle(OPNDesign.Text.primary)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
-            .background(OPNDesign.Surface.tileTray)
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.strong, lineWidth: 2) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Surface.tileTray))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.strong, lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OPNDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
@@ -402,7 +402,8 @@ struct CatalogPanelActionTile: View {
                 .padding(14)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
-            .overlay { Rectangle().stroke(isHovering ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
+            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isHovering ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OPNDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
@@ -452,12 +453,12 @@ struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 14)
             .frame(height: 28)
-            .background(primary
+            .background(OPNCornerShape(role: .control).fill(primary
                 ? OPNDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
-                : OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055))
+                : OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055)))
             .overlay {
                 if !primary {
-                    Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1)
+                    OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
                 }
             }
     }

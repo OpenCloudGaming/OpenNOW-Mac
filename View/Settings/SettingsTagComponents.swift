@@ -112,7 +112,7 @@ struct SettingsCardTag: View {
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
             .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
-            .background(OPNDesign.accent.opacity(0.12))
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent.opacity(0.12)))
             .accessibilityLabel(text.capitalized)
     }
 }
@@ -130,7 +130,7 @@ struct OPNNewTag: View {
             .padding(.leading, SettingsTagMetrics.horizontalPadding * uiScale)
             .padding(.trailing, SettingsTagMetrics.trailingPadding * uiScale)
             .padding(.vertical, 2 * uiScale)
-            .background(OPNDesign.accent)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent))
             .accessibilityLabel("New setting")
     }
 }
@@ -162,7 +162,7 @@ struct OPNBetaTag: View {
             .padding(.leading, leadingPadding * uiScale)
             .padding(.trailing, (leadingPadding - SettingsTagMetrics.tracking) * uiScale)
             .padding(.vertical, 2 * uiScale)
-            .background(background)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(background))
             .accessibilityLabel(label.capitalized)
     }
 

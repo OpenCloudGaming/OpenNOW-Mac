@@ -20,8 +20,8 @@ struct ScreenshotMetric: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10 * uiScale)
-        .background(RecordingsLayout.card)
-        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(RecordingsLayout.card))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
     }
 }
 
@@ -48,8 +48,8 @@ struct ScreenshotSearchField: View {
         }
         .padding(.horizontal, 12 * uiScale)
         .frame(height: 40 * uiScale)
-        .background(OPNDesign.Stroke.subtle)
-        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
     }
 }
 
@@ -71,8 +71,8 @@ struct ScreenshotFilterChip: View {
             .foregroundStyle(isActive ? .black.opacity(0.86) : isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.09 : 0.055))
-            .overlay { Rectangle().stroke(isActive ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.09 : 0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isActive ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -103,8 +103,8 @@ struct ScreenshotAlbumChip: View {
             .foregroundStyle(isActive ? .black.opacity(0.86) : isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
             .padding(.horizontal, 9 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.09 : 0.055))
-            .overlay { Rectangle().stroke(isActive ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isActive ? OPNDesign.accent : OPNDesign.Fill.neutral(isHovering ? 0.09 : 0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isActive ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -123,8 +123,8 @@ struct ScreenshotPill: View {
             .lineLimit(1)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 20 * uiScale)
-            .background(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle)
-            .overlay { Rectangle().stroke(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -171,9 +171,16 @@ struct ScreenshotRow: View {
                 }
             }
             .padding(13 * uiScale)
-            .background(background)
-            .overlay(alignment: .leading) { Rectangle().fill(isSelected ? OPNDesign.accent : .clear).frame(width: 3) }
-            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent.opacity(0.48) : OPNDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(background))
+            // The selection strip rides the card's own corners rather than squaring off past them.
+            .overlay {
+                HStack(spacing: 0) {
+                    Rectangle().fill(isSelected ? OPNDesign.accent : .clear).frame(width: 3)
+                    Spacer(minLength: 0)
+                }
+                .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            }
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent.opacity(0.48) : OPNDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -247,7 +254,9 @@ struct ScreenshotThumbnail: View {
                 .frame(height: 15 * uiScale)
                 .background(OPNDesign.accent)
         }
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        // Clip after the badge so its corner follows the thumbnail rather than squaring past it.
+        .clipShape(OPNCornerShape(role: .tile, scale: uiScale))
+        .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .task(id: screenshot.id) {
             thumbnail = await ScreenshotImageLoader.image(for: screenshot, longestEdge: 360)
         }
@@ -326,10 +335,10 @@ struct ScreenshotEmptyPlayer: View {
     var body: some View {
         VStack(spacing: 18 * uiScale) {
             ZStack {
-                Rectangle()
+                OPNCornerShape(role: .tile, scale: uiScale)
                     .fill(OPNDesign.Fill.neutral(0.045))
                     .frame(width: 180 * uiScale, height: 108 * uiScale)
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "camera.fill")
                     .font(.recordingsFont(size: 42 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.accentInk.opacity(0.88))
@@ -344,8 +353,8 @@ struct ScreenshotEmptyPlayer: View {
                 .frame(maxWidth: 420 * uiScale)
         }
         .padding(36 * uiScale)
-        .background(RecordingsLayout.surface)
-        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(RecordingsLayout.surface))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
         .shadow(color: .black.opacity(0.42), radius: 22 * uiScale, y: 10 * uiScale)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -385,8 +394,8 @@ struct ScreenshotTextPrompt: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .padding(.horizontal, 12 * uiScale)
                     .frame(height: 40 * uiScale)
-                    .background(OPNDesign.Stroke.subtle)
-                    .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
                     .focused($isFocused)
                     .onSubmit(onConfirm)
                 HStack(spacing: 10 * uiScale) {
@@ -401,10 +410,10 @@ struct ScreenshotTextPrompt: View {
             .padding(24 * uiScale)
             .frame(maxWidth: 420 * uiScale)
             .background {
-                Rectangle().fill(RecordingsLayout.surface)
-                Rectangle().fill(RecordingsLayout.card)
+                OPNCornerShape(role: .panel, scale: uiScale).fill(RecordingsLayout.surface)
+                OPNCornerShape(role: .panel, scale: uiScale).fill(RecordingsLayout.card)
             }
-            .overlay { Rectangle().stroke(RecordingsLayout.strongStroke, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(RecordingsLayout.strongStroke, lineWidth: 1) }
             .shadow(color: .black.opacity(0.55), radius: 24 * uiScale, y: 10 * uiScale)
             .onAppear { isFocused = true }
         }

@@ -23,8 +23,8 @@ struct ControllerTestDevicePicker: View {
                 }
                 .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
                 .frame(height: 30 * uiScale)
-                .background(OPNDesign.Fill.neutral(0.075))
-                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.075)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .disabled(devices.count < 2)
             .accessibilityLabel("Controller to test")

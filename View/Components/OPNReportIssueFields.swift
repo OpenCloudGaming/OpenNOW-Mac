@@ -32,9 +32,9 @@ struct OPNReportIssueTargetPicker: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(OPNDesign.Spacing.small(scale: uiScale))
-            .background(isSelected ? OPNDesign.accent.opacity(0.14) : OPNDesign.Fill.neutral(0.045))
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(isSelected ? OPNDesign.accent.opacity(0.14) : OPNDesign.Fill.neutral(0.045)))
             .overlay {
-                Rectangle().strokeBorder(
+                OPNCornerShape(role: .card, scale: uiScale).strokeBorder(
                     isSelected ? OPNDesign.accent.opacity(0.55) : OPNDesign.Stroke.subtle,
                     lineWidth: isSelected ? 2 : 1
                 )
@@ -75,9 +75,9 @@ struct OPNReportIssueCategoryPicker: View {
                 .tracking(0.6)
                 .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                 .frame(height: 28 * uiScale)
-                .background(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06))
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06)))
                 .overlay {
-                    Rectangle().strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
+                    OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -117,9 +117,9 @@ struct OPNReportIssueInput: View {
             .onSubmit { isFocused = false }
             .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, 10 * uiScale)
-            .background(OPNDesign.Surface.field)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
             .overlay {
-                Rectangle().strokeBorder(
+                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(
                     isFocused ? OPNDesign.accent.opacity(0.6) : OPNDesign.Stroke.regular,
                     lineWidth: isFocused ? 2 : 1
                 )
@@ -150,9 +150,9 @@ struct OPNReportIssueCheckbox: View {
         Button { isOn.toggle() } label: {
             HStack(alignment: .top, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
                 ZStack {
-                    Rectangle()
+                    OPNCornerShape(role: .control, scale: uiScale)
                         .fill(isOn ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06))
-                    Rectangle()
+                    OPNCornerShape(role: .control, scale: uiScale)
                         .strokeBorder(isOn ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
                     if isOn {
                         Image(systemName: "checkmark")
@@ -201,8 +201,11 @@ struct OPNReportIssueNotice: View {
                     .fill(OPNDesign.accent)
                     .frame(width: 4 * uiScale)
             }
-            .background(OPNDesign.Fill.neutral(0.045))
-            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.045)))
+            // The leading accent bar is a rule, but it must not poke past the note's own rounded
+            // corners, so the composed view is contained by the same shape.
+            .clipShape(OPNCornerShape(role: .control, scale: uiScale))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -217,13 +220,13 @@ struct OPNReportIssueConfirmation: View {
         VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
             HStack(spacing: 10 * uiScale) {
                 ZStack {
-                    Rectangle().fill(OPNDesign.accent.opacity(0.16))
+                    OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent.opacity(0.16))
                     Image(systemName: "checkmark")
                         .font(.uiSans(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.accentInk)
                 }
                 .frame(width: 40 * uiScale, height: 40 * uiScale)
-                .overlay { Rectangle().strokeBorder(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
 
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text("\(target.destinationName) opened")

@@ -258,8 +258,11 @@ private struct TermsOfUseDialog: View {
             .padding(.bottom, OPNDesign.Spacing.card)
         }
         .frame(width: 460)
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        // Clipped so the full-width accent bar follows the dialog's own corners instead of poking
+        // past them; the border and shadow are drawn outside the clip.
+        .clipShape(OPNCornerShape(role: .panel))
+        .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
         .onExitCommand(perform: viewModel.declineTermsOfUse)
     }
@@ -272,7 +275,7 @@ private struct VendorTermsDeclineButtonStyle: ButtonStyle {
             .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, OPNDesign.Spacing.medium)
             .frame(height: 36)
-            .background(configuration.isPressed ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle)
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control).fill(configuration.isPressed ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle))
+            .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }

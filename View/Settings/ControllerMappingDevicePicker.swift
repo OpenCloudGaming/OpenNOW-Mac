@@ -14,8 +14,8 @@ extension ControllerMappingView {
                 }
                 .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
                 .frame(height: 30 * uiScale)
-                .background(OPNDesign.Fill.neutral(0.075))
-                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.075)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .controllerFocusable(id: "mapping-family", adjust: { cycleFamily(delta: $0) })
             Text("Each controller type keeps its own default profile, so a Steam Controller, a DualShock 4 and a generic pad never share one mapping.")

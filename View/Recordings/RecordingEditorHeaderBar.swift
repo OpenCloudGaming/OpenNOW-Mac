@@ -85,8 +85,8 @@ struct RecordingEditorHeaderBar: View {
                 .padding(.horizontal, 10 * uiScale)
                 // Matches the buttons beside it; 34 against their 36 read as a misaligned field.
                 .frame(height: RecordingActionButtonStyle.height * uiScale)
-                .background(OPNDesign.Surface.field)
-                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .help("Name of the video the export will create")
                 .focused($isTitleFocused)
                 .onChange(of: isTitleFocused) { _, focused in viewModel.isTitleFieldFocused = focused }

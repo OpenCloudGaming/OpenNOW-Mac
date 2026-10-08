@@ -23,9 +23,12 @@ struct StreamOnScreenKeyboardOverlay: View {
             bottomBar
             hintFooter
         }
-        .background(StreamHUDTheme.panel.opacity(0.985))
         .overlay(alignment: .top) { Rectangle().fill(StreamHUDTheme.accent).frame(height: 2) }
-        .overlay(Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1))
+        // Clipped after the accent strip is drawn, so the strip follows the panel's corners; the
+        // fill, border and shadow are added outside the clip.
+        .clipShape(OPNCornerShape(role: .panel))
+        .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.985)))
+        .overlay(OPNCornerShape(role: .panel).strokeBorder(StreamHUDTheme.divider, lineWidth: 1))
         .shadow(color: .black.opacity(0.58), radius: 28, y: atTop ? -14 : 14)
         .padding(atTop ? .top : .bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: atTop ? .top : .bottom)
@@ -64,7 +67,7 @@ struct StreamOnScreenKeyboardOverlay: View {
             .foregroundStyle(.black.opacity(0.86))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(StreamHUDTheme.accent)
+            .background(OPNCornerShape(role: .control).fill(StreamHUDTheme.accent))
     }
 
     private func keyRow(_ row: Int) -> some View {
@@ -142,10 +145,10 @@ struct StreamOnScreenKeyboardOverlay: View {
             }
             .foregroundStyle(foregroundColor(isLatchedModifier: isLatchedModifier || isActiveLayer, isPadCursor: isLeftPadCursor || isRightPadCursor))
             .frame(width: width, height: keyHeight)
-            .background(backgroundColor(isLatchedModifier: isLatchedModifier || isActiveLayer, isLeftPadCursor: isLeftPadCursor, isRightPadCursor: isRightPadCursor))
+            .background(OPNCornerShape(role: .control).fill(backgroundColor(isLatchedModifier: isLatchedModifier || isActiveLayer, isLeftPadCursor: isLeftPadCursor, isRightPadCursor: isRightPadCursor)))
             .overlay {
-                Rectangle()
-                    .stroke(strokeColor(isGridCursor: isGridCursor, isLeftPadCursor: isLeftPadCursor, isRightPadCursor: isRightPadCursor), lineWidth: isGridCursor ? 2 : 1)
+                OPNCornerShape(role: .control)
+                    .strokeBorder(strokeColor(isGridCursor: isGridCursor, isLeftPadCursor: isLeftPadCursor, isRightPadCursor: isRightPadCursor), lineWidth: isGridCursor ? 2 : 1)
             }
             .contentShape(Rectangle())
         }

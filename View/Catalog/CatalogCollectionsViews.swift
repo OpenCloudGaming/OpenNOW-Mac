@@ -59,8 +59,8 @@ struct CatalogEmptyCollectionView: View {
         }
         .padding(22 * uiScale)
         .frame(maxWidth: 620, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(0.055))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.055)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .padding(.horizontal, 22 * uiScale)
         .padding(.top, 24 * uiScale)
     }
@@ -110,9 +110,10 @@ struct CatalogCollectionsPickerOverlay: View {
             }
             .frame(width: min(520 * uiScale, 520), alignment: .topLeading)
             .frame(maxHeight: 560 * uiScale, alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
         .opnMotion(OPNDesign.Motion.panel, value: viewModel.isCollectionsPickerPresented)
@@ -159,8 +160,8 @@ struct CatalogCollectionsPickerOverlay: View {
             }
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 48 * uiScale)
-            .background(isMember ? OPNDesign.Fill.neutral(0.10) : OPNDesign.Fill.neutral(0.045))
-            .overlay { Rectangle().stroke(isMember ? OPNDesign.accent.opacity(0.6) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isMember ? OPNDesign.Fill.neutral(0.10) : OPNDesign.Fill.neutral(0.045)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isMember ? OPNDesign.accent.opacity(0.6) : OPNDesign.Stroke.subtle, lineWidth: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -187,8 +188,8 @@ struct CatalogCollectionsPickerOverlay: View {
             }
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 48 * uiScale)
-            .background(OPNDesign.Fill.neutral(isDisabled ? 0.025 : 0.045))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(isDisabled ? 0.025 : 0.045)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -248,9 +249,10 @@ struct CatalogCollectionsManagerOverlay: View {
             }
             .frame(width: min(560 * uiScale, 560), alignment: .topLeading)
             .frame(maxHeight: 600 * uiScale, alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
     }
@@ -315,8 +317,8 @@ struct CatalogCollectionsManagerOverlay: View {
         }
         .padding(.horizontal, 13 * uiScale)
         .frame(height: 52 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.045)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private var newCollectionRow: some View {
@@ -340,8 +342,8 @@ struct CatalogCollectionsManagerOverlay: View {
             }
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 48 * uiScale)
-            .background(OPNDesign.Fill.neutral(isDisabled ? 0.025 : 0.045))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(isDisabled ? 0.025 : 0.045)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -355,8 +357,8 @@ struct CatalogCollectionsManagerOverlay: View {
                 .catalogFont(size: 14, weight: .bold)
                 .foregroundStyle(isDestructive ? OPNDesign.Semantic.destructive : OPNDesign.Text.secondary)
                 .frame(width: 34 * uiScale, height: 34 * uiScale)
-                .background(OPNDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -392,8 +394,8 @@ struct CatalogCollectionsDialogOverlay: View {
                             OPNCollectionIconView(icon: viewModel.collectionsDraftIcon ?? .fallback, size: 22, weight: .medium)
                                 .foregroundStyle(OPNDesign.accentInk)
                                 .frame(width: 44 * uiScale, height: 44 * uiScale)
-                                .background(OPNDesign.Fill.neutral(0.08))
-                                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -405,8 +407,8 @@ struct CatalogCollectionsDialogOverlay: View {
                             .foregroundStyle(OPNDesign.Text.primary)
                             .padding(.horizontal, 12 * uiScale)
                             .frame(height: 44 * uiScale)
-                            .background(OPNDesign.Fill.neutral(0.08))
-                            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                             .onSubmit { viewModel.confirmCollectionsDialog() }
                     }
                     if !viewModel.collectionsDialogError.isEmpty {
@@ -426,9 +428,10 @@ struct CatalogCollectionsDialogOverlay: View {
             }
             .padding(22 * uiScale)
             .frame(width: min(440 * uiScale, 440), alignment: .leading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
     }
@@ -483,9 +486,10 @@ struct CatalogCollectionsNoticeOverlay: View {
             }
             .padding(24 * uiScale)
             .frame(width: min(480 * uiScale, 480), alignment: .leading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
     }

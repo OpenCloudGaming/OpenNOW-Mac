@@ -24,8 +24,10 @@ struct CatalogShowAllPage: View {
                     if !viewModel.isShowingLocalCollection {
                         CatalogShowAllFilterPanel(viewModel: viewModel)
                             .frame(width: 280)
-                            .background(OPNDesign.Surface.overlay)
+                            .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.overlay))
                             .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(width: 1) }
+                            // The leading rule is contained by the panel's own corners.
+                            .clipShape(OPNCornerShape(role: .panel))
                     }
                 }
                 if isSortMenuPresented {
@@ -182,7 +184,7 @@ struct CatalogShowAllPage: View {
             .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, 12)
             .frame(height: 34)
-            .background(OPNDesign.Fill.neutral(0.08))
+            .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.08)))
         }
         .buttonStyle(.plain)
         .disabled(viewModel.sortOptions.isEmpty)
@@ -243,7 +245,7 @@ private struct CatalogSortDropdownPanel: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(OPNDesign.Surface.overlay.opacity(0.985))
+        .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.overlay.opacity(0.985)))
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(OPNDesign.accent)
@@ -254,6 +256,9 @@ private struct CatalogSortDropdownPanel: View {
                 .fill(OPNDesign.Stroke.subtle)
                 .frame(width: 1)
         }
+        // The accent bar and trailing rule are contained by the panel's own corners; the shadow is
+        // applied after the clip so it is not cut off.
+        .clipShape(OPNCornerShape(role: .panel))
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
     }
 }

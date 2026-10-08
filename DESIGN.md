@@ -178,35 +178,59 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 
 ## Radius
 
-- **Default**: 0 — panels, docks, dialogs, buttons, fields, and cards are plain
-  `Rectangle`s with 1px strokes. No `RoundedRectangle`, no `Capsule`.
-- **Avatar**: 14 (`OPNDesign.Radius.avatar`).
-- **Exceptions**: circular mic toggle and status dots on the stream surface, login vendor
-  icon buttons (`size * 0.32`), and the controller diagram artwork
-  (`SteamControllerDiagramView`, `DualShock4DiagramView`, `GenericControllerDiagramView`), which traces physical
-  hardware — round face buttons, pill grips, oval trackpads, circular stick wells — rather
-  than chrome. Everything laid out *around* those drawings, including the 2px accent
-  selection ring, stays square. New UI must not add further exceptions.
+- **Setting**: Settings → Look → Appearance → Corner Style, **Square** (default) or **Rounded**.
+  Square is the shipping geometry: every app-owned surface is drawn exactly as if the preference
+  did not exist, and a missing or invalid stored value falls back to it. Rounded is opt-in and
+  applies immediately, without a restart.
+- **One policy, not per-component literals**: every app-owned fill, border, clip and focus outline
+  is drawn with `OPNCornerShape(role:scale:)`, which reads the semantic geometry from the
+  environment (`\.opnCornerGeometry`) and resolves its radius from `OPNDesign.Corner`. Square is
+  radius 0 for every role; no component invents its own radius, and no call site writes one.
+- **Roles** (Rounded values at 100 % scale): `control` 6 — buttons, chips, fields, toggles, icon
+  buttons and other small controls; `tile` 6 — small artwork tiles such as the menu bar's game and
+  collection thumbnails; `card` 10 — cards, rows and list containers; `panel` 12 — panels, docks,
+  dropdown panels and section chrome.
+- **Scale once**: a view that multiplies its own dimensions by `uiScale` passes `scale: uiScale` to
+  the shape. A surface already wrapped in an outer `opnInterfaceScale` (the stream HUD) passes
+  nothing, so its radii are not multiplied twice.
+- **Fill, border, clip and focus outline agree**: a container's `fill`, its `strokeBorder` and its
+  `clipShape` are the same shape, and `openNowFocusRing` takes the role of what it rings. Borders
+  use `strokeBorder`, never `stroke`, so the 1pt line stays inside the frame. A full-width accent
+  bar or rule that belongs to a panel is clipped with the panel's shape so it follows the corners,
+  and shadows are applied outside the clip so they are not cut off.
+- **Fixed exceptions, whatever the setting** (annotate at the site with
+  `swiftlint:disable:next design_no_corner_radius -- <why, referencing DESIGN.md>`): the avatar,
+  the circular mic toggle and stream status dots, the login vendor icon buttons (`size * 0.32`),
+  and the controller diagram artwork (`SteamControllerDiagramView`, `DualShock4DiagramView`,
+  `GenericControllerDiagramView`), which traces physical hardware — round face buttons, pill grips,
+  oval trackpads, circular stick wells — rather than chrome. Everything laid out *around* those
+  drawings, including the 2px accent selection ring, follows the setting. New UI must not add
+  further exceptions.
+- **Never rounded**: dividers and decorative rules, functional crop/selection/timeline/zoom
+  geometry, progress and meter fills, slider tracks, video surfaces, and hit areas —
+  `contentShape(Rectangle())` never changes. Native window chrome, traffic lights, system dialogs
+  and popover shells remain system-owned.
 
 ## Components
 
 ### Buttons (app shell)
 
 - **Primary**: Accent background, black 14pt bold text (tracking 0.4), 14 vertical /
-  16 horizontal padding, square corners. Pressed: accent @ 0.76.
+  16 horizontal padding, Corner Style `control` geometry. Pressed: accent @ 0.76.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
-  13–14pt bold text, square corners.
+  13–14pt bold text, Corner Style `control` geometry.
 - **Destructive Modal** (`OPNModalDestructiveButtonStyle`): a modal footer's destructive
   action, sized to sit beside the secondary modal button. 36 high, 13pt bold
   `Semantic.destructive` label, destructive @ 0.10 fill (0.18 pressed), destructive @ 0.36
   stroke. Never the default action.
 - **Compact Row Action** (`OPNCompactButtonStyle`): settings/inline row
-  actions. Height 28, Hanken Grotesk 12pt bold, 14 horizontal padding, square corners.
+  actions. Height 28, Hanken Grotesk 12pt bold, 14 horizontal padding, Corner Style `control`
+  geometry.
   Primary: accent background (0.78 pressed), black text, accent stroke. Destructive:
   #000000 @ 0.35 background (0.5 pressed), white text, red @ 0.85 stroke. Takes
   `uiScale`; call sites never restyle the label.
 - **Vendor Get-In** (`VendorGetInButtonStyle`): Accent background, black Hanken Grotesk
-  bold (tracking 0.3), 16 horizontal padding, square corners. Pressed: accent @ 0.78.
+  bold (tracking 0.3), 16 horizontal padding, Corner Style `control` geometry. Pressed: accent @ 0.78.
   Two sizes: **regular** (14pt, height 36 — login and inline CTAs) and **large**
   (15pt, height 40 — hero and game-detail primary actions, optional `minimumWidth`).
   Call sites pass `uiScale` and never override font or frame on the label.
@@ -284,8 +308,9 @@ source pixels. The library is inactive during the edit so the draft stays associ
 
 ### Borders on Filled Controls
 
-Use `Rectangle().strokeBorder(...)`, never `Rectangle().stroke(...)`, on anything with a
-background.
+Use `OPNCornerShape(role:).strokeBorder(...)`, never `.stroke(...)`, on anything with a
+background. The fill and the border take the same role and the same scale, so the outline can
+never disagree with the shape it rings.
 
 A stroke is centred on the path, so it spills half a point outside the frame. Where the border is
 low-contrast that spill is invisible and the control measures its stated height. Where the border
@@ -494,8 +519,11 @@ in the `MenuBarExtra` label can trap the native status-button renderer in a cont
 
 The popover is app-drawn, because `MenuBarExtra`'s `.window` style hands SwiftUI the whole panel.
 It matches the Control Center popovers it sits beside — stacked cards with their own controls —
-rather than this document's panel system, so its corner radii carry a documented
-`design_no_corner_radius` exception at each site.
+so its geometry follows the Corner Style setting through the same semantic roles as the rest of
+the app: `.opnMenuBarCard` uses `card`, and `.opnMenuBarControl`, `.opnMenuBarRow`,
+`.opnMenuBarTab` and the game/collection artwork tiles use `control`/`tile`. Square therefore
+squares the popover's cards and tiles too; preserving their previously rounded geometry is not a
+compatibility requirement. The status item's *label* is system chrome and takes no radius at all.
 
 How it is drawn depends on the OS:
 
@@ -864,11 +892,12 @@ OPEN RELEASES ON GITHUB secondary action.
 ### Text Fields (login)
 
 14pt regular white text, accent caret, 16 horizontal / 14 vertical padding, #FFFFFF
-@ 0.08 background, 1px Stroke Regular. Focused: 2px accent stroke. Square corners.
+@ 0.08 background, 1px Stroke Regular. Focused: 2px accent stroke. Corner Style `control`
+geometry.
 
 ### HUD Section (`hudSection`)
 
-Section Fill background, 1px Divider stroke, 10 padding. Label is an eyebrow (10pt bold,
+Section Fill background, 1px Divider stroke, Corner Style `panel` geometry, 10 padding. Label is an eyebrow (10pt bold,
 tracking 1.1, Text Tertiary) with a trailing chevron and a `line.3.horizontal` grab handle. The
 header is a button and a gamepad focus row: activating it (or clicking) folds the content away, and
 the folded set persists under `OpenNOW.Stream.HUDCollapsedSections`. Dragging the handle reorders
@@ -998,7 +1027,10 @@ no stream is playing there, and the action that matters is RESUME rather than FO
 ### HUD Dock (unified stream HUD)
 
 Full-height leading dock, width `min(344, max(268, streamWidth * 0.72))`. Panel
-background @ 0.985, 1px Divider trailing edge, 2px accent bar along the top edge. App Bar
+background @ 0.985, Corner Style `panel` geometry (the fill, the trailing rule and the top
+accent bar are clipped together so the bar follows the corners, while the dock's content stays
+outside the clip so an open dropdown is never cropped), 1px Divider trailing edge, 2px accent
+bar along the top edge. App Bar
 header block: a leading power button that opens the stream pause/end menu, the eyebrow +
 title, the remaining session-time pill (accent, warning under five minutes, monospaced
 digits), and the close button. Footer: the live clock (11pt bold monospaced digits, off
@@ -1048,11 +1080,11 @@ activate.
 
 Bottom-anchored panel invoked in-stream with Steam + X (Steam Deck-style chord)
 on the native NVST surface. Panel background @ 0.985, 2px accent
-top bar, 1px Divider stroke. App Bar header strip holds the eyebrow label, a live
-echo of recently typed text (12pt medium Text Primary, head-truncated), and accent
+top bar, Corner Style `panel` geometry, 1px Divider stroke. App Bar header strip holds the eyebrow
+label, a live echo of recently typed text (12pt medium Text Primary, head-truncated), and accent
 state badges for latched Shift and the symbols layer. The key grid is 10 columns ×
-4 rows of square 46×40 keys (13pt bold, Row Fill resting background, 1px Divider
-stroke), split between columns 5/6: each trackpad owns one half. Cursor highlights:
+4 rows of 46×40 keys (13pt bold, Row Fill resting background, Corner Style `control` geometry,
+1px Divider stroke), split between columns 5/6: each trackpad owns one half. Cursor highlights:
 left pad = Accent Soft stroke + 0.28 fill, right pad = accent stroke + 0.28 fill,
 d-pad/stick grid cursor = 2px Text Primary stroke. Latched Shift / active symbols
 keys use the accent fill with black glyph. A bottom bar holds the layer toggle,

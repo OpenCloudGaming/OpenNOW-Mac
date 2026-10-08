@@ -123,8 +123,8 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
             .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.92) : OPNDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -212,6 +212,9 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
                     .offset(y: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity) - 4)
             }
         }
+        // The artwork, tray and selection bar are contained by the tile's own shape; the shadow is
+        // applied after the clip so it is not cut off at the corners.
+        .clipShape(OPNCornerShape(role: .card, scale: uiScale))
         .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
         .padding(.horizontal, CatalogVendorLayout.tileHorizontalMargin(scale: uiScale))
         .padding(.top, CatalogVendorLayout.tileTopMargin(scale: uiScale))
@@ -258,8 +261,8 @@ struct CatalogGameAccessBadge: View {
         .frame(height: 28)
         // DESIGN.md colour exception: solid-red lock/restriction badge; no token maps a filled red callout.
         // swiftlint:disable:next design_no_hardcoded_surface_color
-        .background(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96))
-        .overlay { Rectangle().stroke(OPNDesign.Fill.neutral(0.42), lineWidth: 1) }
+        .background(OPNCornerShape(role: .control).fill(Color(red: 164 / 255, green: 38 / 255, blue: 28 / 255).opacity(0.96)))
+        .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Fill.neutral(0.42), lineWidth: 1) }
         .shadow(color: .black.opacity(0.44), radius: 8, x: 0, y: 3)
         .fixedSize(horizontal: true, vertical: false)
     }

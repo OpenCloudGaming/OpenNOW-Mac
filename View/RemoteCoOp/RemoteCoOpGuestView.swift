@@ -7,6 +7,14 @@ import SwiftUI
 struct RemoteCoOpGuestView: View {
     @StateObject private var viewModel = RemoteCoOpGuestViewModel()
     @Environment(\.opnUIScale) private var uiScale
+    /// This view is the root of its own singleton `Window` scene, so it observes the appearance
+    /// preference itself instead of inheriting the catalog window's injection.
+    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
+
+    private var cornerStyle: OPNThemePreferences.CornerStyle {
+        OPNThemePreferences.CornerStyle(rawValue: cornerStyleRawValue) ?? .square
+    }
+
     /// The controls sit over the game, so they retreat when the mouse does. Shown again on any
     /// movement, which is the same bargain the main stream surface makes.
     @State private var controlsVisible = true
@@ -52,6 +60,7 @@ struct RemoteCoOpGuestView: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+        .environment(\.opnCornerGeometry, OPNCornerGeometry(style: cornerStyle))
     }
 
     /// A singleton SwiftUI `Window` scene - what this window is - does not reliably pick up
@@ -124,7 +133,7 @@ struct RemoteCoOpGuestView: View {
                         .foregroundStyle(OPNDesign.Text.primary)
                         .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                         .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
-                        .background(OPNDesign.Surface.scrim)
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.scrim))
                 }
                 Spacer()
             }
@@ -166,8 +175,8 @@ struct RemoteCoOpGuestView: View {
                             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
                             .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
                             .frame(maxWidth: 360 * uiScale)
-                            .background(OPNDesign.Surface.panelRaised)
-                            .overlay { Rectangle().stroke(.white.opacity(0.12), lineWidth: 1) }
+                            .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Surface.panelRaised))
+                            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(.white.opacity(0.12), lineWidth: 1) }
                         }
                         .buttonStyle(.opnPressable(scale: 0.98))
                         .foregroundStyle(OPNDesign.Text.primary)
@@ -202,8 +211,8 @@ struct RemoteCoOpGuestView: View {
                             .foregroundStyle(OPNDesign.Text.secondary)
                             .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                             .frame(width: 260 * uiScale, height: 26 * uiScale, alignment: .leading)
-                            .background(OPNDesign.Surface.panelRaised)
-                            .overlay { Rectangle().stroke(.white.opacity(0.10), lineWidth: 1) }
+                            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.panelRaised))
+                            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(.white.opacity(0.10), lineWidth: 1) }
                         }
                         .buttonStyle(.opnPressable(scale: 0.98))
                         Button { viewModel.forgetRecentAddress(address) } label: {
@@ -235,8 +244,8 @@ struct RemoteCoOpGuestView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                     .frame(width: 260 * uiScale, height: 28 * uiScale)
-                    .background(OPNDesign.Surface.panelRaised)
-                    .overlay { Rectangle().stroke(.white.opacity(0.16), lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.panelRaised))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(.white.opacity(0.16), lineWidth: 1) }
                     .onSubmit { viewModel.joinManualAddress() }
                 Button("Join") { viewModel.joinManualAddress() }
                     .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: uiScale))
@@ -271,7 +280,7 @@ struct RemoteCoOpGuestView: View {
                 .buttonStyle(OPNCompactButtonStyle(role: .destructive, uiScale: uiScale))
         }
         .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
-        .background(OPNDesign.Surface.panel)
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
     }
 
     /// The only way out of a live session that is not closing the window. Every other phase has an
@@ -286,7 +295,7 @@ struct RemoteCoOpGuestView: View {
             .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
-            .background(OPNDesign.Surface.scrim)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.scrim))
         }
         .buttonStyle(.opnPressable(scale: 0.95))
         .accessibilityLabel("Leave this session")
@@ -344,8 +353,8 @@ struct RemoteCoOpGuestView: View {
                 .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                 .frame(height: OPNDesign.Spacing.controlRow(scale: uiScale))
-                .background(OPNDesign.Surface.scrim)
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.scrim))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
                 .contentShape(Rectangle())
             }
             .help("Lower your own stream quality. The host sets the maximum.")
@@ -369,7 +378,7 @@ struct RemoteCoOpGuestView: View {
         .foregroundStyle(OPNDesign.Text.primary)
         .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
         .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
-        .background(OPNDesign.Semantic.destructive.opacity(0.75))
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Semantic.destructive.opacity(0.75)))
     }
 
     private func failurePanel(reason: String) -> some View {
@@ -389,8 +398,8 @@ struct RemoteCoOpGuestView: View {
                 .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: uiScale))
         }
         .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(.white.opacity(0.14), lineWidth: 1) }
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(.white.opacity(0.14), lineWidth: 1) }
     }
 }
 

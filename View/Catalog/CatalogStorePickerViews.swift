@@ -85,8 +85,8 @@ struct CatalogStorePickerOverlay: View {
                 .catalogFont(size: 12, weight: .bold)
                 .foregroundStyle(OPNDesign.Fixed.ink(0.96))
                 .frame(width: 32 * uiScale, height: 32 * uiScale)
-                .background(OPNDesign.Fill.neutral(isCloseHovering ? 0.16 : 0.08))
-                .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(isCloseHovering ? 0.16 : 0.08)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isCloseHovering = $0 }
@@ -290,8 +290,8 @@ struct CatalogStorePickerOverlay: View {
                     .foregroundStyle(OPNDesign.Fixed.ink(0.72))
                     .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
                     .frame(height: 20 * uiScale)
-                    .background(OPNDesign.Fixed.ink(0.08))
-                    .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fixed.ink(0.08)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
                 Image(systemName: "checkmark")
                     .catalogFont(size: 10, weight: .bold)
                     .foregroundStyle(OPNDesign.Fixed.accent)
@@ -318,7 +318,7 @@ struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(.black.opacity(0.88))
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OPNDesign.Fixed.accent.opacity(configuration.isPressed ? 0.76 : 1))
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fixed.accent.opacity(configuration.isPressed ? 0.76 : 1)))
     }
 }
 
@@ -332,8 +332,8 @@ struct CatalogOwnershipSecondaryButtonStyle: ButtonStyle {
             .foregroundStyle(OPNDesign.Fixed.ink(0.96))
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OPNDesign.Fill.neutral(configuration.isPressed ? 0.16 : 0.08))
-            .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(configuration.isPressed ? 0.16 : 0.08)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 
@@ -343,6 +343,8 @@ struct CatalogStorePickerPoster: View {
     let width: CGFloat
     let height: CGFloat
 
+    @Environment(\.opnUIScale) private var uiScale
+
     var body: some View {
         ZStack {
             OPNDesign.Surface.panel
@@ -351,7 +353,8 @@ struct CatalogStorePickerPoster: View {
                 .clipped()
         }
         .frame(width: width, height: height)
-        .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+        .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 
@@ -421,8 +424,8 @@ extension CatalogStorePickerRow {
         }
         .frame(maxWidth: .infinity, minHeight: 44 * uiScale, maxHeight: 44 * uiScale, alignment: .leading)
         .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
-        .background(OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08))
-        .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(isHovering ? 0.16 : 0.08)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
         .contentShape(Rectangle())
     }
 
@@ -436,8 +439,8 @@ extension CatalogStorePickerRow {
                 .fixedSize(horizontal: true, vertical: false)
                 .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
                 .frame(height: 22 * uiScale)
-                .background(OPNDesign.Fixed.ink(0.08))
-                .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fixed.ink(0.08)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
         }
     }
 

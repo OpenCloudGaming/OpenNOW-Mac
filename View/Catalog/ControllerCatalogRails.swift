@@ -33,9 +33,9 @@ struct ControllerHeroBillboard: View {
                     .frame(maxWidth: .infinity, minHeight: height)
             }
         }
-        .clipped()
-        .background(Color.black.opacity(0.34))
-        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(Color.black.opacity(0.34)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private func caption(for game: OPNCatalogGameObject) -> some View {
@@ -333,8 +333,9 @@ struct ControllerGameTile: View, Equatable {
                 .padding(15 * uiScale)
             }
             .frame(width: tileSize.width, height: tileSize.height)
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, role: .card, scale: uiScale)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(game.title.isEmpty ? "Game" : game.title)

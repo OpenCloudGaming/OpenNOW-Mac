@@ -178,7 +178,7 @@ struct ControllerGameDetailOverlay: View {
                 titleLineLimit: 2,
                 boxHeight: metrics.wordmarkHeight
             )
-            metadataLine
+            ControllerGameDetailMetadataLine(game: game)
             FlowLayout(spacing: 8 * uiScale) {
                 ForEach(GameDetailPresentation.capabilityLabels(game: game), id: \.self) { label in
                     Text(label)
@@ -186,31 +186,13 @@ struct ControllerGameDetailOverlay: View {
                         .foregroundStyle(OPNDesign.Text.primary)
                         .padding(.horizontal, 8 * uiScale)
                         .frame(height: 24 * uiScale)
-                        .background(OPNDesign.Fill.neutral(0.12))
-                        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.12)))
+                        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var metadataLine: some View {
-        HStack(spacing: 8 * uiScale) {
-            if !game.ratingLabel.isEmpty {
-                Text(game.ratingLabel.uppercased())
-            }
-            if game.maxOnlinePlayers > 1 { Image(systemName: "person.3.fill") }
-            if game.supportsKeyboard { Image(systemName: "keyboard") }
-            if game.supportsGamepad { Image(systemName: "gamecontroller.fill") }
-            if !game.genreLine.isEmpty {
-                Text(game.genres.prefix(3).joined(separator: ", ").uppercased())
-                    .lineLimit(1)
-            }
-        }
-        .catalogFont(size: 12, weight: .bold)
-        .tracking(0.6)
-        .foregroundStyle(OPNDesign.Text.secondary)
     }
 
     private var closeHeader: some View {
@@ -224,8 +206,8 @@ struct ControllerGameDetailOverlay: View {
                     .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(Color.black.opacity(0.55))
-                    .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(Color.black.opacity(0.55)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
         }
@@ -264,9 +246,9 @@ struct ControllerGameDetailOverlay: View {
             // sizing it larger as well made the pair read as two unrelated controls.
             .frame(minWidth: 150 * uiScale)
             .frame(height: 44 * uiScale)
-            .background(isFilled ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10))
-            .overlay { Rectangle().strokeBorder(isFilled ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
-            .openNowFocusRing(isFocused, onAccentFill: true)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFilled ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isFilled ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
         }
         .buttonStyle(.plain)
         .disabled(isPrimary && !availability.isPlayable)
@@ -309,9 +291,9 @@ struct ControllerGameDetailOverlay: View {
                             }
                             .padding(.horizontal, 14 * uiScale)
                             .frame(height: 48 * uiScale)
-                            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-                            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
-                            .openNowFocusRing(isFocused, onAccentFill: true)
+                            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+                            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                            .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
                         }
                         .buttonStyle(.plain)
                     }
@@ -320,9 +302,14 @@ struct ControllerGameDetailOverlay: View {
                 .padding(.bottom, 22 * uiScale)
             }
             .frame(width: min(560 * uiScale, max(layout.size.width - metrics.horizontalPadding * 2, 1)), alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background {
+                ZStack(alignment: .top) {
+                    OPNDesign.Surface.deep.opacity(0.98)
+                    Rectangle().fill(OPNDesign.accent).frame(height: 2)
+                }
+                .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+            }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 
@@ -378,9 +365,9 @@ struct ControllerGameDetailOverlay: View {
         } label: {
             CatalogRemoteImage(url: viewModel.optimizedImageURL(url, width: 640), contentMode: .fill, maxPixelSize: 640)
                 .frame(width: width, height: width * 9 / 16)
-                .clipped()
-                .overlay { Rectangle().strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
-                .openNowFocusRing(isSelected)
+                .clipShape(OPNCornerShape(role: .tile, scale: uiScale))
+                .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
+                .openNowFocusRing(isSelected, role: .tile, scale: uiScale)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -411,8 +398,8 @@ struct ControllerGameDetailOverlay: View {
                 .foregroundStyle(OPNDesign.Text.secondary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 26 * uiScale)
-                .background(OPNDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .padding(.bottom, 24 * uiScale)
         }
     }
@@ -455,6 +442,31 @@ struct ControllerGameDetailOverlay: View {
 
 /// Viewport-derived geometry. Both terms follow the window and are clamped, so nothing here can
 /// hand the layout a width the window does not actually have.
+/// The hero's metadata row: rating, player count, input badges and genres. Split out of the page so
+/// the page body stays inside the type-length budget.
+private struct ControllerGameDetailMetadataLine: View {
+    let game: OPNCatalogGameObject
+    @Environment(\.opnUIScale) private var uiScale
+
+    var body: some View {
+        HStack(spacing: 8 * uiScale) {
+            if !game.ratingLabel.isEmpty {
+                Text(game.ratingLabel.uppercased())
+            }
+            if game.maxOnlinePlayers > 1 { Image(systemName: "person.3.fill") }
+            if game.supportsKeyboard { Image(systemName: "keyboard") }
+            if game.supportsGamepad { Image(systemName: "gamecontroller.fill") }
+            if !game.genreLine.isEmpty {
+                Text(game.genres.prefix(3).joined(separator: ", ").uppercased())
+                    .lineLimit(1)
+            }
+        }
+        .catalogFont(size: 12, weight: .bold)
+        .tracking(0.6)
+        .foregroundStyle(OPNDesign.Text.secondary)
+    }
+}
+
 private struct ControllerGameDetailMetrics {
     let horizontalPadding: CGFloat
     let heroHeight: CGFloat
