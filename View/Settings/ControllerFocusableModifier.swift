@@ -91,6 +91,7 @@ private struct ControllerFocusableModifier: ViewModifier {
     @Environment(\.controllerFocusedRowID) private var focusedRowID
     @Environment(\.controllerFocusActive) private var isActive
     @Environment(\.controllerRowCommand) private var rowCommand
+    @Environment(\.opnUIScale) private var uiScale
 
     /// Completely inert until a pad is actually driving the page.
     ///
@@ -111,7 +112,7 @@ private struct ControllerFocusableModifier: ViewModifier {
                     }
                 }
                 .preference(key: SettingsFocusedHelpKey.self, value: focusedHelp)
-                .openNowFocusRing(focusedRowID == id)
+                .openNowFocusRing(focusedRowID == id, scale: uiScale)
                 .id(id)
                 .onChange(of: rowCommand) { _, command in
                     guard let command, focusedRowID == id else { return }

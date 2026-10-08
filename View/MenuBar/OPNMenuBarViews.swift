@@ -30,6 +30,13 @@ struct OPNMenuBarStatusLabel: View {
 /// representable inside the panel intermittently produced no image at all.
 struct OPNMenuBarSceneContent: View {
     @ObservedObject var session: OPNMenuBarSessionModel
+    /// The menu bar is its own `MenuBarExtra` scene, detached from the main window's environment, so
+    /// it observes the preference independently rather than inheriting ContentView's injection.
+    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
+
+    private var cornerStyle: OPNThemePreferences.CornerStyle {
+        OPNThemePreferences.CornerStyle(rawValue: cornerStyleRawValue) ?? .square
+    }
 
     var body: some View {
         OPNMenuBarPanel(session: session)
@@ -38,6 +45,7 @@ struct OPNMenuBarSceneContent: View {
                 // the session model follows it: each open re-checks for a session started elsewhere.
                 MenuBarPopoverWindowReader { session.observePopoverWindow($0) }
             }
+            .environment(\.opnCornerGeometry, OPNCornerGeometry(style: cornerStyle))
     }
 }
 

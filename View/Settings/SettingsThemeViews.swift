@@ -10,10 +10,16 @@ struct ThemeSettingsPage: View {
     @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isMotionReduced = false
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
+    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
 
     private var selectedAppearanceIndex: Int {
         let appearance = OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
         return OPNThemePreferences.Appearance.allCases.firstIndex(of: appearance) ?? 0
+    }
+
+    private var selectedCornerStyleIndex: Int {
+        let style = OPNThemePreferences.CornerStyle(rawValue: cornerStyleRawValue) ?? .square
+        return OPNThemePreferences.CornerStyle.allCases.firstIndex(of: style) ?? 0
     }
 
     private var selectedHomeLayoutIndex: Int {
@@ -59,6 +65,11 @@ struct ThemeSettingsPage: View {
                 SettingsOptionRow(title: "Appearance", subtitle: "Dark, light, or follow the macOS setting. The in-stream HUD and the sign-in screen stay dark either way.", options: OPNThemePreferences.Appearance.allCases.map(\.label), selectedIndex: selectedAppearanceIndex, isNew: OPNNewSettings.isNew(.appearance), uiScale: uiScale) { index in
                     OPNNewSettings.acknowledge(.appearance)
                     appearanceRawValue = OPNThemePreferences.Appearance.allCases[index].rawValue
+                }
+                SettingsDivider(uiScale: uiScale)
+                SettingsOptionRow(title: "Corner Style", subtitle: "Choose square or rounded corners for app controls, cards, and panels. Square keeps today's geometry; Rounded is opt-in and applies everywhere right away.", options: OPNThemePreferences.CornerStyle.allCases.map(\.label), selectedIndex: selectedCornerStyleIndex, isNew: OPNNewSettings.isNew(.cornerStyle), uiScale: uiScale) { index in
+                    OPNNewSettings.acknowledge(.cornerStyle)
+                    cornerStyleRawValue = OPNThemePreferences.CornerStyle.allCases[index].rawValue
                 }
             }
             .settingsSection("appearance")

@@ -127,20 +127,42 @@ enum OPNDesign {
         static func menuPanelVertical(scale: CGFloat) -> CGFloat { baseMenuPanelVertical * scale }
     }
 
-    enum Radius {
-        private static let baseAvatar: CGFloat = 14
-        private static let baseChip: CGFloat = 0
-        private static let baseCard: CGFloat = 2
-        private static let basePanel: CGFloat = 3
+    /// What a surface IS, not how round it is. A component asks for the role it plays and the
+    /// environment's corner geometry decides the radius, so a fill, its border, and its clipping
+    /// resolve from one value and can never disagree.
+    enum CornerRole {
+        /// Buttons, chips, fields, toggles, icon buttons, and other small controls.
+        case control
+        /// Small artwork tiles: menu-bar game and collection thumbnails.
+        case tile
+        /// Cards, rows, and list containers.
+        case card
+        /// Panels, docks, dropdown panels, and section chrome.
+        case panel
+    }
 
-        static let chip: CGFloat = baseChip
-        static let card: CGFloat = baseCard
-        static let panel: CGFloat = basePanel
+    /// The one place corner radii are written down. Square is zero for every role; rounded is the
+    /// opt-in geometry, resolved here rather than at a call site so no component invents its own
+    /// literal. `scale` is applied exactly once by the caller that owns the interface scale, and is
+    /// left at 1 where an outer `opnInterfaceScale` already transforms the subtree.
+    enum Corner {
+        private static let baseControl: CGFloat = 6
+        private static let baseTile: CGFloat = 6
+        private static let baseCard: CGFloat = 10
+        private static let basePanel: CGFloat = 12
 
-        static func avatar(scale: CGFloat) -> CGFloat { baseAvatar * scale }
-        static func chip(scale: CGFloat) -> CGFloat { baseChip * scale }
-        static func card(scale: CGFloat) -> CGFloat { baseCard * scale }
-        static func panel(scale: CGFloat) -> CGFloat { basePanel * scale }
+        static func radius(_ role: CornerRole, style: OPNThemePreferences.CornerStyle, scale: CGFloat = 1) -> CGFloat {
+            guard style == .rounded else { return 0 }
+            let base: CGFloat
+            switch role {
+            case .control: base = baseControl
+            case .tile: base = baseTile
+            case .card: base = baseCard
+            case .panel: base = basePanel
+            }
+            guard scale.isFinite, scale > 0 else { return 0 }
+            return base * scale
+        }
     }
 
     /// Type roles for the app. `label`/`body` use the app's UI sans (brand voice);
@@ -400,10 +422,15 @@ extension View {
     /// explicitly inert and absent rather than a permanently installed clear stroke.
     /// `onAccentFill` swaps the ring to the page surface colour. An accent ring over an accent
     /// background is invisible, so a focused primary button looked identical to an unfocused one.
-    func openNowFocusRing(_ isFocused: Bool, onAccentFill: Bool = false) -> some View {
+    func openNowFocusRing(
+        _ isFocused: Bool,
+        role: OPNDesign.CornerRole = .control,
+        scale: CGFloat = 1,
+        onAccentFill: Bool = false
+    ) -> some View {
         overlay {
             if isFocused {
-                Rectangle()
+                OPNCornerShape(role: role, scale: scale)
                     .strokeBorder(onAccentFill ? OPNDesign.Surface.app : OPNDesign.accent, lineWidth: 2)
                     .allowsHitTesting(false)
             }
@@ -498,6 +525,59 @@ private struct OPNHoverScaleModifier: ViewModifier {
     }
 }
 
+/// The environment's semantic corner policy. `OPNCornerShape` reads it, so every app-owned fill,
+/// border, clip, and focus outline resolves from the same value, and a style change repaints each
+/// surface that reads the environment rather than requiring a subtree rebuild.
+struct OPNCornerGeometry: Equatable, Sendable {
+    var style: OPNThemePreferences.CornerStyle
+
+    static let square = OPNCornerGeometry(style: .square)
+
+    func radius(_ role: OPNDesign.CornerRole, scale: CGFloat = 1) -> CGFloat {
+        OPNDesign.Corner.radius(role, style: style, scale: scale)
+    }
+}
+
+private struct OPNCornerGeometryKey: EnvironmentKey {
+    static let defaultValue = OPNCornerGeometry.square
+}
+
+/// The one shape every app-owned container is drawn with. It resolves its radius from the
+/// environment, so `square` reproduces the plain `Rectangle` the app shipped and `rounded` applies
+/// the semantic role's radius - and a fill, its `strokeBorder`, and its `clipShape` all agree
+/// because they are the same shape.
+struct OPNCornerShape: InsettableShape {
+    let role: OPNDesign.CornerRole
+    var scale: CGFloat = 1
+    private var inset: CGFloat = 0
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    init(role: OPNDesign.CornerRole, scale: CGFloat = 1) {
+        self.role = role
+        self.scale = scale
+    }
+
+    private init(role: OPNDesign.CornerRole, scale: CGFloat, inset: CGFloat) {
+        self.role = role
+        self.scale = scale
+        self.inset = inset
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let radius = max(geometry.radius(role, scale: scale) - inset, 0)
+        return Path(
+            roundedRect: rect.insetBy(dx: inset, dy: inset),
+            cornerSize: CGSize(width: radius, height: radius),
+            style: .continuous
+        )
+    }
+
+    func inset(by amount: CGFloat) -> OPNCornerShape {
+        OPNCornerShape(role: role, scale: scale, inset: inset + amount)
+    }
+}
+
 /// Real content-size UI scale for Catalog views (replaces the visual scaleEffect hack for that surface only).
 private struct OPNUIScaleKey: EnvironmentKey {
     static let defaultValue: CGFloat = 1.0
@@ -507,6 +587,11 @@ extension EnvironmentValues {
     var opnUIScale: CGFloat {
         get { self[OPNUIScaleKey.self] }
         set { self[OPNUIScaleKey.self] = newValue }
+    }
+
+    var opnCornerGeometry: OPNCornerGeometry {
+        get { self[OPNCornerGeometryKey.self] }
+        set { self[OPNCornerGeometryKey.self] = newValue }
     }
 }
 

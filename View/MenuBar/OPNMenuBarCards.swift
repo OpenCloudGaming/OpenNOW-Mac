@@ -14,31 +14,28 @@ import SwiftUI
 /// macOS 15.6 through 25 — the app's floor — there is no glass to draw and everything is the same
 /// translucent fill, so nothing is lost by the older OS.
 extension View {
-    func opnMenuBarCard(radius: CGFloat = 14, fillOpacity: Double = 0.07) -> some View {
+    func opnMenuBarCard(fillOpacity: Double = 0.07) -> some View {
         padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center cards
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                OPNCornerShape(role: .card)
                     .fill(OPNDesign.Fill.neutral(fillOpacity))
             }
             .overlay {
-                // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center cards
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .stroke(OPNDesign.Stroke.subtle, lineWidth: 1)
+                OPNCornerShape(role: .card)
+                    .strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1)
             }
     }
 
     /// A control inside a card: one of the few things that earns glass, because it is what the layer
     /// is for. Interactive glass is the variant that answers a press and a hover.
     @ViewBuilder
-    func opnMenuBarControl(radius: CGFloat = 9) -> some View {
+    func opnMenuBarControl() -> some View {
         if #available(macOS 26.0, *) {
-            glassEffect(.regular.interactive(), in: popoverShape(radius: radius))
+            glassEffect(.regular.interactive(), in: OPNCornerShape(role: .control))
         } else {
             background {
-                // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center controls
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                OPNCornerShape(role: .control)
                     .fill(OPNDesign.Fill.neutral(0.08))
             }
         }
@@ -46,10 +43,9 @@ extension View {
 
     /// A row in the popover's list: content, not chrome, so it stays a fill on every OS.
     @ViewBuilder
-    func opnMenuBarRow(radius: CGFloat = 9, fillOpacity: Double = 0.08) -> some View {
+    func opnMenuBarRow(fillOpacity: Double = 0.08) -> some View {
         background {
-            // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center list rows
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
+            OPNCornerShape(role: .control)
                 .fill(OPNDesign.Fill.neutral(fillOpacity))
         }
     }
@@ -61,23 +57,21 @@ extension View {
     /// same treatment the controls get. Before macOS 26 there is no glass to draw, so the tabs fall
     /// back to the translucent fill the rest of the surface uses, accent-marked when selected.
     @ViewBuilder
-    func opnMenuBarTab(isSelected: Bool, radius: CGFloat = 9) -> some View {
+    func opnMenuBarTab(isSelected: Bool) -> some View {
         if #available(macOS 26.0, *) {
             if isSelected {
-                glassEffect(.regular.tint(OPNDesign.accent).interactive(), in: popoverShape(radius: radius))
+                glassEffect(.regular.tint(OPNDesign.accent).interactive(), in: OPNCornerShape(role: .control))
             } else {
-                glassEffect(.regular.interactive(), in: popoverShape(radius: radius))
+                glassEffect(.regular.interactive(), in: OPNCornerShape(role: .control))
             }
         } else {
             background {
-                // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center tab fills
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                OPNCornerShape(role: .control)
                     .fill(isSelected ? OPNDesign.accent.opacity(0.20) : OPNDesign.Fill.neutral(0.06))
             }
             .overlay {
-                // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center tab fills
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .stroke(isSelected ? OPNDesign.accent.opacity(0.55) : OPNDesign.Stroke.subtle, lineWidth: 1)
+                OPNCornerShape(role: .control)
+                    .strokeBorder(isSelected ? OPNDesign.accent.opacity(0.55) : OPNDesign.Stroke.subtle, lineWidth: 1)
             }
         }
     }
@@ -97,10 +91,3 @@ extension View {
     }
 }
 
-/// The shape a glass element takes, in one place so the rounded-corner exception is annotated once
-/// for the glass path as well as the flat one.
-@available(macOS 26.0, *)
-private func popoverShape(radius: CGFloat) -> RoundedRectangle {
-    // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome, matches the Control Center glass elements
-    RoundedRectangle(cornerRadius: radius, style: .continuous)
-}

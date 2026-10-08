@@ -92,8 +92,9 @@ struct OPNReportIssueModal: View {
             footer
         }
         .frame(width: panelWidth)
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28 * uiScale, y: 20 * uiScale)
         .onExitCommand { presentation.dismiss() }
     }
@@ -263,13 +264,13 @@ struct OPNReportIssueModal: View {
     private var surveyThanksArea: some View {
         HStack(spacing: 10 * uiScale) {
             ZStack {
-                Rectangle().fill(OPNDesign.accent.opacity(0.16))
+                OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent.opacity(0.16))
                 Image(systemName: "checkmark")
                     .font(.uiSans(size: 15 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.accentInk)
             }
             .frame(width: 40 * uiScale, height: 40 * uiScale)
-            .overlay { Rectangle().strokeBorder(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
 
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 Text("Thanks for your feedback")

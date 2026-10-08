@@ -97,10 +97,10 @@ struct OPNDropdownPanel: View {
         .frame(minWidth: width == nil ? Self.minimumWidth(scale: uiScale) : nil)
         .frame(maxWidth: width == nil ? .infinity : nil)
         .frame(width: width)
-        .background(OPNDesign.Surface.panelRaised)
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panelRaised))
         .overlay {
-            Rectangle()
-                .stroke(OPNDesign.Stroke.regular, lineWidth: 1)
+            OPNCornerShape(role: .panel, scale: uiScale)
+                .strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
         }
     }
 
@@ -168,7 +168,7 @@ struct OPNDropdownMenu<Label: View>: View {
         .disabled(isDisabled)
         .overlay {
             if isFocused {
-                Rectangle().stroke(OPNDesign.accent, lineWidth: 2)
+                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent, lineWidth: 2)
             }
         }
         .background(

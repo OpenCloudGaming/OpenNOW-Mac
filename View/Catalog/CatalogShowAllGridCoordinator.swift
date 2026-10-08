@@ -8,6 +8,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         let parent: CatalogShowAllGridView
         let scale: CGFloat
         let density: CGFloat
+        let cornerGeometry: OPNCornerGeometry
     }
 
     private var parent: CatalogShowAllGridView
@@ -23,13 +24,14 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     private var density: CGFloat = 1
     private var isPosterLayout = false
     private var tileTitleVisibility: OPNThemePreferences.TileTitleVisibility = .onHover
+    private var cornerGeometry = OPNCornerGeometry.square
 
     init(_ parent: CatalogShowAllGridView) {
         self.parent = parent
     }
 
-    func update(_ parent: CatalogShowAllGridView, scale: CGFloat, density: CGFloat) {
-        pendingUpdate = Update(parent: parent, scale: scale, density: density)
+    func update(_ parent: CatalogShowAllGridView, scale: CGFloat, density: CGFloat, cornerGeometry: OPNCornerGeometry) {
+        pendingUpdate = Update(parent: parent, scale: scale, density: density, cornerGeometry: cornerGeometry)
         scheduleLayoutUpdate()
     }
 
@@ -66,6 +68,9 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         lastWidth = width
         lastViewportHeight = viewportHeight
         collectionView.frame.size.width = width
+        let resolvedCornerGeometry = update?.cornerGeometry ?? cornerGeometry
+        let isCornerStyleChanged = resolvedCornerGeometry != cornerGeometry
+        cornerGeometry = resolvedCornerGeometry
         let isSizingChanged = applySizing(to: layout, scale: update?.scale ?? scale, density: update?.density ?? density)
         let isGeometryChanged = isViewportChanged || previousDetailRowHeight != layout.detailRowHeight
         let selectedIdentity = parent.selectedGame?.catalogIdentity
@@ -86,12 +91,15 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         }
         if !isFullReload {
             reloadSelectionAffectedItems(in: collectionView, selectedIdentity: selectedIdentity)
+            // A style-only change repaints the visible tiles and the open detail panel in place: no
+            // reload, no layout pass, so scroll position and selection are untouched.
+            if isCornerStyleChanged { refreshVisibleItemContent(in: collectionView) }
         }
         if !isFullReload, isSelectionChanged || isGeometryChanged {
             applyLayout(to: collectionView, layout: layout, isAnimated: isSelectionChanged)
         }
         collectionView.frame.size.height = layout.collectionViewContentSize.height
-        if isViewportChanged { refreshDetailRows(in: collectionView) }
+        if isViewportChanged || isCornerStyleChanged { refreshDetailRows(in: collectionView) }
         if isSelectionChanged, let detailRowFrame = layout.detailRowFrame {
             collectionView.animator().scrollToVisible(detailRowFrame)
         }
@@ -130,6 +138,15 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         }
     }
 
+    /// Repaints each on-screen tile's hosted content with the current corner geometry, without
+    /// reloading data or invalidating layout.
+    private func refreshVisibleItemContent(in collectionView: NSCollectionView) {
+        for case let item as CatalogShowAllGridItem in collectionView.visibleItems() {
+            guard let indexPath = collectionView.indexPath(for: item), indexPath.item < parent.games.count else { continue }
+            configure(item: item, game: parent.games[indexPath.item])
+        }
+    }
+
     private func reloadSelectionAffectedItems(in collectionView: NSCollectionView, selectedIdentity: String?) {
         guard self.selectedIdentity != selectedIdentity else { return }
         let oldIdentity = self.selectedIdentity
@@ -155,7 +172,8 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
                 availableWidth: lastWidth,
                 viewportHeight: lastViewportHeight
             )
-            .environment(\.opnUIScale, scale)
+            .environment(\.opnUIScale, scale),
+            cornerGeometry: cornerGeometry
         )
     }
 
@@ -182,6 +200,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
             isSelected: parent.selectedGame?.catalogIdentity == game.catalogIdentity,
             isQueuedForPatching: parent.isQueuedForPatching(game),
             scale: scale,
+            cornerGeometry: cornerGeometry,
             tileTitleVisibility: tileTitleVisibility,
             onSelect: { [weak self] in self?.parent.onSelect(game) },
             onPlay: { [weak self] in self?.parent.onPlay(game) },

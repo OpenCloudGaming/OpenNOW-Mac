@@ -114,11 +114,28 @@ enum OPNThemePreferences {
         }
     }
 
+    /// How the app draws the corner of everything it owns: cards, buttons, fields, panels, and the
+    /// app-drawn menu-bar chrome. Square is the shipping geometry, so an installation that never
+    /// opened this setting sees the app it already had. `rounded` is opt-in and scales through the
+    /// semantic roles in `OPNDesign.Corner`, never through a literal at a call site.
+    enum CornerStyle: String, CaseIterable {
+        case square
+        case rounded
+
+        var label: String {
+            switch self {
+            case .square: "Square"
+            case .rounded: "Rounded"
+            }
+        }
+    }
+
     static let tileDensityKey = "OpenNOW.Interface.TileDensity"
     static let tileTitleVisibilityKey = "OpenNOW.Interface.TileTitles"
     static let isMotionReducedKey = "OpenNOW.Interface.ReduceMotion"
     static let accentColorKey = "OpenNOW.Interface.Accent"
     static let appearanceKey = "OpenNOW.Interface.Appearance"
+    static let cornerStyleKey = "OpenNOW.Interface.CornerStyle"
     static let isJumpBackInEnabledKey = "OpenNOW.Interface.JumpBackIn"
 
     /// Non-SwiftUI/AppKit access point: whatever the stored raw value is, an unknown one falls
@@ -139,6 +156,17 @@ enum OPNThemePreferences {
             return Appearance(rawValue: rawValue) ?? .dark
         }
         set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: appearanceKey) }
+    }
+
+    /// Non-SwiftUI/AppKit access point, mirroring `appearance`: a missing or unknown stored value
+    /// falls back to the shipping default (square) rather than surfacing as an optional everywhere
+    /// it is read. An existing installation that never wrote the key therefore keeps square corners.
+    static var cornerStyle: CornerStyle {
+        get {
+            guard let rawValue = OPNAppPreferenceStorage.standard.string(forKey: cornerStyleKey) else { return .square }
+            return CornerStyle(rawValue: rawValue) ?? .square
+        }
+        set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: cornerStyleKey) }
     }
 
     /// Whether the home page draws the Jump Back In rail above My Favorites. Shipping default is

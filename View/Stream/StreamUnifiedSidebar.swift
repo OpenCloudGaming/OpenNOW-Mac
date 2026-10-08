@@ -53,9 +53,22 @@ struct StreamUnifiedSidebar<Content: View>: View {
                 footer
             }
             .frame(width: StreamHUDTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
-            .background(StreamHUDTheme.panel.opacity(0.985))
-            .overlay(alignment: .trailing) { Rectangle().fill(StreamHUDTheme.divider).frame(width: 1) }
-            .overlay(alignment: .top) { Rectangle().fill(StreamHUDTheme.accent).frame(height: 2) }
+            // The fill, the trailing rule and the top accent strip are contained by the dock's own
+            // shape, while the content stays outside the clip so an open dropdown is never cropped.
+            .background {
+                ZStack(alignment: .topLeading) {
+                    StreamHUDTheme.panel.opacity(0.985)
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        Rectangle().fill(StreamHUDTheme.divider).frame(width: 1)
+                    }
+                    VStack(spacing: 0) {
+                        Rectangle().fill(StreamHUDTheme.accent).frame(height: 2)
+                        Spacer(minLength: 0)
+                    }
+                }
+                .clipShape(OPNCornerShape(role: .panel))
+            }
             .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
@@ -120,8 +133,8 @@ struct StreamUnifiedSidebar<Content: View>: View {
                 .font(.streamFont(size: 11, weight: .bold))
                 .foregroundStyle(isFocused ? StreamHUDTheme.accent : .white.opacity(0.82))
                 .frame(width: 28, height: 28)
-                .background(Color.white.opacity(isFocused ? 0.14 : 0.08))
-                .overlay { Rectangle().stroke(isFocused ? StreamHUDTheme.accent : Color.white.opacity(0.14), lineWidth: isFocused ? 2 : 1) }
+                .background(OPNCornerShape(role: .control).fill(Color.white.opacity(isFocused ? 0.14 : 0.08)))
+                .overlay { OPNCornerShape(role: .control).strokeBorder(isFocused ? StreamHUDTheme.accent : Color.white.opacity(0.14), lineWidth: isFocused ? 2 : 1) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -162,8 +175,8 @@ struct StreamUnifiedSidebar<Content: View>: View {
             .foregroundStyle(isHealthy ? StreamHUDTheme.accent : StreamHUDTheme.warning)
             .padding(.horizontal, 8)
             .frame(height: 28)
-            .background(Color.white.opacity(0.08))
-            .overlay { Rectangle().stroke(isHealthy ? StreamHUDTheme.divider : StreamHUDTheme.warning.opacity(0.5), lineWidth: 1) }
+            .background(OPNCornerShape(role: .control).fill(Color.white.opacity(0.08)))
+            .overlay { OPNCornerShape(role: .control).strokeBorder(isHealthy ? StreamHUDTheme.divider : StreamHUDTheme.warning.opacity(0.5), lineWidth: 1) }
             .accessibilityLabel("Session time remaining \(limit.remainingTimeText(at: context.date))")
         }
     }
