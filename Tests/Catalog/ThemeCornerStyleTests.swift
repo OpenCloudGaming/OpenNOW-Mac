@@ -111,6 +111,7 @@ import Testing
     /// `OPNCornerShape`, every fill and border in the app would silently fall back to square and
     /// this is the test that fails.
     @MainActor @Test func theEnvironmentActuallyReachesTheShape() throws {
+        OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
         let square = try #require(render(card(style: .square)))
         let rounded = try #require(render(card(style: .rounded)))
         #expect(square.size == rounded.size, "the two styles must not change layout")
@@ -118,15 +119,21 @@ import Testing
     }
 
     /// Visual evidence for the PR: the Appearance card with the Corner Style row in both settings,
-    /// at each interface scale, written only when a capture directory was asked for.
+    /// at each interface scale and in both palettes, written only when a capture directory was
+    /// asked for. The palette is resolved and restored synchronously around each render so a
+    /// concurrently rendering suite never sees the light palette.
     @MainActor @Test func theAppearanceCardRendersInBothStyles() throws {
-        for style in OPNThemePreferences.CornerStyle.allCases {
-            for scale in [1.0, 1.25, 1.5] as [CGFloat] {
-                let image = try #require(render(card(style: style, uiScale: scale)))
-                #expect(image.size.width > 0)
-                writeSnapshot(image, name: "corner-style-appearance-\(style.rawValue)-s\(scale).png")
+        for appearance in [OPNThemePreferences.Appearance.dark, .light] {
+            for style in OPNThemePreferences.CornerStyle.allCases {
+                for scale in [1.0, 1.25, 1.5] as [CGFloat] {
+                    OPNDesign.applyTheme(accent: .cloudGreen, appearance: appearance, systemColorScheme: .dark)
+                    let image = try #require(render(card(style: style, uiScale: scale)))
+                    #expect(image.size.width > 0)
+                    writeSnapshot(image, name: "corner-style-appearance-\(appearance.rawValue)-\(style.rawValue)-s\(scale).png")
+                }
             }
         }
+        OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
     }
 
     @MainActor
