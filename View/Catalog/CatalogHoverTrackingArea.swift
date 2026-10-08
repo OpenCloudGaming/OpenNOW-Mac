@@ -45,8 +45,12 @@ private struct CatalogHoverTrackingSurface: NSViewRepresentable {
 final class CatalogHoverTrackingNSView: NSView {
     var onHover: ((Bool) -> Void)?
 
+    /// Where the pointer is, in screen coordinates. Injectable so a test can hold the pointer still
+    /// without moving the real one.
+    var cursorLocation: @MainActor () -> NSPoint = { NSEvent.mouseLocation }
+
     private var isHovering = false
-    private var hoverMonitorTimer: Timer?
+    private var movementObservers: [AppKitViewMovementObserver] = []
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -66,12 +70,22 @@ final class CatalogHoverTrackingNSView: NSView {
         super.viewWillMove(toWindow: newWindow)
     }
 
-    func tearDown() {
-        applyHoverState(false)
-        stopHoverMonitor()
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        observeContentMovement()
     }
 
-    private func reconcileHoverState() {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observeContentMovement()
+    }
+
+    func tearDown() {
+        applyHoverState(false)
+        movementObservers = []
+    }
+
+    func reconcileHoverState() {
         applyHoverState(isCursorInsideBounds())
     }
 
@@ -79,28 +93,48 @@ final class CatalogHoverTrackingNSView: NSView {
         guard hovering != isHovering else { return }
         isHovering = hovering
         onHover?(hovering)
-        if hovering { startHoverMonitor() } else { stopHoverMonitor() }
     }
 
     private func isCursorInsideBounds() -> Bool {
-        guard let window else { return false }
-        let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        // A tile that is clipped out of its scroll view cannot be hovered, and on the home page most
+        // of them are: the page is an eager stack of rails, so every rail below the fold still holds
+        // its tiles. Checking the cheap clipping test first also keeps a tile scrolled past the top
+        // of the clip view from claiming a pointer that is over the bar above it.
+        guard let window, !visibleRect.isEmpty else { return false }
+        let pointInWindow = window.convertPoint(fromScreen: cursorLocation())
         return bounds.contains(convert(pointInWindow, from: nil))
     }
 
-    // Scrolling moves tiles under a stationary cursor, which produces no mouse events of its own.
-    // The poll only runs while this tile believes it is hovered, so at most one is ever live.
-    private func startHoverMonitor() {
-        guard hoverMonitorTimer == nil else { return }
-        let timer = Timer(timeInterval: 0.06, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.reconcileHoverState() }
+    // Scrolling moves tiles under a stationary cursor without producing any mouse event of its own,
+    // so the pointer alone cannot tell a tile that the content moved: the tile that scrolled under
+    // the cursor never hears about it, and the one that scrolled away keeps a highlight it no
+    // longer earns. Watch the content moving instead - every clip view this tile lives in, and each
+    // of their document views, for scroll offset and size changes - and recompute on each. A clip
+    // view only posts when its offset or size actually changes, so a catalog at rest schedules
+    // nothing at all, where the timer it replaces woke the run loop 16.7 times a second for as long
+    // as any tile was hovered.
+    private func observeContentMovement() {
+        movementObservers = []
+        guard window != nil else { return }
+        for clipView in ancestorClipViews() {
+            for view in [clipView, clipView.documentView].compactMap({ $0 }) {
+                movementObservers.append(AppKitViewMovementObserver(view: view) { [weak self] in
+                    self?.reconcileHoverState()
+                })
+            }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        hoverMonitorTimer = timer
     }
 
-    private func stopHoverMonitor() {
-        hoverMonitorTimer?.invalidate()
-        hoverMonitorTimer = nil
+    // Every clip view above this tile, not just the nearest one: a rail tile sits in its own
+    // horizontal rail and in the page's vertical stack, and either of them scrolling moves it under
+    // the cursor.
+    private func ancestorClipViews() -> [NSClipView] {
+        var clipViews: [NSClipView] = []
+        var node: NSView? = superview
+        while let current = node {
+            if let clipView = current as? NSClipView { clipViews.append(clipView) }
+            node = current.superview
+        }
+        return clipViews
     }
 }
