@@ -114,13 +114,16 @@ enum OPNThemePreferences {
         }
     }
 
-    /// How the app draws the corner of everything it owns: cards, buttons, fields, panels, and the
-    /// app-drawn menu-bar chrome. Square is the shipping geometry, so an installation that never
-    /// opened this setting sees the app it already had. `rounded` is opt-in and scales through the
-    /// semantic roles in `OPNDesign.Corner`, never through a literal at a call site.
+    /// How the app draws the corner of everything it owns. Square is the shipping geometry, so an
+    /// installation that never opened this setting sees the app it already had.
     enum CornerStyle: String, CaseIterable {
         case square
         case rounded
+
+        /// Resolves a stored raw value, falling back to the shipping default for anything unknown.
+        init(storedRawValue: String) {
+            self = CornerStyle(rawValue: storedRawValue) ?? .square
+        }
 
         var label: String {
             switch self {
@@ -159,13 +162,9 @@ enum OPNThemePreferences {
     }
 
     /// Non-SwiftUI/AppKit access point, mirroring `appearance`: a missing or unknown stored value
-    /// falls back to the shipping default (square) rather than surfacing as an optional everywhere
-    /// it is read. An existing installation that never wrote the key therefore keeps square corners.
+    /// resolves to the shipping default (square) rather than surfacing as an optional everywhere.
     static var cornerStyle: CornerStyle {
-        get {
-            guard let rawValue = OPNAppPreferenceStorage.standard.string(forKey: cornerStyleKey) else { return .square }
-            return CornerStyle(rawValue: rawValue) ?? .square
-        }
+        get { CornerStyle(storedRawValue: OPNAppPreferenceStorage.standard.string(forKey: cornerStyleKey) ?? "") }
         set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: cornerStyleKey) }
     }
 

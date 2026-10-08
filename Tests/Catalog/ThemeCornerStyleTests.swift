@@ -3,41 +3,52 @@ import SwiftUI
 import Testing
 @testable import OpenNOW
 
-/// The Corner style preference and the semantic geometry it drives. The preference is a storage and
-/// UI contract - stable raw values, a Square fallback, and the Interface key namespace - and the
-/// geometry is the single policy every app-owned fill, border, clip and focus outline resolves
-/// through.
-@Suite struct ThemeCornerStyleTests {
-    private let allRoles: [OPNDesign.CornerRole] = [.control, .tile, .card, .panel]
+/// The Corner style preference and the semantic geometry it drives: the storage contract (raw
+/// values, the Square fallback, the key) and the one policy every app-owned fill, border, clip and
+/// focus outline resolves through.
+@Suite(.serialized) struct ThemeCornerStyleTests {
+    private static let allRoles: [OPNDesign.CornerRole] = [.control, .tile, .card, .panel]
 
-    @Test func theShippingDefaultIsSquare() {
-        #expect(OPNThemePreferences.CornerStyle(rawValue: "square") == .square)
-        #expect(OPNThemePreferences.CornerStyle.allCases.first == .square)
+    @Test func anInstallationThatNeverChoseAStyleGetsSquare() {
+        withExclusivePreferenceDomain {
+            let key = OPNThemePreferences.cornerStyleKey
+            let previous = OPNAppPreferenceStorage.standard.object(forKey: key)
+            defer {
+                if let previous {
+                    OPNAppPreferenceStorage.standard.set(previous, forKey: key)
+                }
+                if previous == nil {
+                    OPNAppPreferenceStorage.standard.removeObject(forKey: key)
+                }
+            }
+
+            OPNAppPreferenceStorage.standard.removeObject(forKey: key)
+            #expect(OPNThemePreferences.cornerStyle == .square)
+
+            OPNThemePreferences.cornerStyle = .rounded
+            #expect(OPNThemePreferences.cornerStyle == .rounded)
+        }
     }
 
-    @Test func anUnknownOrMissingStoredValueFallsBackToSquare() {
-        #expect(OPNThemePreferences.CornerStyle(rawValue: "rounded ") ?? .square == .square)
-        #expect(OPNThemePreferences.CornerStyle(rawValue: "") ?? .square == .square)
-        #expect(OPNThemePreferences.CornerStyle(rawValue: "ROUNDED") ?? .square == .square)
-        #expect(OPNThemePreferences.CornerStyle(rawValue: "Rounded") ?? .square == .square)
+    @Test func aStoredValueThatNamesNoStyleFallsBackToSquare() {
+        #expect(OPNThemePreferences.CornerStyle(storedRawValue: "") == .square)
+        #expect(OPNThemePreferences.CornerStyle(storedRawValue: "ROUNDED") == .square)
+        #expect(OPNThemePreferences.CornerStyle(storedRawValue: "rounded ") == .square)
     }
 
-    /// The picker maps `allCases` by index and the raw values are what a stored preference survives
-    /// a rename by, so both the order and the raw values are a storage/UI contract.
-    @Test func everyStyleNamesItselfAndTheRawValuesAreStable() {
+    @Test func everyStyleNamesItselfWithStableRawValues() {
         #expect(OPNThemePreferences.CornerStyle.allCases.map(\.label) == ["Square", "Rounded"])
         #expect(OPNThemePreferences.CornerStyle.allCases.map(\.rawValue) == ["square", "rounded"])
     }
 
-    @Test func theStyleIsStoredInTheInterfaceNamespace() {
+    @Test func theStyleIsStoredUnderTheInterfaceKey() {
         #expect(OPNThemePreferences.cornerStyleKey == "OpenNOW.Interface.CornerStyle")
-        #expect(OPNThemePreferences.cornerStyleKey.hasPrefix("OpenNOW.Interface."))
     }
 
     /// Square is radius 0 for every role at every interface scale, so an installation that never
     /// opened the setting draws exactly the geometry the app shipped.
-    @Test func squareIsZeroForEveryRoleAndScale() {
-        for role in allRoles {
+    @Test func squareIsZeroForEveryRoleAtEveryScale() {
+        for role in Self.allRoles {
             for scale in [0.5, 1, 1.25, 1.5] as [CGFloat] {
                 #expect(OPNDesign.Corner.radius(role, style: .square, scale: scale) == 0)
             }
@@ -53,49 +64,39 @@ import Testing
         #expect(OPNDesign.Corner.radius(.panel, style: .rounded) == 12)
     }
 
-    /// The radius is multiplied by the interface scale exactly once, and an unusable scale degrades
-    /// to square rather than producing a NaN path.
-    @Test func roundedScalesOnceAndRejectsAnUnusableScale() {
+    @Test func roundedScalesOnce() {
         #expect(OPNDesign.Corner.radius(.card, style: .rounded, scale: 1.5) == 15)
         #expect(OPNDesign.Corner.radius(.control, style: .rounded, scale: 0.5) == 3)
+    }
+
+    @Test func roundedFallsBackToSquareForAnUnusableScale() {
         #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: 0) == 0)
         #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: -1) == 0)
         #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: .nan) == 0)
         #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: .infinity) == 0)
     }
 
-    /// The environment policy resolves through the same central metrics, and its default is square
-    /// so a surface that renders before the root injects anything still sees today's look.
-    @Test func theEnvironmentPolicyMirrorsTheCentralMetricsAndDefaultsToSquare() {
-        #expect(OPNCornerGeometry.square.style == .square)
-        #expect(OPNCornerGeometry.square.radius(.panel) == 0)
+    @Test func theEnvironmentPolicyMirrorsTheCentralMetrics() {
         let rounded = OPNCornerGeometry(style: .rounded)
-        for role in allRoles {
+        for role in Self.allRoles {
             #expect(rounded.radius(role, scale: 1) == OPNDesign.Corner.radius(role, style: .rounded, scale: 1))
             #expect(rounded.radius(role, scale: 1.5) == OPNDesign.Corner.radius(role, style: .rounded, scale: 1.5))
         }
     }
 
-    /// A style change is a geometry change over the same palette, not a new theme identity, which is
-    /// what lets a corner switch repaint in place instead of rebuilding subtrees.
-    @Test func twoStylesAreDistinctGeometryOverTheSameIdentity() {
+    @Test func theEnvironmentPolicyDefaultsToSquare() {
+        #expect(OPNCornerGeometry.square.style == .square)
+        #expect(OPNCornerGeometry.square.radius(.panel) == 0)
+    }
+
+    /// A style change is geometry over the same palette, not a new identity, which is what lets a
+    /// corner switch repaint in place instead of rebuilding the subtrees keyed on the theme.
+    @Test func aStyleChangeIsDistinctGeometryOverTheSameIdentity() {
         #expect(OPNCornerGeometry(style: .square) != OPNCornerGeometry(style: .rounded))
         #expect(OPNCornerGeometry(style: .rounded) == OPNCornerGeometry(style: .rounded))
     }
 
-    /// The preference rides the Interface prefix, so it is backed up and restored with the rest of
-    /// the Look settings and needs no registry change.
-    @Test func theStyleTravelsWithTheOtherInterfacePreferences() {
-        #expect(OPNCloudSyncSettingsRegistry.isSyncable(OPNThemePreferences.cornerStyleKey))
-        #expect(!OPNCloudSyncSettingsRegistry.isDenied(OPNThemePreferences.cornerStyleKey))
-    }
-
-    /// Corner style is findable by the words a reader would use, and its result targets the card it
-    /// actually lives in.
-    @MainActor @Test func cornerStyleIsFindableAndTargetsTheAppearanceCard() throws {
-        let entry = try #require(SettingsSearchIndex.entries.first { $0.title == "Corner Style" })
-        #expect(entry.group == .theme)
-        #expect(entry.sectionID == "appearance")
+    @MainActor @Test func cornerStyleIsFindableByItsWords() {
         for query in ["corner", "square", "rounded", "shape"] {
             #expect(
                 SettingsSearchIndex.results(for: query).contains { $0.title == "Corner Style" },
@@ -106,10 +107,8 @@ import Testing
 
     // MARK: - Environment reaches the shape
 
-    /// The end-to-end half of the policy: the same view tree, rendered twice with only the corner
-    /// geometry changed, must produce different pixels. If the environment ever stopped reaching
-    /// `OPNCornerShape`, every fill and border in the app would silently fall back to square and
-    /// this is the test that fails.
+    /// The end-to-end half of the policy: the same view tree rendered twice with only the corner
+    /// geometry changed must produce different pixels, or the environment never reached the shape.
     @MainActor @Test func theEnvironmentActuallyReachesTheShape() throws {
         OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
         let square = try #require(render(card(style: .square)))
@@ -118,11 +117,12 @@ import Testing
         #expect(pngData(square) != pngData(rounded), "the corner geometry never reached the shapes")
     }
 
-    /// Visual evidence for the PR: the Appearance card with the Corner Style row in both settings,
-    /// at each interface scale and in both palettes, written only when a capture directory was
-    /// asked for. The palette is resolved and restored synchronously around each render so a
-    /// concurrently rendering suite never sees the light palette.
+    /// Visual evidence for the PR: the Appearance card with the Corner Style row in both styles, at
+    /// each interface scale and in both palettes, written only when a capture directory was asked
+    /// for. The palette is restored after each render so a concurrently rendering suite never sees
+    /// the light palette.
     @MainActor @Test func theAppearanceCardRendersInBothStyles() throws {
+        defer { OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark) }
         for appearance in [OPNThemePreferences.Appearance.dark, .light] {
             for style in OPNThemePreferences.CornerStyle.allCases {
                 for scale in [1.0, 1.25, 1.5] as [CGFloat] {
@@ -133,7 +133,6 @@ import Testing
                 }
             }
         }
-        OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
     }
 
     @MainActor

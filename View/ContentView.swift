@@ -17,7 +17,6 @@ struct ContentView: View {
     @AppStorage(OPNThemePreferences.tileDensityKey) private var tileDensityRawValue = OPNThemePreferences.TileDensity.comfortable.rawValue
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
-    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
     /// Read at the true root, above anywhere the app forces `.preferredColorScheme`, so it always
     /// reflects what macOS is actually set to rather than an override further down the tree.
     @EnvironmentObject private var systemAppearance: OPNSystemAppearance
@@ -32,12 +31,6 @@ struct ContentView: View {
 
     private var appearancePreference: OPNThemePreferences.Appearance {
         OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
-    }
-
-    /// Kept out of `themeIdentity`: a corner change is a shape change, not a palette change, so it
-    /// must repaint through the environment instead of rebuilding the subtrees keyed on theme.
-    private var cornerStyle: OPNThemePreferences.CornerStyle {
-        OPNThemePreferences.CornerStyle(rawValue: cornerStyleRawValue) ?? .square
     }
 
     /// Bumped on every surface that rebuilds a subtree to invalidate the cached palette statics.
@@ -119,7 +112,7 @@ struct ContentView: View {
             .background(OPNInterfaceScaleDensityBooster(scale: uiScale))
             .environment(\.opnUIScale, uiScale)
             .environment(\.opnTileDensity, tileDensity)
-            .environment(\.opnCornerGeometry, OPNCornerGeometry(style: cornerStyle))
+            .opnObservingCornerStyle()
             .onDisappear { root.unbind() }
             // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`
             // before it calls `onAppear`, so the two would race.

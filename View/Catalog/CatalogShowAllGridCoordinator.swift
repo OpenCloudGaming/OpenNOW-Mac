@@ -91,9 +91,11 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         }
         if !isFullReload {
             reloadSelectionAffectedItems(in: collectionView, selectedIdentity: selectedIdentity)
-            // A style-only change repaints the visible tiles and the open detail panel in place: no
-            // reload, no layout pass, so scroll position and selection are untouched.
-            if isCornerStyleChanged { refreshVisibleItemContent(in: collectionView) }
+        }
+        // A style-only change repaints the visible tiles in place: no reload and no layout pass, so
+        // scroll position and selection are untouched.
+        if !isFullReload, isCornerStyleChanged {
+            refreshVisibleItemContent(in: collectionView)
         }
         if !isFullReload, isSelectionChanged || isGeometryChanged {
             applyLayout(to: collectionView, layout: layout, isAnimated: isSelectionChanged)

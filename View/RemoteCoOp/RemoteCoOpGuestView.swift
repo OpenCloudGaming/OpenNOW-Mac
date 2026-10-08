@@ -7,13 +7,6 @@ import SwiftUI
 struct RemoteCoOpGuestView: View {
     @StateObject private var viewModel = RemoteCoOpGuestViewModel()
     @Environment(\.opnUIScale) private var uiScale
-    /// This view is the root of its own singleton `Window` scene, so it observes the appearance
-    /// preference itself instead of inheriting the catalog window's injection.
-    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
-
-    private var cornerStyle: OPNThemePreferences.CornerStyle {
-        OPNThemePreferences.CornerStyle(rawValue: cornerStyleRawValue) ?? .square
-    }
 
     /// The controls sit over the game, so they retreat when the mouse does. Shown again on any
     /// movement, which is the same bargain the main stream surface makes.
@@ -60,7 +53,7 @@ struct RemoteCoOpGuestView: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
-        .environment(\.opnCornerGeometry, OPNCornerGeometry(style: cornerStyle))
+        .opnObservingCornerStyle()
     }
 
     /// A singleton SwiftUI `Window` scene - what this window is - does not reliably pick up

@@ -127,24 +127,21 @@ enum OPNDesign {
         static func menuPanelVertical(scale: CGFloat) -> CGFloat { baseMenuPanelVertical * scale }
     }
 
-    /// What a surface IS, not how round it is. A component asks for the role it plays and the
-    /// environment's corner geometry decides the radius, so a fill, its border, and its clipping
-    /// resolve from one value and can never disagree.
+    /// What a surface IS, not how round it is, so a fill, its border and its clipping all resolve
+    /// from one role and can never disagree.
     enum CornerRole {
-        /// Buttons, chips, fields, toggles, icon buttons, and other small controls.
+        /// Buttons, chips, fields, toggles and icon buttons.
         case control
         /// Small artwork tiles: menu-bar game and collection thumbnails.
         case tile
-        /// Cards, rows, and list containers.
+        /// Cards, rows and list containers.
         case card
-        /// Panels, docks, dropdown panels, and section chrome.
+        /// Panels, docks, dropdown panels and section chrome.
         case panel
     }
 
-    /// The one place corner radii are written down. Square is zero for every role; rounded is the
-    /// opt-in geometry, resolved here rather than at a call site so no component invents its own
-    /// literal. `scale` is applied exactly once by the caller that owns the interface scale, and is
-    /// left at 1 where an outer `opnInterfaceScale` already transforms the subtree.
+    /// The one place corner radii are written down. `scale` belongs to the caller that owns the
+    /// interface scale, and stays at 1 where an outer `opnInterfaceScale` already transforms it.
     enum Corner {
         private static let baseControl: CGFloat = 6
         private static let baseTile: CGFloat = 6
@@ -152,16 +149,17 @@ enum OPNDesign {
         private static let basePanel: CGFloat = 12
 
         static func radius(_ role: CornerRole, style: OPNThemePreferences.CornerStyle, scale: CGFloat = 1) -> CGFloat {
-            guard style == .rounded else { return 0 }
-            let base: CGFloat
+            guard style == .rounded, scale.isFinite, scale > 0 else { return 0 }
+            return base(role) * scale
+        }
+
+        private static func base(_ role: CornerRole) -> CGFloat {
             switch role {
-            case .control: base = baseControl
-            case .tile: base = baseTile
-            case .card: base = baseCard
-            case .panel: base = basePanel
+            case .control: baseControl
+            case .tile: baseTile
+            case .card: baseCard
+            case .panel: basePanel
             }
-            guard scale.isFinite, scale > 0 else { return 0 }
-            return base * scale
         }
     }
 
@@ -525,11 +523,10 @@ private struct OPNHoverScaleModifier: ViewModifier {
     }
 }
 
-/// The environment's semantic corner policy. `OPNCornerShape` reads it, so every app-owned fill,
-/// border, clip, and focus outline resolves from the same value, and a style change repaints each
-/// surface that reads the environment rather than requiring a subtree rebuild.
+/// The environment's semantic corner policy. A style change repaints every surface that reads it,
+/// rather than requiring the subtrees keyed on the palette to rebuild.
 struct OPNCornerGeometry: Equatable, Sendable {
-    var style: OPNThemePreferences.CornerStyle
+    let style: OPNThemePreferences.CornerStyle
 
     static let square = OPNCornerGeometry(style: .square)
 
@@ -542,20 +539,17 @@ private struct OPNCornerGeometryKey: EnvironmentKey {
     static let defaultValue = OPNCornerGeometry.square
 }
 
-/// The one shape every app-owned container is drawn with. It resolves its radius from the
-/// environment, so `square` reproduces the plain `Rectangle` the app shipped and `rounded` applies
-/// the semantic role's radius - and a fill, its `strokeBorder`, and its `clipShape` all agree
-/// because they are the same shape.
+/// The one shape every app-owned container is drawn with, so a fill, its `strokeBorder` and its
+/// `clipShape` agree by construction. Square reproduces the plain `Rectangle` the app shipped.
 struct OPNCornerShape: InsettableShape {
     let role: OPNDesign.CornerRole
-    var scale: CGFloat = 1
-    private var inset: CGFloat = 0
+    let scale: CGFloat
+    private let inset: CGFloat
 
     @Environment(\.opnCornerGeometry) private var geometry
 
     init(role: OPNDesign.CornerRole, scale: CGFloat = 1) {
-        self.role = role
-        self.scale = scale
+        self.init(role: role, scale: scale, inset: 0)
     }
 
     private init(role: OPNDesign.CornerRole, scale: CGFloat, inset: CGFloat) {
@@ -592,6 +586,22 @@ extension EnvironmentValues {
     var opnCornerGeometry: OPNCornerGeometry {
         get { self[OPNCornerGeometryKey.self] }
         set { self[OPNCornerGeometryKey.self] = newValue }
+    }
+}
+
+/// Injects the live Corner style into the environment. Every detached root observes the preference
+/// itself: the main window, each stream window, the menu bar scene and the Remote Co-Op window.
+private struct OPNCornerStyleInjectionModifier: ViewModifier {
+    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
+
+    func body(content: Content) -> some View {
+        content.environment(\.opnCornerGeometry, OPNCornerGeometry(style: OPNThemePreferences.CornerStyle(storedRawValue: cornerStyleRawValue)))
+    }
+}
+
+extension View {
+    func opnObservingCornerStyle() -> some View {
+        modifier(OPNCornerStyleInjectionModifier())
     }
 }
 

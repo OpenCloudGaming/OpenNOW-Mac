@@ -18,7 +18,7 @@ struct ThemeSettingsPage: View {
     }
 
     private var selectedCornerStyleIndex: Int {
-        let style = OPNThemePreferences.CornerStyle(rawValue: cornerStyleRawValue) ?? .square
+        let style = OPNThemePreferences.CornerStyle(storedRawValue: cornerStyleRawValue)
         return OPNThemePreferences.CornerStyle.allCases.firstIndex(of: style) ?? 0
     }
 

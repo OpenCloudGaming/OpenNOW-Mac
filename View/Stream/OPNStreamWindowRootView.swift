@@ -20,7 +20,6 @@ struct OPNStreamWindowRootView: View {
     @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScale = OPNInterfacePreferences.defaultUIScale
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
-    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
     @Environment(\.colorScheme) private var colorScheme
     @State private var windowTopInset: CGFloat = 0
 
@@ -30,10 +29,6 @@ struct OPNStreamWindowRootView: View {
 
     private var appearancePreference: OPNThemePreferences.Appearance {
         OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
-    }
-
-    private var cornerStyle: OPNThemePreferences.CornerStyle {
-        OPNThemePreferences.CornerStyle(rawValue: cornerStyleRawValue) ?? .square
     }
 
     private var preferredColorScheme: ColorScheme? {
@@ -81,7 +76,7 @@ struct OPNStreamWindowRootView: View {
         .background(Color.black)
         .background(StreamWindowAspectConfigurator(aspectRatio: session.streamProfile.aspectRatio, isLocked: true))
         .environment(\.opnUIScale, uiScale)
-        .environment(\.opnCornerGeometry, OPNCornerGeometry(style: cornerStyle))
+        .opnObservingCornerStyle()
         .preferredColorScheme(preferredColorScheme)
     }
 }
