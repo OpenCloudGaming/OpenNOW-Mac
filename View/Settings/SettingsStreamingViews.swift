@@ -73,8 +73,8 @@ struct UnavailableRegionPrompt: View {
             }
         }
         .padding(14 * uiScale)
-        .background(OPNDesign.Semantic.warning.opacity(0.08))
-        .overlay { Rectangle().stroke(OPNDesign.Semantic.warning.opacity(0.22), lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Semantic.warning.opacity(0.08)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Semantic.warning.opacity(0.22), lineWidth: 1) }
     }
 }
 

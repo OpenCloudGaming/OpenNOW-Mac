@@ -41,8 +41,8 @@ struct CatalogAvailabilityNotice: View {
         .padding(.horizontal, 14 * uiScale)
         .padding(.vertical, 11 * uiScale)
         .frame(maxWidth: 520 * uiScale, alignment: .leading)
-        .background(OPNDesign.Semantic.warning.opacity(0.14))
-        .overlay { Rectangle().stroke(OPNDesign.Semantic.warning.opacity(0.45), lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Semantic.warning.opacity(0.14)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Semantic.warning.opacity(0.45), lineWidth: 1) }
     }
 
     /// A square chip like the detail panel's other secondary controls, filled with the accent while
@@ -59,8 +59,8 @@ struct CatalogAvailabilityNotice: View {
             .foregroundStyle(isWatching ? OPNDesign.onAccent : OPNDesign.Text.primary)
             .padding(.horizontal, 12 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(isWatching ? OPNDesign.accent : OPNDesign.Fill.neutral(0.12))
-            .overlay { Rectangle().stroke(isWatching ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isWatching ? OPNDesign.accent : OPNDesign.Fill.neutral(0.12)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isWatching ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(GameDetailPresentation.watchActionAccessibilityLabel(isWatching: isWatching))

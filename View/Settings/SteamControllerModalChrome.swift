@@ -114,8 +114,8 @@ struct SteamControllerChip: View {
             .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(maxWidth: fillsWidth ? .infinity : nil, alignment: alignment)
             .frame(height: height * uiScale)
-            .background(background)
-            .overlay { Rectangle().stroke(stroke, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(background))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(stroke, lineWidth: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)
@@ -217,7 +217,8 @@ struct SteamControllerStatusMarker: View {
     }
 }
 
-/// Square badge — Section Fill, 1px Stroke Subtle, for the battery readout and similar chips.
+/// Badge — Section Fill, 1px Stroke Subtle, for the battery readout and similar chips. Follows the
+/// app's corner style like every other control.
 struct SteamControllerBadge<Content: View>: View {
     let uiScale: CGFloat
     @ViewBuilder let content: Content
@@ -226,12 +227,12 @@ struct SteamControllerBadge<Content: View>: View {
         content
             .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
             .frame(height: 20 * uiScale)
-            .background(OPNDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
-/// Section container: Section Fill, 1px Stroke Subtle, square, eyebrow header.
+/// Section container: Section Fill, 1px Stroke Subtle, eyebrow header.
 struct SteamControllerSection<Content: View>: View {
     let title: String
     let uiScale: CGFloat
@@ -244,7 +245,7 @@ struct SteamControllerSection<Content: View>: View {
         }
         .padding(OPNDesign.Spacing.card(scale: uiScale))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(0.055))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.055)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

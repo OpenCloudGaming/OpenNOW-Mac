@@ -27,8 +27,8 @@ struct SettingsRegionRow: View {
             .frame(maxWidth: .infinity, minHeight: 56 * uiScale, alignment: .leading)
             .padding(.horizontal, 11 * uiScale)
             .padding(.vertical, 9 * uiScale)
-            .background(isSelected ? OPNDesign.accent.opacity(0.13) : OPNDesign.Fill.neutral(isHovering ? 0.065 : 0.045))
-            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent.opacity(0.74) : (isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle), lineWidth: 1) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(isSelected ? OPNDesign.accent.opacity(0.13) : OPNDesign.Fill.neutral(isHovering ? 0.065 : 0.045)))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent.opacity(0.74) : (isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle), lineWidth: 1) }
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
@@ -66,8 +66,8 @@ struct RegionLatencyBadge: View {
         }
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 24 * uiScale)
-        .background(isSelected ? OPNDesign.Fill.neutral(0.20) : OPNDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent.opacity(0.30) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(isSelected ? OPNDesign.Fill.neutral(0.20) : OPNDesign.Fill.neutral(0.045)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent.opacity(0.30) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private var latencyText: String {

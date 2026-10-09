@@ -98,14 +98,14 @@ struct CatalogMessageView: View {
         let presentation = CatalogErrorPresentation(rawMessage: message)
         HStack(alignment: .center, spacing: 14) {
             ZStack {
-                Rectangle()
+                OPNCornerShape(role: .tile)
                     .fill(OPNDesign.accent.opacity(0.13))
                 Image(systemName: systemImage)
                     .catalogFont(size: 15, weight: .bold)
                     .foregroundStyle(OPNDesign.accentInk)
             }
             .frame(width: 36, height: 36)
-            .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .tile).strokeBorder(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(presentation.title)
@@ -128,8 +128,8 @@ struct CatalogMessageView: View {
                         .tracking(0.7)
                         .padding(.horizontal, 10)
                         .frame(height: 28)
-                        .background(OPNDesign.Fill.neutral(0.065))
-                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.065)))
+                        .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
             }
@@ -141,8 +141,8 @@ struct CatalogMessageView: View {
                         .tracking(0.7)
                         .padding(.horizontal, 10)
                         .frame(height: 28)
-                        .background(OPNDesign.accent.opacity(0.10))
-                        .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.34), lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control).fill(OPNDesign.accent.opacity(0.10)))
+                        .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.accent.opacity(0.34), lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .disabled(diagnosticsState.isWorking)
@@ -154,17 +154,19 @@ struct CatalogMessageView: View {
                         .catalogFont(size: 11, weight: .bold)
                         .foregroundStyle(OPNDesign.Text.tertiary)
                         .frame(width: 28, height: 28)
-                        .background(OPNDesign.Fill.neutral(0.065))
-                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.065)))
+                        .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .help("Dismiss")
             }
         }
         .padding(14)
-        .background(OPNDesign.Fill.neutral(0.060))
+        .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.060)))
         .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        // The leading accent bar follows the banner's own corners.
+        .opnCornerClip(role: .control)
     }
 
     private static func diagnosticsTitle(for state: AboutDiagnosticsState) -> String {
@@ -321,9 +323,9 @@ struct CatalogFavoriteButton: View {
                 .catalogFont(size: iconSize, weight: .bold)
                 .foregroundStyle(isFavorite ? .black.opacity(0.88) : OPNDesign.Semantic.favorite)
                 .frame(width: side * uiScale, height: side * uiScale)
-                .background(isFavorite ? OPNDesign.Semantic.favorite : OPNDesign.Fill.neutral(0.08))
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFavorite ? OPNDesign.Semantic.favorite : OPNDesign.Fill.neutral(0.08)))
                 .overlay {
-                    Rectangle().strokeBorder(OPNDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
+                    OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -469,8 +471,8 @@ struct CatalogRatingBadge: View {
                 .padding(.bottom, 4 * uiScale)
         }
         .frame(width: Self.baseWidth * uiScale, height: Self.baseHeight * uiScale)
-        .background(.white)
-        .overlay { Rectangle().stroke(.black, lineWidth: 2) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(.white))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(.black, lineWidth: 2) }
     }
 }
 

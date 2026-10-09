@@ -190,8 +190,7 @@ private struct OPNMenuBarCollectionTile: View {
     var body: some View {
         OPNCollectionIconView(icon: icon, size: 16)
             .frame(width: 34, height: 34)
-            .background(OPNDesign.Fill.neutral(0.08))
-            // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome: icon tiles match the Control Center cards this surface is modelled on
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(OPNCornerShape(role: .tile).fill(OPNDesign.Fill.neutral(0.08)))
+            .opnCornerClip(role: .tile)
     }
 }

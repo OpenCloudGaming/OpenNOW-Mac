@@ -91,9 +91,9 @@ private struct HomeRailRow: View {
         }
         .padding(.horizontal, 12 * uiScale)
         .padding(.vertical, 8 * uiScale)
-        .background(OPNDesign.Fill.neutral(isDropTargeted ? 0.10 : 0.045))
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(isDropTargeted ? 0.10 : 0.045)))
         .overlay {
-            Rectangle().strokeBorder(isDropTargeted ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1)
+            OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isDropTargeted ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1)
         }
         .opnMotion(OPNDesign.Motion.hover, value: isDropTargeted)
         .draggable(rail.id)

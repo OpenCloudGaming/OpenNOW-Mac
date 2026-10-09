@@ -38,8 +38,13 @@ struct ControllerCollectionPickerOverlay: View {
                     .padding(.bottom, 20 * uiScale)
             }
             .frame(maxWidth: 460 * uiScale, maxHeight: .infinity, alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
+            .background {
+                ZStack(alignment: .leading) {
+                    OPNDesign.Surface.deep.opacity(0.98)
+                    Rectangle().fill(OPNDesign.accent).frame(width: 3)
+                }
+                .opnCornerClip(role: .panel, scale: uiScale)
+            }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
         }
@@ -114,9 +119,9 @@ struct ControllerCollectionPickerOverlay: View {
             }
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 52 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale)
         }
         .buttonStyle(.plain)
     }
@@ -138,9 +143,9 @@ struct ControllerCollectionPickerOverlay: View {
             }
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 52 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale)
         }
         .buttonStyle(.plain)
     }
@@ -232,8 +237,8 @@ struct ControllerCollectionPickerOverlay: View {
             .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.secondary)
             .padding(.horizontal, 12 * uiScale)
             .frame(height: 32 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(isFocused ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isFocused ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private func iconCell(_ symbol: OPNCollectionSymbol, isFocused: Bool) -> some View {
@@ -242,9 +247,9 @@ struct ControllerCollectionPickerOverlay: View {
             .foregroundStyle(isFocused ? .black.opacity(0.86) : (isSelected ? OPNDesign.accentInk : OPNDesign.Text.secondary))
             .frame(maxWidth: .infinity)
             .frame(height: 40 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(isSelected ? 0.12 : 0.055))
-            .overlay { Rectangle().stroke(isSelected && !isFocused ? OPNDesign.accent.opacity(0.6) : OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(isSelected ? 0.12 : 0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isSelected && !isFocused ? OPNDesign.accent.opacity(0.6) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale)
     }
 
     private func iconHint(glyph: ControllerInputGlyph, text: String) -> some View {
@@ -268,9 +273,9 @@ struct ControllerCollectionPickerOverlay: View {
             }
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 46 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(isDestructive ? OPNDesign.Semantic.destructive.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isDestructive ? OPNDesign.Semantic.destructive.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale)
         }
         .buttonStyle(.plain)
     }
@@ -288,8 +293,8 @@ struct ControllerCollectionPickerOverlay: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14 * uiScale)
                 .frame(height: 52 * uiScale)
-                .background(OPNDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OPNDesign.accent, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent, lineWidth: 1) }
             if !viewModel.collectionsDialogError.isEmpty {
                 Text(viewModel.collectionsDialogError)
                     .catalogFont(size: 12, weight: .medium)

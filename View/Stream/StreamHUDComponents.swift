@@ -58,10 +58,10 @@ struct StreamHUDActionRow: View {
                 .foregroundStyle(iconColor)
                 .frame(width: isWidthFlexible ? nil : 42, height: 38)
                 .frame(maxWidth: isWidthFlexible ? .infinity : nil)
-                .background(rowBackground)
+                .background(OPNCornerShape(role: .control).fill(rowBackground))
                 .overlay {
-                    Rectangle()
-                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
+                    OPNCornerShape(role: .control)
+                        .strokeBorder(strokeColor, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -231,10 +231,10 @@ struct StreamQuitMenuButton: View {
                 .foregroundStyle(foregroundColor)
                 .frame(maxWidth: .infinity)
                 .frame(height: 38)
-                .background(backgroundColor)
+                .background(OPNCornerShape(role: .control).fill(backgroundColor))
                 .overlay {
-                    Rectangle()
-                        .stroke(strokeColor, lineWidth: isFocused ? 2 : 1)
+                    OPNCornerShape(role: .control)
+                        .strokeBorder(strokeColor, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -339,10 +339,10 @@ struct StreamHUDDropdown<Value: Hashable>: View {
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 26)
-                .background(Color.white.opacity(isHovering ? 0.14 : 0.075))
+                .background(OPNCornerShape(role: .control).fill(Color.white.opacity(isHovering ? 0.14 : 0.075)))
                 .overlay {
-                    Rectangle()
-                        .stroke((isOpen || isFocused) ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
+                    OPNCornerShape(role: .control)
+                        .strokeBorder((isOpen || isFocused) ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
             }
@@ -470,9 +470,10 @@ struct StreamHUDDropdown<Value: Hashable>: View {
             StreamHUDTheme.surfaceRaised
             StreamHUDTheme.panel
         }
+        .opnCornerClip(role: .panel)
         .overlay {
-            Rectangle()
-                .stroke(StreamHUDTheme.divider, lineWidth: 1)
+            OPNCornerShape(role: .panel)
+                .strokeBorder(StreamHUDTheme.divider, lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.55), radius: 14, x: 0, y: 8)
     }

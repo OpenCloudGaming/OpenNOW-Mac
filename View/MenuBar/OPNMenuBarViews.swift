@@ -38,6 +38,7 @@ struct OPNMenuBarSceneContent: View {
                 // the session model follows it: each open re-checks for a session started elsewhere.
                 MenuBarPopoverWindowReader { session.observePopoverWindow($0) }
             }
+            .opnObservingCornerStyle()
     }
 }
 

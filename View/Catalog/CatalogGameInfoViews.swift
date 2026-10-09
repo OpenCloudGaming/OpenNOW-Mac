@@ -143,8 +143,8 @@ struct CatalogGameInfoOverlay: View {
                         .foregroundStyle(OPNDesign.Text.primary)
                         .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
                         .frame(height: 24 * uiScale)
-                        .background(OPNDesign.Fill.neutral(0.12))
-                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.12)))
+                        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
             }
             .frame(maxWidth: metrics.mainColumnWidth, alignment: .leading)
@@ -198,8 +198,8 @@ struct CatalogGameInfoOverlay: View {
                 .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(OPNDesign.Text.primary)
                 .frame(width: 34 * uiScale, height: 34 * uiScale)
-                .background(Color.black.opacity(isCloseHovering ? 0.62 : 0.42))
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(Color.black.opacity(isCloseHovering ? 0.62 : 0.42)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isCloseHovering = $0 }
@@ -308,14 +308,14 @@ struct CatalogGameInfoOverlay: View {
         } label: {
             CatalogRemoteImage(url: viewModel.optimizedImageURL(url, width: 640), contentMode: .fill, maxPixelSize: 640)
                 .frame(width: width, height: width * 9 / 16)
-                .clipped()
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .opnCornerClip(role: .tile, scale: uiScale)
+                .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .catalogFont(size: 10, weight: .bold)
                         .foregroundStyle(OPNDesign.Text.primary)
                         .frame(width: 22 * uiScale, height: 22 * uiScale)
-                        .background(Color.black.opacity(0.55))
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(Color.black.opacity(0.55)))
                 }
                 .contentShape(Rectangle())
         }
@@ -343,8 +343,8 @@ struct CatalogGameInfoOverlay: View {
                     .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 30 * uiScale, height: min(64 * uiScale, height))
-                    .background(Color.black.opacity(0.72))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(Color.black.opacity(0.72)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .accessibilityLabel(label)
@@ -530,8 +530,8 @@ private struct CatalogGameInfoLightbox: View {
                     .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(OPNDesign.Fill.neutral(0.10))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.10)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .padding(.trailing, OPNDesign.Spacing.medium(scale: uiScale))
@@ -546,8 +546,8 @@ private struct CatalogGameInfoLightbox: View {
                     .foregroundStyle(OPNDesign.Text.secondary)
                     .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                     .frame(height: 26 * uiScale)
-                    .background(OPNDesign.Fill.neutral(0.08))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                     .padding(.bottom, OPNDesign.Spacing.large(scale: uiScale))
             }
         }
@@ -559,8 +559,8 @@ private struct CatalogGameInfoLightbox: View {
                 .catalogFont(size: 16, weight: .bold)
                 .foregroundStyle(OPNDesign.Text.primary)
                 .frame(width: 44 * uiScale, height: 64 * uiScale)
-                .background(OPNDesign.Fill.neutral(0.10))
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.10)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

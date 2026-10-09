@@ -89,8 +89,8 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
             .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.92) : OPNDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent))
+            .overlay { OPNCornerShape(role: .callToAction, scale: uiScale).strokeBorder(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
         }
         .buttonStyle(.opnPressable(scale: 0.94))
         .disabled(!cardPrimaryAction.isEnabled)
@@ -163,8 +163,11 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
                     .frame(width: posterWidth, height: posterHeight)
                 }
             }
+            // The artwork and tray are contained by the tile's own shape, and the border is drawn
+            // as the same shape so the two can never disagree.
+            .opnCornerClip(role: .card, scale: uiScale)
             .overlay {
-                Rectangle().stroke(isSelected ? OPNDesign.Fixed.accent : OPNDesign.Stroke.subtle, lineWidth: isSelected ? 2 : 1)
+                OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isSelected ? OPNDesign.Fixed.accent : OPNDesign.Stroke.subtle, lineWidth: isSelected ? 2 : 1)
             }
         }
         .frame(width: posterWidth, alignment: .top)
@@ -194,8 +197,8 @@ struct CatalogPosterSeeMoreTile: View {
                     .foregroundStyle(OPNDesign.Text.primary)
             }
             .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
-            .background(OPNDesign.Surface.tileTray)
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.strong, lineWidth: 2) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Surface.tileTray))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.strong, lineWidth: 2) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
             .opnMotion(OPNDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))
@@ -248,7 +251,8 @@ struct CatalogPosterActionTile: View {
                 .padding(14)
             }
             .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
-            .overlay { Rectangle().stroke(isHovering ? OPNDesign.Fixed.accent : OPNDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
+            .opnCornerClip(role: .card, scale: uiScale)
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isHovering ? OPNDesign.Fixed.accent : OPNDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
             .opnMotion(OPNDesign.Motion.hover, value: isHovering)
             .padding(.horizontal, CatalogPosterLayout.tileHorizontalMargin(scale: uiScale))

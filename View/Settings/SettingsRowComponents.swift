@@ -108,8 +108,8 @@ struct SettingsOptionRow: View {
                         }
                         .padding(.horizontal, 12 * uiScale)
                         .frame(height: 32 * uiScale)
-                        .background(index == selectedIndex ? OPNDesign.accent : OPNDesign.Fill.neutral(optionEnabled ? 0.07 : 0.035))
-                        .overlay { Rectangle().stroke(index == selectedIndex ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(index == selectedIndex ? OPNDesign.accent : OPNDesign.Fill.neutral(optionEnabled ? 0.07 : 0.035)))
+                        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(index == selectedIndex ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)
@@ -168,13 +168,13 @@ struct Toggle: View {
     var body: some View {
         Button { isOn.toggle() } label: {
             ZStack(alignment: .leading) {
-                Rectangle()
+                OPNCornerShape(role: .control, scale: uiScale)
                     .fill(isOn ? onColor : (isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle))
-                    .overlay { Rectangle().stroke(isOn ? onColor : OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isOn ? onColor : OPNDesign.Stroke.regular, lineWidth: 1) }
                     .opnMotion(OPNDesign.Motion.toggle, value: isOn)
                     .opnMotion(OPNDesign.Motion.toggle, value: isInert)
                     .opnMotion(OPNDesign.Motion.hover, value: isHovering)
-                Rectangle()
+                OPNCornerShape(role: .control, scale: uiScale)
                     .fill(isOn ? Color.black.opacity(0.85) : OPNDesign.Fill.neutral(0.72))
                     .frame(width: knobSize, height: knobSize)
                     .padding(knobInset)
@@ -254,8 +254,8 @@ private struct SettingsFieldRow<Field: View>: View {
                 .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 36 * uiScale)
-                .background(OPNDesign.Surface.field)
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .focused($isFieldFocused)
                 .onAppear { draft = text }
                 .onChange(of: text) { _, value in
@@ -398,8 +398,8 @@ struct SettingsActionButton: View {
                 .padding(.horizontal, 14 * uiScale)
                 .frame(minWidth: minimumWidth)
                 .frame(height: 32 * uiScale)
-                .background(backgroundColor)
-                .overlay { Rectangle().stroke(strokeColor, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(backgroundColor))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(strokeColor, lineWidth: 1) }
         }
         .buttonStyle(.opnPressable)
         .onHover { isHovering = $0 }
@@ -450,8 +450,8 @@ struct SettingsStatusPill: View {
         .padding(.horizontal, 10 * uiScale)
         .frame(minWidth: 94 * uiScale, alignment: .trailing)
         .frame(height: 40 * uiScale)
-        .background(OPNDesign.Fill.neutral(positive ? 0.055 : 0.035))
-        .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.24) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(positive ? 0.055 : 0.035)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(positive ? OPNDesign.accent.opacity(0.24) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -470,8 +470,8 @@ struct SettingsMessageView: View {
             Spacer()
         }
         .padding(12 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.07))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.07)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 

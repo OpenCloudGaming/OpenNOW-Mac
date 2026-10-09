@@ -143,9 +143,9 @@ struct StreamHUDClipboardRow: View {
         .padding(.vertical, 6)
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(isHovering ? 0.14 : 0.055))
+        .background(OPNCornerShape(role: .card).fill(Color.white.opacity(isHovering ? 0.14 : 0.055)))
         .overlay {
-            Rectangle().stroke(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
+            OPNCornerShape(role: .card).strokeBorder(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
         }
         .contentShape(Rectangle())
         // Dragging reaches the apps a share menu cannot, Discord among them.
@@ -194,9 +194,9 @@ struct StreamHUDClipboardClearButton: View {
                 .foregroundStyle(isArmed ? StreamHUDTheme.danger : StreamHUDTheme.textSecondary)
                 .frame(maxWidth: .infinity)
                 .frame(height: 28)
-                .background(Color.white.opacity(isHovering || isFocused ? 0.12 : 0.055))
+                .background(OPNCornerShape(role: .control).fill(Color.white.opacity(isHovering || isFocused ? 0.12 : 0.055)))
                 .overlay {
-                    Rectangle().stroke(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
+                    OPNCornerShape(role: .control).strokeBorder(isFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
         }

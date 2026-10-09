@@ -98,8 +98,8 @@ struct ScreenshotEditorView: View {
             .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, 11 * uiScale)
             .frame(height: RecordingActionButtonStyle.height * uiScale)
-            .background(OPNDesign.Fill.neutral(0.08))
-            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             .opacity(model.isReady ? 1 : 0.45)
         }
         .help("Drag on the screenshot, or select the whole image (⌘A)")

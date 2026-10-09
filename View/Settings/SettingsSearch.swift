@@ -115,6 +115,7 @@ enum SettingsSearchIndex {
 
     private static let themeEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Appearance", .theme, "appearance", keywords: ["light", "dark", "mode", "system", "theme", "night"]),
+        SettingsSearchEntry("Corner Style", .theme, "appearance", keywords: ["corner", "square", "rounded", "shape", "radius", "geometry", "edges", "appearance", "theme"]),
         SettingsSearchEntry("Interface Scale", .theme, "interface", keywords: ["ui", "size", "zoom", "text size", "5k"]),
         SettingsSearchEntry("Accent Colour", .theme, "accent", keywords: [
             "color", "colour", "highlight", "tint", "theme", "cloud green", "sky", "violet", "magenta", "amber", "coral",
@@ -278,9 +279,9 @@ struct SettingsSearchField: View {
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(height: 30 * uiScale)
-        .background(OPNDesign.Stroke.subtle)
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
         .overlay {
-            Rectangle().strokeBorder(isFocused ? OPNDesign.accent.opacity(0.44) : OPNDesign.Stroke.regular, lineWidth: 1)
+            OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isFocused ? OPNDesign.accent.opacity(0.44) : OPNDesign.Stroke.regular, lineWidth: 1)
         }
     }
 }
@@ -333,11 +334,16 @@ struct SettingsSearchResultRow: View {
             .padding(.horizontal, 14 * uiScale)
             .padding(.vertical, 8 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isHovering ? OPNDesign.Fill.neutral(0.06) : .clear)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isHovering ? OPNDesign.Fill.neutral(0.06) : .clear))
+            // The leading strip rides the row's own corners rather than squaring off past them.
             .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(isHovering ? OPNDesign.accent : .clear)
-                    .frame(width: 3 * uiScale)
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(isHovering ? OPNDesign.accent : .clear)
+                        .frame(width: 3 * uiScale)
+                    Spacer(minLength: 0)
+                }
+                .opnCornerClip(role: .control, scale: uiScale)
             }
             .contentShape(Rectangle())
         }
