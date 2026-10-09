@@ -470,7 +470,7 @@ struct StreamHUDDropdown<Value: Hashable>: View {
             StreamHUDTheme.surfaceRaised
             StreamHUDTheme.panel
         }
-        .clipShape(OPNCornerShape(role: .panel))
+        .opnCornerClip(role: .panel)
         .overlay {
             OPNCornerShape(role: .panel)
                 .strokeBorder(StreamHUDTheme.divider, lineWidth: 1)

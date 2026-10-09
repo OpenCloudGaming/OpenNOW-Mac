@@ -124,7 +124,7 @@ struct CatalogMainMenuPanel: View {
         }
         // The trailing rule and top accent bar are contained by the panel's own corners; the shadow
         // is applied after the clip so it is not cut off.
-        .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+        .opnCornerClip(role: .panel, scale: uiScale)
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
     }
 
@@ -305,7 +305,7 @@ struct CatalogMainMenuRow: View {
                     .frame(width: 3)
             }
             // The leading accent bar follows the row's corners; the hit area stays the full frame.
-            .clipShape(OPNCornerShape(role: .control, scale: uiScale))
+            .opnCornerClip(role: .control, scale: uiScale)
             .contentShape(Rectangle())
         }
         .buttonStyle(.opnPressable)

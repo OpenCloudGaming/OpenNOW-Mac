@@ -163,7 +163,7 @@ custom_rules:
       - comment.mark
       - comment.url
       - string
-    message: "DESIGN.md Radius: corner geometry is preference-driven. Draw app-owned fills, borders, clips and focus outlines with `OPNCornerShape(role:scale:)` (roles: control, tile, card, panel) instead of a Rectangle, and never write a radius literal at a call site. Documented fixed exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason."
+    message: "DESIGN.md Radius: corner geometry is preference-driven. Draw app-owned fills, borders and focus outlines with `OPNCornerShape(role:scale:)` and clips with `.opnCornerClip(role:scale:)` (roles: control, tile, card, panel) instead of a Rectangle, and never write a radius literal at a call site. Documented fixed exceptions (avatar, mic toggle, stream status dots, login vendor icons, controller diagram artwork) annotate the line with `swiftlint:disable:next design_no_corner_radius` and the reason."
     severity: error
 
   design_no_native_picker:

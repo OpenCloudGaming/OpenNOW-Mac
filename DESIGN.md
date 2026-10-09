@@ -183,9 +183,14 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   did not exist, and a missing or invalid stored value falls back to it. Rounded is opt-in and
   applies immediately, without a restart.
 - **One policy, not per-component literals**: every app-owned fill, border, clip and focus outline
-  is drawn with `OPNCornerShape(role:scale:)`, which reads the semantic geometry from the
-  environment (`\.opnCornerGeometry`) and resolves its radius from `OPNDesign.Corner`. Square is
-  radius 0 for every role; no component invents its own radius, and no call site writes one.
+  is drawn with `OPNCornerShape(role:scale:)` (`.fill(...)`, `.strokeBorder(...)`) or
+  `.opnCornerClip(role:scale:)`, which read the semantic geometry from the environment
+  (`\.opnCornerGeometry`) and resolve the radius from `OPNDesign.Corner`. Square is radius 0 for
+  every role; no component invents its own radius, and no call site writes one.
+- **`OPNCornerShape` is a factory, not a `Shape`**: SwiftUI resolves `@Environment` in a view and
+  never inside a `Shape`, so a shape that read the policy itself always saw the square default and
+  nothing on screen ever rounded. The factory builds a small view that reads the geometry instead,
+  which is also what makes a style change repaint in place without a subtree rebuild.
 - **Roles** (Rounded values at 100 % scale): `control` 6 — buttons, chips, fields, toggles, icon
   buttons and other small controls; `tile` 6 — small artwork tiles such as the menu bar's game and
   collection thumbnails; `card` 10 — cards, rows and list containers; `panel` 12 — panels, docks,

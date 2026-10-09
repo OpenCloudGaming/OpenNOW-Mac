@@ -402,7 +402,7 @@ struct CatalogPanelActionTile: View {
                 .padding(14)
             }
             .frame(width: CatalogVendorLayout.wideTileWidth(scale: uiScale, density: tileDensity), height: CatalogVendorLayout.wideTileHeight(scale: uiScale, density: tileDensity))
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
             .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isHovering ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogVendorLayout.tileScaleFactor)
             .opnMotion(OPNDesign.Motion.hover, value: isHovering)

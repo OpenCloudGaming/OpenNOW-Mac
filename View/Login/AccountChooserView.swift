@@ -75,7 +75,7 @@ struct AccountChooserOverlay: View {
         }
         // Clipped so the full-width accent bar follows the panel's own corners instead of poking
         // past them; the border and shadow are drawn outside the clip.
-        .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+        .opnCornerClip(role: .panel, scale: uiScale)
         .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
         .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28 * uiScale, y: 20 * uiScale)
@@ -270,7 +270,7 @@ struct AccountSwitchNoticeBanner: View {
             .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3 * uiScale) }
             // The leading accent rule is contained by the banner's own shape so it cannot poke past
             // the rounded corners; the border and shadow sit outside the clip.
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
             .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             .shadow(color: .black.opacity(0.5), radius: 24 * uiScale, y: 14 * uiScale)
             .padding(.bottom, OPNDesign.Spacing.large(scale: uiScale))

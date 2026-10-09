@@ -72,7 +72,7 @@ extension NativeNVSTMediaStreamSurface {
         .overlay(alignment: .top) { Rectangle().fill(StreamHUDTheme.accent).frame(height: 2) }
         // Clipped after the accent strip is drawn, so the strip follows the panel's corners; the
         // fill, border and shadow are added outside the clip.
-        .clipShape(OPNCornerShape(role: .panel))
+        .opnCornerClip(role: .panel)
         .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.985)))
         .overlay { OPNCornerShape(role: .panel).strokeBorder(StreamHUDTheme.accent.opacity(0.28), lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)

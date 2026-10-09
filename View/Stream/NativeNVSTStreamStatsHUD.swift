@@ -68,7 +68,7 @@ struct NativeNVSTStatsPanel: View {
         }
         // Clipped after the accent strip is drawn, so the strip and the header bar follow the
         // panel's corners; the fill, border and shadow are added outside the clip.
-        .clipShape(OPNCornerShape(role: .panel))
+        .opnCornerClip(role: .panel)
         .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.94)))
         .overlay(OPNCornerShape(role: .panel).strokeBorder(.white.opacity(0.16), lineWidth: 1))
         .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)

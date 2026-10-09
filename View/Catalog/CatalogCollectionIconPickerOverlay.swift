@@ -63,7 +63,7 @@ struct CatalogCollectionIconPickerOverlay: View {
             .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
             .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+            .opnCornerClip(role: .panel, scale: uiScale)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
         .fileImporter(isPresented: $isImageImporterPresented, allowedContentTypes: [.image]) { result in

@@ -174,7 +174,7 @@ struct GameDetailPanel: View {
                 }
                 .frame(width: panelWidth, height: resolvedHeight)
                 .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Surface.chrome))
-                .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+                .opnCornerClip(role: .card, scale: uiScale)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)

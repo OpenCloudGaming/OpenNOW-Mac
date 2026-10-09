@@ -27,7 +27,7 @@ struct CatalogShowAllPage: View {
                             .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.overlay))
                             .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(width: 1) }
                             // The leading rule is contained by the panel's own corners.
-                            .clipShape(OPNCornerShape(role: .panel))
+                            .opnCornerClip(role: .panel)
                     }
                 }
                 if isSortMenuPresented {
@@ -258,7 +258,7 @@ private struct CatalogSortDropdownPanel: View {
         }
         // The accent bar and trailing rule are contained by the panel's own corners; the shadow is
         // applied after the clip so it is not cut off.
-        .clipShape(OPNCornerShape(role: .panel))
+        .opnCornerClip(role: .panel)
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
     }
 }

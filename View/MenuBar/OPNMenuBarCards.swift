@@ -29,16 +29,8 @@ extension View {
 
     /// A control inside a card: one of the few things that earns glass, because it is what the layer
     /// is for. Interactive glass is the variant that answers a press and a hover.
-    @ViewBuilder
     func opnMenuBarControl() -> some View {
-        if #available(macOS 26.0, *) {
-            glassEffect(.regular.interactive(), in: OPNCornerShape(role: .control))
-        } else {
-            background {
-                OPNCornerShape(role: .control)
-                    .fill(OPNDesign.Fill.neutral(0.08))
-            }
-        }
+        modifier(OPNMenuBarControlModifier())
     }
 
     /// A row in the popover's list: content, not chrome, so it stays a fill on every OS.
@@ -56,23 +48,41 @@ extension View {
     /// chrome. A `GlassEffectContainer` in the panel gathers the row into one sampling region, the
     /// same treatment the controls get. Before macOS 26 there is no glass to draw, so the tabs fall
     /// back to the translucent fill the rest of the surface uses, accent-marked when selected.
-    @ViewBuilder
     func opnMenuBarTab(isSelected: Bool) -> some View {
+        modifier(OPNMenuBarTabModifier(isSelected: isSelected))
+    }
+}
+
+/// The glass shape has to be resolved from the environment, which a `Shape` cannot read, so the two
+/// glass paths live in modifiers of their own.
+private struct OPNMenuBarControlModifier: ViewModifier {
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            if isSelected {
-                glassEffect(.regular.tint(OPNDesign.accent).interactive(), in: OPNCornerShape(role: .control))
-            } else {
-                glassEffect(.regular.interactive(), in: OPNCornerShape(role: .control))
-            }
+            content.glassEffect(.regular.interactive(), in: geometry.shape(.control))
         } else {
-            background {
-                OPNCornerShape(role: .control)
-                    .fill(isSelected ? OPNDesign.accent.opacity(0.20) : OPNDesign.Fill.neutral(0.06))
-            }
-            .overlay {
-                OPNCornerShape(role: .control)
-                    .strokeBorder(isSelected ? OPNDesign.accent.opacity(0.55) : OPNDesign.Stroke.subtle, lineWidth: 1)
-            }
+            content.background(geometry.shape(.control).fill(OPNDesign.Fill.neutral(0.08)))
+        }
+    }
+}
+
+private struct OPNMenuBarTabModifier: ViewModifier {
+    let isSelected: Bool
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *), isSelected {
+            content.glassEffect(.regular.tint(OPNDesign.accent).interactive(), in: geometry.shape(.control))
+        } else if #available(macOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: geometry.shape(.control))
+        } else {
+            content
+                .background(geometry.shape(.control).fill(isSelected ? OPNDesign.accent.opacity(0.20) : OPNDesign.Fill.neutral(0.06)))
+                .overlay(geometry.shape(.control).strokeBorder(isSelected ? OPNDesign.accent.opacity(0.55) : OPNDesign.Stroke.subtle, lineWidth: 1))
         }
     }
 }

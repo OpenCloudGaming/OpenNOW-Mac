@@ -201,7 +201,7 @@ struct CatalogAccountDropdownPanel: View {
         }
         // The accent bar and trailing rule are contained by the panel's own corners; the shadow is
         // applied after the clip so it is not cut off.
-        .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+        .opnCornerClip(role: .panel, scale: uiScale)
         .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
     }
 }

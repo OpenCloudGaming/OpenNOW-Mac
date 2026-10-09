@@ -33,7 +33,7 @@ struct ControllerHeroBillboard: View {
                     .frame(maxWidth: .infinity, minHeight: height)
             }
         }
-        .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+        .opnCornerClip(role: .card, scale: uiScale)
         .background(OPNCornerShape(role: .card, scale: uiScale).fill(Color.black.opacity(0.34)))
         .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
@@ -333,7 +333,7 @@ struct ControllerGameTile: View, Equatable {
                 .padding(15 * uiScale)
             }
             .frame(width: tileSize.width, height: tileSize.height)
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
             .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .openNowFocusRing(isFocused, role: .card, scale: uiScale)
         }

@@ -67,7 +67,7 @@ struct StreamUnifiedSidebar<Content: View>: View {
                         Spacer(minLength: 0)
                     }
                 }
-                .clipShape(OPNCornerShape(role: .panel))
+                .opnCornerClip(role: .panel)
             }
             .shadow(color: .black.opacity(0.58), radius: 28, x: 14, y: 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

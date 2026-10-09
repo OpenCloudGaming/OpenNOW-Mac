@@ -308,7 +308,7 @@ struct CatalogGameInfoOverlay: View {
         } label: {
             CatalogRemoteImage(url: viewModel.optimizedImageURL(url, width: 640), contentMode: .fill, maxPixelSize: 640)
                 .frame(width: width, height: width * 9 / 16)
-                .clipShape(OPNCornerShape(role: .tile, scale: uiScale))
+                .opnCornerClip(role: .tile, scale: uiScale)
                 .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")

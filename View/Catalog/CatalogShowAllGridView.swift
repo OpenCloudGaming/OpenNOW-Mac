@@ -255,7 +255,7 @@ struct CatalogShowAllGridTile: View {
         }
         // The artwork, hover scrim and title tray are contained by the tile's own shape, while the
         // shadow stays outside the clip so it is not cut off at the corners.
-        .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+        .opnCornerClip(role: .card, scale: uiScale)
         .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
     }
 }

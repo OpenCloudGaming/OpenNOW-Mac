@@ -238,7 +238,7 @@ struct AccountHealthBadge: View {
                 SettingsVendorLayout.cardRaised
                 Rectangle().fill(positive ? OPNDesign.accent : OPNDesign.Semantic.warning).frame(width: 3 * uiScale)
             }
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
         }
         .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(positive ? OPNDesign.accent.opacity(0.35) : OPNDesign.Semantic.warning.opacity(0.30), lineWidth: 1) }
     }

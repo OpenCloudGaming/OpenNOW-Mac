@@ -43,7 +43,7 @@ struct ControllerCollectionPickerOverlay: View {
                     OPNDesign.Surface.deep.opacity(0.98)
                     Rectangle().fill(OPNDesign.accent).frame(width: 3)
                 }
-                .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+                .opnCornerClip(role: .panel, scale: uiScale)
             }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)

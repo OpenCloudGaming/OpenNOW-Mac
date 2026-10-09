@@ -166,7 +166,7 @@ struct CatalogMessageView: View {
         .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
         .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         // The leading accent bar follows the banner's own corners.
-        .clipShape(OPNCornerShape(role: .control))
+        .opnCornerClip(role: .control)
     }
 
     private static func diagnosticsTitle(for state: AboutDiagnosticsState) -> String {

@@ -191,6 +191,6 @@ private struct OPNMenuBarCollectionTile: View {
         OPNCollectionIconView(icon: icon, size: 16)
             .frame(width: 34, height: 34)
             .background(OPNCornerShape(role: .tile).fill(OPNDesign.Fill.neutral(0.08)))
-            .clipShape(OPNCornerShape(role: .tile))
+            .opnCornerClip(role: .tile)
     }
 }

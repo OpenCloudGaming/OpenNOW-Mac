@@ -178,7 +178,7 @@ struct ScreenshotRow: View {
                     Rectangle().fill(isSelected ? OPNDesign.accent : .clear).frame(width: 3)
                     Spacer(minLength: 0)
                 }
-                .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+                .opnCornerClip(role: .card, scale: uiScale)
             }
             .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent.opacity(0.48) : OPNDesign.Fill.neutral(isHovering ? 0.18 : 0.08), lineWidth: 1) }
         }
@@ -255,7 +255,7 @@ struct ScreenshotThumbnail: View {
                 .background(OPNDesign.accent)
         }
         // Clip after the badge so its corner follows the thumbnail rather than squaring past it.
-        .clipShape(OPNCornerShape(role: .tile, scale: uiScale))
+        .opnCornerClip(role: .tile, scale: uiScale)
         .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .task(id: screenshot.id) {
             thumbnail = await ScreenshotImageLoader.image(for: screenshot, longestEdge: 360)

@@ -353,7 +353,7 @@ struct CatalogStorePickerPoster: View {
                 .clipped()
         }
         .frame(width: width, height: height)
-        .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+        .opnCornerClip(role: .card, scale: uiScale)
         .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }

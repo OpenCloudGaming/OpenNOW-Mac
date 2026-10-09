@@ -165,7 +165,7 @@ struct CatalogPosterTile: View, @preconcurrency Equatable {
             }
             // The artwork and tray are contained by the tile's own shape, and the border is drawn
             // as the same shape so the two can never disagree.
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
             .overlay {
                 OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isSelected ? OPNDesign.Fixed.accent : OPNDesign.Stroke.subtle, lineWidth: isSelected ? 2 : 1)
             }
@@ -251,7 +251,7 @@ struct CatalogPosterActionTile: View {
                 .padding(14)
             }
             .frame(width: CatalogPosterLayout.posterTileWidth(scale: uiScale, density: tileDensity), height: CatalogPosterLayout.posterTileHeight(scale: uiScale, density: tileDensity))
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
             .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isHovering ? OPNDesign.Fixed.accent : OPNDesign.Stroke.regular, lineWidth: isHovering ? 2 : 1) }
             .opnHoverScale(isHovering, factor: CatalogPosterLayout.tileScaleFactor)
             .opnMotion(OPNDesign.Motion.hover, value: isHovering)

@@ -204,7 +204,7 @@ struct OPNReportIssueNotice: View {
             .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.045)))
             // The leading accent bar is a rule, but it must not poke past the note's own rounded
             // corners, so the composed view is contained by the same shape.
-            .clipShape(OPNCornerShape(role: .control, scale: uiScale))
+            .opnCornerClip(role: .control, scale: uiScale)
             .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

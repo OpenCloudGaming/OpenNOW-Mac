@@ -184,7 +184,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
             .padding(.vertical, 12)
             .background(.black.opacity(0.86))
         }
-        .clipShape(OPNCornerShape(role: .panel))
+        .opnCornerClip(role: .panel)
         .overlay { OPNCornerShape(role: .panel).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.54), radius: 26, y: 18)
         .onAppear {

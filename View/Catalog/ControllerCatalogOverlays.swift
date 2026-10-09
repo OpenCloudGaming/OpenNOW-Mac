@@ -309,7 +309,7 @@ struct ControllerSearchPickerOverlay: View {
                     OPNDesign.Surface.deep.opacity(0.98)
                     Rectangle().fill(OPNDesign.accent).frame(height: 2)
                 }
-                .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+                .opnCornerClip(role: .panel, scale: uiScale)
             }
             .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
@@ -406,7 +406,7 @@ struct ControllerActionMenuOverlay: View {
                     OPNDesign.Surface.deep.opacity(0.98)
                     Rectangle().fill(OPNDesign.accent).frame(width: 3)
                 }
-                .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+                .opnCornerClip(role: .panel, scale: uiScale)
             }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
@@ -467,7 +467,7 @@ struct ControllerAccountOptionsOverlay: View {
                     OPNDesign.Surface.deep.opacity(0.98)
                     Rectangle().fill(OPNDesign.accent).frame(width: 3)
                 }
-                .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+                .opnCornerClip(role: .panel, scale: uiScale)
             }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)

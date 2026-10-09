@@ -307,7 +307,7 @@ struct ControllerGameDetailOverlay: View {
                     OPNDesign.Surface.deep.opacity(0.98)
                     Rectangle().fill(OPNDesign.accent).frame(height: 2)
                 }
-                .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+                .opnCornerClip(role: .panel, scale: uiScale)
             }
             .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
@@ -365,7 +365,7 @@ struct ControllerGameDetailOverlay: View {
         } label: {
             CatalogRemoteImage(url: viewModel.optimizedImageURL(url, width: 640), contentMode: .fill, maxPixelSize: 640)
                 .frame(width: width, height: width * 9 / 16)
-                .clipShape(OPNCornerShape(role: .tile, scale: uiScale))
+                .opnCornerClip(role: .tile, scale: uiScale)
                 .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
                 .openNowFocusRing(isSelected, role: .tile, scale: uiScale)
                 .contentShape(Rectangle())

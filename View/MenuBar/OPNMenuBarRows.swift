@@ -60,7 +60,7 @@ struct OPNMenuBarArtwork: View {
         }
         .frame(width: 34, height: 34)
         .background(OPNCornerShape(role: .tile).fill(OPNDesign.Fill.neutral(0.08)))
-        .clipShape(OPNCornerShape(role: .tile))
+        .opnCornerClip(role: .tile)
         .task(id: url) { await load() }
     }
 

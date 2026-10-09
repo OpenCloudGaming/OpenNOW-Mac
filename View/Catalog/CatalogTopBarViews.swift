@@ -335,7 +335,7 @@ private struct CatalogTopBarPlate: ViewModifier {
                         .fill(isActive ? OPNDesign.accent : Color.clear)
                         .frame(height: 3)
                 }
-                .clipShape(OPNCornerShape(role: .control, scale: uiScale))
+                .opnCornerClip(role: .control, scale: uiScale)
             }
             .contentShape(Rectangle())
     }

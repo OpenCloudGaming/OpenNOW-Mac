@@ -75,7 +75,7 @@ struct OPNUpdateModal: View {
             footer
         }
         .frame(width: panelWidth)
-        .clipShape(OPNCornerShape(role: .panel, scale: uiScale))
+        .opnCornerClip(role: .panel, scale: uiScale)
         .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
         .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28 * uiScale, y: 20 * uiScale)

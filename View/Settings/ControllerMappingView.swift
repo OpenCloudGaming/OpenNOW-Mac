@@ -494,7 +494,7 @@ private struct SteamControllerCategoryRow: View {
                             .frame(width: 3 * uiScale)
                     }
                 }
-                .clipShape(OPNCornerShape(role: .control, scale: uiScale))
+                .opnCornerClip(role: .control, scale: uiScale)
             }
             .contentShape(Rectangle())
         }

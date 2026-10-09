@@ -71,7 +71,7 @@ struct SettingsCard<Content: View>: View {
                     .fill(OPNDesign.accent.opacity(0.10))
                     .frame(width: 1)
             }
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
         )
         .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
@@ -153,7 +153,7 @@ struct SettingsCollapsibleCard<Content: View>: View {
                     .fill(OPNDesign.accent.opacity(0.10))
                     .frame(width: 1)
             }
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
         )
         .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)

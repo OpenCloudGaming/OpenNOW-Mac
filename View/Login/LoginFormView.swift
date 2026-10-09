@@ -260,7 +260,7 @@ private struct TermsOfUseDialog: View {
         .frame(width: 460)
         // Clipped so the full-width accent bar follows the dialog's own corners instead of poking
         // past them; the border and shadow are drawn outside the clip.
-        .clipShape(OPNCornerShape(role: .panel))
+        .opnCornerClip(role: .panel)
         .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.panel))
         .overlay { OPNCornerShape(role: .panel).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)

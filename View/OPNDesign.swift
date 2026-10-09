@@ -533,42 +533,98 @@ struct OPNCornerGeometry: Equatable, Sendable {
     func radius(_ role: OPNDesign.CornerRole, scale: CGFloat = 1) -> CGFloat {
         OPNDesign.Corner.radius(role, style: style, scale: scale)
     }
+
+    func shape(_ role: OPNDesign.CornerRole, scale: CGFloat = 1) -> OPNResolvedCornerShape {
+        OPNResolvedCornerShape(radius: radius(role, scale: scale))
+    }
 }
 
 private struct OPNCornerGeometryKey: EnvironmentKey {
     static let defaultValue = OPNCornerGeometry.square
 }
 
-/// The one shape every app-owned container is drawn with, so a fill, its `strokeBorder` and its
-/// `clipShape` agree by construction. Square reproduces the plain `Rectangle` the app shipped.
-struct OPNCornerShape: InsettableShape {
-    let role: OPNDesign.CornerRole
-    let scale: CGFloat
+/// The corner shape with its radius already resolved from the environment.
+struct OPNResolvedCornerShape: InsettableShape {
+    let radius: CGFloat
     private let inset: CGFloat
 
-    @Environment(\.opnCornerGeometry) private var geometry
-
-    init(role: OPNDesign.CornerRole, scale: CGFloat = 1) {
-        self.init(role: role, scale: scale, inset: 0)
+    init(radius: CGFloat) {
+        self.init(radius: radius, inset: 0)
     }
 
-    private init(role: OPNDesign.CornerRole, scale: CGFloat, inset: CGFloat) {
-        self.role = role
-        self.scale = scale
+    private init(radius: CGFloat, inset: CGFloat) {
+        self.radius = radius
         self.inset = inset
     }
 
     func path(in rect: CGRect) -> Path {
-        let radius = max(geometry.radius(role, scale: scale) - inset, 0)
+        let resolved = max(radius - inset, 0)
         return Path(
             roundedRect: rect.insetBy(dx: inset, dy: inset),
-            cornerSize: CGSize(width: radius, height: radius),
+            cornerSize: CGSize(width: resolved, height: resolved),
             style: .continuous
         )
     }
 
-    func inset(by amount: CGFloat) -> OPNCornerShape {
-        OPNCornerShape(role: role, scale: scale, inset: inset + amount)
+    func inset(by amount: CGFloat) -> OPNResolvedCornerShape {
+        OPNResolvedCornerShape(radius: radius, inset: inset + amount)
+    }
+}
+
+/// The shape every app-owned fill and border is drawn with. It is a factory rather than a `Shape`
+/// because SwiftUI resolves `@Environment` in a view and not in a `Shape`; the views it builds read
+/// the geometry, so a fill, its `strokeBorder` and its `opnCornerClip` still agree.
+struct OPNCornerShape {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+
+    init(role: OPNDesign.CornerRole, scale: CGFloat = 1) {
+        self.role = role
+        self.scale = scale
+    }
+
+    func fill<Fill: ShapeStyle>(_ fill: Fill) -> some View {
+        OPNCornerFillView(role: role, scale: scale, fill: fill)
+    }
+
+    func strokeBorder<Stroke: ShapeStyle>(_ stroke: Stroke, lineWidth: CGFloat = 1) -> some View {
+        OPNCornerBorderView(role: role, scale: scale, stroke: stroke, lineWidth: lineWidth)
+    }
+}
+
+private struct OPNCornerFillView<Fill: ShapeStyle>: View {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+    let fill: Fill
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    var body: some View {
+        geometry.shape(role, scale: scale).fill(fill)
+    }
+}
+
+private struct OPNCornerBorderView<Stroke: ShapeStyle>: View {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+    let stroke: Stroke
+    let lineWidth: CGFloat
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    var body: some View {
+        geometry.shape(role, scale: scale).strokeBorder(stroke, lineWidth: lineWidth)
+    }
+}
+
+private struct OPNCornerClipModifier: ViewModifier {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    func body(content: Content) -> some View {
+        content.clipShape(geometry.shape(role, scale: scale))
     }
 }
 
@@ -602,6 +658,10 @@ private struct OPNCornerStyleInjectionModifier: ViewModifier {
 extension View {
     func opnObservingCornerStyle() -> some View {
         modifier(OPNCornerStyleInjectionModifier())
+    }
+
+    func opnCornerClip(role: OPNDesign.CornerRole, scale: CGFloat = 1) -> some View {
+        modifier(OPNCornerClipModifier(role: role, scale: scale))
     }
 }
 

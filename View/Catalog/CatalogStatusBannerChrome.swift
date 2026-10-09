@@ -48,7 +48,7 @@ struct VendorStatusBannerChrome<Actions: View>: View {
                     .fill(OPNDesign.Stroke.subtle)
                     .frame(height: 1)
             }
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
         }
     }
 }

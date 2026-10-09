@@ -105,16 +105,120 @@ import Testing
         }
     }
 
-    // MARK: - Environment reaches the shape
+    // MARK: - The environment reaches every shape
 
-    /// The end-to-end half of the policy: the same view tree rendered twice with only the corner
-    /// geometry changed must produce different pixels, or the environment never reached the shape.
-    @MainActor @Test func theEnvironmentActuallyReachesTheShape() throws {
+    /// Each of these renders one surface twice with only the corner geometry changed, so a failure
+    /// means SwiftUI stopped resolving the environment where that surface reads it. That is the bug
+    /// this family exists for: a `Shape` never sees `@Environment`, which left every fill, border and
+    /// clip square no matter what the preference said.
+    @MainActor
+    private func expectGeometryIsVisible(
+        _ surface: String,
+        sourceLocation: SourceLocation = #_sourceLocation,
+        @ViewBuilder content: () -> some View
+    ) throws {
         OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-        let square = try #require(render(card(style: .square)))
-        let rounded = try #require(render(card(style: .rounded)))
-        #expect(square.size == rounded.size, "the two styles must not change layout")
-        #expect(pngData(square) != pngData(rounded), "the corner geometry never reached the shapes")
+        let square = try #require(render(content().environment(\.opnCornerGeometry, OPNCornerGeometry(style: .square))), "\(surface) did not render")
+        let rounded = try #require(render(content().environment(\.opnCornerGeometry, OPNCornerGeometry(style: .rounded))), "\(surface) did not render")
+        #expect(square.size == rounded.size, "\(surface) changed layout instead of geometry", sourceLocation: sourceLocation)
+        #expect(pngData(square) != pngData(rounded), "\(surface) did not follow the corner geometry", sourceLocation: sourceLocation)
+    }
+
+    @MainActor @Test func aFillFollowsTheCornerGeometry() throws {
+        try expectGeometryIsVisible("a fill") {
+            Color.clear
+                .frame(width: 120, height: 60)
+                .background(OPNCornerShape(role: .control).fill(OPNDesign.accent))
+        }
+    }
+
+    @MainActor @Test func aBorderFollowsTheCornerGeometry() throws {
+        try expectGeometryIsVisible("a border") {
+            Color.clear
+                .frame(width: 120, height: 60)
+                .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.accent, lineWidth: 2) }
+        }
+    }
+
+    @MainActor @Test func aClipFollowsTheCornerGeometry() throws {
+        try expectGeometryIsVisible("a clip") {
+            Color.white
+                .frame(width: 120, height: 60)
+                .opnCornerClip(role: .control)
+        }
+    }
+
+    /// The button label is the case a `Shape` cannot serve: SwiftUI resolves a `Button`'s label and
+    /// its `ButtonStyle` body in their own contexts, and the environment has to reach both.
+    @MainActor @Test func aButtonLabelFollowsTheCornerGeometry() throws {
+        try expectGeometryIsVisible("a button label") {
+            Button {} label: {
+                Text("Play")
+                    .padding(.horizontal, 14)
+                    .frame(height: 28)
+                    .background(OPNCornerShape(role: .control).fill(OPNDesign.accent))
+            }
+            .buttonStyle(.opnPressable)
+        }
+    }
+
+    @MainActor @Test func theSharedButtonStylesFollowTheCornerGeometry() throws {
+        try expectGeometryIsVisible("the shared button styles") { buttonStack }
+    }
+
+    @MainActor @Test func aPosterTileFollowsTheCornerGeometry() throws {
+        try expectGeometryIsVisible("a poster tile") { posterTile }
+    }
+
+    /// Visual evidence for the two surfaces the setting was reported missing on.
+    @MainActor @Test func thePosterAndButtonsRenderInBothStyles() throws {
+        for style in OPNThemePreferences.CornerStyle.allCases {
+            let poster = try #require(render(posterTile.environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))))
+            writeSnapshot(poster, name: "corner-style-poster-\(style.rawValue).png")
+            let buttons = try #require(render(buttonStack.environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))))
+            writeSnapshot(buttons, name: "corner-style-buttons-\(style.rawValue).png")
+        }
+    }
+
+    @MainActor
+    private var posterTile: some View {
+        CatalogPosterTile(
+            game: posterGame,
+            imageURL: nil,
+            isSelected: true,
+            isSelectionActive: true,
+            isQueuedForPatching: false,
+            isResumableSession: false,
+            showsFreeAccountAccessBadges: false,
+            onSelect: {},
+            onPlay: {},
+            onMarkOwned: {},
+            onQueueForPatching: {}
+        )
+        .environment(\.opnUIScale, 1)
+        .frame(width: 260, height: 400)
+        .background(Color.black)
+    }
+
+    @MainActor
+    private var buttonStack: some View {
+        VStack(spacing: 12) {
+            Button("Compact") {}
+                .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: 1))
+            Button("Modal secondary") {}
+                .buttonStyle(OPNModalSecondaryButtonStyle(uiScale: 1))
+            Button("Get in") {}
+                .buttonStyle(VendorGetInButtonStyle(size: .large, uiScale: 1))
+        }
+        .padding(16)
+        .background(Color.black)
+    }
+
+    private var posterGame: OPNCatalogGameObject {
+        var info = OPNGameInfo()
+        info.id = "corner-style-game"
+        info.title = "Corner Style Game"
+        return OPNCatalogGameObject(game: info)
     }
 
     /// Visual evidence for the PR: the Appearance card with the Corner Style row in both styles, at

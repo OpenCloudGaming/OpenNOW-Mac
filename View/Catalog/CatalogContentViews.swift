@@ -453,7 +453,7 @@ struct CatalogHeroView: View {
                 .frame(width: bandWidth, alignment: .leading)
             }
             .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth, viewportHeight: availableHeight, scale: uiScale))
-            .clipShape(OPNCornerShape(role: .card, scale: uiScale))
+            .opnCornerClip(role: .card, scale: uiScale)
         }
     }
 }

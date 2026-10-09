@@ -343,7 +343,7 @@ struct SettingsSearchResultRow: View {
                         .frame(width: 3 * uiScale)
                     Spacer(minLength: 0)
                 }
-                .clipShape(OPNCornerShape(role: .control, scale: uiScale))
+                .opnCornerClip(role: .control, scale: uiScale)
             }
             .contentShape(Rectangle())
         }

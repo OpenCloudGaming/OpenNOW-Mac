@@ -118,7 +118,7 @@ struct ControllerHintBar: View {
                 Color.black.opacity(0.36)
                 Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1)
             }
-            .clipShape(OPNCornerShape(role: .control, scale: uiScale))
+            .opnCornerClip(role: .control, scale: uiScale)
         }
     }
 }
