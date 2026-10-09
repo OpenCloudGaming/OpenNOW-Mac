@@ -7,7 +7,7 @@ import Testing
 /// values, the Square fallback, the key) and the one policy every app-owned fill, border, clip and
 /// focus outline resolves through.
 @Suite(.serialized) struct ThemeCornerStyleTests {
-    private static let allRoles: [OPNDesign.CornerRole] = [.control, .tile, .card, .panel]
+    private static let allRoles: [OPNDesign.CornerRole] = [.control, .tile, .card, .panel, .callToAction]
 
     @Test func anInstallationThatNeverChoseAStyleGetsSquare() {
         withExclusivePreferenceDomain {
@@ -46,11 +46,12 @@ import Testing
     }
 
     /// Square is radius 0 for every role at every interface scale, so an installation that never
-    /// opened the setting draws exactly the geometry the app shipped.
+    /// opened the setting draws exactly the geometry the app shipped - including a call to action,
+    /// which is a rectangle there rather than a pill.
     @Test func squareIsZeroForEveryRoleAtEveryScale() {
         for role in Self.allRoles {
             for scale in [0.5, 1, 1.25, 1.5] as [CGFloat] {
-                #expect(OPNDesign.Corner.radius(role, style: .square, scale: scale) == 0)
+                #expect(OPNDesign.Corner.geometry(role, style: .square, scale: scale) == .radius(0))
             }
         }
     }
@@ -58,35 +59,35 @@ import Testing
     /// The Rounded metrics are resolved centrally. Pinned by value so a later edit to one role is a
     /// deliberate, reviewed change rather than drift.
     @Test func roundedUsesTheSemanticRoleMetrics() {
-        #expect(OPNDesign.Corner.radius(.control, style: .rounded) == 6)
-        #expect(OPNDesign.Corner.radius(.tile, style: .rounded) == 6)
-        #expect(OPNDesign.Corner.radius(.card, style: .rounded) == 10)
-        #expect(OPNDesign.Corner.radius(.panel, style: .rounded) == 12)
+        #expect(OPNDesign.Corner.geometry(.control, style: .rounded) == .radius(6))
+        #expect(OPNDesign.Corner.geometry(.tile, style: .rounded) == .radius(6))
+        #expect(OPNDesign.Corner.geometry(.card, style: .rounded) == .radius(10))
+        #expect(OPNDesign.Corner.geometry(.panel, style: .rounded) == .radius(12))
+        #expect(OPNDesign.Corner.geometry(.callToAction, style: .rounded) == .capsule)
     }
 
     @Test func roundedScalesOnce() {
-        #expect(OPNDesign.Corner.radius(.card, style: .rounded, scale: 1.5) == 15)
-        #expect(OPNDesign.Corner.radius(.control, style: .rounded, scale: 0.5) == 3)
+        #expect(OPNDesign.Corner.geometry(.card, style: .rounded, scale: 1.5) == .radius(15))
+        #expect(OPNDesign.Corner.geometry(.control, style: .rounded, scale: 0.5) == .radius(3))
     }
 
     @Test func roundedFallsBackToSquareForAnUnusableScale() {
-        #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: 0) == 0)
-        #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: -1) == 0)
-        #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: .nan) == 0)
-        #expect(OPNDesign.Corner.radius(.panel, style: .rounded, scale: .infinity) == 0)
+        for scale in [0, -1, .nan, .infinity] as [CGFloat] {
+            #expect(OPNDesign.Corner.geometry(.panel, style: .rounded, scale: scale) == .radius(0))
+            #expect(OPNDesign.Corner.geometry(.callToAction, style: .rounded, scale: scale) == .radius(0))
+        }
     }
 
-    @Test func theEnvironmentPolicyMirrorsTheCentralMetrics() {
-        let rounded = OPNCornerGeometry(style: .rounded)
-        for role in Self.allRoles {
-            #expect(rounded.radius(role, scale: 1) == OPNDesign.Corner.radius(role, style: .rounded, scale: 1))
-            #expect(rounded.radius(role, scale: 1.5) == OPNDesign.Corner.radius(role, style: .rounded, scale: 1.5))
-        }
+    @Test func theEnvironmentPolicyResolvesTheCallToActionToAPill() {
+        #expect(OPNCornerGeometry(style: .rounded).shape(.callToAction).geometry == .capsule)
+        #expect(OPNCornerGeometry(style: .square).shape(.callToAction).geometry == .radius(0))
     }
 
     @Test func theEnvironmentPolicyDefaultsToSquare() {
         #expect(OPNCornerGeometry.square.style == .square)
-        #expect(OPNCornerGeometry.square.radius(.panel) == 0)
+        for role in Self.allRoles {
+            #expect(OPNCornerGeometry.square.shape(role).geometry == .radius(0))
+        }
     }
 
     /// A style change is geometry over the same palette, not a new identity, which is what lets a
@@ -148,6 +149,67 @@ import Testing
         }
     }
 
+    @MainActor @Test func aCallToActionFollowsTheCornerGeometry() throws {
+        try expectGeometryIsVisible("a call to action") { pillShape }
+    }
+
+    /// A capsule is not a radius, so the shape has to resolve it per rect: half the shorter side.
+    /// The inset is read from the arc's first fully covered row, so it lands a few points inside
+    /// half the height - hence the tolerance, which is still far tighter than any radius role.
+    @MainActor @Test func aCallToActionDrawsAPillInRoundedAndARectangleInSquare() throws {
+        let height: CGFloat = 60
+        let square = try #require(render(clippedShape(role: .callToAction, height: height, style: .square)))
+        let rounded = try #require(render(clippedShape(role: .callToAction, height: height, style: .rounded)))
+        let panel = try #require(render(clippedShape(role: .panel, height: height, style: .rounded)))
+        let squareInset = try #require(cornerInset(of: square))
+        let roundedInset = try #require(cornerInset(of: rounded))
+        let panelInset = try #require(cornerInset(of: panel))
+        #expect(squareInset == 0, "a call to action must stay square in Square")
+        #expect(abs(roundedInset - height / 2) <= 4, "a call to action is not a pill, measured \(roundedInset)")
+        #expect(roundedInset > panelInset * 2, "a call to action is no rounder than a panel radius")
+    }
+
+    /// The pill with no geometry of its own, so the caller supplies the environment.
+    @MainActor
+    private var pillShape: some View {
+        Color.white
+            .frame(width: 120, height: 30)
+            .opnCornerClip(role: .callToAction)
+            .background(Color.black)
+    }
+
+    @MainActor
+    private func clippedShape(role: OPNDesign.CornerRole, height: CGFloat, style: OPNThemePreferences.CornerStyle) -> some View {
+        Color.white
+            .frame(width: 120, height: height)
+            .opnCornerClip(role: role)
+            .environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))
+            .background(Color.black)
+    }
+
+    /// The top-row inset of the bright shape on an opaque black background. A pill's inset is half
+    /// its height, which is what separates a capsule from any radius.
+    private func cornerInset(of image: NSImage) -> CGFloat? {
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        let width = rep.pixelsWide
+        let height = rep.pixelsHigh
+        let isInside: (Int, Int) -> Bool = { x, y in
+            (rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 0) > 0.5
+        }
+        var minX = width, maxX = -1, minY = height, maxY = -1
+        for y in 0..<height {
+            for x in 0..<width where isInside(x, y) {
+                minX = min(minX, x)
+                maxX = max(maxX, x)
+                minY = min(minY, y)
+                maxY = max(maxY, y)
+            }
+        }
+        guard maxX > minX, maxY > minY else { return nil }
+        for x in minX...maxX where isInside(x, minY) { return CGFloat(x - minX) / 2 }
+        return nil
+    }
+
     /// The button label is the case a `Shape` cannot serve: SwiftUI resolves a `Button`'s label and
     /// its `ButtonStyle` body in their own contexts, and the environment has to reach both.
     @MainActor @Test func aButtonLabelFollowsTheCornerGeometry() throws {
@@ -162,20 +224,25 @@ import Testing
         }
     }
 
-    @MainActor @Test func theSharedButtonStylesFollowTheCornerGeometry() throws {
-        try expectGeometryIsVisible("the shared button styles") { buttonStack }
+    /// Every shared style on its own, not one composite: a single style falling back to square is
+    /// exactly the failure a composite probe would hide.
+    @MainActor @Test func everySharedButtonStyleFollowsTheCornerGeometry() throws {
+        for sample in sharedButtonSamples {
+            try expectGeometryIsVisible(sample.name) { sample.button }
+        }
     }
 
     @MainActor @Test func aPosterTileFollowsTheCornerGeometry() throws {
         try expectGeometryIsVisible("a poster tile") { posterTile }
     }
 
-    /// Visual evidence for the two surfaces the setting was reported missing on.
+    /// Visual evidence for the surfaces the setting was reported missing on, and for every shared
+    /// button style.
     @MainActor @Test func thePosterAndButtonsRenderInBothStyles() throws {
         for style in OPNThemePreferences.CornerStyle.allCases {
             let poster = try #require(render(posterTile.environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))))
             writeSnapshot(poster, name: "corner-style-poster-\(style.rawValue).png")
-            let buttons = try #require(render(buttonStack.environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))))
+            let buttons = try #require(render(buttonStack(style: style)))
             writeSnapshot(buttons, name: "corner-style-buttons-\(style.rawValue).png")
         }
     }
@@ -200,18 +267,38 @@ import Testing
         .background(Color.black)
     }
 
+    /// The control-radius style and every call-to-action style, each one labelled so the probe and
+    /// the evidence figure read the same list.
     @MainActor
-    private var buttonStack: some View {
-        VStack(spacing: 12) {
-            Button("Compact") {}
-                .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: 1))
-            Button("Modal secondary") {}
-                .buttonStyle(OPNModalSecondaryButtonStyle(uiScale: 1))
-            Button("Get in") {}
-                .buttonStyle(VendorGetInButtonStyle(size: .large, uiScale: 1))
+    private var sharedButtonSamples: [(name: String, button: AnyView)] {
+        [
+            ("the compact row action", AnyView(Button("Compact") {}.buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: 1)))),
+            ("the modal secondary", AnyView(Button("Cancel") {}.buttonStyle(OPNModalSecondaryButtonStyle(uiScale: 1)))),
+            ("the modal destructive", AnyView(Button("Delete") {}.buttonStyle(OPNModalDestructiveButtonStyle(uiScale: 1)))),
+            ("the vendor get-in", AnyView(Button("Play") {}.buttonStyle(VendorGetInButtonStyle(size: .large, uiScale: 1)))),
+            ("the vendor get-in regular", AnyView(Button("Play") {}.buttonStyle(VendorGetInButtonStyle(uiScale: 1)))),
+            ("the launch primary", AnyView(Button("Launch") {}.buttonStyle(VendorLaunchPrimaryButtonStyle()))),
+            ("the launch secondary", AnyView(Button("Cancel") {}.buttonStyle(VendorLaunchSecondaryButtonStyle()))),
+            ("the ownership primary", AnyView(Button("Get") {}.buttonStyle(CatalogOwnershipPrimaryButtonStyle(uiScale: 1)))),
+            ("the ownership secondary", AnyView(Button("Own") {}.buttonStyle(CatalogOwnershipSecondaryButtonStyle(uiScale: 1)))),
+            ("the session banner", AnyView(Button("Resume") {}.buttonStyle(VendorActiveSessionBannerButtonStyle(primary: true)))),
+        ]
+    }
+
+    @MainActor
+    private func buttonStack(style: OPNThemePreferences.CornerStyle) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(sharedButtonSamples.enumerated()), id: \.offset) { _, sample in
+                Text(sample.name)
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                sample.button
+            }
         }
         .padding(16)
+        .frame(width: 300, alignment: .leading)
         .background(Color.black)
+        .environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))
     }
 
     private var posterGame: OPNCatalogGameObject {

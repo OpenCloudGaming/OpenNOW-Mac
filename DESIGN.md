@@ -194,14 +194,14 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 - **Roles** (Rounded values at 100 % scale): `control` 6 — buttons, chips, fields, toggles, icon
   buttons and other small controls; `tile` 6 — small artwork tiles such as the menu bar's game and
   collection thumbnails; `card` 10 — cards, rows and list containers; `panel` 12 — panels, docks,
-  dropdown panels and section chrome.
+  dropdown panels and section chrome; `callToAction` — **a pill, not a radius**: a play, get-in,
+  sign-in or resume button, and the actions sharing its row, so it follows the button's own height.
 - **Reference values**, measured on macOS 27 with one corner metric so they compare on equal terms:
   Apple's push button is radius 6 at its 24pt regular size, ~4.5 at its 20pt small size, and a
   **capsule** at its 28pt large size, and its own glass container defaults to radius 8
-  (`NSGlassEffectView.cornerRadius`). So `control` 6 matches the system's regular control exactly and
-  `card`/`panel` already sit above the system's own container radius; the tall call-to-action
-  buttons are the one place a fixed 6 reads squarer than the system, which capsules them at that
-  size.
+  (`NSGlassEffectView.cornerRadius`). So `control` 6 matches the system's regular control exactly,
+  `card`/`panel` already sit above the system's own container radius, and `callToAction` is the
+  capsule the system draws once a button is a call to action.
 - **Scale once**: a view that multiplies its own dimensions by `uiScale` passes `scale: uiScale` to
   the shape. A surface already wrapped in an outer `opnInterfaceScale` (the stream HUD) passes
   nothing, so its radii are not multiplied twice.
@@ -228,13 +228,13 @@ interface scale multiplies every size on the chrome surfaces it wraps.
 ### Buttons (app shell)
 
 - **Primary**: Accent background, black 14pt bold text (tracking 0.4), 14 vertical /
-  16 horizontal padding, Corner Style `control` geometry. Pressed: accent @ 0.76.
+  16 horizontal padding, Corner Style `callToAction` geometry. Pressed: accent @ 0.76.
 - **Secondary**: #FFFFFF @ 0.08 background (0.16 pressed), 1px Stroke Regular, white
-  13–14pt bold text, Corner Style `control` geometry.
+  13–14pt bold text, Corner Style `callToAction` geometry, because it shares the primary's row.
 - **Destructive Modal** (`OPNModalDestructiveButtonStyle`): a modal footer's destructive
   action, sized to sit beside the secondary modal button. 36 high, 13pt bold
   `Semantic.destructive` label, destructive @ 0.10 fill (0.18 pressed), destructive @ 0.36
-  stroke. Never the default action.
+  stroke, Corner Style `callToAction` geometry. Never the default action.
 - **Compact Row Action** (`OPNCompactButtonStyle`): settings/inline row
   actions. Height 28, Hanken Grotesk 12pt bold, 14 horizontal padding, Corner Style `control`
   geometry.
@@ -242,7 +242,8 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   #000000 @ 0.35 background (0.5 pressed), white text, red @ 0.85 stroke. Takes
   `uiScale`; call sites never restyle the label.
 - **Vendor Get-In** (`VendorGetInButtonStyle`): Accent background, black Hanken Grotesk
-  bold (tracking 0.3), 16 horizontal padding, Corner Style `control` geometry. Pressed: accent @ 0.78.
+  bold (tracking 0.3), 16 horizontal padding, Corner Style `callToAction` geometry — the app's
+  primary call to action, so a pill in Rounded. Pressed: accent @ 0.78.
   Two sizes: **regular** (14pt, height 36 — login and inline CTAs) and **large**
   (15pt, height 40 — hero and game-detail primary actions, optional `minimumWidth`).
   Call sites pass `uiScale` and never override font or frame on the label.

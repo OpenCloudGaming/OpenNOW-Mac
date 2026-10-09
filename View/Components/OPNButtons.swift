@@ -50,8 +50,8 @@ struct OPNModalSecondaryButtonStyle: ButtonStyle {
             .tracking(0.3)
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .frame(height: 36 * uiScale)
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08)))
-            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(Color.white.opacity(configuration.isPressed ? 0.16 : 0.08)))
+            .overlay { OPNCornerShape(role: .callToAction, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -68,8 +68,8 @@ struct OPNModalDestructiveButtonStyle: ButtonStyle {
             .tracking(0.3)
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .frame(height: 36 * uiScale)
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Semantic.destructive.opacity(configuration.isPressed ? 0.18 : 0.10)))
-            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Semantic.destructive.opacity(0.36), lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(OPNDesign.Semantic.destructive.opacity(configuration.isPressed ? 0.18 : 0.10)))
+            .overlay { OPNCornerShape(role: .callToAction, scale: uiScale).strokeBorder(OPNDesign.Semantic.destructive.opacity(0.36), lineWidth: 1) }
     }
 }
 

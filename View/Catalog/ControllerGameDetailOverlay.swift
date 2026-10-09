@@ -246,8 +246,8 @@ struct ControllerGameDetailOverlay: View {
             // sizing it larger as well made the pair read as two unrelated controls.
             .frame(minWidth: 150 * uiScale)
             .frame(height: 44 * uiScale)
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFilled ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10)))
-            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isFilled ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(isFilled ? OPNDesign.accent : OPNDesign.Fill.neutral(0.10)))
+            .overlay { OPNCornerShape(role: .callToAction, scale: uiScale).strokeBorder(isFilled ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
             .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
         }
         .buttonStyle(.plain)

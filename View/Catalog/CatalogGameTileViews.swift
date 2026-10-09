@@ -123,8 +123,8 @@ struct CatalogGameTile: View, @preconcurrency Equatable {
             .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.92) : OPNDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent))
-            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent))
+            .overlay { OPNCornerShape(role: .callToAction, scale: uiScale).strokeBorder(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))

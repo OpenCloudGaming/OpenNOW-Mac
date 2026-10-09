@@ -66,7 +66,7 @@ struct VendorGetInButtonStyle: ButtonStyle {
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .frame(minWidth: minimumWidth.map { $0 * uiScale })
             .frame(height: size.height * uiScale)
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(configuration.isPressed ? fill.opacity(0.78) : fill))
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(configuration.isPressed ? fill.opacity(0.78) : fill))
             .opacity(configuration.isPressed ? 0.92 : 1)
     }
 }

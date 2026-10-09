@@ -138,19 +138,29 @@ enum OPNDesign {
         case card
         /// Panels, docks, dropdown panels and section chrome.
         case panel
+        /// A call to action - play, get in, sign in, resume - and the actions sharing its row.
+        case callToAction
     }
 
     /// The one place corner radii are written down. `scale` belongs to the caller that owns the
     /// interface scale, and stays at 1 where an outer `opnInterfaceScale` already transforms it.
     enum Corner {
+        /// What a role's corner resolves to. A call to action is a pill, whose radius follows the
+        /// button's own height, so it is not a number this table can carry.
+        enum Geometry: Equatable, Sendable {
+            case radius(CGFloat)
+            case capsule
+        }
+
         private static let baseControl: CGFloat = 6
         private static let baseTile: CGFloat = 6
         private static let baseCard: CGFloat = 10
         private static let basePanel: CGFloat = 12
 
-        static func radius(_ role: CornerRole, style: OPNThemePreferences.CornerStyle, scale: CGFloat = 1) -> CGFloat {
-            guard style == .rounded, scale.isFinite, scale > 0 else { return 0 }
-            return base(role) * scale
+        static func geometry(_ role: CornerRole, style: OPNThemePreferences.CornerStyle, scale: CGFloat = 1) -> Geometry {
+            guard style == .rounded, scale.isFinite, scale > 0 else { return .radius(0) }
+            guard role != .callToAction else { return .capsule }
+            return .radius(base(role) * scale)
         }
 
         private static func base(_ role: CornerRole) -> CGFloat {
@@ -159,6 +169,7 @@ enum OPNDesign {
             case .tile: baseTile
             case .card: baseCard
             case .panel: basePanel
+            case .callToAction: 0
             }
         }
     }
@@ -530,12 +541,8 @@ struct OPNCornerGeometry: Equatable, Sendable {
 
     static let square = OPNCornerGeometry(style: .square)
 
-    func radius(_ role: OPNDesign.CornerRole, scale: CGFloat = 1) -> CGFloat {
-        OPNDesign.Corner.radius(role, style: style, scale: scale)
-    }
-
     func shape(_ role: OPNDesign.CornerRole, scale: CGFloat = 1) -> OPNResolvedCornerShape {
-        OPNResolvedCornerShape(radius: radius(role, scale: scale))
+        OPNResolvedCornerShape(geometry: OPNDesign.Corner.geometry(role, style: style, scale: scale))
     }
 }
 
@@ -543,31 +550,42 @@ private struct OPNCornerGeometryKey: EnvironmentKey {
     static let defaultValue = OPNCornerGeometry.square
 }
 
-/// The corner shape with its radius already resolved from the environment.
+/// The corner shape with its geometry already resolved from the environment.
 struct OPNResolvedCornerShape: InsettableShape {
-    let radius: CGFloat
+    let geometry: OPNDesign.Corner.Geometry
     private let inset: CGFloat
 
-    init(radius: CGFloat) {
-        self.init(radius: radius, inset: 0)
+    init(geometry: OPNDesign.Corner.Geometry) {
+        self.init(geometry: geometry, inset: 0)
     }
 
-    private init(radius: CGFloat, inset: CGFloat) {
-        self.radius = radius
+    private init(geometry: OPNDesign.Corner.Geometry, inset: CGFloat) {
+        self.geometry = geometry
         self.inset = inset
     }
 
     func path(in rect: CGRect) -> Path {
-        let resolved = max(radius - inset, 0)
-        return Path(
-            roundedRect: rect.insetBy(dx: inset, dy: inset),
-            cornerSize: CGSize(width: resolved, height: resolved),
-            style: .continuous
-        )
+        let box = rect.insetBy(dx: inset, dy: inset)
+        switch geometry {
+        case .radius(let radius):
+            let resolved = max(radius - inset, 0)
+            return Path(
+                roundedRect: box,
+                cornerSize: CGSize(width: resolved, height: resolved),
+                style: .continuous
+            )
+        case .capsule:
+            let radius = min(box.width, box.height) / 2
+            return Path(
+                roundedRect: box,
+                cornerSize: CGSize(width: radius, height: radius),
+                style: .circular
+            )
+        }
     }
 
     func inset(by amount: CGFloat) -> OPNResolvedCornerShape {
-        OPNResolvedCornerShape(radius: radius, inset: inset + amount)
+        OPNResolvedCornerShape(geometry: geometry, inset: inset + amount)
     }
 }
 

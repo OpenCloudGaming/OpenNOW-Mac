@@ -345,7 +345,7 @@ struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 18)
             .frame(height: 38)
-            .background(OPNDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0))
+            .background(OPNCornerShape(role: .callToAction).fill(OPNDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)))
     }
 }
 
@@ -357,7 +357,7 @@ struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 16)
             .frame(height: 38)
-            .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055)))
-            .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction).fill(OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055)))
+            .overlay { OPNCornerShape(role: .callToAction).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }

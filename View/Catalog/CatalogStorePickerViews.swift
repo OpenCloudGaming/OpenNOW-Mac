@@ -318,7 +318,7 @@ struct CatalogOwnershipPrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(.black.opacity(0.88))
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fixed.accent.opacity(configuration.isPressed ? 0.76 : 1)))
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(OPNDesign.Fixed.accent.opacity(configuration.isPressed ? 0.76 : 1)))
     }
 }
 
@@ -332,8 +332,8 @@ struct CatalogOwnershipSecondaryButtonStyle: ButtonStyle {
             .foregroundStyle(OPNDesign.Fixed.ink(0.96))
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.contentVertical(scale: uiScale))
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(configuration.isPressed ? 0.16 : 0.08)))
-            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(OPNDesign.Fill.neutral(configuration.isPressed ? 0.16 : 0.08)))
+            .overlay { OPNCornerShape(role: .callToAction, scale: uiScale).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 

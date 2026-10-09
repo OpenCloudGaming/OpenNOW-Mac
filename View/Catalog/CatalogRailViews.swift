@@ -453,12 +453,12 @@ struct VendorActiveSessionBannerButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 14)
             .frame(height: 28)
-            .background(OPNCornerShape(role: .control).fill(primary
+            .background(OPNCornerShape(role: .callToAction).fill(primary
                 ? OPNDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)
                 : OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055)))
             .overlay {
                 if !primary {
-                    OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
+                    OPNCornerShape(role: .callToAction).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
                 }
             }
     }
