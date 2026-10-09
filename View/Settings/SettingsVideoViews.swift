@@ -72,8 +72,8 @@ struct VideoSettingsPage: View {
                 }
                 .padding(.horizontal, 12 * uiScale)
                 .padding(.vertical, 10 * uiScale)
-                .background(SettingsVendorLayout.row)
-                .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNCornerShape(role: .card, scale: uiScale).fill(SettingsVendorLayout.row))
+                .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -171,8 +171,8 @@ struct VideoSettingsPage: View {
                 SettingsActionButton(title: "RESTORE DEFAULTS", minimumWidth: 150 * uiScale, uiScale: uiScale) { viewModel.restoreStreamingProfileDefaults() }
             }
             .padding(12 * uiScale)
-            .background(SettingsVendorLayout.row)
-            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(SettingsVendorLayout.row))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 
@@ -293,8 +293,8 @@ struct DecodeRecommendationRow: View {
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(height: 28 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.04))
-        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.04)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -353,7 +353,7 @@ struct StreamingProfileMetricTile: View {
         .padding(.horizontal, 13 * uiScale)
         .padding(.vertical, 11 * uiScale)
         .frame(width: width ?? ((emphasized ? 180 : 154) * uiScale), height: 72 * uiScale, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(emphasized ? 0.065 : 0.045))
-        .overlay { Rectangle().strokeBorder(emphasized ? OPNDesign.accent.opacity(0.32) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(emphasized ? 0.065 : 0.045)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(emphasized ? OPNDesign.accent.opacity(0.32) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

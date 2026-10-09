@@ -16,9 +16,9 @@ struct RecordingPill: View {
             .lineLimit(1)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 20 * uiScale)
-            .background(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle))
             // `strokeBorder`, not `stroke`: an active pill strokes in its own fill colour, so the
             // centred stroke's half-point spill painted as extra pill.
-            .overlay { Rectangle().strokeBorder(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isActive ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

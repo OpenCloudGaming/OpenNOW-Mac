@@ -64,8 +64,8 @@ extension RemoteCoOpSetupWizard {
                 .textSelection(.enabled)
                 .padding(10 * uiScale)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(OPNDesign.Fill.neutral(0.05))
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.05)))
+                .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
         .padding(.top, 2 * uiScale)
     }

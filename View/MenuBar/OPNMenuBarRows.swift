@@ -59,9 +59,8 @@ struct OPNMenuBarArtwork: View {
             }
         }
         .frame(width: 34, height: 34)
-        .background(OPNDesign.Fill.neutral(0.08))
-        // swiftlint:disable:next design_no_corner_radius -- status-item popover chrome: artwork tiles match the Control Center cards this surface is modelled on
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(OPNCornerShape(role: .tile).fill(OPNDesign.Fill.neutral(0.08)))
+        .opnCornerClip(role: .tile)
         .task(id: url) { await load() }
     }
 

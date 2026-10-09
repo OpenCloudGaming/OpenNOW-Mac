@@ -61,13 +61,16 @@ struct NativeNVSTStatsPanel: View {
             }
         }
         .frame(width: Self.width, alignment: .topLeading)
-        .background(StreamHUDTheme.panel.opacity(0.94))
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(StreamHUDTheme.accent)
                 .frame(height: 2)
         }
-        .overlay(Rectangle().stroke(.white.opacity(0.16), lineWidth: 1))
+        // Clipped after the accent strip is drawn, so the strip and the header bar follow the
+        // panel's corners; the fill, border and shadow are added outside the clip.
+        .opnCornerClip(role: .panel)
+        .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.94)))
+        .overlay(OPNCornerShape(role: .panel).strokeBorder(.white.opacity(0.16), lineWidth: 1))
         .shadow(color: .black.opacity(0.52), radius: 16, x: 0, y: 8)
     }
 
@@ -86,8 +89,8 @@ struct NativeNVSTStatsPanel: View {
                 .foregroundStyle(StreamHUDTheme.accent)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(StreamHUDTheme.accent.opacity(0.14))
-                .overlay(Rectangle().stroke(StreamHUDTheme.accent.opacity(0.5), lineWidth: 1))
+                .background(OPNCornerShape(role: .control).fill(StreamHUDTheme.accent.opacity(0.14)))
+                .overlay(OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.accent.opacity(0.5), lineWidth: 1))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

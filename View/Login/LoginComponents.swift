@@ -169,8 +169,8 @@ private struct VendorSplashCancelButtonStyle: ButtonStyle {
         configuration.label
             .padding(.horizontal, OPNDesign.Spacing.medium)
             .frame(height: 34)
-            .background(configuration.isPressed ? OPNDesign.Fixed.ink(0.14) : OPNDesign.Fixed.ink(0.10))
-            .overlay { Rectangle().stroke(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
+            .background(OPNCornerShape(role: .control).fill(configuration.isPressed ? OPNDesign.Fixed.ink(0.14) : OPNDesign.Fixed.ink(0.10)))
+            .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Fixed.ink(0.14), lineWidth: 1) }
     }
 }
 

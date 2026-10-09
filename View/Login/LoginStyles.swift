@@ -17,10 +17,10 @@ struct LoginTextFieldStyle: TextFieldStyle {
             .tint(OPNDesign.accent)
             .padding(.horizontal, 16 * uiScale)
             .padding(.vertical, 14 * uiScale)
-            .background(OPNDesign.Fill.neutral(0.08))
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
             .overlay {
-                Rectangle()
-                    .stroke(isFocused ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: isFocused ? 2 : 1)
+                OPNCornerShape(role: .control, scale: uiScale)
+                    .strokeBorder(isFocused ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: isFocused ? 2 : 1)
             }
     }
 }
@@ -33,7 +33,7 @@ struct PrimaryLoginButtonStyle: ButtonStyle {
             .tracking(0.4)
             .padding(.vertical, 14)
             .padding(.horizontal, 16)
-            .background(configuration.isPressed ? OPNDesign.accent.opacity(0.76) : OPNDesign.accent)
+            .background(OPNCornerShape(role: .control).fill(configuration.isPressed ? OPNDesign.accent.opacity(0.76) : OPNDesign.accent))
             .opacity(configuration.isPressed ? 0.9 : 1)
     }
 }
@@ -66,7 +66,7 @@ struct VendorGetInButtonStyle: ButtonStyle {
             .padding(.horizontal, OPNDesign.Spacing.medium(scale: uiScale))
             .frame(minWidth: minimumWidth.map { $0 * uiScale })
             .frame(height: size.height * uiScale)
-            .background(configuration.isPressed ? fill.opacity(0.78) : fill)
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(configuration.isPressed ? fill.opacity(0.78) : fill))
             .opacity(configuration.isPressed ? 0.92 : 1)
     }
 }
@@ -81,10 +81,10 @@ struct SecondaryLoginButtonStyle: ButtonStyle {
             .tracking(0.3)
             .padding(.horizontal, compact ? 14 : 16)
             .padding(.vertical, compact ? 8 : 12)
-            .background(configuration.isPressed ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle)
+            .background(OPNCornerShape(role: .control).fill(configuration.isPressed ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle))
             .overlay {
-                Rectangle()
-                    .stroke(OPNDesign.Stroke.regular, lineWidth: 1)
+                OPNCornerShape(role: .control)
+                    .strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
             }
     }
 }

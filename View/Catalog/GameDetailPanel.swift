@@ -173,7 +173,8 @@ struct GameDetailPanel: View {
                     }
                 }
                 .frame(width: panelWidth, height: resolvedHeight)
-                .background(OPNDesign.Surface.chrome)
+                .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Surface.chrome))
+                .opnCornerClip(role: .card, scale: uiScale)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, minHeight: panelHeight, maxHeight: panelHeight)
@@ -207,8 +208,8 @@ struct GameDetailPanel: View {
                     .foregroundStyle(chip == "IN LIBRARY" ? OPNDesign.onAccent.opacity(0.88) : OPNDesign.Text.secondary)
                     .padding(.horizontal, 10)
                     .frame(height: 27)
-                    .background(chip == "IN LIBRARY" ? OPNDesign.accent : OPNDesign.Fill.neutral(0.09))
-                    .overlay { Rectangle().stroke(chip == "IN LIBRARY" ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control).fill(chip == "IN LIBRARY" ? OPNDesign.accent : OPNDesign.Fill.neutral(0.09)))
+                    .overlay { OPNCornerShape(role: .control).strokeBorder(chip == "IN LIBRARY" ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
             }
         }
     }
@@ -251,7 +252,7 @@ struct GameDetailPanel: View {
                 .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, 9)
                 .frame(height: 23)
-                .background(chip == "For Premium Members" ? OPNDesign.Fill.neutral(0.22) : Color.black.opacity(0.18))
+                .background(OPNCornerShape(role: .control).fill(chip == "For Premium Members" ? OPNDesign.Fill.neutral(0.22) : Color.black.opacity(0.18)))
             }
         }
         .frame(maxWidth: 520, alignment: .leading)
@@ -318,8 +319,8 @@ struct GameDetailPanel: View {
                     .foregroundStyle(option.isSelected ? OPNDesign.onAccent.opacity(0.88) : OPNDesign.Text.secondary)
                     .padding(.horizontal, 11 * uiScale)
                     .frame(height: 32 * uiScale)
-                    .background(option.isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.09))
-                    .overlay { Rectangle().stroke(option.isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(option.isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.09)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(option.isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)

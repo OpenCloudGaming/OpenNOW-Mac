@@ -420,9 +420,10 @@ struct SettingsTabItem: View {
 
     @State private var isHovering = false
 
-    /// Square, like every other selected control in Settings - the option chips, the cards and
-    /// the BETA tag all use hard corners, and a capsule here read as a different design language.
-    private var shape: Rectangle { Rectangle() }
+    /// Follows the app's corner style, like every other selected control in Settings - the option
+    /// chips and the cards share its geometry, and a capsule here read as a different design
+    /// language.
+    private var shape: OPNCornerShape { OPNCornerShape(role: .control, scale: uiScale) }
 
     var body: some View {
         Button(action: action) {
@@ -442,7 +443,7 @@ struct SettingsTabItem: View {
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 34 * uiScale)
             .background { background }
-            .contentShape(shape)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering in

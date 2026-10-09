@@ -51,8 +51,11 @@ struct SignInModal: View {
         // scroll fallback once the tab content no longer fits the height the login wall proposes,
         // and the fallback's cap keeps that branch from ever painting past the window edge.
         .frame(width: panelWidth)
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        // Clipped so the full-width accent bar follows the panel's own corners instead of poking
+        // past them; the border and shadow are drawn outside the clip.
+        .opnCornerClip(role: .panel)
+        .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, y: 20)
         .onExitCommand(perform: onClose)
         .onAppear {
@@ -105,10 +108,10 @@ struct SignInModal: View {
                     .foregroundStyle(isSelected ? OPNDesign.onAccent : OPNDesign.Text.secondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 32)
-                    .background(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06))
+                    .background(OPNCornerShape(role: .control).fill(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06)))
                     .overlay {
-                        Rectangle()
-                            .stroke(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
+                        OPNCornerShape(role: .control)
+                            .strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
                     }
                     .contentShape(Rectangle())
                 }
@@ -157,8 +160,8 @@ struct SignInModal: View {
         }
         .padding(OPNDesign.Spacing.small)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPNDesign.Stroke.subtle)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control).fill(OPNDesign.Stroke.subtle))
+        .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 
     private var qrCodeContent: some View {
@@ -312,8 +315,8 @@ struct SignInModal: View {
                 .padding(.horizontal, OPNDesign.Spacing.controlRow)
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
-                .background(OPNDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.08)))
+                .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -380,10 +383,10 @@ private struct SavedAccountCard: View {
             }
             .padding(.horizontal, OPNDesign.Spacing.controlRow)
             .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-            .background(isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle)
+            .background(OPNCornerShape(role: .control).fill(isHovering ? OPNDesign.Stroke.regular : OPNDesign.Stroke.subtle))
             .overlay {
-                Rectangle()
-                    .stroke(isHovering ? OPNDesign.Stroke.strong : OPNDesign.Stroke.regular, lineWidth: 1)
+                OPNCornerShape(role: .control)
+                    .strokeBorder(isHovering ? OPNDesign.Stroke.strong : OPNDesign.Stroke.regular, lineWidth: 1)
             }
             .contentShape(Rectangle())
         }
@@ -404,7 +407,7 @@ private struct ModalCloseButton: View {
                 .font(.uiSans(size: 11, weight: .bold))
                 .foregroundStyle(isHovering ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
                 .frame(width: 28, height: 28)
-                .background(isHovering ? OPNDesign.Stroke.subtle : Color.clear)
+                .background(OPNCornerShape(role: .control).fill(isHovering ? OPNDesign.Stroke.subtle : Color.clear))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

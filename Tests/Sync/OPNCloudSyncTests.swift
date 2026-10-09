@@ -14,6 +14,9 @@ import Testing
     @Test func theRegistryExportsPreferencesAndRefusesSecrets() {
         // Preferences under an allowed prefix travel.
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Interface.Appearance"))
+        // The Corner style is an appearance preference, so it travels the same way and needs no
+        // registry change; pinned by key so a later namespace edit cannot silently drop it.
+        #expect(OPNCloudSyncSettingsRegistry.isSyncable(OPNThemePreferences.cornerStyleKey))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Stream.Fps"))
         #expect(OPNCloudSyncSettingsRegistry.isSyncable("OpenNOW.Input.ControllerMappingProfiles"))
         // Per-game controller mapping keys are machine-independent, so they must travel with the

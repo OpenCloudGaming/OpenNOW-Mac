@@ -31,9 +31,9 @@ struct ControllerBindingRecorder: View {
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity)
             .frame(height: 32 * uiScale)
-            .background(background)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(background))
             .overlay {
-                Rectangle().stroke(
+                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(
                     isRecording ? OPNDesign.accent : OPNDesign.Stroke.subtle,
                     lineWidth: isRecording ? 2 : 1
                 )

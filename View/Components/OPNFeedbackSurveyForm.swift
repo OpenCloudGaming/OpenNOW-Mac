@@ -77,8 +77,8 @@ struct OPNFeedbackSurveyForm: View {
             .lineLimit(3...6)
             .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, 9 * uiScale)
-            .background(OPNDesign.Surface.field)
-            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             .overlay(alignment: .topLeading) {
                 guard value.isEmpty else { return AnyView(EmptyView()) }
                 return AnyView(
@@ -122,9 +122,9 @@ struct OPNFeedbackSurveyForm: View {
 
     private func selectionIndicator(isSelected: Bool, isMultiSelect: Bool) -> some View {
         ZStack {
-            Rectangle()
+            OPNCornerShape(role: .control, scale: uiScale)
                 .fill(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.06))
-            Rectangle()
+            OPNCornerShape(role: .control, scale: uiScale)
                 .strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
             if isSelected {
                 if isMultiSelect {
@@ -132,7 +132,7 @@ struct OPNFeedbackSurveyForm: View {
                         .font(.uiSans(size: 10 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.onAccent)
                 } else {
-                    Rectangle()
+                    OPNCornerShape(role: .control, scale: uiScale)
                         .fill(OPNDesign.onAccent)
                         .frame(width: 7 * uiScale, height: 7 * uiScale)
                 }

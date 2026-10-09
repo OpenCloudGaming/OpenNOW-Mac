@@ -211,8 +211,8 @@ struct ScreenshotsView: View {
                         .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.Text.primary)
                         .frame(width: 40 * uiScale, height: 40 * uiScale)
-                        .background(OPNDesign.Stroke.subtle)
-                        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
+                        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
                 .help("Refresh screenshots")
@@ -312,8 +312,8 @@ struct ScreenshotsView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
-                    .background(RecordingsLayout.card)
-                    .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(RecordingsLayout.card))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
                 }
 
                 Spacer()
@@ -531,8 +531,8 @@ extension ScreenshotsView {
                                 .foregroundStyle(isMember ? .black.opacity(0.86) : OPNDesign.Text.secondary)
                                 .padding(.horizontal, 9 * uiScale)
                                 .frame(height: 28 * uiScale)
-                                .background(isMember ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-                                .overlay { Rectangle().stroke(isMember ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
+                                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isMember ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+                                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isMember ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
                             }
                             .buttonStyle(.plain)
                         }

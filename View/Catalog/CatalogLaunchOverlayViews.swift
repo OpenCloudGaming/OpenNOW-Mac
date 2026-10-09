@@ -46,8 +46,8 @@ struct VendorActiveSessionCard: View {
                         VendorLaunchSessionRow(label: "Server", value: active.serverIp)
                     }
                     .padding(14)
-                    .background(OPNDesign.Fill.neutral(0.055))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.055)))
+                    .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
                 }
                 if !session.launchFlowError.isEmpty {
                     VendorLaunchInlineMessage(message: session.launchFlowError, warning: true)
@@ -184,8 +184,8 @@ struct VendorEmbeddedSessionAdPlayer: View {
             .padding(.vertical, 12)
             .background(.black.opacity(0.86))
         }
-        .clipShape(Rectangle())
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .opnCornerClip(role: .panel)
+        .overlay { OPNCornerShape(role: .panel).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.54), radius: 26, y: 18)
         .onAppear {
             playback.onFinished = onFinished
@@ -261,8 +261,8 @@ struct VendorLaunchPanel<Content: View>: View {
                 .padding(.bottom, 26)
         }
         .frame(minWidth: 360, idealWidth: 640, maxWidth: 640)
-        .background(OPNDesign.Surface.app)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.app))
+        .overlay { OPNCornerShape(role: .panel).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.55), radius: 28, y: 18)
     }
 }
@@ -332,8 +332,8 @@ struct VendorLaunchInlineMessage: View {
         .foregroundStyle(warning ? OPNDesign.Semantic.warning.opacity(0.86) : OPNDesign.Text.secondary)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.045)))
+        .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -345,7 +345,7 @@ struct VendorLaunchPrimaryButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 18)
             .frame(height: 38)
-            .background(OPNDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0))
+            .background(OPNCornerShape(role: .callToAction).fill(OPNDesign.accent.opacity(configuration.isPressed ? 0.78 : 1.0)))
     }
 }
 
@@ -357,7 +357,7 @@ struct VendorLaunchSecondaryButtonStyle: ButtonStyle {
             .tracking(0.8)
             .padding(.horizontal, 16)
             .frame(height: 38)
-            .background(OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction).fill(OPNDesign.Fill.neutral(configuration.isPressed ? 0.10 : 0.055)))
+            .overlay { OPNCornerShape(role: .callToAction).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }

@@ -75,8 +75,9 @@ struct OPNUpdateModal: View {
             footer
         }
         .frame(width: panelWidth)
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .opnCornerClip(role: .panel, scale: uiScale)
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28 * uiScale, y: 20 * uiScale)
         .onExitCommand { presentation.dismiss() }
     }
@@ -177,8 +178,8 @@ struct OPNUpdateModal: View {
             }
         }
         .padding(OPNDesign.Spacing.section(scale: uiScale))
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(Color.white.opacity(0.055)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private var footer: some View {

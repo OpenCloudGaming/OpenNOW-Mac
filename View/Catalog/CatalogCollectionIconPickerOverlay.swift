@@ -60,9 +60,10 @@ struct CatalogCollectionIconPickerOverlay: View {
             }
             .frame(width: min(620 * uiScale, 620), alignment: .topLeading)
             .frame(maxHeight: 660 * uiScale, alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
+            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .opnCornerClip(role: .panel, scale: uiScale)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
         .fileImporter(isPresented: $isImageImporterPresented, allowedContentTypes: [.image]) { result in
@@ -95,8 +96,8 @@ struct CatalogCollectionIconPickerOverlay: View {
                     .catalogFont(size: 14, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.secondary)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(OPNDesign.Fill.neutral(0.08))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close icon picker")
@@ -129,8 +130,8 @@ struct CatalogCollectionIconPickerOverlay: View {
         }
         .padding(.horizontal, 12 * uiScale)
         .frame(height: 44 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.08))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .padding(.horizontal, 22 * uiScale)
         .padding(.top, 14 * uiScale)
     }
@@ -157,8 +158,8 @@ struct CatalogCollectionIconPickerOverlay: View {
                 .foregroundStyle(isSelected ? OPNDesign.onAccent : OPNDesign.Text.secondary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 30 * uiScale)
-                .background(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-                .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -229,8 +230,8 @@ struct CatalogCollectionIconPickerOverlay: View {
             OPNCollectionIconView(icon: .symbol(symbol.name), size: 20, weight: .medium)
                 .foregroundStyle(isSelected ? OPNDesign.onAccent : OPNDesign.Text.secondary)
                 .frame(width: 44 * uiScale, height: 44 * uiScale)
-                .background(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.05))
-                .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isSelected ? OPNDesign.accent : OPNDesign.Fill.neutral(0.05)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

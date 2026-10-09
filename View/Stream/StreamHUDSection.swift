@@ -72,8 +72,8 @@ struct StreamHUDSection<Content: View>: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            Rectangle().fill(Color.white.opacity(0.055))
-            Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1)
+            OPNCornerShape(role: .panel).fill(Color.white.opacity(0.055))
+            OPNCornerShape(role: .panel).strokeBorder(StreamHUDTheme.divider, lineWidth: 1)
         }
         // Animates the fold from any source, including the pad's activate, which does not pass
         // through this view's toggle action.
@@ -105,7 +105,7 @@ struct StreamHUDSection<Content: View>: View {
         }
         .overlay {
             if isFocused {
-                Rectangle().stroke(StreamHUDTheme.accent, lineWidth: 2).padding(-4)
+                OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.accent, lineWidth: 2).padding(-4)
             }
         }
     }

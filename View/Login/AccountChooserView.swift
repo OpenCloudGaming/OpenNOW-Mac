@@ -73,8 +73,11 @@ struct AccountChooserOverlay: View {
 
             footer
         }
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        // Clipped so the full-width accent bar follows the panel's own corners instead of poking
+        // past them; the border and shadow are drawn outside the clip.
+        .opnCornerClip(role: .panel, scale: uiScale)
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28 * uiScale, y: 20 * uiScale)
         .onExitCommand(perform: onCancel)
     }
@@ -203,7 +206,7 @@ private struct AccountChooserRow: View {
             .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
             .frame(height: 58 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(OPNDesign.Fill.neutral(isHovering ? 0.085 : 0))
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(isHovering ? 0.085 : 0)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -217,7 +220,7 @@ private struct AccountChooserRow: View {
             CatalogAccountAvatar(email: avatarEmail, size: 36 * uiScale)
         } else {
             ZStack {
-                Rectangle().fill(OPNDesign.Fill.neutral(0.08))
+                OPNCornerShape(role: .tile, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08))
                 Image(systemName: systemImage)
                     .font(.uiSans(size: 14 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.Text.secondary)
@@ -263,9 +266,12 @@ struct AccountSwitchNoticeBanner: View {
             .padding(.horizontal, OPNDesign.Spacing.card(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.small(scale: uiScale))
             .frame(maxWidth: 560 * uiScale, alignment: .leading)
-            .background(OPNDesign.Surface.overlay.opacity(0.985))
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Surface.overlay.opacity(0.985)))
             .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3 * uiScale) }
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+            // The leading accent rule is contained by the banner's own shape so it cannot poke past
+            // the rounded corners; the border and shadow sit outside the clip.
+            .opnCornerClip(role: .card, scale: uiScale)
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             .shadow(color: .black.opacity(0.5), radius: 24 * uiScale, y: 14 * uiScale)
             .padding(.bottom, OPNDesign.Spacing.large(scale: uiScale))
         }

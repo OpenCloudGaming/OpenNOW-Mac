@@ -114,11 +114,31 @@ enum OPNThemePreferences {
         }
     }
 
+    /// How the app draws the corner of everything it owns. Square is the shipping geometry, so an
+    /// installation that never opened this setting sees the app it already had.
+    enum CornerStyle: String, CaseIterable {
+        case square
+        case rounded
+
+        /// Resolves a stored raw value, falling back to the shipping default for anything unknown.
+        init(storedRawValue: String) {
+            self = CornerStyle(rawValue: storedRawValue) ?? .square
+        }
+
+        var label: String {
+            switch self {
+            case .square: "Square"
+            case .rounded: "Rounded"
+            }
+        }
+    }
+
     static let tileDensityKey = "OpenNOW.Interface.TileDensity"
     static let tileTitleVisibilityKey = "OpenNOW.Interface.TileTitles"
     static let isMotionReducedKey = "OpenNOW.Interface.ReduceMotion"
     static let accentColorKey = "OpenNOW.Interface.Accent"
     static let appearanceKey = "OpenNOW.Interface.Appearance"
+    static let cornerStyleKey = "OpenNOW.Interface.CornerStyle"
     static let isJumpBackInEnabledKey = "OpenNOW.Interface.JumpBackIn"
 
     /// Non-SwiftUI/AppKit access point: whatever the stored raw value is, an unknown one falls
@@ -139,6 +159,13 @@ enum OPNThemePreferences {
             return Appearance(rawValue: rawValue) ?? .dark
         }
         set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: appearanceKey) }
+    }
+
+    /// Non-SwiftUI/AppKit access point, mirroring `appearance`: a missing or unknown stored value
+    /// resolves to the shipping default (square) rather than surfacing as an optional everywhere.
+    static var cornerStyle: CornerStyle {
+        get { CornerStyle(storedRawValue: OPNAppPreferenceStorage.standard.string(forKey: cornerStyleKey) ?? "") }
+        set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: cornerStyleKey) }
     }
 
     /// Whether the home page draws the Jump Back In rail above My Favorites. Shipping default is

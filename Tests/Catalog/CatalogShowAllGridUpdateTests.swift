@@ -9,7 +9,7 @@ struct CatalogShowAllGridUpdateTests {
         let fixture = GridFixture()
         defer { fixture.close() }
         fixture.collectionView.onLayout = {
-            fixture.coordinator.update(fixture.grid(), scale: 1.25, density: 1)
+            fixture.coordinator.update(fixture.grid(), scale: 1.25, density: 1, cornerGeometry: .square)
             fixture.coordinator.scheduleLayoutUpdate()
             #expect(fixture.collectionView.reloadCount == 0)
         }
@@ -27,9 +27,9 @@ struct CatalogShowAllGridUpdateTests {
     @Test func queuedUpdatesApplyOneConsistentSnapshot() async throws {
         let fixture = GridFixture()
         defer { fixture.close() }
-        fixture.coordinator.update(fixture.grid(selectedGame: fixture.games[0]), scale: 1.25, density: 1)
+        fixture.coordinator.update(fixture.grid(selectedGame: fixture.games[0]), scale: 1.25, density: 1, cornerGeometry: .square)
         let latestGames = Array(fixture.games.suffix(2))
-        fixture.coordinator.update(fixture.grid(games: latestGames, selectedGame: latestGames[1]), scale: 1.5, density: 0.82)
+        fixture.coordinator.update(fixture.grid(games: latestGames, selectedGame: latestGames[1]), scale: 1.5, density: 0.82, cornerGeometry: .square)
 
         #expect(fixture.collectionView.reloadCount == 0)
         #expect(fixture.coordinator.collectionView(fixture.collectionView, numberOfItemsInSection: 0) == fixture.games.count)
@@ -49,10 +49,48 @@ struct CatalogShowAllGridUpdateTests {
         #expect(fixture.layout.collectionViewContentSize.height > 0)
     }
 
+    /// A style-only change must repaint the visible tiles in place: no data reload, no layout
+    /// invalidation, no change to the tile size, the selection, or the scroll position. That is what
+    /// lets a reader flip Corner style with the grid open instead of waiting for a list or selection
+    /// change to see it, and the same item view must be the thing that repaints.
+    @Test func aCornerStyleChangeRepaintsTheVisibleTilesWithoutReloading() async throws {
+        let fixture = GridFixture()
+        defer { fixture.close() }
+        fixture.model.selectedGame = fixture.games[0]
+        fixture.coordinator.update(fixture.grid(selectedGame: fixture.games[0]), scale: 1, density: 1, cornerGeometry: .square)
+        fixture.window.orderFrontRegardless()
+        await settleLayout(in: fixture.window)
+
+        let reloadsBefore = fixture.collectionView.reloadCount
+        let tileWidthBefore = fixture.layout.minTileWidth
+        let selectedBefore = fixture.layout.selectedItemIndex
+        let scrollBefore = fixture.scrollView.contentView.bounds.origin
+        let item = try #require(fixture.collectionView.visibleItems().first, "no visible tile to repaint")
+        let gridBefore = try #require(pngData(of: fixture.scrollView))
+
+        fixture.coordinator.update(
+            fixture.grid(selectedGame: fixture.games[0]),
+            scale: 1,
+            density: 1,
+            cornerGeometry: OPNCornerGeometry(style: .rounded)
+        )
+        await settleLayout(in: fixture.window)
+
+        #expect(fixture.collectionView.reloadCount == reloadsBefore, "a style change reloaded the grid")
+        #expect(fixture.layout.minTileWidth == tileWidthBefore, "a style change resized the tiles")
+        #expect(fixture.layout.selectedItemIndex == selectedBefore, "a style change moved the selection")
+        #expect(fixture.scrollView.contentView.bounds.origin == scrollBefore, "a style change moved the scroll position")
+        #expect(
+            fixture.collectionView.visibleItems().contains { $0 === item },
+            "a style change rebuilt the visible items instead of repainting them"
+        )
+        #expect(pngData(of: fixture.scrollView) != gridBefore, "the visible tiles were not repainted for the new style")
+    }
+
     @Test func dismantlingDiscardsQueuedUpdates() async {
         let fixture = GridFixture()
         defer { fixture.close() }
-        fixture.coordinator.update(fixture.grid(), scale: 1.5, density: 1)
+        fixture.coordinator.update(fixture.grid(), scale: 1.5, density: 1, cornerGeometry: .square)
         CatalogShowAllGridView.dismantleNSView(fixture.scrollView, coordinator: fixture.coordinator)
 
         await finishMainQueueTurn()
@@ -119,6 +157,12 @@ struct CatalogShowAllGridUpdateTests {
     private func findCollectionView(in view: NSView) -> NSCollectionView? {
         if let collectionView = view as? NSCollectionView { return collectionView }
         return view.subviews.lazy.compactMap { findCollectionView(in: $0) }.first
+    }
+
+    private func pngData(of view: NSView) -> Data? {
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        return bitmap.representation(using: .png, properties: [:])
     }
 
     private func capture(_ view: NSView, name: String) throws {

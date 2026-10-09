@@ -76,6 +76,7 @@ struct OPNStreamWindowRootView: View {
         .background(Color.black)
         .background(StreamWindowAspectConfigurator(aspectRatio: session.streamProfile.aspectRatio, isLocked: true))
         .environment(\.opnUIScale, uiScale)
+        .opnObservingCornerStyle()
         .preferredColorScheme(preferredColorScheme)
     }
 }

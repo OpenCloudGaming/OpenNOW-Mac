@@ -99,8 +99,8 @@ struct RecordingEditorAdvancedDrawer: View {
             .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, 10 * uiScale)
             .frame(height: RecordingEditorMetrics.compactControlHeight * uiScale)
-            .background(OPNDesign.Stroke.subtle)
-            .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         }
     }
 

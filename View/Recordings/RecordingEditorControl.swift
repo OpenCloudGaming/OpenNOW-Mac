@@ -42,11 +42,11 @@ struct RecordingEditorControl<Label: View>: View {
                 .foregroundStyle(foreground)
                 .padding(.horizontal, width == nil ? horizontalPadding * uiScale : 0)
                 .frame(width: width.map { $0 * uiScale }, height: height * uiScale)
-                .background(background)
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(background))
                 // `strokeBorder`, not `stroke`: a centred stroke spills half a point outside the
                 // frame, and a tone that strokes in its own fill colour then measures taller than
                 // its neighbours. See DESIGN.md, Borders on Filled Controls.
-                .overlay { Rectangle().strokeBorder(border, lineWidth: tone == .borderless ? 0 : 1) }
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(border, lineWidth: tone == .borderless ? 0 : 1) }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

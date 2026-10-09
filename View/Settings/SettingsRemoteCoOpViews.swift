@@ -236,8 +236,8 @@ struct RemoteCoOpSettingsPage: View {
                         .textSelection(.enabled)
                         .padding(10 * uiScale)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(OPNDesign.Fill.neutral(0.05))
-                        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.05)))
+                        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                     Text("Both flags matter: the tunnel reaches this Mac over HTTPS with a self-signed certificate, so it has to be told not to verify it. Your guest only ever sees the tunnel's own certificate.")
                         .font(.settingsFont(size: 11 * uiScale, weight: .medium))
                         .foregroundStyle(OPNDesign.Text.muted)

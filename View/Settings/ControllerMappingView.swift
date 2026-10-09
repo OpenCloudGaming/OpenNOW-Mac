@@ -241,8 +241,8 @@ struct ControllerMappingView: View {
             }
             .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(height: 30 * uiScale)
-            .background(OPNDesign.Fill.neutral(0.075))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.075)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             .contentShape(Rectangle())
         }
         .fixedSize()
@@ -259,9 +259,9 @@ struct ControllerMappingView: View {
             .focused($nameFieldFocused)
             .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(width: 200 * uiScale, height: 30 * uiScale)
-            .background(OPNDesign.Surface.field)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
             .overlay {
-                Rectangle().stroke(
+                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(
                     nameFieldFocused ? OPNDesign.accent : OPNDesign.Stroke.regular,
                     lineWidth: nameFieldFocused ? 2 : 1
                 )
@@ -365,9 +365,9 @@ struct ControllerMappingView: View {
                         .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
                         .frame(minWidth: 48 * uiScale)
                         .frame(height: 26 * uiScale)
-                        .background(held ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
+                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(held ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075)))
                         .overlay {
-                            Rectangle().stroke(
+                            OPNCornerShape(role: .control, scale: uiScale).strokeBorder(
                                 held ? OPNDesign.accent : OPNDesign.Stroke.subtle,
                                 lineWidth: 1
                             )
@@ -485,13 +485,16 @@ private struct SteamControllerCategoryRow: View {
             .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
             .frame(height: 30 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(background)
-            .overlay(alignment: .leading) {
-                if isActive {
-                    Rectangle()
-                        .fill(OPNDesign.accent)
-                        .frame(width: 3 * uiScale)
+            .background {
+                ZStack(alignment: .leading) {
+                    background
+                    if isActive {
+                        Rectangle()
+                            .fill(OPNDesign.accent)
+                            .frame(width: 3 * uiScale)
+                    }
                 }
+                .opnCornerClip(role: .control, scale: uiScale)
             }
             .contentShape(Rectangle())
         }

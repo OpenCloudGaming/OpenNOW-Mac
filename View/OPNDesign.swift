@@ -127,20 +127,51 @@ enum OPNDesign {
         static func menuPanelVertical(scale: CGFloat) -> CGFloat { baseMenuPanelVertical * scale }
     }
 
-    enum Radius {
-        private static let baseAvatar: CGFloat = 14
-        private static let baseChip: CGFloat = 0
-        private static let baseCard: CGFloat = 2
-        private static let basePanel: CGFloat = 3
+    /// What a surface IS, not how round it is, so a fill, its border and its clipping all resolve
+    /// from one role and can never disagree.
+    enum CornerRole {
+        /// Buttons, chips, fields, toggles and icon buttons.
+        case control
+        /// Small artwork tiles: menu-bar game and collection thumbnails.
+        case tile
+        /// Cards, rows and list containers.
+        case card
+        /// Panels, docks, dropdown panels and section chrome.
+        case panel
+        /// A call to action - play, get in, sign in, resume - and the actions sharing its row.
+        case callToAction
+    }
 
-        static let chip: CGFloat = baseChip
-        static let card: CGFloat = baseCard
-        static let panel: CGFloat = basePanel
+    /// The one place corner radii are written down. `scale` belongs to the caller that owns the
+    /// interface scale, and stays at 1 where an outer `opnInterfaceScale` already transforms it.
+    enum Corner {
+        /// What a role's corner resolves to. A call to action is a pill, whose radius follows the
+        /// button's own height, so it is not a number this table can carry.
+        enum Geometry: Equatable, Sendable {
+            case radius(CGFloat)
+            case capsule
+        }
 
-        static func avatar(scale: CGFloat) -> CGFloat { baseAvatar * scale }
-        static func chip(scale: CGFloat) -> CGFloat { baseChip * scale }
-        static func card(scale: CGFloat) -> CGFloat { baseCard * scale }
-        static func panel(scale: CGFloat) -> CGFloat { basePanel * scale }
+        private static let baseControl: CGFloat = 6
+        private static let baseTile: CGFloat = 6
+        private static let baseCard: CGFloat = 10
+        private static let basePanel: CGFloat = 12
+
+        static func geometry(_ role: CornerRole, style: OPNThemePreferences.CornerStyle, scale: CGFloat = 1) -> Geometry {
+            guard style == .rounded, scale.isFinite, scale > 0 else { return .radius(0) }
+            guard role != .callToAction else { return .capsule }
+            return .radius(base(role) * scale)
+        }
+
+        private static func base(_ role: CornerRole) -> CGFloat {
+            switch role {
+            case .control: baseControl
+            case .tile: baseTile
+            case .card: baseCard
+            case .panel: basePanel
+            case .callToAction: 0
+            }
+        }
     }
 
     /// Type roles for the app. `label`/`body` use the app's UI sans (brand voice);
@@ -400,10 +431,15 @@ extension View {
     /// explicitly inert and absent rather than a permanently installed clear stroke.
     /// `onAccentFill` swaps the ring to the page surface colour. An accent ring over an accent
     /// background is invisible, so a focused primary button looked identical to an unfocused one.
-    func openNowFocusRing(_ isFocused: Bool, onAccentFill: Bool = false) -> some View {
+    func openNowFocusRing(
+        _ isFocused: Bool,
+        role: OPNDesign.CornerRole = .control,
+        scale: CGFloat = 1,
+        onAccentFill: Bool = false
+    ) -> some View {
         overlay {
             if isFocused {
-                Rectangle()
+                OPNCornerShape(role: role, scale: scale)
                     .strokeBorder(onAccentFill ? OPNDesign.Surface.app : OPNDesign.accent, lineWidth: 2)
                     .allowsHitTesting(false)
             }
@@ -498,6 +534,118 @@ private struct OPNHoverScaleModifier: ViewModifier {
     }
 }
 
+/// The environment's semantic corner policy. A style change repaints every surface that reads it,
+/// rather than requiring the subtrees keyed on the palette to rebuild.
+struct OPNCornerGeometry: Equatable, Sendable {
+    let style: OPNThemePreferences.CornerStyle
+
+    static let square = OPNCornerGeometry(style: .square)
+
+    func shape(_ role: OPNDesign.CornerRole, scale: CGFloat = 1) -> OPNResolvedCornerShape {
+        OPNResolvedCornerShape(geometry: OPNDesign.Corner.geometry(role, style: style, scale: scale))
+    }
+}
+
+private struct OPNCornerGeometryKey: EnvironmentKey {
+    static let defaultValue = OPNCornerGeometry.square
+}
+
+/// The corner shape with its geometry already resolved from the environment.
+struct OPNResolvedCornerShape: InsettableShape {
+    let geometry: OPNDesign.Corner.Geometry
+    private let inset: CGFloat
+
+    init(geometry: OPNDesign.Corner.Geometry) {
+        self.init(geometry: geometry, inset: 0)
+    }
+
+    private init(geometry: OPNDesign.Corner.Geometry, inset: CGFloat) {
+        self.geometry = geometry
+        self.inset = inset
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let box = rect.insetBy(dx: inset, dy: inset)
+        switch geometry {
+        case .radius(let radius):
+            let resolved = max(radius - inset, 0)
+            return Path(
+                roundedRect: box,
+                cornerSize: CGSize(width: resolved, height: resolved),
+                style: .continuous
+            )
+        case .capsule:
+            let radius = min(box.width, box.height) / 2
+            return Path(
+                roundedRect: box,
+                cornerSize: CGSize(width: radius, height: radius),
+                style: .circular
+            )
+        }
+    }
+
+    func inset(by amount: CGFloat) -> OPNResolvedCornerShape {
+        OPNResolvedCornerShape(geometry: geometry, inset: inset + amount)
+    }
+}
+
+/// The shape every app-owned fill and border is drawn with. It is a factory rather than a `Shape`
+/// because SwiftUI resolves `@Environment` in a view and not in a `Shape`; the views it builds read
+/// the geometry, so a fill, its `strokeBorder` and its `opnCornerClip` still agree.
+struct OPNCornerShape {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+
+    init(role: OPNDesign.CornerRole, scale: CGFloat = 1) {
+        self.role = role
+        self.scale = scale
+    }
+
+    func fill<Fill: ShapeStyle>(_ fill: Fill) -> some View {
+        OPNCornerFillView(role: role, scale: scale, fill: fill)
+    }
+
+    func strokeBorder<Stroke: ShapeStyle>(_ stroke: Stroke, lineWidth: CGFloat = 1) -> some View {
+        OPNCornerBorderView(role: role, scale: scale, stroke: stroke, lineWidth: lineWidth)
+    }
+}
+
+private struct OPNCornerFillView<Fill: ShapeStyle>: View {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+    let fill: Fill
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    var body: some View {
+        geometry.shape(role, scale: scale).fill(fill)
+    }
+}
+
+private struct OPNCornerBorderView<Stroke: ShapeStyle>: View {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+    let stroke: Stroke
+    let lineWidth: CGFloat
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    var body: some View {
+        geometry.shape(role, scale: scale).strokeBorder(stroke, lineWidth: lineWidth)
+    }
+}
+
+private struct OPNCornerClipModifier: ViewModifier {
+    let role: OPNDesign.CornerRole
+    let scale: CGFloat
+
+    @Environment(\.opnCornerGeometry) private var geometry
+
+    func body(content: Content) -> some View {
+        content.clipShape(geometry.shape(role, scale: scale))
+    }
+}
+
 /// Real content-size UI scale for Catalog views (replaces the visual scaleEffect hack for that surface only).
 private struct OPNUIScaleKey: EnvironmentKey {
     static let defaultValue: CGFloat = 1.0
@@ -507,6 +655,31 @@ extension EnvironmentValues {
     var opnUIScale: CGFloat {
         get { self[OPNUIScaleKey.self] }
         set { self[OPNUIScaleKey.self] = newValue }
+    }
+
+    var opnCornerGeometry: OPNCornerGeometry {
+        get { self[OPNCornerGeometryKey.self] }
+        set { self[OPNCornerGeometryKey.self] = newValue }
+    }
+}
+
+/// Injects the live Corner style into the environment. Every detached root observes the preference
+/// itself: the main window, each stream window, the menu bar scene and the Remote Co-Op window.
+private struct OPNCornerStyleInjectionModifier: ViewModifier {
+    @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
+
+    func body(content: Content) -> some View {
+        content.environment(\.opnCornerGeometry, OPNCornerGeometry(style: OPNThemePreferences.CornerStyle(storedRawValue: cornerStyleRawValue)))
+    }
+}
+
+extension View {
+    func opnObservingCornerStyle() -> some View {
+        modifier(OPNCornerStyleInjectionModifier())
+    }
+
+    func opnCornerClip(role: OPNDesign.CornerRole, scale: CGFloat = 1) -> some View {
+        modifier(OPNCornerClipModifier(role: role, scale: scale))
     }
 }
 

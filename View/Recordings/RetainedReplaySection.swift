@@ -84,8 +84,8 @@ private struct RetainedReplayRow: View {
         }
         .padding(12 * uiScale)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RecordingsLayout.raised)
-        .overlay { Rectangle().strokeBorder(isWatching ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(RecordingsLayout.raised))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isWatching ? OPNDesign.accent : RecordingsLayout.stroke, lineWidth: 1) }
     }
 
     /// The facts block is the play control, not a fourth button: the card is what the reader aims
@@ -141,8 +141,8 @@ private struct RetainedReplayRow: View {
                 .foregroundStyle(isPrimary ? OPNDesign.onAccent : OPNDesign.Text.secondary)
                 .padding(.horizontal, 12 * uiScale)
                 .frame(height: 26 * uiScale)
-                .background(isPrimary ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
-                .overlay { Rectangle().strokeBorder(isPrimary ? OPNDesign.accent : RecordingsLayout.strongStroke, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isPrimary ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isPrimary ? OPNDesign.accent : RecordingsLayout.strongStroke, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)

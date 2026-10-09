@@ -191,11 +191,11 @@ struct SystemCapabilityRow: View {
                 .tracking(0.8)
                 .padding(.horizontal, 10 * uiScale)
                 .frame(height: 28 * uiScale)
-                .background(OPNDesign.Fill.neutral(positive ? 0.07 : 0.04))
-                .overlay { Rectangle().stroke(positive ? OPNDesign.accent.opacity(0.38) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(positive ? 0.07 : 0.04)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(positive ? OPNDesign.accent.opacity(0.38) : OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
         .padding(12 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.045)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

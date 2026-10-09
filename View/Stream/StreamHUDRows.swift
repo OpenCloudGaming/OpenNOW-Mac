@@ -22,8 +22,8 @@ struct StreamHUDMetricCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card).fill(Color.white.opacity(0.055)))
+        .overlay { OPNCornerShape(role: .card).strokeBorder(StreamHUDTheme.divider, lineWidth: 1) }
     }
 }
 
@@ -75,8 +75,8 @@ struct StreamHUDControllerRow: View {
         .padding(.vertical, 6)
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card).fill(Color.white.opacity(0.055)))
+        .overlay { OPNCornerShape(role: .card).strokeBorder(StreamHUDTheme.divider, lineWidth: 1) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label) \(name), battery \(level >= 0 ? "\(level) percent" : "unknown")\(isCharging ? ", charging" : "")")
     }
@@ -116,7 +116,7 @@ extension View {
         padding(4)
             .overlay {
                 if isFocused {
-                    Rectangle().stroke(StreamHUDTheme.accent, lineWidth: 2)
+                    OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.accent, lineWidth: 2)
                 }
             }
     }
@@ -207,9 +207,9 @@ struct StreamHUDVolumeRow: View {
                 .font(.streamFont(size: 10, weight: .bold))
                 .foregroundStyle(isMuted ? StreamHUDTheme.warning : StreamHUDTheme.textPrimary)
                 .frame(width: 22, height: 22)
-                .background(Color.white.opacity(isMuteFocused ? 0.16 : 0.07))
+                .background(OPNCornerShape(role: .control).fill(Color.white.opacity(isMuteFocused ? 0.16 : 0.07)))
                 .overlay {
-                    Rectangle().stroke(isMuteFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isMuteFocused ? 2 : 1)
+                    OPNCornerShape(role: .control).strokeBorder(isMuteFocused ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: isMuteFocused ? 2 : 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -276,10 +276,10 @@ private struct StreamHUDSegmentedChip: View {
                 .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(height: 26)
-                .background(chipBackground)
+                .background(OPNCornerShape(role: .control).fill(chipBackground))
                 .overlay {
-                    Rectangle()
-                        .stroke(isSelected ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: 1)
+                    OPNCornerShape(role: .control)
+                        .strokeBorder(isSelected ? StreamHUDTheme.accent : StreamHUDTheme.divider, lineWidth: 1)
                 }
                 .contentShape(Rectangle())
         }
@@ -308,9 +308,9 @@ struct StreamHUDParticipantIconButton: View {
                 .font(.streamFont(size: 10, weight: .bold))
                 .foregroundStyle(color)
                 .frame(width: 22, height: 22)
-                .background(Color.white.opacity(isFocused ? 0.16 : 0.07))
+                .background(OPNCornerShape(role: .control).fill(Color.white.opacity(isFocused ? 0.16 : 0.07)))
                 .overlay {
-                    Rectangle().stroke(isFocused ? color : color.opacity(0.32), lineWidth: isFocused ? 2 : 1)
+                    OPNCornerShape(role: .control).strokeBorder(isFocused ? color : color.opacity(0.32), lineWidth: isFocused ? 2 : 1)
                 }
         }
         .buttonStyle(.plain)
@@ -354,7 +354,7 @@ struct StreamHUDControllerInputRow: View {
         .padding(.vertical, 6)
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.055))
-        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card).fill(Color.white.opacity(0.055)))
+        .overlay { OPNCornerShape(role: .card).strokeBorder(StreamHUDTheme.divider, lineWidth: 1) }
     }
 }

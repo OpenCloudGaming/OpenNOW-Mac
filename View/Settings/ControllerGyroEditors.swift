@@ -413,7 +413,7 @@ extension ControllerMappingView {
         }
         .padding(.horizontal, 6 * uiScale)
         .frame(height: 24 * uiScale)
-        .background(OPNDesign.Fill.neutral(0.075))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.075)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

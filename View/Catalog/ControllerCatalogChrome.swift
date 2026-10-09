@@ -37,8 +37,8 @@ struct ControllerOverlayHeader: View {
                     .catalogFont(size: 16, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.secondary)
                     .frame(width: 38 * uiScale, height: 38 * uiScale)
-                    .background(OPNDesign.Fill.neutral(0.08))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
         }
@@ -71,8 +71,8 @@ struct ControllerMetadataPill: View {
             .foregroundStyle(highlighted ? .black.opacity(0.88) : OPNDesign.Text.secondary)
             .padding(.horizontal, 10 * uiScale)
             .frame(height: 28 * uiScale)
-            .background(highlighted ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
-            .overlay { Rectangle().stroke(highlighted ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(highlighted ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(highlighted ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -113,8 +113,13 @@ struct ControllerHintBar: View {
         }
         .frame(width: layout.contentWidth, alignment: .leading)
         .frame(height: 46 * uiScale)
-        .background(Color.black.opacity(0.36))
-        .overlay(alignment: .top) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1) }
+        .background {
+            ZStack(alignment: .top) {
+                Color.black.opacity(0.36)
+                Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1)
+            }
+            .opnCornerClip(role: .control, scale: uiScale)
+        }
     }
 }
 
@@ -193,8 +198,8 @@ struct ControllerGlyphPill: View {
         .padding(.horizontal, (compact ? 6 : 7) * uiScale)
         .frame(minWidth: (compact ? 25 : 0) * uiScale)
         .frame(height: 22 * uiScale)
-        .background(OPNDesign.accent.opacity(0.12))
-        .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent.opacity(0.12)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel(glyph.accessibilityLabel)
     }
 
@@ -221,8 +226,8 @@ struct ControllerKeyboardMovePill: View {
         .foregroundStyle(OPNDesign.accentInk)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 22 * uiScale)
-        .background(OPNDesign.accent.opacity(0.12))
-        .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent.opacity(0.12)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
         .accessibilityLabel("Arrow keys")
     }
 }

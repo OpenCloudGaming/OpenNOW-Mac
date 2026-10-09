@@ -131,8 +131,8 @@ struct RecordingDetailTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12 * uiScale)
-        .background(RecordingsLayout.card)
-        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(RecordingsLayout.card))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue("\(value), \(detail)")
@@ -181,10 +181,10 @@ struct RecordingEmptyPlayer: View {
     var body: some View {
         VStack(spacing: 18 * uiScale) {
             ZStack {
-                Rectangle()
+                OPNCornerShape(role: .tile, scale: uiScale)
                     .fill(OPNDesign.Fill.neutral(0.045))
                     .frame(width: 180 * uiScale, height: 108 * uiScale)
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                 Image(systemName: "play.rectangle.fill")
                     .font(.recordingsFont(size: 46 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.accentInk.opacity(0.88))
@@ -199,8 +199,8 @@ struct RecordingEmptyPlayer: View {
                 .frame(maxWidth: 420 * uiScale)
         }
         .padding(36 * uiScale)
-        .background(RecordingsLayout.surface)
-        .overlay { Rectangle().stroke(RecordingsLayout.stroke, lineWidth: 1) }
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(RecordingsLayout.surface))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
         .shadow(color: .black.opacity(0.42), radius: 22 * uiScale, y: 10 * uiScale)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -260,12 +260,12 @@ struct RecordingActionButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 14 * uiScale)
             .frame(height: Self.height * uiScale)
-            .background(background(isPressed: configuration.isPressed))
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(background(isPressed: configuration.isPressed)))
             // `strokeBorder`, not `stroke`: a stroke is centred on the path and spills half a point
             // outside the frame. On the secondary tones that spill is invisible, but the primary
             // tone strokes in its own fill colour, so the spill painted as extra button - measurably
             // 49 px against 47 px, and it read as the primary button being taller than its row.
-            .overlay { Rectangle().strokeBorder(stroke, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(stroke, lineWidth: 1) }
     }
 
     private var foreground: Color {

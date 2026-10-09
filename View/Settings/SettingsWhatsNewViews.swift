@@ -184,9 +184,9 @@ private struct WhatsNewBadge: View {
             .tracking(0.8)
             .padding(.horizontal, 7 * uiScale)
             .frame(height: 18 * uiScale)
-            .background(tone == .accent ? OPNDesign.accent : OPNDesign.Stroke.subtle)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(tone == .accent ? OPNDesign.accent : OPNDesign.Stroke.subtle))
             .overlay {
-                Rectangle().stroke(tone == .accent ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
+                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(tone == .accent ? OPNDesign.accent : OPNDesign.Stroke.regular, lineWidth: 1)
             }
     }
 }
