@@ -140,8 +140,8 @@ struct RemoteCoOpSetupWizard: View {
         }
         .padding(24 * uiScale)
         .frame(width: 580 * uiScale, alignment: .leading)
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
         .onAppear {
             reachabilityChoice = hasTunnel ? .tunnel : (hasHostedSignaling ? .hostedSignaling : .tunnel)
         }
@@ -250,8 +250,8 @@ struct RemoteCoOpSetupWizard: View {
                     }
                     .padding(11 * uiScale)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(OPNDesign.Fill.neutral(0.04))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.04)))
+                    .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
                 }
             }
             .padding(.top, 4 * uiScale)
@@ -299,8 +299,8 @@ struct RemoteCoOpSetupWizard: View {
             }
             .padding(10 * uiScale)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isSelected ? OPNDesign.Fill.neutral(0.07) : OPNDesign.Fill.neutral(0.025))
-            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .card, scale: uiScale).fill(isSelected ? OPNDesign.Fill.neutral(0.07) : OPNDesign.Fill.neutral(0.025)))
+            .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
         .buttonStyle(.plain)
     }
@@ -339,8 +339,8 @@ struct RemoteCoOpSetupWizard: View {
                     }
                     .padding(9 * uiScale)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(option.2 ? OPNDesign.Fill.neutral(0.07) : OPNDesign.Fill.neutral(0.025))
-                    .overlay { Rectangle().stroke(option.2 ? OPNDesign.accent.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .card, scale: uiScale).fill(option.2 ? OPNDesign.Fill.neutral(0.07) : OPNDesign.Fill.neutral(0.025)))
+                    .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(option.2 ? OPNDesign.accent.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
                 }
                 .buttonStyle(.plain)
             }

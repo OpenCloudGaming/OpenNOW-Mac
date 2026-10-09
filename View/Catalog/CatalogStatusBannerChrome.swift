@@ -39,11 +39,16 @@ struct VendorStatusBannerChrome<Actions: View>: View {
         // Clamp before the chrome so the background and hairline paint at the page width, not at
         // the scroll view's inflated content width.
         .frame(maxWidth: availableWidth > 0 ? availableWidth : .infinity, alignment: .leading)
-        .background(OPNDesign.Surface.chrome)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(OPNDesign.Stroke.subtle)
-                .frame(height: 1)
+        // The fill and its hairline are clipped together, so the rule follows the banner's corners
+        // instead of running past them.
+        .background {
+            ZStack(alignment: .bottom) {
+                OPNDesign.Surface.chrome
+                Rectangle()
+                    .fill(OPNDesign.Stroke.subtle)
+                    .frame(height: 1)
+            }
+            .opnCornerClip(role: .card, scale: uiScale)
         }
     }
 }

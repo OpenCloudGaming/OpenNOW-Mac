@@ -153,8 +153,8 @@ struct ControllerOrderPanel: View {
             moveButton(device: device, direction: .later, disabled: index == devices.count - 1)
         }
         .padding(OPNDesign.Spacing.small(scale: uiScale))
-        .background(OPNDesign.Surface.panel)
-        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private func moveButton(device: ControllerMappingDevice, direction: ControllerPlayerOrder.Direction, disabled: Bool) -> some View {
@@ -166,7 +166,7 @@ struct ControllerOrderPanel: View {
         .disabled(disabled)
         .overlay {
             if focusedControl?.deviceID == device.id, focusedControl?.direction == direction {
-                Rectangle().strokeBorder(OPNDesign.accent, lineWidth: 2)
+                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent, lineWidth: 2)
             }
         }
         .opacity(disabled ? 0.46 : 1)

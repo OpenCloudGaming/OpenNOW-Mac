@@ -31,8 +31,8 @@ extension NativeNVSTMediaStreamSurface {
                         .foregroundStyle(model.remoteCoOpSnapshot.preferences.transportMode == .directOnly ? StreamHUDTheme.warning : StreamHUDTheme.accent)
                         .padding(.horizontal, 8)
                         .frame(height: 24)
-                        .background(Color.white.opacity(0.07))
-                        .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+                        .background(OPNCornerShape(role: .control).fill(Color.white.opacity(0.07)))
+                        .overlay { OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.divider, lineWidth: 1) }
                 }
                 HStack(spacing: 8) {
                     StreamHUDActionRow(

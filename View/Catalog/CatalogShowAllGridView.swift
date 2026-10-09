@@ -61,7 +61,14 @@ struct CatalogShowAllGridView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        context.coordinator.update(self, scale: uiScale, density: context.environment.opnTileDensity)
+        // The hosted tiles and detail panels are separate hosting roots, so the environment has to
+        // cross the boundary explicitly rather than relying on inheritance.
+        context.coordinator.update(
+            self,
+            scale: uiScale,
+            density: context.environment.opnTileDensity,
+            cornerGeometry: context.environment.opnCornerGeometry
+        )
     }
 
     static func dismantleNSView(_ nsView: NSScrollView, coordinator: CatalogShowAllGridCoordinator) {
@@ -90,6 +97,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
         isSelected: Bool,
         isQueuedForPatching: Bool,
         scale: CGFloat,
+        cornerGeometry: OPNCornerGeometry,
         tileTitleVisibility: OPNThemePreferences.TileTitleVisibility,
         onSelect: @escaping () -> Void,
         onPlay: @escaping () -> Void,
@@ -109,6 +117,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
                 onQueueForPatching: onQueueForPatching
             )
             .environment(\.opnUIScale, scale)
+            .environment(\.opnCornerGeometry, cornerGeometry)
         )
         if let hostingView = hostingView {
             hostingView.rootView = tile
@@ -183,8 +192,8 @@ struct CatalogShowAllGridTile: View {
             .foregroundStyle(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.92) : OPNDesign.Text.primary) : .black.opacity(0.88))
             .padding(.horizontal, 13 * uiScale)
             .frame(height: 30 * uiScale)
-            .background(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent)
-            .overlay { Rectangle().stroke(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
+            .background(OPNCornerShape(role: .callToAction, scale: uiScale).fill(game.isLaunchPatching ? Color.black.opacity(0.62) : OPNDesign.Fixed.accent))
+            .overlay { OPNCornerShape(role: .callToAction, scale: uiScale).strokeBorder(game.isLaunchPatching ? (isQueuedForPatching ? OPNDesign.Fixed.accent.opacity(0.55) : OPNDesign.Fill.neutral(0.30)) : OPNDesign.Fixed.accent, lineWidth: 1) }
             .shadow(color: .black.opacity(0.38), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.opnPressable(scale: 0.94))
@@ -244,6 +253,9 @@ struct CatalogShowAllGridTile: View {
                     .frame(height: 4)
             }
         }
+        // The artwork, hover scrim and title tray are contained by the tile's own shape, while the
+        // shadow stays outside the clip so it is not cut off at the corners.
+        .opnCornerClip(role: .card, scale: uiScale)
         .shadow(color: isSelected ? .black.opacity(0.28) : .clear, radius: 5, x: 0, y: 3)
     }
 }
@@ -358,8 +370,8 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
 final class CatalogShowAllGridDetailRow: NSView, NSCollectionViewElement {
     private var hostingView: NSHostingView<AnyView>?
 
-    func configure(detailPanel: any View) {
-        let rootView = AnyView(detailPanel)
+    func configure(detailPanel: any View, cornerGeometry: OPNCornerGeometry) {
+        let rootView = AnyView(detailPanel.environment(\.opnCornerGeometry, cornerGeometry))
         if let hostingView = hostingView {
             hostingView.rootView = rootView
         } else {

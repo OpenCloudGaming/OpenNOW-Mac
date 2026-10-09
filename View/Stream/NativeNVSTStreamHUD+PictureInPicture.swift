@@ -50,10 +50,10 @@ struct NativeNVSTPictureInPictureControls: View {
             .frame(width: 104)
         }
         .padding(OPNDesign.Spacing.xSmall)
-        .background(StreamHUDTheme.panel.opacity(0.82))
+        .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.82)))
         .overlay {
-            Rectangle()
-                .stroke(StreamHUDTheme.divider, lineWidth: 1)
+            OPNCornerShape(role: .panel)
+                .strokeBorder(StreamHUDTheme.divider, lineWidth: 1)
         }
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)

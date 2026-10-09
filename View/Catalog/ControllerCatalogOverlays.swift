@@ -84,9 +84,9 @@ struct ControllerSearchOverlay: View {
         }
         .padding(.horizontal, 18 * uiScale)
         .frame(height: 58 * uiScale)
-        .background(OPNDesign.Fill.neutral(rowIndex == 0 ? 0.12 : 0.075))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-        .openNowFocusRing(rowIndex == 0)
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(rowIndex == 0 ? 0.12 : 0.075)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .openNowFocusRing(rowIndex == 0, scale: uiScale)
     }
 
     private var filterBar: some View {
@@ -125,9 +125,9 @@ struct ControllerSearchOverlay: View {
             .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.secondary)
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 36 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused, onAccentFill: true)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
         }
         .buttonStyle(.plain)
     }
@@ -152,9 +152,9 @@ struct ControllerSearchOverlay: View {
             .foregroundStyle(isFocused ? .black.opacity(0.88) : (isSelected ? OPNDesign.accent : OPNDesign.Text.secondary))
             .padding(.horizontal, 14 * uiScale)
             .frame(height: 36 * uiScale)
-            .background(isFocused ? OPNDesign.accent : (isSelected ? OPNDesign.accent.opacity(0.15) : OPNDesign.Fill.neutral(0.075)))
-            .overlay { Rectangle().stroke(isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused, onAccentFill: true)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : (isSelected ? OPNDesign.accent.opacity(0.15) : OPNDesign.Fill.neutral(0.075))))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(isSelected ? OPNDesign.accent : OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
         }
         .buttonStyle(.plain)
     }
@@ -176,9 +176,9 @@ struct ControllerSearchOverlay: View {
             .foregroundStyle(isFocused ? .black.opacity(0.88) : OPNDesign.Text.secondary)
             .padding(.horizontal, 12 * uiScale)
             .frame(height: 36 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.05))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused, onAccentFill: true)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.05)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
         }
         .buttonStyle(.plain)
     }
@@ -283,9 +283,9 @@ struct ControllerSearchPickerOverlay: View {
                                     }
                                     .padding(.horizontal, 14 * uiScale)
                                     .frame(height: 44 * uiScale)
-                                    .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-                                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-                                    .openNowFocusRing(isFocused, onAccentFill: true)
+                                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+                                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                                    .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
                                 }
                                 .buttonStyle(.plain)
                                 .id(option.id)
@@ -303,9 +303,15 @@ struct ControllerSearchPickerOverlay: View {
                 }
             }
             .frame(width: min(520 * uiScale, layout.contentWidth), height: panelHeight, alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            // The panel's accent bar shares the panel's own clip, so it ends where the corners do.
+            .background {
+                ZStack(alignment: .top) {
+                    OPNDesign.Surface.deep.opacity(0.98)
+                    Rectangle().fill(OPNDesign.accent).frame(height: 2)
+                }
+                .opnCornerClip(role: .panel, scale: uiScale)
+            }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         }
     }
 }
@@ -382,9 +388,9 @@ struct ControllerActionMenuOverlay: View {
                                 }
                                 .padding(.horizontal, 14 * uiScale)
                                 .frame(height: 48 * uiScale)
-                                .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-                                .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-                                .openNowFocusRing(isFocused)
+                                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+                                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                                .openNowFocusRing(isFocused, scale: uiScale)
                             }
                             .buttonStyle(.plain)
                             .disabled(item.isRefresh && isRefreshingCatalog)
@@ -395,8 +401,13 @@ struct ControllerActionMenuOverlay: View {
                 }
             }
             .frame(maxWidth: 420 * uiScale, maxHeight: .infinity, alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
+            .background {
+                ZStack(alignment: .leading) {
+                    OPNDesign.Surface.deep.opacity(0.98)
+                    Rectangle().fill(OPNDesign.accent).frame(width: 3)
+                }
+                .opnCornerClip(role: .panel, scale: uiScale)
+            }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
         }
@@ -451,8 +462,13 @@ struct ControllerAccountOptionsOverlay: View {
                 .padding(.bottom, 22 * uiScale)
             }
             .frame(maxWidth: 420 * uiScale, maxHeight: .infinity, alignment: .topLeading)
-            .background(OPNDesign.Surface.deep.opacity(0.98))
-            .overlay(alignment: .leading) { Rectangle().fill(OPNDesign.accent).frame(width: 3) }
+            .background {
+                ZStack(alignment: .leading) {
+                    OPNDesign.Surface.deep.opacity(0.98)
+                    Rectangle().fill(OPNDesign.accent).frame(width: 3)
+                }
+                .opnCornerClip(role: .panel, scale: uiScale)
+            }
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
         }
@@ -487,9 +503,9 @@ struct ControllerAccountOptionsOverlay: View {
                     }
                     .padding(.horizontal, 14 * uiScale)
                     .frame(height: 48 * uiScale)
-                    .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-                    .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-                    .openNowFocusRing(isFocused)
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                    .openNowFocusRing(isFocused, scale: uiScale)
                 }
                 .buttonStyle(.plain)
             }
@@ -525,9 +541,9 @@ struct ControllerAccountOptionsOverlay: View {
                 .foregroundStyle(isFocused ? .black.opacity(0.88) : (destructive ? OPNDesign.Semantic.destructive : OPNDesign.Text.secondary))
                 .frame(maxWidth: .infinity)
                 .frame(height: 44 * uiScale)
-                .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075))
-                .overlay { Rectangle().stroke(destructive ? OPNDesign.Semantic.destructive.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
-                .openNowFocusRing(isFocused, onAccentFill: true)
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.075)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(destructive ? OPNDesign.Semantic.destructive.opacity(0.5) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .openNowFocusRing(isFocused, scale: uiScale, onAccentFill: true)
         }
         .buttonStyle(.plain)
     }

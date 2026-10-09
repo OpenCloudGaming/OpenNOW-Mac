@@ -453,7 +453,7 @@ struct CatalogHeroView: View {
                 .frame(width: bandWidth, alignment: .leading)
             }
             .frame(height: CatalogVendorLayout.heroHeight(for: availableWidth, viewportHeight: availableHeight, scale: uiScale))
-            .clipShape(Rectangle())
+            .opnCornerClip(role: .card, scale: uiScale)
         }
     }
 }
@@ -549,7 +549,7 @@ struct CatalogBrowseControlsView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .padding(.horizontal, OPNDesign.Spacing.controlRow)
                     .frame(height: 34)
-                    .background(OPNDesign.Fill.neutral(0.08))
+                    .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.08)))
                 }
             }
 
@@ -574,8 +574,8 @@ struct CatalogBrowseControlsView: View {
                                 .foregroundStyle(OPNDesign.Text.secondary)
                                 .padding(.horizontal, OPNDesign.Spacing.controlRow)
                                 .frame(height: 32)
-                                .background(OPNDesign.Fill.neutral(0.075))
-                                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+                                .background(OPNCornerShape(role: .control).fill(OPNDesign.Fill.neutral(0.075)))
+                                .overlay { OPNCornerShape(role: .control).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
                             }
                         }
                         ForEach(selectedFilterOptions, id: \.id) { option in
@@ -639,8 +639,8 @@ struct CatalogEmptyDestinationView: View {
         }
         .padding(22)
         .frame(maxWidth: 620, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(0.055))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card).fill(OPNDesign.Fill.neutral(0.055)))
+        .overlay { OPNCornerShape(role: .card).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private var icon: String {

@@ -434,9 +434,9 @@ private struct ControllerDesktopModeButton: View {
                 .catalogFont(size: 13, weight: .bold)
                 .foregroundStyle(isFocused ? .black.opacity(0.86) : OPNDesign.Text.primary)
                 .frame(width: 40 * uiScale, height: 34 * uiScale)
-                .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.08))
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
-                .openNowFocusRing(isFocused)
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.08)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                .openNowFocusRing(isFocused, scale: uiScale)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Switch to desktop mode")
@@ -478,9 +478,9 @@ private struct ControllerNavigationBar: View {
                             .foregroundStyle(active ? .black.opacity(0.86) : OPNDesign.Text.secondary)
                             .padding(.horizontal, 14 * uiScale)
                             .frame(height: 40 * uiScale)
-                            .background(active ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-                            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-                            .openNowFocusRing(selected)
+                            .background(OPNCornerShape(role: .control, scale: uiScale).fill(active ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+                            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                            .openNowFocusRing(selected, scale: uiScale)
                         }
                         .buttonStyle(.plain)
                     }
@@ -626,9 +626,9 @@ private struct ControllerSearchEntryBar: View {
             }
             .padding(.horizontal, 16 * uiScale)
             .frame(height: 44 * uiScale)
-            .background(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
-            .openNowFocusRing(isFocused)
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFocused ? OPNDesign.accent : OPNDesign.Fill.neutral(0.055)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .openNowFocusRing(isFocused, scale: uiScale)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Search games")

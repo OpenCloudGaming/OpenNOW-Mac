@@ -173,8 +173,8 @@ struct InterfaceInputLegend: View {
         .padding(.horizontal, 12 * uiScale)
         .padding(.vertical, 11 * uiScale)
         .frame(minWidth: 132 * uiScale, minHeight: 70 * uiScale, alignment: .leading)
-        .background(OPNDesign.Fill.neutral(0.045))
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.045)))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
@@ -195,8 +195,8 @@ struct InterfaceGlyphPill: View {
         .foregroundStyle(OPNDesign.accentInk)
         .padding(.horizontal, 8 * uiScale)
         .frame(height: 28 * uiScale)
-        .background(OPNDesign.accent.opacity(0.12))
-        .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.28), lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent.opacity(0.12)))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.28), lineWidth: 1) }
         .accessibilityLabel(glyph.accessibilityLabel)
     }
 }

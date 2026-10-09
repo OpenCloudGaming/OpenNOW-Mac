@@ -173,7 +173,7 @@ private struct ReleaseNoteChip: View {
             .lineLimit(1)
             .padding(.horizontal, OPNDesign.Spacing.xSmall(scale: uiScale))
             .frame(height: 18 * uiScale)
-            .background(Color.white.opacity(isHovering ? 0.10 : 0.05))
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .background(OPNCornerShape(role: .control, scale: uiScale).fill(Color.white.opacity(isHovering ? 0.10 : 0.05)))
+            .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }

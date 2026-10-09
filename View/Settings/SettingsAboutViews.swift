@@ -253,14 +253,14 @@ struct DiagnosticsUploadConfirmationDialog: View {
             VStack(alignment: .leading, spacing: 18 * uiScale) {
                 HStack(alignment: .top, spacing: 14 * uiScale) {
                     ZStack {
-                        Rectangle()
+                        OPNCornerShape(role: .control, scale: uiScale)
                             .fill(OPNDesign.accent.opacity(0.16))
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.settingsFont(size: 18 * uiScale, weight: .bold))
                             .foregroundStyle(OPNDesign.accentInk)
                     }
                     .frame(width: 44 * uiScale, height: 44 * uiScale)
-                    .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.42), lineWidth: 1) }
 
                     VStack(alignment: .leading, spacing: 7 * uiScale) {
                         Text("Upload diagnostics logs?")
@@ -283,8 +283,8 @@ struct DiagnosticsUploadConfirmationDialog: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12 * uiScale)
-                .background(OPNDesign.Fill.neutral(0.045))
-                .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .background(OPNCornerShape(role: .card, scale: uiScale).fill(OPNDesign.Fill.neutral(0.045)))
+                .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
 
                 HStack(spacing: 10 * uiScale) {
                     Spacer(minLength: 0)
@@ -294,8 +294,8 @@ struct DiagnosticsUploadConfirmationDialog: View {
             }
             .padding(22 * uiScale)
             .frame(width: 430 * uiScale, alignment: .leading)
-            .background(OPNDesign.Surface.overlay)
-            .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.overlay))
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
             .shadow(color: .black.opacity(0.62), radius: 34 * uiScale, x: 0, y: 18 * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -323,8 +323,8 @@ struct SettingsDialogButton: View {
                 .padding(.horizontal, 14 * uiScale)
                 .frame(minWidth: 104 * uiScale)
                 .frame(height: 34 * uiScale)
-                .background(backgroundColor)
-                .overlay { Rectangle().stroke(strokeColor, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(backgroundColor))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(strokeColor, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
@@ -397,8 +397,8 @@ struct AboutStatusPill: View {
         }
         .padding(.horizontal, 10 * uiScale)
         .frame(height: 28 * uiScale)
-        .background(OPNDesign.Stroke.subtle)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
     }
 }
 
@@ -431,8 +431,8 @@ struct AboutDetailRow: View {
                     .tracking(0.7)
                     .padding(.horizontal, 10 * uiScale)
                     .frame(height: 26 * uiScale)
-                    .background(OPNDesign.Fill.neutral(copyDisabled ? 0.03 : 0.06))
-                    .overlay { Rectangle().stroke(copyDisabled ? OPNDesign.Fill.neutral(0.05) : OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(copyDisabled ? 0.03 : 0.06)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(copyDisabled ? OPNDesign.Fill.neutral(0.05) : OPNDesign.Stroke.regular, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .disabled(copyDisabled)

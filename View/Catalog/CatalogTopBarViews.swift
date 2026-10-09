@@ -262,8 +262,8 @@ struct CatalogTopBar: View {
         }
         .padding(.horizontal, 18 * uiScale)
         .frame(height: 46 * uiScale)
-        .background(OPNDesign.Surface.field)
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
+        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .onExitCommand { setSearchExpanded(false) }
     }
 }
@@ -326,11 +326,16 @@ private struct CatalogTopBarPlate: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(width: 44 * uiScale, height: 40 * uiScale)
-            .background(isActive ? Color.black.opacity(0.22) : Color.clear)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(isActive ? OPNDesign.accent : Color.clear)
-                    .frame(height: 3)
+            // The plate's tint and its accent underline share one clip, so the underline ends where
+            // the plate does rather than squaring off its corners.
+            .background {
+                ZStack(alignment: .bottom) {
+                    isActive ? Color.black.opacity(0.22) : Color.clear
+                    Rectangle()
+                        .fill(isActive ? OPNDesign.accent : Color.clear)
+                        .frame(height: 3)
+                }
+                .opnCornerClip(role: .control, scale: uiScale)
             }
             .contentShape(Rectangle())
     }

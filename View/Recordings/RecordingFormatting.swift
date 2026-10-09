@@ -102,10 +102,10 @@ struct RecordingRightsNotice: View {
             .padding(28 * uiScale)
             .frame(maxWidth: 460 * uiScale)
             .background {
-                Rectangle().fill(RecordingsLayout.surface)
-                Rectangle().fill(RecordingsLayout.card)
+                OPNCornerShape(role: .panel, scale: uiScale).fill(RecordingsLayout.surface)
+                OPNCornerShape(role: .panel, scale: uiScale).fill(RecordingsLayout.card)
             }
-            .overlay { Rectangle().stroke(RecordingsLayout.strongStroke, lineWidth: 1) }
+            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(RecordingsLayout.strongStroke, lineWidth: 1) }
             .shadow(color: .black.opacity(0.55), radius: 24 * uiScale, y: 10 * uiScale)
         }
     }

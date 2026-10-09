@@ -105,16 +105,16 @@ struct StreamRegionCaptureOverlay: View {
                     .foregroundStyle(StreamHUDTheme.textPrimary)
                     .padding(.horizontal, 12)
                     .frame(height: 26)
-                    .background(Color.white.opacity(0.08))
-                    .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control).fill(Color.white.opacity(0.08)))
+                    .overlay { OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.divider, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color.black.opacity(0.86))
-        .overlay { Rectangle().stroke(StreamHUDTheme.accent.opacity(0.55), lineWidth: 1) }
+        .background(OPNCornerShape(role: .control).fill(Color.black.opacity(0.86)))
+        .overlay { OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.accent.opacity(0.55), lineWidth: 1) }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 24)
     }

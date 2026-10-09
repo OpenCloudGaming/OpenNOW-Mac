@@ -66,12 +66,14 @@ struct SettingsCard<Content: View>: View {
             ZStack(alignment: .topLeading) {
                 SettingsVendorLayout.card
                 LinearGradient(colors: [OPNDesign.Fill.neutral(0.035), .clear], startPoint: .top, endPoint: .center)
+                // The header's accent bar stays square: it is a rule, not a surface.
                 Rectangle()
                     .fill(OPNDesign.accent.opacity(0.10))
                     .frame(width: 1)
             }
+            .opnCornerClip(role: .card, scale: uiScale)
         )
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
     }
 }
@@ -146,12 +148,14 @@ struct SettingsCollapsibleCard<Content: View>: View {
             ZStack(alignment: .topLeading) {
                 SettingsVendorLayout.card
                 LinearGradient(colors: [OPNDesign.Fill.neutral(0.035), .clear], startPoint: .top, endPoint: .center)
+                // The header's accent bar stays square: it is a rule, not a surface.
                 Rectangle()
                     .fill(OPNDesign.accent.opacity(0.10))
                     .frame(width: 1)
             }
+            .opnCornerClip(role: .card, scale: uiScale)
         )
-        .overlay { Rectangle().stroke(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
     }
 }

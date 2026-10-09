@@ -102,8 +102,8 @@ struct StoreConnectionRow: View {
             }
         }
         .padding(12 * uiScale)
-        .background(isConnected ? OPNDesign.accent.opacity(0.095) : SettingsVendorLayout.row)
-        .overlay { Rectangle().stroke(isConnected ? OPNDesign.accent.opacity(0.34) : OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(isConnected ? OPNDesign.accent.opacity(0.095) : SettingsVendorLayout.row))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(isConnected ? OPNDesign.accent.opacity(0.34) : OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 
     private func statusText(_ account: CatalogStoreAccount?) -> String {
@@ -131,7 +131,7 @@ struct StoreIcon: View {
 
     var body: some View {
         ZStack {
-            Rectangle()
+            OPNCornerShape(role: .tile, scale: uiScale)
                 .fill(isConnected ? OPNDesign.accent.opacity(0.18) : OPNDesign.Fill.neutral(0.075))
             if let url = resolvedImageURL {
                 StoreRemoteIconImage(url: url, displayName: displayName, isConnected: isConnected, uiScale: uiScale)
@@ -140,7 +140,7 @@ struct StoreIcon: View {
             }
         }
         .frame(width: 42 * uiScale, height: 42 * uiScale)
-        .overlay { Rectangle().stroke(isConnected ? OPNDesign.accent.opacity(0.42) : OPNDesign.Stroke.regular, lineWidth: 1) }
+        .overlay { OPNCornerShape(role: .tile, scale: uiScale).strokeBorder(isConnected ? OPNDesign.accent.opacity(0.42) : OPNDesign.Stroke.regular, lineWidth: 1) }
         .accessibilityHidden(true)
     }
 

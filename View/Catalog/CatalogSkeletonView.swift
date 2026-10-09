@@ -43,6 +43,7 @@ import SwiftUI
 /// Falls back to a static translucent block when Reduce Motion is enabled.
 struct SkeletonBlock: View {
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
+    @Environment(\.opnUIScale) private var uiScale
     @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     @State private var isHoldingShimmerClock = false
 
@@ -51,7 +52,9 @@ struct SkeletonBlock: View {
     }
 
     var body: some View {
-        Rectangle()
+        // A skeleton stands in for a tile or card, so it takes the same semantic geometry: the
+        // placeholder and the content that replaces it have to be the same shape.
+        OPNCornerShape(role: .card, scale: uiScale)
             .fill(OPNDesign.Fill.neutral(0.06))
             .overlay {
                 if !isMotionReduced {

@@ -64,7 +64,7 @@ extension NativeNVSTMediaStreamSurface {
                         .foregroundStyle(.black.opacity(0.86))
                         .padding(.horizontal, 14)
                         .frame(height: 28)
-                        .background(StreamHUDTheme.accent)
+                        .background(OPNCornerShape(role: .control).fill(StreamHUDTheme.accent))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
@@ -73,9 +73,12 @@ extension NativeNVSTMediaStreamSurface {
             .padding(.vertical, 10)
         }
         .frame(width: 460)
-        .background(StreamHUDTheme.panel.opacity(0.985))
-        .overlay { Rectangle().stroke(StreamHUDTheme.accent.opacity(0.28), lineWidth: 1) }
         .overlay(alignment: .top) { Rectangle().fill(StreamHUDTheme.accent).frame(height: 2) }
+        // Clipped after the accent strip is drawn, so the strip follows the panel's corners; the
+        // fill, border and shadow are added outside the clip.
+        .opnCornerClip(role: .panel)
+        .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.985)))
+        .overlay { OPNCornerShape(role: .panel).strokeBorder(StreamHUDTheme.accent.opacity(0.28), lineWidth: 1) }
         .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
     }
 
@@ -110,8 +113,8 @@ extension NativeNVSTMediaStreamSurface {
                 .foregroundStyle(StreamHUDTheme.accent)
                 .padding(.horizontal, 10)
                 .frame(height: 26)
-                .background(Color.white.opacity(0.07))
-                .overlay { Rectangle().stroke(StreamHUDTheme.divider, lineWidth: 1) }
+                .background(OPNCornerShape(role: .control).fill(Color.white.opacity(0.07)))
+                .overlay { OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.divider, lineWidth: 1) }
         }
         .padding(.vertical, 9)
         .accessibilityElement(children: .combine)

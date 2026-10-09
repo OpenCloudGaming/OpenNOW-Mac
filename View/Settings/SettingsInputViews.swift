@@ -138,8 +138,8 @@ struct InputSettingsPage: View {
                     .font(.settingsFont(size: 18 * uiScale, weight: .bold))
                     .foregroundStyle(OPNDesign.accentInk)
                     .frame(width: 34 * uiScale, height: 34 * uiScale)
-                    .background(OPNDesign.accent.opacity(0.12))
-                    .overlay { Rectangle().stroke(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.accent.opacity(0.12)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.accent.opacity(0.30), lineWidth: 1) }
                 VStack(alignment: .leading, spacing: 4 * uiScale) {
                     Text(isAnyControllerConnected ? "Controller glyphs are live" : "Keyboard fallback is active")
                         .font(.settingsFont(size: 14 * uiScale, weight: .bold))
@@ -282,8 +282,8 @@ struct InputSettingsPage: View {
         }
         .padding(.horizontal, 12 * uiScale)
         .padding(.vertical, 10 * uiScale)
-        .background(SettingsVendorLayout.row)
-        .overlay { Rectangle().strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .background(OPNCornerShape(role: .card, scale: uiScale).fill(SettingsVendorLayout.row))
+        .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
     }
 }
 
