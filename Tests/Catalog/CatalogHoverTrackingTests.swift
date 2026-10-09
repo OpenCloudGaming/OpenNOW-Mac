@@ -15,8 +15,7 @@ struct CatalogHoverTrackingTests {
         fixture.reconcileHover()
         #expect(fixture.hoveredTile == "pageTile")
 
-        // The page scrolls the rail under the pointer: the rail tile is two clip views down, so this
-        // only works if the tracker watches every clip view above it, not just the nearest one.
+        // The rail tile is two clip views down: this needs every clip view above it, not the nearest.
         fixture.scrollPage(to: 100)
         await fixture.settleHover(on: "railTile")
         #expect(fixture.hoveredTile == "railTile")
@@ -35,7 +34,7 @@ struct CatalogHoverTrackingTests {
         fixture.reconcileHover()
         #expect(fixture.hoveredTile == "railTile")
 
-        fixture.scrollRail(to: 400)
+        fixture.scrollRail(to: 700)
         await fixture.settleHover(on: "railTile2")
         #expect(fixture.hoveredTile == "railTile2")
     }
@@ -74,6 +73,23 @@ struct CatalogHoverTrackingTests {
         fixture.railTile.mouseExited(with: event)
         #expect(fixture.hoveredTile == nil)
     }
+
+    @Test func aPointerOverTheClippedPartOfATileDoesNotHoverIt() {
+        let fixture = HoverFixture()
+        defer { fixture.close() }
+
+        // The straddling tile runs from rail x 300 to 700 while the rail viewport ends at 400, so the
+        // pointer can be inside its bounds and outside the part of it the viewport shows.
+        fixture.scrollPage(to: 100)
+
+        fixture.pointCursor(at: NSPoint(x: 350, y: 50))
+        fixture.reconcileHover()
+        #expect(fixture.hoveredTile == "straddlingTile")
+
+        fixture.pointCursor(at: NSPoint(x: 450, y: 50))
+        fixture.reconcileHover()
+        #expect(fixture.hoveredTile == nil)
+    }
 }
 
 @MainActor
@@ -82,26 +98,37 @@ private final class HoverFixture {
     let pageScrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 500, height: 100))
     let pageDocument = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 400))
     let railScrollView = NSScrollView(frame: NSRect(x: 0, y: 100, width: 400, height: 100))
-    let railDocument = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 100))
+    let railDocument = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 100))
     let pageTile = CatalogHoverTrackingNSView()
     let railTile = CatalogHoverTrackingNSView()
+    let straddlingTile = CatalogHoverTrackingNSView()
     let railTile2 = CatalogHoverTrackingNSView()
     let window: NSWindow
 
+    private let surfaces: [(surface: CatalogHoverTrackingNSView, name: String)]
     private(set) var hoveredTile: String?
 
     init() {
+        surfaces = [
+            (pageTile, "pageTile"),
+            (railTile, "railTile"),
+            (straddlingTile, "straddlingTile"),
+            (railTile2, "railTile2"),
+        ]
+
         pageScrollView.hasVerticalScroller = false
         pageScrollView.hasHorizontalScroller = false
         railScrollView.hasVerticalScroller = false
         railScrollView.hasHorizontalScroller = false
 
         pageTile.frame = NSRect(x: 0, y: 0, width: 400, height: 100)
-        railTile.frame = NSRect(x: 0, y: 0, width: 400, height: 100)
-        railTile2.frame = NSRect(x: 400, y: 0, width: 400, height: 100)
+        railTile.frame = NSRect(x: 0, y: 0, width: 300, height: 100)
+        straddlingTile.frame = NSRect(x: 300, y: 0, width: 400, height: 100)
+        railTile2.frame = NSRect(x: 700, y: 0, width: 400, height: 100)
         pageDocument.addSubview(pageTile)
-        railDocument.addSubview(railTile)
-        railDocument.addSubview(railTile2)
+        for surface in [railTile, straddlingTile, railTile2] {
+            railDocument.addSubview(surface)
+        }
         railScrollView.documentView = railDocument
         pageDocument.addSubview(railScrollView)
         pageScrollView.documentView = pageDocument
@@ -111,7 +138,7 @@ private final class HoverFixture {
         window.contentView = pageScrollView
         window.orderFrontRegardless()
 
-        for (surface, name) in [(pageTile, "pageTile"), (railTile, "railTile"), (railTile2, "railTile2")] {
+        for (surface, name) in surfaces {
             surface.onHover = { [weak self] hovering in
                 guard let self else { return }
                 if hovering {
@@ -122,23 +149,18 @@ private final class HoverFixture {
             }
         }
 
-        // The pointer rests in the middle of the viewport until a test steers it. The surfaces
-        // resolve it through this closure so no test has to move the real cursor.
-        let cursorOnScreen = window.convertPoint(toScreen: NSPoint(x: 200, y: 50))
-        for surface in [pageTile, railTile, railTile2] {
-            surface.cursorLocation = { cursorOnScreen }
-        }
+        pointCursor(at: NSPoint(x: 200, y: 50))
     }
 
     func reconcileHover() {
-        for surface in [pageTile, railTile, railTile2] {
+        for (surface, _) in surfaces {
             surface.reconcileHoverState()
         }
     }
 
     func pointCursor(at pointInWindow: NSPoint) {
         let cursorOnScreen = window.convertPoint(toScreen: pointInWindow)
-        for surface in [pageTile, railTile, railTile2] {
+        for (surface, _) in surfaces {
             surface.cursorLocation = { cursorOnScreen }
         }
     }

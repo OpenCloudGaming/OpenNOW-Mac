@@ -96,45 +96,46 @@ final class CatalogHoverTrackingNSView: NSView {
     }
 
     private func isCursorInsideBounds() -> Bool {
-        // A tile that is clipped out of its scroll view cannot be hovered, and on the home page most
-        // of them are: the page is an eager stack of rails, so every rail below the fold still holds
-        // its tiles. Checking the cheap clipping test first also keeps a tile scrolled past the top
-        // of the clip view from claiming a pointer that is over the bar above it.
-        guard let window, !visibleRect.isEmpty else { return false }
+        guard let window else { return false }
+        // `visibleRect` is the clip region in this view's coordinates, not intersected with its own
+        // bounds, so it has to be combined with them: on its own it also covers the gutter beside a tile
+        // narrower than its viewport, and the bounds alone cover the part a scroll has clipped away.
+        let hoverableBounds = bounds.intersection(visibleRect)
+        guard !hoverableBounds.isEmpty else { return false }
         let pointInWindow = window.convertPoint(fromScreen: cursorLocation())
-        return bounds.contains(convert(pointInWindow, from: nil))
+        return hoverableBounds.contains(convert(pointInWindow, from: nil))
     }
 
-    // Scrolling moves tiles under a stationary cursor without producing any mouse event of its own,
-    // so the pointer alone cannot tell a tile that the content moved: the tile that scrolled under
-    // the cursor never hears about it, and the one that scrolled away keeps a highlight it no
-    // longer earns. Watch the content moving instead - every clip view this tile lives in, and each
-    // of their document views, for scroll offset and size changes - and recompute on each. A clip
-    // view only posts when its offset or size actually changes, so a catalog at rest schedules
-    // nothing at all, where the timer it replaces woke the run loop 16.7 times a second for as long
-    // as any tile was hovered.
+    // Scrolling moves tiles under a stationary cursor without producing any mouse event of its own, so
+    // the pointer alone cannot tell a tile that the content moved. Watch the geometry of the surfaces
+    // the tile rides in instead, and recompute on each change.
     private func observeContentMovement() {
+        // Dropping the observations here is also what releases the tile: `NotificationCenter` retains
+        // the `object` a block observer is registered against, so observing this view is a cycle until
+        // this array is emptied. Every teardown path goes through this method or `tearDown()`.
         movementObservers = []
         guard window != nil else { return }
-        for clipView in ancestorClipViews() {
-            for view in [clipView, clipView.documentView].compactMap({ $0 }) {
-                movementObservers.append(AppKitViewMovementObserver(view: view) { [weak self] in
-                    self?.reconcileHoverState()
-                })
-            }
+        for view in movementSources() {
+            movementObservers.append(AppKitViewMovementObserver(view: view) { [weak self] in
+                self?.reconcileHoverState()
+            })
         }
     }
 
-    // Every clip view above this tile, not just the nearest one: a rail tile sits in its own
-    // horizontal rail and in the page's vertical stack, and either of them scrolling moves it under
-    // the cursor.
-    private func ancestorClipViews() -> [NSClipView] {
-        var clipViews: [NSClipView] = []
+    // The tile itself and every scroll surface above it: the clip view that scrolls, that clip view's
+    // document view, and the scroll view that can be repositioned around it. A rail tile is in two of
+    // each, its own rail and the page, and either one moving puts it under a different pointer.
+    private func movementSources() -> [NSView] {
+        var sources: [NSView] = [self]
         var node: NSView? = superview
         while let current = node {
-            if let clipView = current as? NSClipView { clipViews.append(clipView) }
+            if let clipView = current as? NSClipView {
+                sources.append(clipView)
+                if let documentView = clipView.documentView { sources.append(documentView) }
+                if let scrollView = clipView.superview as? NSScrollView { sources.append(scrollView) }
+            }
             node = current.superview
         }
-        return clipViews
+        return sources
     }
 }
