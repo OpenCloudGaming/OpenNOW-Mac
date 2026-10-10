@@ -45,8 +45,12 @@ private struct CatalogHoverTrackingSurface: NSViewRepresentable {
 final class CatalogHoverTrackingNSView: NSView {
     var onHover: ((Bool) -> Void)?
 
+    /// Where the pointer is, in screen coordinates. Injectable so a test can hold the pointer still
+    /// without moving the real one.
+    var cursorLocation: @MainActor () -> NSPoint = { NSEvent.mouseLocation }
+
     private var isHovering = false
-    private var hoverMonitorTimer: Timer?
+    private var movementObservers: [AppKitViewMovementObserver] = []
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -66,12 +70,22 @@ final class CatalogHoverTrackingNSView: NSView {
         super.viewWillMove(toWindow: newWindow)
     }
 
-    func tearDown() {
-        applyHoverState(false)
-        stopHoverMonitor()
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        observeContentMovement()
     }
 
-    private func reconcileHoverState() {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observeContentMovement()
+    }
+
+    func tearDown() {
+        applyHoverState(false)
+        movementObservers = []
+    }
+
+    func reconcileHoverState() {
         applyHoverState(isCursorInsideBounds())
     }
 
@@ -79,28 +93,49 @@ final class CatalogHoverTrackingNSView: NSView {
         guard hovering != isHovering else { return }
         isHovering = hovering
         onHover?(hovering)
-        if hovering { startHoverMonitor() } else { stopHoverMonitor() }
     }
 
     private func isCursorInsideBounds() -> Bool {
         guard let window else { return false }
-        let pointInWindow = window.convertPoint(fromScreen: NSEvent.mouseLocation)
-        return bounds.contains(convert(pointInWindow, from: nil))
+        // `visibleRect` is the clip region in this view's coordinates, not intersected with its own
+        // bounds, so it has to be combined with them: on its own it also covers the gutter beside a tile
+        // narrower than its viewport, and the bounds alone cover the part a scroll has clipped away.
+        let hoverableBounds = bounds.intersection(visibleRect)
+        guard !hoverableBounds.isEmpty else { return false }
+        let pointInWindow = window.convertPoint(fromScreen: cursorLocation())
+        return hoverableBounds.contains(convert(pointInWindow, from: nil))
     }
 
-    // Scrolling moves tiles under a stationary cursor, which produces no mouse events of its own.
-    // The poll only runs while this tile believes it is hovered, so at most one is ever live.
-    private func startHoverMonitor() {
-        guard hoverMonitorTimer == nil else { return }
-        let timer = Timer(timeInterval: 0.06, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.reconcileHoverState() }
+    // Scrolling moves tiles under a stationary cursor without producing any mouse event of its own, so
+    // the pointer alone cannot tell a tile that the content moved. Watch the geometry of the surfaces
+    // the tile rides in instead, and recompute on each change.
+    private func observeContentMovement() {
+        // Dropping the observations here is also what releases the tile: `NotificationCenter` retains
+        // the `object` a block observer is registered against, so observing this view is a cycle until
+        // this array is emptied. Every teardown path goes through this method or `tearDown()`.
+        movementObservers = []
+        guard window != nil else { return }
+        for view in movementSources() {
+            movementObservers.append(AppKitViewMovementObserver(view: view) { [weak self] in
+                self?.reconcileHoverState()
+            })
         }
-        RunLoop.main.add(timer, forMode: .common)
-        hoverMonitorTimer = timer
     }
 
-    private func stopHoverMonitor() {
-        hoverMonitorTimer?.invalidate()
-        hoverMonitorTimer = nil
+    // The tile itself and every scroll surface above it: the clip view that scrolls, that clip view's
+    // document view, and the scroll view that can be repositioned around it. A rail tile is in two of
+    // each, its own rail and the page, and either one moving puts it under a different pointer.
+    private func movementSources() -> [NSView] {
+        var sources: [NSView] = [self]
+        var node: NSView? = superview
+        while let current = node {
+            if let clipView = current as? NSClipView {
+                sources.append(clipView)
+                if let documentView = clipView.documentView { sources.append(documentView) }
+                if let scrollView = clipView.superview as? NSScrollView { sources.append(scrollView) }
+            }
+            node = current.superview
+        }
+        return sources
     }
 }
