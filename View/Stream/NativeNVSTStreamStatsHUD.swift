@@ -212,24 +212,30 @@ struct NativeNVSTStatsPanel: View {
     }
 }
 
-extension NativeNVSTMediaStreamSurface {
-    var nativeStatsHUD: some View {
+/// The floating stats overlay. Its own view so a stats tick re-evaluates this body, not the
+/// surface's - the surface only builds it and hands over the readings.
+struct NativeNVSTStatsOverlay: View {
+    let stats: NativeNVSTStreamStatsModel
+    /// The streamed game, for the launch-profile fallbacks shown before the first sample arrives.
+    let applicationID: String
+    let detailLevel: StreamStatsDetailLevel
+    /// The seat's last `0x010e` HDR mode word, empty while the game is SDR or has said nothing.
+    let hdrModeText: String
+
+    var body: some View {
         NativeNVSTStatsPanel(
             transport: "NATIVE NVST",
             heroes: nativeStatsHeroes,
-            groups: nativeStatsGroups(for: model.statsDetail)
+            groups: nativeStatsGroups(for: detailLevel)
         )
-        .opnTransition(.scale(scale: 0.94, anchor: model.statsPosition.transitionAnchor).combined(with: .opacity))
-        .streamStatsHUDPosition(model.statsPosition, isSidebarVisible: model.unifiedHUDVisible)
-        .allowsHitTesting(false)
     }
 
     var nativeStatsHeroes: [NativeNVSTStatsPanel.Hero] {
         let streamFramesPerSecond = nativeStatsStreamFramesPerSecond
         return [
-            NativeNVSTStatsPanel.Hero(label: "GAME", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.gameFramesPerSecond), unit: "fps", color: nativeGameFPSColor(target: streamFramesPerSecond)),
+            NativeNVSTStatsPanel.Hero(label: "GAME", value: nativeLiveStatsWholeNumber(stats.latestNativeStats?.gameFramesPerSecond), unit: "fps", color: nativeGameFPSColor(target: streamFramesPerSecond)),
             NativeNVSTStatsPanel.Hero(label: "STREAM", value: nativeStatsWholeNumber(streamFramesPerSecond), unit: "fps", color: StreamHUDTheme.textPrimary),
-            NativeNVSTStatsPanel.Hero(label: "LATENCY", value: nativeLiveStatsWholeNumber(model.latestNativeStats?.latencyMilliseconds), unit: "ms", color: nativeLatencyColor),
+            NativeNVSTStatsPanel.Hero(label: "LATENCY", value: nativeLiveStatsWholeNumber(stats.latestNativeStats?.latencyMilliseconds), unit: "ms", color: nativeLatencyColor),
         ]
     }
 
@@ -279,37 +285,37 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeStatsStreamFramesPerSecond: Double {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        return model.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
+        let profile = OPNStreamPreferences.launchProfile(forGame: applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        return stats.latestNativeStats?.streamFramesPerSecond ?? Double(profile.fps)
     }
 
     var nativeStatsResolutionRow: NativeNVSTStatsPanel.Row {
-        let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
-        let resolution = nonEmptyNativeStat(model.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
+        let profile = OPNStreamPreferences.launchProfile(forGame: applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let resolution = nonEmptyNativeStat(stats.latestNativeStats?.resolution, fallback: "\(profile.resolution.width)x\(profile.resolution.height)")
         return NativeNVSTStatsPanel.Row(label: "Resolution", value: resolution)
     }
 
     var nativeStatsCodecRow: NativeNVSTStatsPanel.Row {
-        let codec = nonEmptyNativeStat(model.latestNativeStats?.codec, fallback: "--")
+        let codec = nonEmptyNativeStat(stats.latestNativeStats?.codec, fallback: "--")
         return NativeNVSTStatsPanel.Row(label: "Codec", value: codec, detail: nativeStatsDecoderDetail)
     }
 
     var nativeStatsFrameLossRow: NativeNVSTStatsPanel.Row {
-        NativeNVSTStatsPanel.Row(label: "Frame Loss", value: nativeStatsCount(model.latestNativeStats?.frameLoss), detail: nativeStatsTotal(model.latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
+        NativeNVSTStatsPanel.Row(label: "Frame Loss", value: nativeStatsCount(stats.latestNativeStats?.frameLoss), detail: nativeStatsTotal(stats.latestNativeStats?.totalFrameLoss), color: nativeFrameLossColor)
     }
 
     /// Percent over the last interval, matching what the WebRTC HUD shows; the running count stays
     /// alongside it as the detail.
     var nativeStatsPacketLossRow: NativeNVSTStatsPanel.Row {
-        NativeNVSTStatsPanel.Row(label: "Packet Loss", value: nativeStatsPercentage(model.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(model.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
+        NativeNVSTStatsPanel.Row(label: "Packet Loss", value: nativeStatsPercentage(stats.latestNativeStats?.packetLossPercent), detail: nativeStatsTotal(stats.latestNativeStats?.totalPacketLoss), color: nativePacketLossColor)
     }
 
     var nativeStatsBandwidthRow: NativeNVSTStatsPanel.Row {
-        NativeNVSTStatsPanel.Row(label: "Bandwidth Used", value: nativeStatsMegabits(model.latestNativeStats?.bitrateMegabitsPerSecond), detail: nativeStatsBandwidthDetail)
+        NativeNVSTStatsPanel.Row(label: "Bandwidth Used", value: nativeStatsMegabits(stats.latestNativeStats?.bitrateMegabitsPerSecond), detail: nativeStatsBandwidthDetail)
     }
 
     var nativeStatsJitterRow: NativeNVSTStatsPanel.Row {
-        NativeNVSTStatsPanel.Row(label: "Jitter", value: nativeStatsMilliseconds(model.latestNativeStats?.jitterMilliseconds), detail: "ms")
+        NativeNVSTStatsPanel.Row(label: "Jitter", value: nativeStatsMilliseconds(stats.latestNativeStats?.jitterMilliseconds), detail: "ms")
     }
 
     /// Decoded surface -> drawable, so a 10-bit or HDR session can be confirmed from the HUD rather
@@ -351,32 +357,32 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeStatsServerLocationRow: NativeNVSTStatsPanel.Row {
-        NativeNVSTStatsPanel.Row(label: "Server Location", value: nonEmptyNativeStat(model.latestNativeStats?.serverLocation, fallback: "--"))
+        NativeNVSTStatsPanel.Row(label: "Server Location", value: nonEmptyNativeStat(stats.latestNativeStats?.serverLocation, fallback: "--"))
     }
 
     /// The headline number: the slowest 1% of recent frames, not the session mean — a mean under
     /// budget can still hitch on every motion spike, which is exactly what this is meant to catch.
     /// Falls back to the lifetime mean early in a session, before enough frames exist for a p99.
     var nativeStatsDecodeValue: String {
-        guard let stats = model.latestNativeStats else { return "--" }
-        return nativeStatsMilliseconds(NativeNVSTDecodeBudget.representativeDecodeMilliseconds(for: stats))
+        guard let sample = stats.latestNativeStats else { return "--" }
+        return nativeStatsMilliseconds(NativeNVSTDecodeBudget.representativeDecodeMilliseconds(for: sample))
     }
 
     /// `ms of 8.3`: decode time against the negotiated frame interval. Over it and the seat is
     /// already lowering the frame rate to what this Mac reports it can decode. The mean rides
     /// along in parenthesis so the two readings can't be mistaken for each other.
     var nativeStatsDecodeDetail: String {
-        guard let fps = model.latestNativeStats?.negotiatedFramesPerSecond,
+        guard let fps = stats.latestNativeStats?.negotiatedFramesPerSecond,
               let interval = NativeNVSTDecodeBudget.frameIntervalMilliseconds(framesPerSecond: fps) else { return "ms" }
-        guard let mean = model.latestNativeStats?.decodeMilliseconds, mean >= 0 else {
+        guard let mean = stats.latestNativeStats?.decodeMilliseconds, mean >= 0 else {
             return String(format: "ms of %.1f", interval)
         }
         return String(format: "ms of %.1f (mean %.1f)", interval, mean)
     }
 
     var nativeDecodeBudgetColor: Color {
-        guard let stats = model.latestNativeStats else { return StreamHUDTheme.textPrimary }
-        switch NativeNVSTDecodeBudget.level(for: stats) {
+        guard let sample = stats.latestNativeStats else { return StreamHUDTheme.textPrimary }
+        switch NativeNVSTDecodeBudget.level(for: sample) {
         case .over: return StreamHUDTheme.danger
         case .tight: return StreamHUDTheme.warning
         case .comfortable, .unknown: return StreamHUDTheme.textPrimary
@@ -384,20 +390,20 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     private var nativeStatsAudioValue: String {
-        model.latestNativeStats?.audioFormatSummary ?? "-"
+        stats.latestNativeStats?.audioFormatSummary ?? "-"
     }
 
     private var nativeStatsAudioDetail: String? {
-        guard let stats = model.latestNativeStats, stats.audioChannelCount > 0 else { return nil }
+        guard let sample = stats.latestNativeStats, sample.audioChannelCount > 0 else { return nil }
         return "Opus"
     }
 
     /// Amber when the seat answered with fewer channels than the session asked for: the setting did
     /// not take, and nothing else on screen would say so.
     private var nativeStatsAudioColor: Color {
-        guard let stats = model.latestNativeStats, stats.audioChannelCount > 0,
-              stats.requestedAudioChannelCount > 0,
-              stats.requestedAudioChannelCount != stats.audioChannelCount else {
+        guard let sample = stats.latestNativeStats, sample.audioChannelCount > 0,
+              sample.requestedAudioChannelCount > 0,
+              sample.requestedAudioChannelCount != sample.audioChannelCount else {
             return StreamHUDTheme.textPrimary
         }
         return StreamHUDTheme.warning
@@ -407,12 +413,12 @@ extension NativeNVSTMediaStreamSurface {
     /// picture arrives after the sound. Excludes the audio device's own output latency (~10–20 ms),
     /// which pulls the true figure toward video-leading; an estimate, labelled as one.
     var nativeStatsAVOffsetMilliseconds: Double? {
-        guard let stats = model.latestNativeStats, stats.audioJitterBufferMilliseconds >= 0, stats.decodeMilliseconds >= 0,
-              let render = model.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return nil }
+        guard let sample = stats.latestNativeStats, sample.audioJitterBufferMilliseconds >= 0, sample.decodeMilliseconds >= 0,
+              let render = stats.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return nil }
         // Audio's path: jitter-buffer dwell, then the output device's latency and IO buffer. Video's:
         // decode, then present-to-glass. Both measured on this Mac; neither includes the seat.
-        let audioPath = stats.audioJitterBufferMilliseconds + max(0, stats.audioOutputLatencyMilliseconds)
-        return stats.decodeMilliseconds + render.presentLatencyMs - audioPath
+        let audioPath = sample.audioJitterBufferMilliseconds + max(0, sample.audioOutputLatencyMilliseconds)
+        return sample.decodeMilliseconds + render.presentLatencyMs - audioPath
     }
 
     var nativeStatsAVValue: String {
@@ -421,21 +427,21 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeStatsAVDetail: String? {
-        guard let stats = model.latestNativeStats, stats.audioJitterBufferMilliseconds >= 0 else { return "ms est." }
+        guard let sample = stats.latestNativeStats, sample.audioJitterBufferMilliseconds >= 0 else { return "ms est." }
         let lead = nativeStatsAVOffsetMilliseconds.map { $0 >= 0 ? "video late" : "audio late" } ?? ""
-        let device = stats.audioOutputLatencyMilliseconds >= 0 ? String(format: " + device %.0f", stats.audioOutputLatencyMilliseconds) : ""
-        return String(format: "ms est. · audio buffer %.0f%@ ms%@", stats.audioJitterBufferMilliseconds, device, lead.isEmpty ? "" : " · " + lead)
+        let device = sample.audioOutputLatencyMilliseconds >= 0 ? String(format: " + device %.0f", sample.audioOutputLatencyMilliseconds) : ""
+        return String(format: "ms est. · audio buffer %.0f%@ ms%@", sample.audioJitterBufferMilliseconds, device, lead.isEmpty ? "" : " · " + lead)
     }
 
     /// Mean decode-to-glass latency over the last second.
     var nativeStatsPresentValue: String {
-        guard let render = model.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return "--" }
+        guard let render = stats.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return "--" }
         return String(format: "%.1f", render.presentLatencyMs)
     }
 
     /// `ms · max 14.2 · jitter 0.8`.
     var nativeStatsPresentDetail: String? {
-        guard let render = model.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return "ms" }
+        guard let render = stats.latestRenderDiagnostics, render.presentLatencyMs >= 0 else { return "ms" }
         var detail = String(format: "ms · max %.1f", render.presentLatencyMaxMs)
         if render.presentJitterMs >= 0 { detail += String(format: " · jitter %.2f", render.presentJitterMs) }
         return detail
@@ -444,82 +450,82 @@ extension NativeNVSTMediaStreamSurface {
     /// The seat's GPU as the official client names it (`GeForce RTX 5080`, `Basic Rig`), via the
     /// service's own `gpuNameMap`; the raw identifier (`5080h / B40`) as the detail.
     var nativeStatsRigName: String {
-        model.nativeRigName.isEmpty ? "--" : model.nativeRigName
+        stats.nativeRigName.isEmpty ? "--" : stats.nativeRigName
     }
 
     var nativeStatsRigDetail: String? {
-        guard !model.nativeRigRawName.isEmpty, model.nativeRigRawName != model.nativeRigName else { return nil }
-        return model.nativeRigRawName
+        guard !stats.nativeRigRawName.isEmpty, stats.nativeRigRawName != stats.nativeRigName else { return nil }
+        return stats.nativeRigRawName
     }
 
     /// `Mbps of 100`: the used rate against the configured ceiling, so a low reading can be judged
     /// against what was asked for rather than against an absolute threshold.
     var nativeStatsBandwidthDetail: String {
-        guard let target = model.latestNativeStats?.targetBitrateMegabitsPerSecond, target > 0 else { return "Mbps" }
+        guard let target = stats.latestNativeStats?.targetBitrateMegabitsPerSecond, target > 0 else { return "Mbps" }
         return String(format: "Mbps of %.0f", target)
     }
 
     /// "hw" / "sw" beside the codec, from the decoder's own report.
     var nativeStatsDecoderDetail: String? {
-        guard let stats = model.latestNativeStats, stats.available else { return nil }
-        return stats.decoderIsHardware ? "hw" : "software"
+        guard let sample = stats.latestNativeStats, sample.available else { return nil }
+        return sample.decoderIsHardware ? "hw" : "software"
     }
 
     /// The bitstream's declared depth and chroma layout, e.g. `10-bit 4:2:0`.
     var nativeStatsColourValue: String {
-        nonEmptyNativeStat(model.latestNativeStats?.bitstreamFormat, fallback: "--")
+        nonEmptyNativeStat(stats.latestNativeStats?.bitstreamFormat, fallback: "--")
     }
 
     /// `xf20 -> bgr10a2 HDR`: the decoded surface, the drawable, and whether EDR is on.
     var nativeStatsColourDetail: String? {
-        guard let stats = model.latestNativeStats, stats.available, !stats.decoderOutputFormat.isEmpty else { return nil }
-        var detail = stats.decoderOutputFormat
-        if let render = model.latestRenderDiagnostics, !render.outputFormat.isEmpty {
+        guard let sample = stats.latestNativeStats, sample.available, !sample.decoderOutputFormat.isEmpty else { return nil }
+        var detail = sample.decoderOutputFormat
+        if let render = stats.latestRenderDiagnostics, !render.outputFormat.isEmpty {
             detail += " → " + render.outputFormat
             if render.isHDR { detail += " HDR" }
         }
         // What the seat says the game is outputting, from its 0x010e notification. Next to the
         // drawable so "game says HDR, drawable is SDR" is visible on one line.
-        if !model.nativeHdrModeText.isEmpty { detail += " · game \(model.nativeHdrModeText)" }
+        if !hdrModeText.isEmpty { detail += " · game \(hdrModeText)" }
         return detail
     }
 
     var nativeStatsColourColor: Color {
-        guard let render = model.latestRenderDiagnostics else { return StreamHUDTheme.textPrimary }
+        guard let render = stats.latestRenderDiagnostics else { return StreamHUDTheme.textPrimary }
         return render.isHDR || render.outputFormat == "bgr10a2" ? StreamHUDTheme.accent : StreamHUDTheme.textPrimary
     }
 
     /// The active render tier and how many frames the display loop skipped.
     var nativeStatsRenderValue: String {
-        guard let render = model.latestRenderDiagnostics, !render.activeTier.isEmpty else { return "--" }
+        guard let render = stats.latestRenderDiagnostics, !render.activeTier.isEmpty else { return "--" }
         return render.activeTier
     }
 
     var nativeStatsRenderDetail: String? {
-        guard let render = model.latestRenderDiagnostics, render.framesReceived > 0 else { return nil }
+        guard let render = stats.latestRenderDiagnostics, render.framesReceived > 0 else { return nil }
         let skipped = render.framesReceived > render.framesDrawn ? render.framesReceived - render.framesDrawn : 0
         return render.presentationMode.isEmpty ? "skipped \(skipped)" : "skipped \(skipped) · \(render.presentationMode)"
     }
 
     func nativeGameFPSColor(target: Double) -> Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.gameFramesPerSecond >= 0 else { return StreamHUDTheme.textTertiary }
+        guard let latestNativeStats = stats.latestNativeStats, latestNativeStats.available, latestNativeStats.gameFramesPerSecond >= 0 else { return StreamHUDTheme.textTertiary }
         return latestNativeStats.gameFramesPerSecond >= max(1, target * 0.9) ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
     var nativeLatencyColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available, latestNativeStats.latencyMilliseconds >= 0 else { return StreamHUDTheme.textTertiary }
+        guard let latestNativeStats = stats.latestNativeStats, latestNativeStats.available, latestNativeStats.latencyMilliseconds >= 0 else { return StreamHUDTheme.textTertiary }
         if latestNativeStats.latencyMilliseconds >= 120 { return StreamHUDTheme.danger }
         if latestNativeStats.latencyMilliseconds >= 90 { return StreamHUDTheme.warning }
         return StreamHUDTheme.accent
     }
 
     var nativeFrameLossColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return StreamHUDTheme.textTertiary }
+        guard let latestNativeStats = stats.latestNativeStats, latestNativeStats.available else { return StreamHUDTheme.textTertiary }
         return latestNativeStats.frameLoss == 0 ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
     var nativePacketLossColor: Color {
-        guard let latestNativeStats = model.latestNativeStats, latestNativeStats.available else { return StreamHUDTheme.textTertiary }
+        guard let latestNativeStats = stats.latestNativeStats, latestNativeStats.available else { return StreamHUDTheme.textTertiary }
         return latestNativeStats.packetLossPercent <= 0 ? StreamHUDTheme.accent : StreamHUDTheme.warning
     }
 
@@ -529,38 +535,53 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     func nativeLiveStatsWholeNumber(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true else { return "--" }
+        guard stats.latestNativeStats?.available == true else { return "--" }
         return nativeStatsWholeNumber(value)
     }
 
     func nativeStatsCount(_ value: UInt64?) -> String {
-        guard model.latestNativeStats?.available == true, let value else { return "--" }
+        guard stats.latestNativeStats?.available == true, let value else { return "--" }
         return String(value)
     }
 
     func nativeStatsTotal(_ value: UInt64?) -> String {
-        guard model.latestNativeStats?.available == true, let value else { return "(-- Total)" }
+        guard stats.latestNativeStats?.available == true, let value else { return "(-- Total)" }
         return "(\(value) Total)"
     }
 
     func nativeStatsPercentage(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
+        guard stats.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
         return String(format: "%.1f%%", value)
     }
 
     /// Sub-millisecond values are the normal case for decode, so one decimal rather than none.
     func nativeStatsMilliseconds(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
+        guard stats.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
         return String(format: "%.1f", value)
     }
 
     func nativeStatsMegabits(_ value: Double?) -> String {
-        guard model.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
+        guard stats.latestNativeStats?.available == true, let value, value >= 0 else { return "--" }
         return String(format: "%.1f", value)
     }
 
     func nonEmptyNativeStat(_ value: String?, fallback: String) -> String {
         guard let value, !value.isEmpty else { return fallback }
         return value
+    }
+}
+
+extension NativeNVSTMediaStreamSurface {
+    /// Placement and transition stay here: the reader's saved shape drives them, not a reading.
+    var nativeStatsHUD: some View {
+        NativeNVSTStatsOverlay(
+            stats: model.stats,
+            applicationID: configuration.applicationID,
+            detailLevel: model.statsDetail,
+            hdrModeText: model.nativeHdrModeText
+        )
+        .opnTransition(.scale(scale: 0.94, anchor: model.statsPosition.transitionAnchor).combined(with: .opacity))
+        .streamStatsHUDPosition(model.statsPosition, isSidebarVisible: model.unifiedHUDVisible)
+        .allowsHitTesting(false)
     }
 }

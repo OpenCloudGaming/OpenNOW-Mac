@@ -236,10 +236,11 @@ extension NativeNVSTHostViewModel {
 
     func refreshControllerBatteries() {
         let batteries = ControllerBatteryInfo.currentSnapshot()
+        // The alert tracker still runs every tick; only the write is skipped when nothing changed.
         for message in batteryAlertTracker.messages(for: batteries) {
             showNativeTransientStreamMessage(message)
         }
-        controllerBatteries = batteries
+        if controllerBatteries != batteries { controllerBatteries = batteries }
     }
 
     func showNativeTransientStreamMessage(_ message: String, duration: Duration = .seconds(2)) {
@@ -515,14 +516,14 @@ extension NativeNVSTHostViewModel {
                     // publishes, re-rendering the whole stream surface and every HUD panel. The
                     // telemetry and governor below still run on every tick; only the published
                     // writes are skipped when the value is unchanged.
-                    if latestNativeStats != snapshot { latestNativeStats = snapshot }
+                    if stats.latestNativeStats != snapshot { stats.latestNativeStats = snapshot }
                     let renderDiagnostics = nativeView?.nvstBifrostFreeRenderer?.renderDiagnostics
-                    if latestRenderDiagnostics != renderDiagnostics { latestRenderDiagnostics = renderDiagnostics }
-                    if snapshot.serverGPU != nativeRigRawName {
-                        nativeRigRawName = snapshot.serverGPU
-                        nativeRigName = OPNStreamPreferences.friendlyGPUName(for: snapshot.serverGPU)
+                    if stats.latestRenderDiagnostics != renderDiagnostics { stats.latestRenderDiagnostics = renderDiagnostics }
+                    if snapshot.serverGPU != stats.nativeRigRawName {
+                        stats.nativeRigRawName = snapshot.serverGPU
+                        stats.nativeRigName = OPNStreamPreferences.friendlyGPUName(for: snapshot.serverGPU)
                     }
-                    logRenderDiagnosticsIfDue()
+                    logRenderDiagnosticsWhenDue()
                     updateBitrateStarvation(snapshot)
                     recordNativeNetworkTelemetry(snapshot)
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []

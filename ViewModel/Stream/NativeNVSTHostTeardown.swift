@@ -93,11 +93,7 @@ extension NativeNVSTHostViewModel {
 
     /// Forgets what the ended session taught us about itself; the next session starts blank.
     private func resetSessionObservations() {
-        latestNativeStats = nil
-        latestRenderDiagnostics = nil
-        nativeRigName = ""
-        nativeRigRawName = ""
-        nativeBitrateStarved = false
+        stats.reset()
         bitrateStarvation.reset()
         nativeStreamHealth = NativeNVSTStreamHealthMonitor()
     }
@@ -186,7 +182,7 @@ extension NativeNVSTHostViewModel {
 
     func finishOnce(report: StreamReport) {
         guard !didEnd else { return }
-        recordDecodeMeasurementIfLongEnough()
+        recordDecodeMeasurementWhenLongEnough()
         nativeView?.remoteInputEnabled = false
         // Idempotent, and the backstop for the paths that reach `finishOnce` without going through
         // `finish` - a transport-side termination, for instance.
@@ -210,11 +206,7 @@ extension NativeNVSTHostViewModel {
         antiAFKMouseMovementEnabled = false
         nativeStatsTask?.cancel()
         nativeStatsTask = nil
-        latestNativeStats = nil
-        latestRenderDiagnostics = nil
-        nativeRigName = ""
-        nativeRigRawName = ""
-        nativeBitrateStarved = false
+        stats.reset()
         bitrateStarvation.reset()
         nativeStreamHealth = NativeNVSTStreamHealthMonitor()
         sessionLimit = nil

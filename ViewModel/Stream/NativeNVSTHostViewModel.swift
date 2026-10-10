@@ -72,21 +72,15 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     @Published var isHUDClockVisible: Bool = OPNStreamHUDSettings.isClockVisible
     /// The dock's layout editor. Opened from the footer; separate from the shortcut list.
     @Published var isHUDCustomizeVisible = false
-    @Published var latestNativeStats: NativeNVSTPerformanceSnapshot?
-    /// The renderer's view of the same second: surface format, drawable format, EDR, drawn/received.
-    @Published var latestRenderDiagnostics: OPNVideoRenderDiagnosticsSnapshot?
-    /// True once the inbound bitrate has been low AND the stream frame rate has been falling short
-    /// of the negotiated rate for a sustained period. See `NativeNVSTBitrateStarvationTracker`.
-    @Published var nativeBitrateStarved = false
+    /// The one-second telemetry, in its own `@Observable` object so a tick invalidates only the
+    /// panels that draw a reading - not the whole stream surface. See `NativeNVSTStreamStatsModel`.
+    let stats = NativeNVSTStreamStatsModel()
     var bitrateStarvation = NativeNVSTBitrateStarvationTracker()
     /// Whether this session found the title rendering 16:9 inside a wider frame, and whether the
     /// launch already requested the 16:9 resolution for it. Both drive the HUD's Resolution note.
     /// When the stream connected, so a session's decode mean is only recorded once it has run long
     /// enough to outweigh the start-up burst.
     var nativeConnectedAt: Date?
-    /// The seat's GPU as the official client names it, resolved once per distinct `gpuType`.
-    @Published var nativeRigName = ""
-    var nativeRigRawName = ""
     var renderTraceCounter = 0
     var nativeStatsTask: Task<Void, Never>?
     var nativeStreamHealth = NativeNVSTStreamHealthMonitor()
@@ -105,7 +99,13 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// Whether ANNOUNCE asked for a microphone section, which is what makes the mode switchable at all.
     @Published var isMicrophoneSectionNegotiated = false
     var microphonePendingStates: [Bool] = []
-    @Published var microphoneUpdateTask: Task<Void, Never>?
+    /// The microphone transport call in flight, or nil. Not `@Published`: publishing a `Task` made
+    /// every assignment fire `objectWillChange`; the HUD asks `isMicrophoneUpdateInFlight` instead.
+    var microphoneUpdateTask: Task<Void, Never>? {
+        didSet { isMicrophoneUpdateInFlight = microphoneUpdateTask != nil }
+    }
+    /// The published projection of `microphoneUpdateTask != nil`, read by the microphone rows.
+    @Published private(set) var isMicrophoneUpdateInFlight = false
     /// The picker's rows for the HUD's AUDIO panel, read from the same preference Settings writes.
     @Published var microphoneDeviceOptions: [OPNStreamAudioDeviceOption] = [OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")]
     /// The saved device is gone and capture fell back. Drives the label and the one-off message.

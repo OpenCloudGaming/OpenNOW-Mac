@@ -72,7 +72,7 @@ extension NativeNVSTHostViewModel {
 
     /// The seat has to carry a microphone, and no toggle may already be in flight.
     var isMicrophoneMuteRowDisabled: Bool {
-        !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || microphoneUpdateTask != nil
+        !sidebarCapabilities.supports(.microphone) || !microphoneAvailable || isMicrophoneUpdateInFlight
     }
 
     /// Needs a microphone this session can capture from, but deliberately not an unmuted one.
@@ -85,7 +85,7 @@ extension NativeNVSTHostViewModel {
     var isMicrophoneDeviceRowDisabled: Bool {
         !sidebarCapabilities.supports(.microphone)
             || !microphoneAvailable
-            || microphoneUpdateTask != nil
+            || isMicrophoneUpdateInFlight
             || microphoneUnavailableReason != nil
             || microphoneDeviceOptions.count <= 1
     }
