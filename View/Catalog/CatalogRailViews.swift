@@ -31,9 +31,18 @@ struct CatalogRailView: View {
     @State private var isRailHovering = false
     /// Which tile the pointer is on, so the row can raise it above the tiles drawn after it.
     @State private var hoveredTileIdentity: String?
+    /// How far into the rail the row has been materialized. Only growth is recorded here: the
+    /// window's own size comes from `CatalogRailMaterialization`, so the first pass is already
+    /// correct before any state has been written.
+    @State private var materializedGameCount = 0
+    /// Whether the rail is inside the page's viewport. An off-screen rail used to warm the artwork
+    /// of its leading games on the first frame like every rail on the page did, because the eager
+    /// `VStack` above it puts all of them in the hierarchy at once.
+    @State private var isRailVisible = false
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.opnTileDensity) private var tileDensity
 
+    /// Every game this rail can scroll to. The row draws a window of this list, not the whole of it.
     private var games: [OPNCatalogGameObject] {
         var visibleGames = section.visibleGames(expanded: false)
         guard let selectedGame = viewModel.selectedGame else { return visibleGames }
@@ -42,6 +51,29 @@ struct CatalogRailView: View {
               let sectionGame = section.games.first(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }) else { return visibleGames }
         visibleGames.append(sectionGame)
         return visibleGames
+    }
+    private var materializedEnd: Int {
+        CatalogRailMaterialization.end(
+            gameCount: games.count,
+            tilesPerScreen: tilesPerScreen,
+            materialized: materializedGameCount,
+            required: selectedGameEnd
+        )
+    }
+    /// The games the row materializes right now. A slice rather than an array: this is read from
+    /// the body, and copying the window on every pass is the allocation the window exists to bound.
+    private var materializedGames: ArraySlice<OPNCatalogGameObject> {
+        games.prefix(materializedEnd)
+    }
+    private var tilesPerScreen: Int {
+        CatalogRailMaterialization.tilesPerScreen(availableWidth: availableWidth, scale: uiScale, density: tileDensity, isPoster: false)
+    }
+    /// One past the selected game's index, so a selection the reader made is inside the window even
+    /// when it sits past it. Zero when this rail holds no selection.
+    private var selectedGameEnd: Int {
+        guard let selectedGame = viewModel.selectedGame,
+              let index = games.firstIndex(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }) else { return 0 }
+        return index + 1
     }
     private var canShowAll: Bool { section.canLoadFullList }
     /// Every tile in this rail - game, panel action, and the end-of-row Show All tile - claims the
@@ -105,7 +137,7 @@ struct CatalogRailView: View {
                         // the artwork for - a couple of hundred tiles at once, which is what pinned
                         // the CPU for a second or two on the way back from Settings or into search.
                         LazyHStack(alignment: .top, spacing: 0) {
-                            ForEach(games, id: \.catalogIdentity) { game in
+                            ForEach(materializedGames, id: \.catalogIdentity) { game in
                                 EquatableView(content: CatalogGameTile(
                                     game: game,
                                     imageURL: viewModel.optimizedImageURL(game.bestWideImageURL, width: 768),
@@ -137,13 +169,30 @@ struct CatalogRailView: View {
                                     action: { viewModel.openPanelTile(tile) }
                                 )
                             }
-                            if canShowAll {
+                            // Only once the window covers the rail. Drawing it at the window's own end
+                            // would move the affordance one screen right every time the window grew.
+                            if canShowAll, materializedGames.count == games.count {
                                 CatalogSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
                         .frame(height: CatalogVendorLayout.tileRowHeight(scale: uiScale, density: tileDensity))
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                         .padding(.bottom, 4 * uiScale)
+                        // The window grows a screen before the reader reaches the trailing edge, so the
+                        // cap never shows as the end of the rail. A Bool, so the per-frame cost is one
+                        // subtraction and the action only runs on the crossing.
+                        .onScrollGeometryChange(for: Bool.self) { geometry in
+                            let remaining = geometry.contentSize.width - geometry.contentOffset.x - geometry.containerSize.width
+                            return remaining <= CatalogRailMaterialization.trailingTriggerDistance(
+                                availableWidth: availableWidth,
+                                scale: uiScale,
+                                density: tileDensity,
+                                isPoster: false
+                            )
+                        } action: { _, isNearTrailingEdge in
+                            guard isNearTrailingEdge else { return }
+                            extendMaterializedWindow()
+                        }
                     }
                     if games.count > 3 {
                         HStack {
@@ -171,8 +220,30 @@ struct CatalogRailView: View {
             }
         }
         .frame(maxWidth: availableWidth > 0 ? availableWidth : .infinity, alignment: .leading)
-        .onAppear { prefetchNearVisibleImages() }
-        .onChange(of: games.map(\.catalogIdentity)) { _, _ in prefetchNearVisibleImages() }
+        // Warm only the rails the page is actually showing. The outer `VStack` is eager, so an
+        // `onAppear` here fires for every rail on the page at once - ten rails' worth of artwork
+        // downloads for the two or three the reader can see.
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+            isRailVisible = isVisible
+            guard isVisible else { return }
+            prefetchNearVisibleImages()
+        }
+        .onChange(of: section.gameIdentitySignature) { _, _ in
+            guard isRailVisible else { return }
+            prefetchNearVisibleImages()
+        }
+        // The screen a rail can display follows the window's width, the interface scale and the tile
+        // density, and the first pass can measure zero before the window has laid out.
+        .onChange(of: tilesPerScreen) { _, _ in
+            guard isRailVisible else { return }
+            prefetchNearVisibleImages()
+        }
+    }
+
+    private func extendMaterializedWindow() {
+        let grown = CatalogRailMaterialization.grownEnd(gameCount: games.count, tilesPerScreen: tilesPerScreen, current: materializedEnd)
+        guard grown != materializedEnd else { return }
+        materializedGameCount = grown
     }
 
     private func moveRail(proxy: ScrollViewProxy, delta: Int) {
@@ -190,7 +261,7 @@ struct CatalogRailView: View {
     }
 
     private func prefetchNearVisibleImages() {
-        viewModel.prefetchRailImages(section: section, games: games)
+        viewModel.prefetchRailImages(section: section, games: games, limit: tilesPerScreen)
     }
 
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
@@ -250,7 +321,7 @@ struct CatalogDestinationGridView: View {
             }
         }
         .onAppear { prefetchVisibleImages() }
-        .onChange(of: section.games.map(\.catalogIdentity)) { _, _ in prefetchVisibleImages() }
+        .onChange(of: section.gameIdentitySignature) { _, _ in prefetchVisibleImages() }
     }
 
     @ViewBuilder

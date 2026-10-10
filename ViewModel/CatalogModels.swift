@@ -20,6 +20,10 @@ struct CatalogSectionModel: Identifiable, Equatable {
         case userCollection(id: String)
     }
 
+    /// The most games a rail hands its row, whatever the row's own window allows. Show All is the
+    /// route past it, and the destination grids read `games` directly, so nothing is truncated.
+    static let maximumRailGameCount = 18
+
     let id: String
     let title: String
     let games: [OPNCatalogGameObject]
@@ -30,6 +34,10 @@ struct CatalogSectionModel: Identifiable, Equatable {
     var seeMoreFilterIds: [String] = []
     var seeMoreSortId = ""
     var seeMoreTitle = ""
+    /// What the rail and grid prefetches compare against to notice their games changed. Folded once
+    /// here, where the games are already being walked to dedupe them: forming it in a view body
+    /// built a `[String]` of every identity per rail per pass purely to compare it with the last one.
+    let gameIdentitySignature: Int
 
     init(
         id: String,
@@ -42,15 +50,20 @@ struct CatalogSectionModel: Identifiable, Equatable {
         seeMoreSortId: String = "",
         seeMoreTitle: String = ""
     ) {
+        let dedupedGames = CatalogViewModel.dedupedByTitleGrouping(games)
         self.id = id
         self.title = title
-        self.games = CatalogViewModel.dedupedByTitleGrouping(games)
+        self.games = dedupedGames
         self.kind = kind
         self.isPlaceholder = isPlaceholder
         self.tiles = tiles
         self.seeMoreFilterIds = seeMoreFilterIds
         self.seeMoreSortId = seeMoreSortId
         self.seeMoreTitle = seeMoreTitle
+        var hasher = Hasher()
+        for game in dedupedGames { hasher.combine(game.catalogIdentity) }
+        for tile in tiles { hasher.combine(tile.imageUrl) }
+        self.gameIdentitySignature = hasher.finalize()
     }
 
     var canLoadFullList: Bool {
@@ -60,7 +73,7 @@ struct CatalogSectionModel: Identifiable, Equatable {
     }
 
     func visibleGames(expanded: Bool) -> [OPNCatalogGameObject] {
-        expanded ? games : Array(games.prefix(18))
+        expanded ? games : Array(games.prefix(Self.maximumRailGameCount))
     }
 }
 
