@@ -28,11 +28,18 @@ struct NativeNVSTStreamStatsModelTests {
 
     /// A stats tick used to fire the host model's `objectWillChange`, which re-evaluated the whole
     /// stream surface - the 563-line stats overlay among it - once a second. It must not any more.
+    ///
+    /// The first write is a positive control: without it a sink that was never wired up would pass
+    /// this test just as well as the split does.
     @Test func aStatsTickDoesNotPublishOnTheHostModel() {
         let (_, model) = makeHUDSurface()
         var hostPublished = false
         let subscription = model.objectWillChange.sink { hostPublished = true }
 
+        model.unifiedHUDVisible.toggle()
+        #expect(hostPublished, "the sink is not observing the host model at all")
+
+        hostPublished = false
         model.stats.latestNativeStats = Self.sample()
         model.stats.latestRenderDiagnostics = OPNVideoRenderDiagnosticsSnapshot()
         model.stats.nativeBitrateStarved = true
