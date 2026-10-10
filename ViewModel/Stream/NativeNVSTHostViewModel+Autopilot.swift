@@ -208,7 +208,7 @@ extension NativeNVSTHostViewModel {
         // through it, and a square one landed clicks at a resolution-dependent offset
         // (+0.10/+0.085 at 5120x2160, +0.20/+0.12 at 2560x1440). The negotiated frame size
         // is the exact answer; 16:9 is the fallback before the first stats sample.
-        let parts = (latestNativeStats?.resolution ?? "").lowercased().split(separator: "x").compactMap { Int32($0) }
+        let parts = (stats.latestNativeStats?.resolution ?? "").lowercased().split(separator: "x").compactMap { Int32($0) }
         let viewportWidth: Int32 = parts.count == 2 && parts[0] > 0 ? parts[0] : 1920
         let viewportHeight: Int32 = parts.count == 2 && parts[1] > 0 ? parts[1] : 1080
         dispatcher.enqueueAbsoluteMove(NativeNVSTAbsoluteMouseEvent(

@@ -216,7 +216,7 @@ extension NativeNVSTHostViewModel {
     /// whole point of the row when the mode is off.
     var isMicrophoneModeRowDisabled: Bool {
         !sidebarCapabilities.supports(.microphone)
-            || microphoneUpdateTask != nil
+            || isMicrophoneUpdateInFlight
             || microphoneUnavailableReason != nil
     }
 
