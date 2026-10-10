@@ -212,19 +212,13 @@ struct NativeNVSTStatsPanel: View {
     }
 }
 
-/// The floating stats overlay.
-///
-/// A `View` rather than a computed property on the surface, for the reason `NativeNVSTStreamStatsModel`
-/// records: the readings it draws arrive once a second, and a computed property would put those
-/// reads inside the surface's own body, so each tick would re-evaluate the whole stream surface
-/// again. `stats` is `@Observable`, so a tick re-evaluates this body alone - the panel, and nothing
-/// else on screen.
+/// The floating stats overlay. Its own view so a stats tick re-evaluates this body, not the
+/// surface's - the surface only builds it and hands over the readings.
 struct NativeNVSTStatsOverlay: View {
     let stats: NativeNVSTStreamStatsModel
     /// The streamed game, for the launch-profile fallbacks shown before the first sample arrives.
     let applicationID: String
-    /// How much detail to draw. Persisted per reader; changes only when they pick a level.
-    let detail: StreamStatsDetailLevel
+    let detailLevel: StreamStatsDetailLevel
     /// The seat's last `0x010e` HDR mode word, empty while the game is SDR or has said nothing.
     let hdrModeText: String
 
@@ -232,7 +226,7 @@ struct NativeNVSTStatsOverlay: View {
         NativeNVSTStatsPanel(
             transport: "NATIVE NVST",
             heroes: nativeStatsHeroes,
-            groups: nativeStatsGroups(for: detail)
+            groups: nativeStatsGroups(for: detailLevel)
         )
     }
 
@@ -578,13 +572,12 @@ struct NativeNVSTStatsOverlay: View {
 }
 
 extension NativeNVSTMediaStreamSurface {
-    /// The overlay's placement and transition stay on the surface: they are driven by the reader's
-    /// saved shape choice, not by a reading, so they belong with the other panel-visibility state.
+    /// Placement and transition stay here: the reader's saved shape drives them, not a reading.
     var nativeStatsHUD: some View {
         NativeNVSTStatsOverlay(
             stats: model.stats,
             applicationID: configuration.applicationID,
-            detail: model.statsDetail,
+            detailLevel: model.statsDetail,
             hdrModeText: model.nativeHdrModeText
         )
         .opnTransition(.scale(scale: 0.94, anchor: model.statsPosition.transitionAnchor).combined(with: .opacity))

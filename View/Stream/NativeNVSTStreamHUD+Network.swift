@@ -2,13 +2,8 @@ import Combine
 import Foundation
 import SwiftUI
 
-/// The unified HUD's NETWORK panel.
-///
-/// A `View` rather than a computed property on the surface: every reading it draws comes from the
-/// one-second stats poll, and a computed property would put those reads inside the surface's own
-/// body - so each stats tick would re-evaluate the whole stream surface again, which is exactly the
-/// cost `NativeNVSTStreamStatsModel` exists to remove. Here the reads belong to this body alone, and
-/// because `stats` is `@Observable` a tick re-evaluates only this panel.
+/// The unified HUD's NETWORK panel. Its own view so the one-second stats tick re-evaluates this
+/// body, not the surface's.
 struct NativeNVSTNetworkHUDPanel: View {
     let stats: NativeNVSTStreamStatsModel
     let isCollapsed: Bool
@@ -25,7 +20,7 @@ struct NativeNVSTNetworkHUDPanel: View {
             onToggle: onToggle
         ) {
             StreamHUDWrappingRow(minimumItemWidth: 84) {
-                StreamHUDMetricCard(title: "Health", value: healthText, isPositive: healthIsGood)
+                StreamHUDMetricCard(title: "Health", value: healthText, isPositive: isHealthGood)
                 StreamHUDMetricCard(title: "Latency", value: latencyText, isPositive: (stats.latestNativeStats?.latencyMilliseconds ?? 0) < 90)
                 StreamHUDMetricCard(title: "Loss", value: packetLossText, isPositive: (stats.latestNativeStats?.packetLoss ?? 0) == 0)
             }
@@ -45,7 +40,7 @@ struct NativeNVSTNetworkHUDPanel: View {
         return "Good"
     }
 
-    private var healthIsGood: Bool {
+    private var isHealthGood: Bool {
         healthText == "Good"
     }
 
@@ -68,7 +63,7 @@ struct NativeNVSTNetworkHUDPanel: View {
         // read as a few hundred kilobits with the link perfectly healthy. The model raises this
         // only when low bitrate and a falling frame rate have persisted together.
         if let snapshot = stats.latestNativeStats, let decodeWarning = NativeNVSTDecodeBudget.warning(for: snapshot) { return decodeWarning }
-        if stats.nativeBitrateStarved { return "Inbound bitrate is low and frames are arriving late; the link may be starved." }
+        if stats.isNativeBitrateStarved { return "Inbound bitrate is low and frames are arriving late; the link may be starved." }
         if stats.latestNativeStats?.decoderIsHardware == false { return "Video is decoding in software; this colour format has no hardware decoder here." }
         return ""
     }

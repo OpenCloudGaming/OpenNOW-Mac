@@ -4,12 +4,11 @@ import Observation
 import Testing
 @testable import OpenNOW
 
-/// The stats split's whole point is an observation boundary: the one-second tick must invalidate
-/// only the panels that draw a reading, never the host model the whole stream surface observes.
-/// These are the two halves of that contract.
+/// The stats split's point is an observation boundary: the one-second tick invalidates the panels
+/// that draw a reading, never the host model the whole stream surface observes.
 @MainActor
 struct NativeNVSTStreamStatsModelTests {
-    private static func sample() -> NativeNVSTPerformanceSnapshot {
+    private static func makePerformanceSnapshot() -> NativeNVSTPerformanceSnapshot {
         NativeNVSTPerformanceSnapshot(available: true,
                                       gameFramesPerSecond: 60,
                                       streamFramesPerSecond: 60,
@@ -26,12 +25,9 @@ struct NativeNVSTStreamStatsModelTests {
                                       serverLocation: "test")
     }
 
-    /// A stats tick used to fire the host model's `objectWillChange`, which re-evaluated the whole
-    /// stream surface - the 563-line stats overlay among it - once a second. It must not any more.
-    ///
-    /// The first write is a positive control: without it a sink that was never wired up would pass
-    /// this test just as well as the split does.
-    @Test func aStatsTickDoesNotPublishOnTheHostModel() {
+    /// A stats tick used to re-evaluate the whole stream surface once a second. The host write is
+    /// the positive control: a sink that was never wired up would pass this just as well.
+    @Test func aStatsTickDoesNotInvalidateTheHostModel() {
         let (_, model) = makeHUDSurface()
         var hostPublished = false
         let subscription = model.objectWillChange.sink { hostPublished = true }
@@ -40,9 +36,9 @@ struct NativeNVSTStreamStatsModelTests {
         #expect(hostPublished, "the sink is not observing the host model at all")
 
         hostPublished = false
-        model.stats.latestNativeStats = Self.sample()
+        model.stats.latestNativeStats = Self.makePerformanceSnapshot()
         model.stats.latestRenderDiagnostics = OPNVideoRenderDiagnosticsSnapshot()
-        model.stats.nativeBitrateStarved = true
+        model.stats.isNativeBitrateStarved = true
         model.stats.nativeRigName = "GeForce RTX 5080"
         model.stats.nativeRigRawName = "5080h / B40"
 
@@ -50,26 +46,25 @@ struct NativeNVSTStreamStatsModelTests {
         withExtendedLifetime(subscription) {}
     }
 
-    /// The other half: the object the stats panels read still notifies them, so the tick is drawn.
-    @Test func aStatsTickNotifiesItsOwnReaders() {
+    /// The other half of the boundary: the object the stats panels read still notifies them.
+    @Test func aStatsTickStillNotifiesItsOwnReaders() {
         let stats = NativeNVSTStreamStatsModel()
-        let notified = Flag()
+        let changeRecorder = ObservationChangeRecorder()
         withObservationTracking {
             _ = stats.latestNativeStats
         } onChange: {
-            notified.value = true
+            changeRecorder.hasRecordedChange = true
         }
-        stats.latestNativeStats = Self.sample()
-        #expect(notified.value)
+        stats.latestNativeStats = Self.makePerformanceSnapshot()
+        #expect(changeRecorder.hasRecordedChange)
     }
 
-    /// Teardown and reconnect both start from blank, and every reading has to go with them - a rig
-    /// name or a starvation verdict surviving into the next session would be about the last one.
-    @Test func resetClearsEveryReading() {
+    /// A rig name or a starvation verdict surviving teardown would describe the previous session.
+    @Test func resettingASessionClearsEveryReading() {
         let stats = NativeNVSTStreamStatsModel()
-        stats.latestNativeStats = Self.sample()
+        stats.latestNativeStats = Self.makePerformanceSnapshot()
         stats.latestRenderDiagnostics = OPNVideoRenderDiagnosticsSnapshot()
-        stats.nativeBitrateStarved = true
+        stats.isNativeBitrateStarved = true
         stats.nativeRigName = "GeForce RTX 5080"
         stats.nativeRigRawName = "5080h / B40"
 
@@ -77,29 +72,28 @@ struct NativeNVSTStreamStatsModelTests {
 
         #expect(stats.latestNativeStats == nil)
         #expect(stats.latestRenderDiagnostics == nil)
-        #expect(!stats.nativeBitrateStarved)
+        #expect(!stats.isNativeBitrateStarved)
         #expect(stats.nativeRigName.isEmpty)
         #expect(stats.nativeRigRawName.isEmpty)
     }
 
-    /// The HUD disables its microphone rows while a change is in flight, and that has to stay
-    /// observable now that the `Task` itself is not published.
-    @Test func anInFlightMicrophoneChangeIsPublishedAsABoolean() {
+    /// The microphone rows disable themselves off this Bool now that the `Task` is not published.
+    @Test func anInFlightMicrophoneChangeStaysObservable() {
         let (_, model) = makeHUDSurface()
         #expect(!model.isMicrophoneUpdateInFlight)
 
-        let task = Task {}
-        model.microphoneUpdateTask = task
+        let updateTask = Task {}
+        model.microphoneUpdateTask = updateTask
         #expect(model.isMicrophoneUpdateInFlight)
 
         model.microphoneUpdateTask = nil
         #expect(!model.isMicrophoneUpdateInFlight)
-        task.cancel()
+        updateTask.cancel()
     }
 
-    /// `@Sendable` because `withObservationTracking`'s change handler is; the change it reports is
+    /// `@Sendable` because `withObservationTracking`'s change handler is; the recorded change is
     /// made synchronously on this actor.
-    private final class Flag: @unchecked Sendable {
-        var value = false
+    private final class ObservationChangeRecorder: @unchecked Sendable {
+        var hasRecordedChange = false
     }
 }

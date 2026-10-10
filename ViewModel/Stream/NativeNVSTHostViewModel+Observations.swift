@@ -8,7 +8,7 @@ extension NativeNVSTHostViewModel {
 
     /// Remembers this session's mean decode time for its stream shape, so Settings can say what
     /// frame rate the combination holds on this Mac. Short sessions are skipped inside the store.
-    func recordDecodeMeasurementIfLongEnough() {
+    func recordDecodeMeasurementWhenLongEnough() {
         guard let snapshot = stats.latestNativeStats, snapshot.available, snapshot.decodeMilliseconds > 0, let connectedAt = nativeConnectedAt else { return }
         let key = OPNStreamPreferences.streamShapeKey(codec: snapshot.codec, resolution: snapshot.resolution, colorQuality: resolvedStreamSettings?.colorQuality ?? "")
         OPNStreamPreferences.recordDecodeMeasurement(key: key,
@@ -19,7 +19,7 @@ extension NativeNVSTHostViewModel {
 
     /// One line every ~10 samples: what the renderer did with the frames, so an unattended run
     /// can judge a presentation mode without the HUD.
-    func logRenderDiagnosticsIfDue() {
+    func logRenderDiagnosticsWhenDue() {
         guard let render = stats.latestRenderDiagnostics else { return }
         renderTraceCounter += 1
         guard renderTraceCounter % 10 == 1 else { return }
@@ -32,6 +32,6 @@ extension NativeNVSTHostViewModel {
 
     func updateBitrateStarvation(_ snapshot: NativeNVSTPerformanceSnapshot, now: Date = Date()) {
         let starved = bitrateStarvation.update(snapshot, now: now)
-        if starved != stats.nativeBitrateStarved { stats.nativeBitrateStarved = starved }
+        if starved != stats.isNativeBitrateStarved { stats.isNativeBitrateStarved = starved }
     }
 }

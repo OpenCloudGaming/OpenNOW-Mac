@@ -236,9 +236,7 @@ extension NativeNVSTHostViewModel {
 
     func refreshControllerBatteries() {
         let batteries = ControllerBatteryInfo.currentSnapshot()
-        // The alert tracker still runs on every tick; only the published write is skipped when the
-        // snapshot is unchanged, exactly as the stats poll does. An unconditional assignment here
-        // fired `objectWillChange` once a second for as long as the stream was on screen.
+        // The alert tracker still runs every tick; only the write is skipped when nothing changed.
         for message in batteryAlertTracker.messages(for: batteries) {
             showNativeTransientStreamMessage(message)
         }
@@ -525,7 +523,7 @@ extension NativeNVSTHostViewModel {
                         stats.nativeRigRawName = snapshot.serverGPU
                         stats.nativeRigName = OPNStreamPreferences.friendlyGPUName(for: snapshot.serverGPU)
                     }
-                    logRenderDiagnosticsIfDue()
+                    logRenderDiagnosticsWhenDue()
                     updateBitrateStarvation(snapshot)
                     recordNativeNetworkTelemetry(snapshot)
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []

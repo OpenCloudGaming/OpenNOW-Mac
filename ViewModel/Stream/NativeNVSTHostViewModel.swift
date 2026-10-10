@@ -72,9 +72,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     @Published var isHUDClockVisible: Bool = OPNStreamHUDSettings.isClockVisible
     /// The dock's layout editor. Opened from the footer; separate from the shortcut list.
     @Published var isHUDCustomizeVisible = false
-    /// The live telemetry the one-second stats poll writes, in its own `@Observable` object so a
-    /// stats tick invalidates only the panels that draw a reading - not the whole stream surface.
-    /// See `NativeNVSTStreamStatsModel`.
+    /// The one-second telemetry, in its own `@Observable` object so a tick invalidates only the
+    /// panels that draw a reading - not the whole stream surface. See `NativeNVSTStreamStatsModel`.
     let stats = NativeNVSTStreamStatsModel()
     var bitrateStarvation = NativeNVSTBitrateStarvationTracker()
     /// Whether this session found the title rendering 16:9 inside a wider frame, and whether the
@@ -100,14 +99,12 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// Whether ANNOUNCE asked for a microphone section, which is what makes the mode switchable at all.
     @Published var isMicrophoneSectionNegotiated = false
     var microphonePendingStates: [Bool] = []
-    /// The microphone transport call in flight, or nil. Deliberately not `@Published`: publishing a
-    /// `Task` made every assignment fire `objectWillChange`, and the HUD only ever asks whether one
-    /// is in flight. That question is answered by `isMicrophoneUpdateInFlight`, which is published.
+    /// The microphone transport call in flight, or nil. Not `@Published`: publishing a `Task` made
+    /// every assignment fire `objectWillChange`; the HUD asks `isMicrophoneUpdateInFlight` instead.
     var microphoneUpdateTask: Task<Void, Never>? {
         didSet { isMicrophoneUpdateInFlight = microphoneUpdateTask != nil }
     }
-    /// Mirrors `microphoneUpdateTask != nil` for the rows and focus entries that disable themselves
-    /// while a microphone change is in flight.
+    /// The published projection of `microphoneUpdateTask != nil`, read by the microphone rows.
     @Published private(set) var isMicrophoneUpdateInFlight = false
     /// The picker's rows for the HUD's AUDIO panel, read from the same preference Settings writes.
     @Published var microphoneDeviceOptions: [OPNStreamAudioDeviceOption] = [OPNStreamAudioDeviceOption(label: "Default Device", uniqueId: "")]
