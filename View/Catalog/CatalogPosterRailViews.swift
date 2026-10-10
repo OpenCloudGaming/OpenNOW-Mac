@@ -13,9 +13,16 @@ struct CatalogPosterRailView: View {
     @State private var scrollIndex = 0
     @State private var isRailHovering = false
     @State private var hoveredTileIdentity: String?
+    /// Mirror of `CatalogRailView`'s window state: only growth is recorded, the window's own size
+    /// comes from `CatalogRailMaterialization`.
+    @State private var materializedGameCount = 0
+    /// Whether the rail is inside the page's viewport, so an off-screen rail does not warm artwork
+    /// the reader has not scrolled to. See `CatalogRailView`.
+    @State private var isRailVisible = false
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.opnTileDensity) private var tileDensity
 
+    /// Every game this rail can scroll to. The row draws a window of this list, not the whole of it.
     private var games: [OPNCatalogGameObject] {
         var visibleGames = section.visibleGames(expanded: false)
         guard let selectedGame = viewModel.selectedGame else { return visibleGames }
@@ -24,6 +31,27 @@ struct CatalogPosterRailView: View {
               let sectionGame = section.games.first(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }) else { return visibleGames }
         visibleGames.append(sectionGame)
         return visibleGames
+    }
+    private var materializedEnd: Int {
+        CatalogRailMaterialization.end(
+            gameCount: games.count,
+            tilesPerScreen: tilesPerScreen,
+            materialized: materializedGameCount,
+            required: selectedGameEnd
+        )
+    }
+    /// The games the row materializes right now. A slice rather than an array: this is read from
+    /// the body, and copying the window on every pass is the allocation the window exists to bound.
+    private var materializedGames: ArraySlice<OPNCatalogGameObject> {
+        games.prefix(materializedEnd)
+    }
+    private var tilesPerScreen: Int {
+        CatalogRailMaterialization.tilesPerScreen(availableWidth: availableWidth, scale: uiScale, density: tileDensity, isPoster: true)
+    }
+    private var selectedGameEnd: Int {
+        guard let selectedGame = viewModel.selectedGame,
+              let index = games.firstIndex(where: { CatalogViewModel.looseIdentityMatches($0, selectedGame) }) else { return 0 }
+        return index + 1
     }
     private var canShowAll: Bool { section.canLoadFullList }
     /// Mirror of `CatalogRailView.showsHeaderShowAll` for the portrait rail: every tile claims one
@@ -76,7 +104,7 @@ struct CatalogPosterRailView: View {
                 ZStack {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(alignment: .top, spacing: 0) {
-                            ForEach(games, id: \.catalogIdentity) { game in
+                            ForEach(materializedGames, id: \.catalogIdentity) { game in
                                 EquatableView(content: CatalogPosterTile(
                                     game: game,
                                     imageURL: viewModel.optimizedImageURL(game.bestPosterImageURL, width: 512),
@@ -108,13 +136,27 @@ struct CatalogPosterRailView: View {
                                     action: { viewModel.openPanelTile(tile) }
                                 )
                             }
-                            if canShowAll {
+                            // Only once the window covers the rail. Drawing it at the window's own end
+                            // would move the affordance one screen right every time the window grew.
+                            if canShowAll, materializedGames.count == games.count {
                                 CatalogPosterSeeMoreTile(title: "Show All", action: onShowAll)
                             }
                         }
                         .frame(height: CatalogPosterLayout.tileRowHeight(scale: uiScale, density: tileDensity))
                         .padding(.horizontal, CatalogVendorLayout.carouselContainerMargin(scale: uiScale))
                         .padding(.bottom, 4 * uiScale)
+                        .onScrollGeometryChange(for: Bool.self) { geometry in
+                            let remaining = geometry.contentSize.width - geometry.contentOffset.x - geometry.containerSize.width
+                            return remaining <= CatalogRailMaterialization.trailingTriggerDistance(
+                                availableWidth: availableWidth,
+                                scale: uiScale,
+                                density: tileDensity,
+                                isPoster: true
+                            )
+                        } action: { _, isNearTrailingEdge in
+                            guard isNearTrailingEdge else { return }
+                            extendMaterializedWindow()
+                        }
                     }
                     if games.count > columnCount {
                         HStack {
@@ -139,8 +181,27 @@ struct CatalogPosterRailView: View {
             }
         }
         .frame(maxWidth: availableWidth > 0 ? availableWidth : .infinity, alignment: .leading)
-        .onAppear { prefetchNearVisibleImages() }
-        .onChange(of: games.map(\.catalogIdentity)) { _, _ in prefetchNearVisibleImages() }
+        // Warm only the rails the page is actually showing - see `CatalogRailView`.
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+            isRailVisible = isVisible
+            guard isVisible else { return }
+            prefetchNearVisibleImages()
+        }
+        .onChange(of: section.gameIdentitySignature) { _, _ in
+            guard isRailVisible else { return }
+            prefetchNearVisibleImages()
+        }
+        // See `CatalogRailView`: the screen follows the width, the interface scale and the density.
+        .onChange(of: tilesPerScreen) { _, _ in
+            guard isRailVisible else { return }
+            prefetchNearVisibleImages()
+        }
+    }
+
+    private func extendMaterializedWindow() {
+        let grown = CatalogRailMaterialization.grownEnd(gameCount: games.count, tilesPerScreen: tilesPerScreen, current: materializedEnd)
+        guard grown != materializedEnd else { return }
+        materializedGameCount = grown
     }
 
     private func moveRail(proxy: ScrollViewProxy, delta: Int) {
@@ -158,7 +219,7 @@ struct CatalogPosterRailView: View {
     }
 
     private func prefetchNearVisibleImages() {
-        viewModel.prefetchPosterImages(section: section, games: games)
+        viewModel.prefetchPosterImages(section: section, games: games, limit: tilesPerScreen)
     }
 
     private func revealSelectedGameIfNeeded(proxy: ScrollViewProxy, request: CatalogGameRevealRequest?) {
