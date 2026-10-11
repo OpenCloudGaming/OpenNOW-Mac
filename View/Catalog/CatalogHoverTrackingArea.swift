@@ -49,7 +49,8 @@ final class CatalogHoverTrackingNSView: NSView {
     /// without moving the real one.
     var cursorLocation: @MainActor () -> NSPoint = { NSEvent.mouseLocation }
 
-    private var isHovering = false
+    private var isHovered = false
+    private var hoverDelivery: Task<Void, Never>?
     private var movementObservers: [AppKitViewMovementObserver] = []
 
     override func updateTrackingAreas() {
@@ -89,10 +90,17 @@ final class CatalogHoverTrackingNSView: NSView {
         applyHoverState(isCursorInsideBounds())
     }
 
-    private func applyHoverState(_ hovering: Bool) {
-        guard hovering != isHovering else { return }
-        isHovering = hovering
-        onHover?(hovering)
+    /// AppKit reports a tile moving under a stationary pointer, and a dismantled tile's exit, from
+    /// inside the layout pass that caused it — writing SwiftUI state there is undefined behaviour.
+    private func applyHoverState(_ isHovering: Bool) {
+        guard isHovering != isHovered else { return }
+        isHovered = isHovering
+        hoverDelivery?.cancel()
+        // The next main-actor turn is outside that pass, and the latest state is the one that lands.
+        hoverDelivery = Task { @MainActor [weak self] in
+            guard !Task.isCancelled, let self, self.isHovered == isHovering else { return }
+            self.onHover?(isHovering)
+        }
     }
 
     private func isCursorInsideBounds() -> Bool {
