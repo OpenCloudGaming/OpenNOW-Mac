@@ -18,9 +18,8 @@ struct ControllerMappingDevice: Equatable, Identifiable, Sendable {
 final class ControllerMappingDevices: ObservableObject {
     static let shared = ControllerMappingDevices()
 
-    /// Where this registry looks for hardware. The live defaults are the real GameController and
-    /// Steam HID monitors; a test substitutes a scripted list so selection and routing can be
-    /// exercised end to end without hardware attached.
+    /// Where this registry looks for hardware: the real monitors live, a scripted list in a test, so
+    /// selection and routing can be exercised end to end without hardware attached.
     @MainActor
     struct Discovery {
         var nativeControllers: () -> [GCController]
@@ -32,7 +31,7 @@ final class ControllerMappingDevices: ObservableObject {
         )
     }
 
-    var discovery = Discovery.live
+    let discovery: Discovery
     @Published private(set) var devices: [ControllerMappingDevice] = []
     @Published private(set) var playerOrder = ControllerPlayerOrder()
     private let orderChanges = PassthroughSubject<Void, Never>()
@@ -64,7 +63,8 @@ final class ControllerMappingDevices: ObservableObject {
     private var controllers: [InputDeviceID: GCController] = [:]
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
-    init() {
+    init(discovery: Discovery = .live) {
+        self.discovery = discovery
         for name in [Notification.Name.GCControllerDidConnect, .GCControllerDidDisconnect] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refresh() }

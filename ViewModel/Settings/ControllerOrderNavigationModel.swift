@@ -13,10 +13,9 @@ final class ControllerOrderNavigationModel: ObservableObject {
         case close
     }
 
-    /// In a stream panel, confirm switches this stream's enablement for the focused controller; on
-    /// the Settings surface it keeps its original meaning of committing the focused reorder arrow.
-    /// Left/right stays the reorder axis in both, because ordering is global either way.
-    var activateToggles = false
+    /// In a stream panel, confirm toggles this stream's enablement for the focused controller; on
+    /// the Settings surface it keeps its meaning of committing the focused reorder arrow.
+    var isConfirmTogglingEnablement = false
 
     @Published private(set) var focus: Focus?
     private let tracker = StreamHUDGamepadTracker()
@@ -49,7 +48,7 @@ final class ControllerOrderNavigationModel: ObservableObject {
         guard let focus, let index = deviceIDs.firstIndex(of: focus.deviceID) else { return nil }
         switch step {
         case .activate:
-            return activateToggles ? .toggle(focus.deviceID) : .move(focus.deviceID, focus.direction)
+            return isConfirmTogglingEnablement ? .toggle(focus.deviceID) : .move(focus.deviceID, focus.direction)
         case .move(let direction):
             switch direction {
             case .up, .down:

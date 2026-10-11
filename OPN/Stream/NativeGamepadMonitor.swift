@@ -96,11 +96,9 @@ public final class NativeGamepadMonitor {
     private var chordTracker = StreamOSKChordTracker()
     private var guideTapTracker = SteamGuideTapTracker()
     private var onScreenKeyboardCapturedDevices: Set<InputDeviceID> = []
-    /// Internal, not private: the stream-selection extension narrows a haptic release to the
-    /// devices that actually lost their slot.
-    var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
+    private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
     /// Pending "motors off" for each Steam Controller currently rumbling.
-    var steamRumbleStopTasks: [InputDeviceID: Task<Void, Never>] = [:]
+    private var steamRumbleStopTasks: [InputDeviceID: Task<Void, Never>] = [:]
     private var steamRumbleCommandsSent = 0
     private var accessibilityPromptShown = false
 
@@ -118,11 +116,9 @@ public final class NativeGamepadMonitor {
     /// host turns this into the brief arrival notice; admission itself still needs the HUD toggle.
     public var onStreamControllerArrival: ((String) -> Void)?
 
-    /// This stream's admission decision, layered over the shared order. Owned here rather than in
-    /// the registry so a second stream's selection cannot be read or written by this one, and
-    /// released with the monitor when the stream ends. Written only through `setStreamEnabled` in
-    /// the stream-selection extension.
-    var streamSelection = ControllerStreamSelection()
+    /// This stream's admission decision, layered over the shared order; written only through
+    /// `setStreamEnabled`, so another stream's selection cannot reach it.
+    private(set) var streamSelection = ControllerStreamSelection()
 
     let mappingProvider: any ControllerMappingProviding
     /// The shared order and device list this monitor reads. Injected so a test can script discovery;
@@ -349,67 +345,6 @@ public final class NativeGamepadMonitor {
         return (nativePaths + steamPaths).sorted { $0.playerIndex < $1.playerIndex }
     }
 
-    /// Internal, not private: `setStreamEnabled` in the stream-selection extension re-runs it after
-    /// changing this stream's admission.
-    func refreshControllerSlots() {
-        let previousSteamSlots = pollState.steamControllerSlots
-        let previousControllerSlots = pollState.controllerSlots
-        registry.refresh()
-        let arrivals = streamSelection.synchronize(devices: registry.orderedDevices.map {
-            ControllerStreamSelection.Device(id: $0.id, name: $0.name)
-        })
-        for arrival in arrivals { onStreamControllerArrival?(arrival.name) }
-        let nativeIDs = registry.devices.reduce(into: [InputDeviceID: ObjectIdentifier]()) { result, device in
-            if let controller = registry.controller(for: device.id) { result[device.id] = ObjectIdentifier(controller) }
-        }
-        // The shared order is filtered to this stream's admitted devices *before* the four-slot
-        // limit, so disabling a device compacts the remaining players instead of leaving a hole.
-        // Read the Steam membership off the registry rather than the HID monitor so the filtered
-        // assignment is built from one discovery snapshot — and so a scripted registry is honored.
-        let steamIDs = Set(registry.devices.filter { $0.family == .steam }.map(\.id))
-        let assignments = ControllerSlotAssignments(deviceIDs: streamSelection.activeDeviceIDs,
-                                                    steamIDs: steamIDs, nativeIDs: nativeIDs)
-        let newSteamSlots = assignments.steam
-        let newControllerSlots = assignments.native
-        let cachedControllers = registry.orderedDevices.compactMap { registry.controller(for: $0.id) }
-            .filter { newControllerSlots[ObjectIdentifier($0)] != nil }
-        if newSteamSlots != previousSteamSlots || newControllerSlots != previousControllerSlots {
-            prepareForControllerSlotChange(keepingSteamSlots: newSteamSlots, keepingControllerSlots: newControllerSlots)
-        }
-        pollingQueue.sync {
-            pollState.controllerSlots = newControllerSlots
-            pollState.steamControllerSlots = newSteamSlots
-            pollState.cachedControllers = cachedControllers
-        }
-        for deviceID in previousSteamSlots.keys where newSteamSlots[deviceID] == nil {
-            chordTracker.removeDevice(deviceID)
-            guideTapTracker.removeDevice(deviceID)
-            onScreenKeyboardCapturedDevices.remove(deviceID)
-        }
-        let staleCursorDeviceIDs = localCursorModeHeld.filter { newSteamSlots[$0] == nil }
-        if !staleCursorDeviceIDs.isEmpty {
-            localCursorModeHeld.subtract(staleCursorDeviceIDs)
-            SteamControllerLocalCursorInjector.shared.reset()
-        }
-        refreshBatteryLabels()
-        let hapticPlayerIndices = pollState.cachedControllers.compactMap { controller in
-            controller.haptics == nil ? nil : newControllerSlots[ObjectIdentifier(controller)]
-        }
-        let allPlayerIndices = Array(newControllerSlots.values) + Array(newSteamSlots.values)
-        let newTopology = StreamGamepadTopology(playerIndices: allPlayerIndices, hapticPlayerIndices: hapticPlayerIndices)
-        if topology != newTopology {
-            topology = newTopology
-            onTopologyChanged?(newTopology)
-        }
-        refreshMappingConfiguration(replaySteam: false)
-        if pollingAllowed {
-            emitCurrentSteamStates()
-            newControllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
-        }
-        let totalSlots = newControllerSlots.count + newSteamSlots.count
-        OPNStreamTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
-    }
-
     private func refreshBatteryLabels() {
         var slots = Dictionary(uniqueKeysWithValues: pollState.steamControllerSlots.map { ($0.key.rawValue, $0.value) })
         for (id, slot) in pollState.controllerSlots { slots["native-\(id.hashValue)"] = slot }
@@ -563,8 +498,148 @@ public final class NativeGamepadMonitor {
     }
 }
 
+// MARK: - Slot publication and per-stream admission
+
+/// The slot map, its transport-visible consequences, and the stream-local enablement that filters
+/// it. An extension in this file, so it still reaches the private slot, haptic and cursor state.
+extension NativeGamepadMonitor {
+    /// Enables or disables one device for this stream only.
+    @discardableResult
+    func setStreamEnabled(_ isEnabled: Bool, for deviceID: InputDeviceID) -> Bool {
+        var next = streamSelection
+        guard next.setEnabled(isEnabled, for: deviceID) else { return false }
+        streamSelection = next
+        OPNStreamTelemetry.capture("webrtc.input.gamepad.stream_selection", level: .info,
+                                   message: "Controller enablement changed for this stream.",
+                                   attributes: ["device": deviceID.rawValue, "enabled": String(isEnabled)])
+        refreshControllerSlots()
+        return true
+    }
+
+    /// The HUD's rows for this stream: effective player per enabled device, plus the remembered rows
+    /// for whatever is disabled, waiting or gone.
+    var streamControllerRows: [ControllerStreamSelection.Row] { streamSelection.rows }
+
+    /// Neutralizes the slots that are going away, then releases their owned mapped outputs, before
+    /// the replacement slot map is published.
+    func prepareForControllerSlotChange() {
+        stopHaptics()
+        releaseControllerSlots()
+    }
+
+    /// The same transition with the replacement maps in hand, so a device that keeps its slot keeps
+    /// its haptics and only the devices that lost one are released.
+    func prepareForControllerSlotChange(keepingSteamSlots: [InputDeviceID: Int],
+                                        keepingControllerSlots: [ObjectIdentifier: Int]) {
+        stopHaptics(keepingSteamSlots: keepingSteamSlots, keepingControllerSlots: keepingControllerSlots)
+        releaseControllerSlots()
+    }
+
+    /// Every haptic this monitor owns, released together.
+    public func stopHaptics() {
+        hapticStates.values.forEach { $0.stop() }
+        hapticStates.removeAll()
+        for (deviceID, task) in steamRumbleStopTasks {
+            task.cancel()
+            SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
+        }
+        steamRumbleStopTasks.removeAll()
+    }
+
+    private func releaseControllerSlots() {
+        reapplyTasks.values.forEach { $0.cancel() }
+        reapplyTasks.removeAll()
+        let releases = pollingQueue.sync { pollState.prepareForSlotChange() }
+        for event in releases { emitInputEvent(event) }
+        for (id, slot) in pollState.steamControllerSlots.sorted(by: { $0.value < $1.value }) {
+            if bindingEngines[id] != nil {
+                releaseSteamBinding(deviceID: id, playerIndex: slot)
+                continue
+            }
+            emitInputEvent(.gamepad(GamepadState(deviceID: id, playerIndex: slot,
+                                                timestamp: MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds))))
+        }
+    }
+
+    /// Releases haptics only for the devices this stream no longer routes, so disabling one pad here
+    /// cannot stop an unrelated pad's rumble or another stream's contribution.
+    private func stopHaptics(keepingSteamSlots: [InputDeviceID: Int], keepingControllerSlots: [ObjectIdentifier: Int]) {
+        for key in Array(hapticStates.keys) where keepingControllerSlots[key] == nil {
+            hapticStates[key]?.stop()
+            hapticStates.removeValue(forKey: key)
+        }
+        for deviceID in Array(steamRumbleStopTasks.keys) where keepingSteamSlots[deviceID] == nil {
+            steamRumbleStopTasks.removeValue(forKey: deviceID)?.cancel()
+            SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
+        }
+    }
+
+    private func refreshControllerSlots() {
+        let previousSteamSlots = pollState.steamControllerSlots
+        let previousControllerSlots = pollState.controllerSlots
+        registry.refresh()
+        for arrival in synchronizeStreamSelection() { onStreamControllerArrival?(arrival.name) }
+        let nativeIDs = registry.devices.reduce(into: [InputDeviceID: ObjectIdentifier]()) { result, device in
+            if let controller = registry.controller(for: device.id) { result[device.id] = ObjectIdentifier(controller) }
+        }
+        // The shared order is filtered to this stream's admitted devices *before* the four-slot limit,
+        // so a disabled device compacts the remaining players instead of leaving a hole behind it.
+        let steamIDs = Set(registry.devices.filter { $0.family == .steam }.map(\.id))
+        let assignments = ControllerSlotAssignments(deviceIDs: streamSelection.activeDeviceIDs,
+                                                    steamIDs: steamIDs, nativeIDs: nativeIDs)
+        let newSteamSlots = assignments.steam
+        let newControllerSlots = assignments.native
+        let cachedControllers = registry.orderedDevices.compactMap { registry.controller(for: $0.id) }
+            .filter { newControllerSlots[ObjectIdentifier($0)] != nil }
+        if newSteamSlots != previousSteamSlots || newControllerSlots != previousControllerSlots {
+            prepareForControllerSlotChange(keepingSteamSlots: newSteamSlots, keepingControllerSlots: newControllerSlots)
+        }
+        pollingQueue.sync {
+            pollState.controllerSlots = newControllerSlots
+            pollState.steamControllerSlots = newSteamSlots
+            pollState.cachedControllers = cachedControllers
+        }
+        for deviceID in previousSteamSlots.keys where newSteamSlots[deviceID] == nil {
+            chordTracker.removeDevice(deviceID)
+            guideTapTracker.removeDevice(deviceID)
+            onScreenKeyboardCapturedDevices.remove(deviceID)
+        }
+        let staleCursorDeviceIDs = localCursorModeHeld.filter { newSteamSlots[$0] == nil }
+        if !staleCursorDeviceIDs.isEmpty {
+            localCursorModeHeld.subtract(staleCursorDeviceIDs)
+            SteamControllerLocalCursorInjector.shared.reset()
+        }
+        refreshBatteryLabels()
+        let hapticPlayerIndices = pollState.cachedControllers.compactMap { controller in
+            controller.haptics == nil ? nil : newControllerSlots[ObjectIdentifier(controller)]
+        }
+        let allPlayerIndices = Array(newControllerSlots.values) + Array(newSteamSlots.values)
+        let newTopology = StreamGamepadTopology(playerIndices: allPlayerIndices, hapticPlayerIndices: hapticPlayerIndices)
+        if topology != newTopology {
+            topology = newTopology
+            onTopologyChanged?(newTopology)
+        }
+        refreshMappingConfiguration(replaySteam: false)
+        if pollingAllowed {
+            emitCurrentSteamStates()
+            newControllerSlots.isEmpty ? stopPollingTimer() : startPollingTimer()
+        }
+        let totalSlots = newControllerSlots.count + newSteamSlots.count
+        OPNStreamTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
+    }
+
+    /// Folds current discovery into this stream's selection and returns whatever arrived new.
+    private func synchronizeStreamSelection() -> [ControllerStreamSelection.Device] {
+        let devices = registry.orderedDevices.map { ControllerStreamSelection.Device(id: $0.id, name: $0.name) }
+        var next = streamSelection
+        let arrivals = next.synchronize(devices: devices)
+        streamSelection = next
+        return arrivals
+    }
+}
+
 @MainActor
-final class ControllerHapticState {
+private final class ControllerHapticState {
     private let controller: GCController
     private var engines: [GCHapticsLocality: CHHapticEngine] = [:]
     private var players: [GCHapticsLocality: any CHHapticPatternPlayer] = [:]

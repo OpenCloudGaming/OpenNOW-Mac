@@ -30,7 +30,7 @@ import Testing
         #expect(selection.rows.first { $0.id == "b" }?.playerIndex == nil)
     }
 
-    @Test func reEnablingRestoresTheSharedOrderAndSendsTheLastDeviceBackToWaiting() {
+    @Test func reEnablingSendsTheLastDeviceBackToWaiting() {
         var selection = ControllerStreamSelection()
         let order = [device("a"), device("b"), device("c"), device("d"), device("e")]
         selection.beginSession(devices: order)
@@ -68,7 +68,7 @@ import Testing
         #expect(!selection.isNewlyIdentified("b"))
     }
 
-    @Test func disconnectCompactsTheRemainingEnabledPlayersAndRemembersTheChoice() {
+    @Test func disconnectCompactsTheRemainingEnabledPlayers() {
         var selection = ControllerStreamSelection()
         selection.beginSession(devices: [device("a"), device("b"), device("c")])
         _ = selection.synchronize(devices: [device("a"), device("c")])
@@ -102,7 +102,7 @@ import Testing
         #expect(second.rows.count == 1)
     }
 
-    @Test func reliableReconnectRecalculatesActiveOrWaitingFromTheCurrentOrder() {
+    @Test func reliableReconnectRecalculatesTheSlotFromTheCurrentOrder() {
         var selection = ControllerStreamSelection()
         selection.beginSession(devices: [device("a"), device("b"), device("c"), device("d")])
         _ = selection.synchronize(devices: [device("b"), device("c"), device("d")])
@@ -117,7 +117,7 @@ import Testing
         #expect(selection.rows.first { $0.id == "a" }?.playerIndex == nil)
     }
 
-    @Test func changedIdentityStartsDisabledAndKeepsTheOldHistory() {
+    @Test func changedIdentityStartsDisabledWithTheOldHistoryRetained() {
         var selection = ControllerStreamSelection()
         selection.beginSession(devices: [device("n1", "DualSense")])
         let arrivals = selection.synchronize(devices: [device("n2", "DualSense")])
@@ -129,7 +129,7 @@ import Testing
         #expect(selection.rows.count == 2)
     }
 
-    @Test func identicalLabelsNeverTransferSelectionOrMergeHistory() {
+    @Test func identicalLabelsNeverTransferSelection() {
         var selection = ControllerStreamSelection()
         selection.beginSession(devices: [device("n1", "Xbox Wireless Controller")])
         selection.setEnabled(false, for: "n1")
@@ -140,7 +140,7 @@ import Testing
         #expect(selection.rows.count == 2)
     }
 
-    @Test func newSessionDoesNotInheritSelectionOrHistory() {
+    @Test func newSessionDoesNotInheritSelection() {
         var previous = ControllerStreamSelection()
         previous.beginSession(devices: [device("a"), device("b")])
         previous.setEnabled(false, for: "a")
@@ -163,7 +163,7 @@ import Testing
         #expect(selection.rows.count == 2)
     }
 
-    @Test func everyDeviceDisabledLeavesNoPlayerAndNoActiveDevice() {
+    @Test func everyDeviceDisabledLeavesNoActiveDevice() {
         var selection = ControllerStreamSelection()
         selection.beginSession(devices: [device("a"), device("b")])
         selection.setEnabled(false, for: "a")

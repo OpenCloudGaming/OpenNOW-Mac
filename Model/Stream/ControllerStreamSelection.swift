@@ -1,26 +1,18 @@
 import Foundation
 
-/// One live stream's controller admission: which connected devices this stream lets play, which of
-/// them hold a Player 1–4 slot, and the session history the HUD renders beside them.
-///
-/// The app-wide `ControllerMappingDevices` registry owns the *order* every stream shares; this type
-/// owns only the per-stream decision layered on top of it. Two concurrent streams therefore enable
-/// different subsets of one order without either one mutating the registry or an app-wide default,
-/// and neither one can reorder or disconnect the other's hardware.
-///
-/// Connection, enablement and effective slot are three separate facts here. A device is `known`
-/// once this session has seen it, `enabled` only after an explicit admission decision, and holds a
-/// slot only while it is both enabled and connected inside the first four of the shared order.
+/// One live stream's controller admission: the devices it lets play, the Player 1–4 slots they hold,
+/// and the session history the HUD renders. The shared registry still owns the order every stream
+/// uses; this type owns only the per-stream decision on top of it.
 struct ControllerStreamSelection: Equatable, Sendable {
-    /// A device as the shared registry currently reports it. `name` is remembered for the session so
-    /// a row can still be labelled after the hardware is gone.
+    /// A device as the shared registry reports it. The name is remembered for the session, so a row
+    /// can still be labelled after the hardware is gone.
     struct Device: Equatable, Sendable {
         let id: InputDeviceID
         let name: String
     }
 
-    /// What the HUD shows for one row. The player index is the *effective* slot, never the position
-    /// in the global order — the two differ as soon as anything before it is disabled.
+    /// What the HUD shows for one row. The player index is the effective slot, never the position in
+    /// the shared order — the two differ as soon as anything ahead of it is disabled.
     enum RowState: Equatable, Sendable {
         case active(playerIndex: Int)
         case waiting
@@ -32,7 +24,7 @@ struct ControllerStreamSelection: Equatable, Sendable {
     struct Row: Equatable, Identifiable, Sendable {
         let id: InputDeviceID
         let name: String
-        /// The remembered choice, including for a disconnected row, where it is read-only.
+        /// The remembered choice, read-only once the device is disconnected.
         let isEnabled: Bool
         let state: RowState
 
@@ -42,25 +34,24 @@ struct ControllerStreamSelection: Equatable, Sendable {
         }
     }
 
-    static let maximumPlayers = ControllerPlayerOrder.maximumPlayers
-
-    private(set) var hasBegunSession = false
+    /// A device is known once this session has seen it, enabled only after an explicit decision, and
+    /// holds a slot only while it is both enabled and connected inside the first four of the order.
+    private(set) var isSessionStarted = false
     private var names: [InputDeviceID: String] = [:]
     private var knownIDs: Set<InputDeviceID> = []
     private var enabledIDs: Set<InputDeviceID> = []
     /// Connected devices first seen after the session began, still awaiting an explicit decision.
     private var newlyIdentifiedIDs: Set<InputDeviceID> = []
-    /// The shared order as of the last synchronization, so the rows and slots read one snapshot.
+    /// The shared order as of the last synchronization, so rows and slots read one snapshot.
     private var connectedIDs: [InputDeviceID] = []
-    /// This session's history: known devices that are no longer connected, oldest name first.
+    /// This session's history: known devices that are no longer connected.
     private var disconnectedIDs: [InputDeviceID] = []
 
     var isEmpty: Bool { knownIDs.isEmpty }
 
-    /// Opens the session. Everything connected when the stream starts is admitted enabled and
-    /// remembered, which is what makes a later reconnect able to restore this stream's choice.
+    /// Opens the session with everything connected at stream launch admitted enabled and remembered.
     mutating func beginSession(devices: [Device]) {
-        hasBegunSession = true
+        isSessionStarted = true
         names = [:]
         knownIDs = []
         enabledIDs = []
@@ -74,50 +65,40 @@ struct ControllerStreamSelection: Equatable, Sendable {
         disconnectedIDs = []
     }
 
-    /// Folds in the current discovery set, in shared order.
-    ///
-    /// A device this session already knows keeps its choice, whether it is connected or was
-    /// disconnected earlier. A device seen for the first time mid-session is admitted disabled and
-    /// requires an explicit enable; it is never matched to an earlier device by name or model, so a
-    /// changed identity becomes a new row rather than inheriting a selection. Returns the arrivals
-    /// so the caller can announce them.
+    /// Folds the current discovery set, in shared order, into this session: a known device keeps its
+    /// choice, a first-seen one is admitted disabled, and the arrivals come back to be announced.
     @discardableResult
     mutating func synchronize(devices: [Device]) -> [Device] {
-        guard hasBegunSession else {
+        guard isSessionStarted else {
             beginSession(devices: devices)
             return []
         }
-        var arrivals: [Device] = []
-        for device in devices {
-            names[device.id] = device.name
-            guard !knownIDs.contains(device.id) else { continue }
-            knownIDs.insert(device.id)
-            enabledIDs.remove(device.id)
-            newlyIdentifiedIDs.insert(device.id)
-            arrivals.append(device)
+        let arrivals = devices.filter { !knownIDs.contains($0.id) }
+        for device in devices { names[device.id] = device.name }
+        for arrival in arrivals {
+            knownIDs.insert(arrival.id)
+            enabledIDs.remove(arrival.id)
+            newlyIdentifiedIDs.insert(arrival.id)
         }
         connectedIDs = devices.map(\.id)
-        let connected = Set(connectedIDs)
-        disconnectedIDs = knownIDs.subtracting(connected).sorted { $0.rawValue < $1.rawValue }
+        disconnectedIDs = knownIDs.subtracting(connectedIDs).sorted { $0.rawValue < $1.rawValue }
         return arrivals
     }
 
     /// Enabling clears the new-device prompt; disabling keeps the row and the remembered choice, so
     /// the same device can be re-enabled without a reconnect. Returns whether anything changed.
     @discardableResult
-    mutating func setEnabled(_ enabled: Bool, for id: InputDeviceID) -> Bool {
+    mutating func setEnabled(_ isEnabled: Bool, for id: InputDeviceID) -> Bool {
         guard knownIDs.contains(id) else { return false }
-        if enabled {
-            newlyIdentifiedIDs.remove(id)
-            return enabledIDs.insert(id).inserted
-        }
-        return enabledIDs.remove(id) != nil
+        if !isEnabled { return enabledIDs.remove(id) != nil }
+        newlyIdentifiedIDs.remove(id)
+        return enabledIDs.insert(id).inserted
     }
 
     func isEnabled(_ id: InputDeviceID) -> Bool { enabledIDs.contains(id) }
     func isNewlyIdentified(_ id: InputDeviceID) -> Bool { newlyIdentifiedIDs.contains(id) }
-    func name(for id: InputDeviceID) -> String? { names[id] }
     func isConnected(_ id: InputDeviceID) -> Bool { connectedIDs.contains(id) }
+    func name(for id: InputDeviceID) -> String? { names[id] }
 
     /// Enabled and connected, in the shared global order. This is the whole admitted set, not just
     /// the four that fit: everything past the fourth is the HUD's Waiting rows.
@@ -125,10 +106,11 @@ struct ControllerStreamSelection: Equatable, Sendable {
         connectedIDs.filter { enabledIDs.contains($0) }
     }
 
-    /// The effective Player 1–4 map: the first four admitted devices, in shared order, compacted so
-    /// disabling one promotes the next waiting device rather than leaving a gap.
+    /// The effective Player 1–4 map: the first four admitted devices, compacted so disabling one
+    /// promotes the next waiting device rather than leaving a gap.
     var playerIndices: [InputDeviceID: Int] {
-        Dictionary(uniqueKeysWithValues: activeDeviceIDs.prefix(Self.maximumPlayers).enumerated().map { ($0.element, $0.offset) })
+        let admitted = activeDeviceIDs.prefix(ControllerPlayerOrder.maximumPlayers)
+        return Dictionary(uniqueKeysWithValues: admitted.enumerated().map { ($0.element, $0.offset) })
     }
 
     func playerIndex(for id: InputDeviceID) -> Int? { playerIndices[id] }
@@ -136,14 +118,17 @@ struct ControllerStreamSelection: Equatable, Sendable {
     /// Connected rows in shared order, then this session's disconnected history.
     var rows: [Row] {
         let slots = playerIndices
-        var rows = connectedIDs.map { id in
-            Row(id: id, name: names[id] ?? "Controller", isEnabled: enabledIDs.contains(id),
-                state: rowState(for: id, slots: slots))
+        let connected = connectedIDs.map { id in
+            makeRow(id, isEnabled: enabledIDs.contains(id), state: rowState(for: id, slots: slots))
         }
-        rows += disconnectedIDs.map { id in
-            Row(id: id, name: names[id] ?? "Controller", isEnabled: enabledIDs.contains(id), state: .disconnected)
+        let history = disconnectedIDs.map { id in
+            makeRow(id, isEnabled: enabledIDs.contains(id), state: .disconnected)
         }
-        return rows
+        return connected + history
+    }
+
+    private func makeRow(_ id: InputDeviceID, isEnabled: Bool, state: RowState) -> Row {
+        Row(id: id, name: names[id] ?? "Unknown controller", isEnabled: isEnabled, state: state)
     }
 
     private func rowState(for id: InputDeviceID, slots: [InputDeviceID: Int]) -> RowState {

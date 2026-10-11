@@ -6,10 +6,7 @@ import Testing
 
 /// Stream selection seen from the transport boundary: what the seat is told, which slots exist, and
 /// what happens to held input when a device loses its slot to a disable or a disconnect.
-///
-/// Discovery is scripted through `ControllerMappingDevices.Discovery`, so these run without hardware
-/// attached. They prove the *model and routing* contract; they say nothing about how reliably real
-/// hardware is identified across a reconnect.
+/// Discovery is scripted, so these prove the model and routing contract without hardware attached.
 @MainActor
 @Suite struct ControllerStreamRoutingTests {
     private func makeStore() throws -> (store: ControllerMappingStore, defaults: UserDefaults, suite: String) {
@@ -23,8 +20,7 @@ import Testing
         defer { defaults.removePersistentDomain(forName: suite) }
         let first = GCController.withExtendedGamepad()
         let second = GCController.withExtendedGamepad()
-        let registry = ControllerMappingDevices()
-        registry.discovery = .init(nativeControllers: { [first, second] }, steamDeviceIDs: { [] })
+        let registry = ControllerMappingDevices(discovery: .init(nativeControllers: { [first, second] }, steamDeviceIDs: { [] }))
         let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
         let firstID = try #require(registry.id(for: first))
         let secondID = try #require(registry.id(for: second))
@@ -45,12 +41,11 @@ import Testing
         monitor.stop()
     }
 
-    @Test func everyDeviceDisabledProducesAnEmptyLocalSlotMapAndTopology() throws {
+    @Test func everyDeviceDisabledProducesAnEmptyLocalSlotMap() throws {
         let (store, defaults, suite) = try makeStore()
         defer { defaults.removePersistentDomain(forName: suite) }
         let first = GCController.withExtendedGamepad()
-        let registry = ControllerMappingDevices()
-        registry.discovery = .init(nativeControllers: { [first] }, steamDeviceIDs: { [] })
+        let registry = ControllerMappingDevices(discovery: .init(nativeControllers: { [first] }, steamDeviceIDs: { [] }))
         let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
         let firstID = try #require(registry.id(for: first))
         #expect(monitor.topology.playerIndices == [0])
@@ -66,8 +61,7 @@ import Testing
         defer { defaults.removePersistentDomain(forName: suite) }
         let first = GCController.withExtendedGamepad()
         var natives: [GCController] = [first]
-        let registry = ControllerMappingDevices()
-        registry.discovery = .init(nativeControllers: { natives }, steamDeviceIDs: { [] })
+        let registry = ControllerMappingDevices(discovery: .init(nativeControllers: { natives }, steamDeviceIDs: { [] }))
         let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
         let firstID = try #require(registry.id(for: first))
         #expect(monitor.inputPaths().map(\.playerIndex) == [0])
@@ -117,10 +111,20 @@ import Testing
     }
 
     private func keyStates(_ events: [UserInputEvent]) -> [Bool] {
-        events.compactMap { if case .keyboard(let key) = $0 { key.isPressed } else { nil } }
+        events.compactMap {
+            switch $0 {
+            case .keyboard(let key): key.isPressed
+            default: nil
+            }
+        }
     }
 
     private func gamepads(_ events: [UserInputEvent]) -> [GamepadState] {
-        events.compactMap { if case .gamepad(let state) = $0 { state } else { nil } }
+        events.compactMap {
+            switch $0 {
+            case .gamepad(let state): state
+            default: nil
+            }
+        }
     }
 }

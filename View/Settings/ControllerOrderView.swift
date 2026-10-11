@@ -15,16 +15,16 @@ struct ControllerOrderView: View {
     var body: some View {
         let rows = self.rows
         let size = ControllerOrderPanel.sheetSize(deviceCount: rows.count, uiScale: uiScale)
-        ControllerOrderPanel(rows: rows, isCustom: devices.playerOrder.isCustom, streamScoped: stream != nil,
+        ControllerOrderPanel(rows: rows, isCustom: devices.playerOrder.isCustom, isStreamScoped: stream != nil,
                              focusedControl: navigation.focus,
-                             onSetEnabled: { stream?.setEnabled($0, for: $1) },
+                             onSetStreamEnabled: { stream?.setEnabled($0, for: $1) },
                              onMove: devices.move, onReset: devices.resetOrder, onClose: { dismiss() })
             .frame(minWidth: size.width, idealWidth: size.width, minHeight: size.height, idealHeight: size.height)
             .background(ControllerOrderWindowReader(reference: inputWindow))
             .onExitCommand { dismiss() }
             .task {
                 devices.refresh()
-                navigation.activateToggles = stream != nil
+                navigation.isConfirmTogglingEnablement = stream != nil
                 streamRows = stream?.rows ?? []
                 SteamControllerHIDMonitor.shared.beginInputCapture(inputWindow)
                 defer { SteamControllerHIDMonitor.shared.endInputCapture(inputWindow) }
@@ -42,7 +42,7 @@ struct ControllerOrderView: View {
     }
 
     /// Rows come from the stream's own selection when there is one, so the panel shows the effective
-    /// player each enabled controller actually occupies rather than its place in the global order.
+    /// player each enabled controller occupies rather than its place in the global order.
     private var rows: [ControllerOrderRow] {
         guard stream != nil else { return ControllerOrderRows.order(devices.orderedDevices) }
         let families = Dictionary(uniqueKeysWithValues: devices.devices.map { ($0.id, $0.family) })
@@ -81,6 +81,7 @@ struct ControllerOrderView: View {
         stream.setEnabled(!row.isEnabled, for: id)
         refreshStreamRows()
     }
+
 }
 
 struct ControllerOrderPanel: View {
@@ -92,9 +93,9 @@ struct ControllerOrderPanel: View {
     let rows: [ControllerOrderRow]
     let isCustom: Bool
     /// Whether the panel is editing one stream's selection rather than the app-wide order alone.
-    let streamScoped: Bool
+    let isStreamScoped: Bool
     let focusedControl: ControllerOrderNavigationModel.Focus?
-    let onSetEnabled: (Bool, InputDeviceID) -> Void
+    let onSetStreamEnabled: (Bool, InputDeviceID) -> Void
     let onMove: (InputDeviceID, ControllerPlayerOrder.Direction) -> Void
     let onReset: () -> Void
     let onClose: () -> Void
@@ -159,20 +160,20 @@ struct ControllerOrderPanel: View {
     }
 
     private var explanation: String {
-        guard streamScoped else {
+        guard isStreamScoped else {
             return "Move controllers to choose Player 1–4. Changes apply immediately; mapping profiles stay with each controller. Remote Co-Op guests are not reordered."
         }
         return "Enable controllers in this stream and move them in the shared order. Ordering is global and every stream uses it; the enable toggles affect this stream only. Mapping profiles stay with each controller, and Remote Co-Op guests are not reordered."
     }
 
     private var footerHint: String {
-        streamScoped
+        isStreamScoped
             ? "D-pad: navigate · Left/Right: reorder · Confirm: enable or disable · Back: close"
             : "D-pad: navigate · Confirm: move · Back: close"
     }
 
     private var footerNote: String {
-        streamScoped
+        isStreamScoped
             ? "Enablement and remembered rows last for this stream session. Controllers connected after the stream starts stay disabled until you enable them. Some games may require reconnecting to recognize new player slots."
             : "Order lasts for this connection session. New controllers join the end of a custom order. Some games may require reconnecting to recognize new player slots."
     }
@@ -197,13 +198,13 @@ struct ControllerOrderPanel: View {
                     .font(.settingsFont(size: 14 * uiScale, weight: .bold))
                     .lineLimit(1)
                     .help(row.name)
-                Text(row.detail)
+                Text(row.statusDetail)
                     .font(.settingsFont(size: 11 * uiScale))
                     .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if row.showsEnableToggle {
+            if row.isEnableToggleShown {
                 enableToggle(for: row)
             }
             moveButton(row: row, direction: .earlier, disabled: index == 0)
@@ -218,7 +219,7 @@ struct ControllerOrderPanel: View {
     /// The stream-scoped control. A disconnected row keeps showing the remembered choice but takes
     /// no action, so history cannot be edited after the hardware is gone.
     private func enableToggle(for row: ControllerOrderRow) -> some View {
-        Toggle(isOn: Binding(get: { row.isEnabled }, set: { onSetEnabled($0, row.id) }), uiScale: uiScale)
+        Toggle(isOn: Binding(get: { row.isEnabled }, set: { onSetStreamEnabled($0, row.id) }), uiScale: uiScale)
             .accessibilityLabel("Enabled in this stream")
             .accessibilityValue(row.isEnabled ? "On" : "Off")
             .help(row.isEnabled ? "Enabled in this stream — disable it here" : "Disabled in this stream — enable it here")

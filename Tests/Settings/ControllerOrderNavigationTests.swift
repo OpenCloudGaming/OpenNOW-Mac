@@ -40,7 +40,7 @@ import Testing
 
     @Test func streamPanelConfirmTogglesEnablementInsteadOfCommittingAMove() {
         let navigation = ControllerOrderNavigationModel()
-        navigation.activateToggles = true
+        navigation.isConfirmTogglingEnablement = true
         let ids: [InputDeviceID] = ["first", "second"]
         navigation.reconcile(ids)
         #expect(navigation.process(.activate, deviceIDs: ids) == .toggle("first"))
