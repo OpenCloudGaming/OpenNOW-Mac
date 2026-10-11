@@ -65,6 +65,7 @@ import Testing
         let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
         let firstID = try #require(registry.id(for: first))
         #expect(monitor.inputPaths().map(\.playerIndex) == [0])
+        monitor.markStreamLive()
 
         let second = GCController.withExtendedGamepad()
         natives = [first, second]
@@ -79,6 +80,28 @@ import Testing
         monitor.setStreamEnabled(true, for: secondID)
         #expect(monitor.topology.playerIndices == [0, 1])
         #expect(registry.playerOrder.deviceIDs == [firstID, secondID])
+        monitor.stop()
+    }
+
+    /// The surface is built when the stream view appears, which is well before the seat is ready; a
+    /// controller whose discovery lands in that window is connected at launch, so it plays.
+    @Test func aControllerDiscoveredDuringTheLaunchWindowStartsEnabled() throws {
+        let (store, defaults, suite) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var natives: [GCController] = []
+        let registry = ControllerMappingDevices(discovery: .init(nativeControllers: { natives }, steamDeviceIDs: { [] }))
+        let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
+        #expect(monitor.inputPaths().isEmpty)
+
+        let controller = GCController.withExtendedGamepad()
+        natives = [controller]
+        var arrivals: [String] = []
+        monitor.onStreamControllerArrival = { arrivals.append($0) }
+        monitor.refreshInputState()
+        let controllerID = try #require(registry.id(for: controller))
+        #expect(monitor.inputPaths().map(\.playerIndex) == [0])
+        #expect(monitor.streamControllerRows.first { $0.id == controllerID }?.state == .active(playerIndex: 0))
+        #expect(arrivals.isEmpty, "a launch-time controller is not announced as an arrival")
         monitor.stop()
     }
 

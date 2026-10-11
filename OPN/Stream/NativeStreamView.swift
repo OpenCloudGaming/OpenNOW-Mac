@@ -355,6 +355,11 @@ public final class NativeStreamView: NSView {
         get { gamepadMonitor.onStreamControllerArrival }
         set { gamepadMonitor.onStreamControllerArrival = newValue }
     }
+    /// The session is presented, which ends the launch window in which a controller discovered during
+    /// startup is admitted enabled. Called from `presentStream`, not when the surface is built.
+    public func markStreamLive() {
+        gamepadMonitor.markStreamLive()
+    }
     public var hidesCursorWhilePointerLocked = true {
         didSet {
             guard isPointerLocked else { return }
