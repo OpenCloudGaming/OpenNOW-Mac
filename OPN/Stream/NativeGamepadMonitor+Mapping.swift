@@ -68,7 +68,6 @@ extension NativeGamepadMonitor {
 
     func refreshMappingConfiguration(replaySteam: Bool = true) {
         SteamControllerHIDMonitor.shared.refreshCaptureConfiguration()
-        let registry = ControllerMappingDevices.shared
         var configuration: [ObjectIdentifier: NativeControllerMappingConfiguration] = [:]
         for controller in pollState.cachedControllers {
             guard let id = registry.id(for: controller),

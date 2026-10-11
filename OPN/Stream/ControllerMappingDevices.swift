@@ -17,6 +17,21 @@ struct ControllerMappingDevice: Equatable, Identifiable, Sendable {
 @MainActor
 final class ControllerMappingDevices: ObservableObject {
     static let shared = ControllerMappingDevices()
+
+    /// Where this registry looks for hardware: the real monitors live, a scripted list in a test, so
+    /// selection and routing can be exercised end to end without hardware attached.
+    @MainActor
+    struct Discovery {
+        var nativeControllers: () -> [GCController]
+        var steamDeviceIDs: () -> [InputDeviceID]
+
+        static let live = Discovery(
+            nativeControllers: { NativeGamepadMonitor.availableNativeControllers() },
+            steamDeviceIDs: { SteamControllerHIDMonitor.shared.activeDeviceIDs }
+        )
+    }
+
+    let discovery: Discovery
     @Published private(set) var devices: [ControllerMappingDevice] = []
     @Published private(set) var playerOrder = ControllerPlayerOrder()
     private let orderChanges = PassthroughSubject<Void, Never>()
@@ -48,7 +63,8 @@ final class ControllerMappingDevices: ObservableObject {
     private var controllers: [InputDeviceID: GCController] = [:]
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
-    init() {
+    init(discovery: Discovery = .live) {
+        self.discovery = discovery
         for name in [Notification.Name.GCControllerDidConnect, .GCControllerDidDisconnect] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refresh() }
@@ -63,10 +79,10 @@ final class ControllerMappingDevices: ObservableObject {
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
     func refresh() {
-        let native = NativeGamepadMonitor.availableNativeControllers()
+        let native = discovery.nativeControllers()
         nativeIDs = identities.update(native.map(ObjectIdentifier.init))
         controllers.removeAll()
-        var next = SteamControllerHIDMonitor.shared.activeDeviceIDs.enumerated().map { index, id in
+        var next = discovery.steamDeviceIDs().enumerated().map { index, id in
             ControllerMappingDevice(id: id, name: "Steam Controller \(index + 1)", family: .steam, hasTouchpad: false)
         }
         for (index, controller) in native.enumerated() {

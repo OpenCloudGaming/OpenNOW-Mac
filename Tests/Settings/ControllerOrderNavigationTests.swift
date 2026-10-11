@@ -38,6 +38,25 @@ import Testing
         #expect(navigation.process(pressed, deviceIDs: ids) == .move("first", .later))
     }
 
+    @Test func streamPanelConfirmTogglesEnablementInsteadOfCommittingAMove() {
+        let navigation = ControllerOrderNavigationModel()
+        navigation.isConfirmTogglingEnablement = true
+        let ids: [InputDeviceID] = ["first", "second"]
+        navigation.reconcile(ids)
+        #expect(navigation.process(.activate, deviceIDs: ids) == .toggle("first"))
+        // Left/right stays the reorder axis, because ordering is global in every panel.
+        #expect(navigation.process(.move(.right), deviceIDs: ids) == nil)
+        #expect(navigation.focus?.direction == .later)
+        #expect(navigation.process(.back, deviceIDs: ids) == .close)
+    }
+
+    @Test func settingsSurfaceKeepsConfirmAsTheReorderAction() {
+        let navigation = ControllerOrderNavigationModel()
+        let ids: [InputDeviceID] = ["first", "second"]
+        navigation.reconcile(ids)
+        #expect(navigation.process(.activate, deviceIDs: ids) == .move("first", .later))
+    }
+
     @Test func controllerOrderSearchFindsSharedTools() throws {
         let result = try #require(SettingsSearchIndex.results(for: "reorder").first)
         #expect(result.title == "Controller Order")

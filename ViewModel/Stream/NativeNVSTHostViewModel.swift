@@ -462,6 +462,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     func presentStream(session: StreamSessionDescriptor, path: NativeNVSTStreamingPath, nativeView: NativeStreamView) -> Bool {
         guard !Task.isCancelled, !didEnd, !isEnding else { return false }
         isConnected = true
+        // The stream is live, so a controller that turns up from here was not connected at launch and
+        // plays only while a slot is free; everything discovered during the queue plays outright.
+        nativeView.markStreamLive()
         sessionLimit = StreamSessionSidebarLimit(session: session)
         nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
         nativeView.setNativeNVSTVideoVisible(true)

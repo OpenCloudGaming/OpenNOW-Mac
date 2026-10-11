@@ -118,7 +118,9 @@ struct NativeNVSTMediaStreamSurface: View {
             )
         }
         .sheet(isPresented: $model.showingControllerOrder) {
-            ControllerOrderView()
+            // The stream's own selection travels into the panel, so its toggles edit this session
+            // only and its rows show the effective player each controller occupies here.
+            ControllerOrderView(stream: model.streamControllerSelection)
         }
     }
 
@@ -189,6 +191,7 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         nsView.streamView.onPointerLockChanged = nil
         nsView.streamView.onCommand = nil
         nsView.streamView.shouldHandleCommand = nil
+        nsView.streamView.onStreamControllerArrival = nil
         nsView.onResolve = nil
         nsView.onWindowChanged = nil
     }
