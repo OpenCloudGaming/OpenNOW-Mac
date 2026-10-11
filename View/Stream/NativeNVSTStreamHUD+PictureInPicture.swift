@@ -50,11 +50,12 @@ struct NativeNVSTPictureInPictureControls: View {
             .frame(width: 104)
         }
         .padding(OPNDesign.Spacing.xSmall)
-        .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.82)))
-        .overlay {
-            OPNCornerShape(role: .panel)
-                .strokeBorder(StreamHUDTheme.divider, lineWidth: 1)
-        }
+        .opnLiquidGlassChrome(
+            role: .panel,
+            fill: StreamHUDTheme.panel.opacity(0.82),
+            stroke: StreamHUDTheme.divider,
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
         .opacity(isVisible ? 1 : 0)
         .allowsHitTesting(isVisible)
         .animation(.easeInOut(duration: 0.2), value: isVisible)

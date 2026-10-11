@@ -27,8 +27,12 @@ struct StreamOnScreenKeyboardOverlay: View {
         // Clipped after the accent strip is drawn, so the strip follows the panel's corners; the
         // fill, border and shadow are added outside the clip.
         .opnCornerClip(role: .panel)
-        .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.985)))
-        .overlay(OPNCornerShape(role: .panel).strokeBorder(StreamHUDTheme.divider, lineWidth: 1))
+        .opnLiquidGlassChrome(
+            role: .panel,
+            fill: StreamHUDTheme.panel.opacity(0.985),
+            stroke: StreamHUDTheme.divider,
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
         .shadow(color: .black.opacity(0.58), radius: 28, y: atTop ? -14 : 14)
         .padding(atTop ? .top : .bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: atTop ? .top : .bottom)

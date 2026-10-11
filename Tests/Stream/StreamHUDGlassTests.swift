@@ -52,6 +52,32 @@ import Testing
         )
     }
 
+    /// The on-screen keyboard is another panel over the stream, and it needs no live session: it draws
+    /// from its own controller state. Writes both modes for a person to judge readability against.
+    @Test(.enabled(if: GlassEvidence.captureDirectory != nil)) func theOnScreenKeyboardDrawsGlass() async throws {
+        let glass = try await GlassEvidence.captureInWindow(
+            keyboard(policy: Self.requestedOnSupportedMac),
+            over: BrightGlassBackdrop(),
+            size: Self.stageSize,
+            named: "stream-on-screen-keyboard-glass.png"
+        )
+        let flat = try await GlassEvidence.captureInWindow(
+            keyboard(policy: .off),
+            over: BrightGlassBackdrop(),
+            size: Self.stageSize,
+            named: "stream-on-screen-keyboard-flat.png"
+        )
+
+        let difference = glass.meanAbsoluteDifference(from: flat, in: GlassCapture.wholeImage)
+        #expect(difference > 2, "the on-screen keyboard did not follow the policy: mean delta \(difference)")
+    }
+
+    private func keyboard(policy: OPNLiquidGlassPolicy) -> some View {
+        StreamOnScreenKeyboardOverlay(controller: StreamOnScreenKeyboardModel())
+            .frame(width: Self.stageSize.width, height: Self.stageSize.height, alignment: .bottom)
+            .environment(\.opnLiquidGlass, policy)
+    }
+
     /// The real dock with representative section content, built from the same theme tokens the live
     /// sections use so the contrast in the capture is the contrast a reader gets.
     private func dock(policy: OPNLiquidGlassPolicy) -> some View {

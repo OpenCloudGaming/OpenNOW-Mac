@@ -262,12 +262,18 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   insights summary; the What's New list; and the app-shell modal panels — confirmation, report an
   issue, update, account chooser, and the Remote Co-Op setup and relay wizards. A modal's opaque
   app-bar strip stays opaque on the glass body.
+- **Over video too**: the stream host's own chrome takes the material — the Picture-in-Picture
+  control bar, the on-screen keyboard, the statistics panel, the connection-interrupted panel, the
+  paused-stream controls panel, and the transient message pill — as does the Remote Co-Op guest
+  window's leave control, quality trigger and status/failure panels. Every one of them sits over the
+  stream, so every one carries the scrim.
 - **Excluded**: game tiles and posters, artwork, images, video, backgrounds, settings cards, dense
-  inspectors, telemetry and metrics, scrims, meters, progress bars, and functional crop, timeline
-  and selection geometry. Inside the HUD, sections, rows and the opaque `StreamHUDDropdown` panels
-  stay non-glass — only the dock backing takes the material. The login wall and sign-in modal are
-  unchanged, and PiP and the Remote Co-Op floating controls remain follow-up candidates that need
-  their own over-video readability and GPU-cost validation.
+  inspectors, the metric readouts themselves, scrims, meters, progress bars, and functional crop,
+  timeline and selection geometry. Inside the HUD, sections, rows and the opaque `StreamHUDDropdown`
+  panels stay non-glass — the dock backing is already the material, and glass on glass is what
+  Apple's guidance warns against, so a dialog opened from the dock stays flat for the same reason.
+  The Remote Co-Op guest's circular stats toggle keeps its fixed circular shape, and the login wall
+  and sign-in modal are unchanged.
 - **Native chrome is not ours to promise away**: Off disables every app-owned custom glass,
   including the menu-bar controls that already used it, but the status item's popover and macOS
   window chrome are drawn by the system and stay as the system draws them. This is stated in the
