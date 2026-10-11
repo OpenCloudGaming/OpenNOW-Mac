@@ -7,10 +7,6 @@ import Testing
 /// and it has to stay legible over bright video — which only a composited capture can show.
 @MainActor
 @Suite(.serialized) struct StreamHUDGlassTests {
-    private static let requestedOnSupportedMac = OPNLiquidGlassPolicy(
-        isRequested: true, isSupported: true, isReduceTransparency: false
-    )
-
     private static let stageSize = CGSize(width: 900, height: 620)
 
     /// The dock's empty interior: inside its 344pt width, below the section rows and above the footer.
@@ -19,25 +15,19 @@ import Testing
     /// The material replaces the dock's fill, so it cannot change the dock's own geometry.
     @Test func theDockKeepsItsGeometryWithGlassOn() throws {
         let flat = try #require(GlassEvidence.renderOffscreen(dock(policy: .off)), "the flat dock did not render")
-        let glass = try #require(GlassEvidence.renderOffscreen(dock(policy: Self.requestedOnSupportedMac)), "the glass dock did not render")
+        let glass = try #require(GlassEvidence.renderOffscreen(dock(policy: .requestedOnSupportedMac)), "the glass dock did not render")
         #expect(flat.size == glass.size, "the material changed the dock's layout")
         #expect(glass.size == Self.stageSize)
     }
 
     /// Composited: the dock's fill is drawn by the window server when the material is on, so an
     /// offscreen render cannot show it. Writes both modes for a person to judge readability against.
-    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theDockDrawsGlassOverBrightVideo() async throws {
-        let glass = try await GlassEvidence.captureInWindow(
-            dock(policy: Self.requestedOnSupportedMac),
+    @Test(.enabled(if: GlassEvidence.isGlassCaptureAvailable)) func theDockDrawsGlassOverBrightVideo() async throws {
+        let (glass, flat) = try await GlassEvidence.captureBothModes(
+            named: "stream-hud-dock",
             over: BrightGlassBackdrop(),
             size: Self.stageSize,
-            named: "stream-hud-dock-glass.png"
-        )
-        let flat = try await GlassEvidence.captureInWindow(
-            dock(policy: .off),
-            over: BrightGlassBackdrop(),
-            size: Self.stageSize,
-            named: "stream-hud-dock-flat.png"
+            surface: dock
         )
 
         let difference = glass.meanAbsoluteDifference(from: flat, in: GlassCapture.wholeImage)
@@ -54,18 +44,12 @@ import Testing
 
     /// The on-screen keyboard is another panel over the stream, and it needs no live session: it draws
     /// from its own controller state. Writes both modes for a person to judge readability against.
-    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theOnScreenKeyboardDrawsGlass() async throws {
-        let glass = try await GlassEvidence.captureInWindow(
-            keyboard(policy: Self.requestedOnSupportedMac),
+    @Test(.enabled(if: GlassEvidence.isGlassCaptureAvailable)) func theOnScreenKeyboardDrawsGlass() async throws {
+        let (glass, flat) = try await GlassEvidence.captureBothModes(
+            named: "stream-on-screen-keyboard",
             over: BrightGlassBackdrop(),
             size: Self.stageSize,
-            named: "stream-on-screen-keyboard-glass.png"
-        )
-        let flat = try await GlassEvidence.captureInWindow(
-            keyboard(policy: .off),
-            over: BrightGlassBackdrop(),
-            size: Self.stageSize,
-            named: "stream-on-screen-keyboard-flat.png"
+            surface: keyboard
         )
 
         let difference = glass.meanAbsoluteDifference(from: flat, in: GlassCapture.wholeImage)

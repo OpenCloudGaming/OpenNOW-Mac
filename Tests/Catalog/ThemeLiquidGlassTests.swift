@@ -6,9 +6,6 @@ import Testing
 /// The Liquid Glass preference and the policy every eligible surface resolves through: the storage
 /// contract, the capability and accessibility gate, the NEW row, and the flat path it falls back to.
 @Suite(.serialized) struct ThemeLiquidGlassTests {
-    private static let requestedOnSupportedMac = OPNLiquidGlassPolicy(
-        isRequested: true, isSupported: true, isReduceTransparency: false
-    )
     private static let requestedOnUnsupportedMac = OPNLiquidGlassPolicy(
         isRequested: true, isSupported: false, isReduceTransparency: false
     )
@@ -82,7 +79,7 @@ import Testing
     }
 
     @Test func glassIsDrawnOnlyWhenEveryConditionHolds() {
-        #expect(Self.requestedOnSupportedMac.isEffective)
+        #expect(OPNLiquidGlassPolicy.requestedOnSupportedMac.isEffective)
         #expect(!Self.requestedOnUnsupportedMac.isEffective)
         #expect(!Self.requestedWithReduceTransparency.isEffective)
         #expect(!OPNLiquidGlassPolicy(isRequested: false, isSupported: true, isReduceTransparency: false).isEffective)
@@ -90,9 +87,9 @@ import Testing
 
     /// The grid repaints when the policy value changes, so each fact has to be part of its identity.
     @Test func everyFactIsPartOfThePolicyIdentity() {
-        #expect(Self.requestedOnSupportedMac != .off)
-        #expect(Self.requestedOnSupportedMac != Self.requestedOnUnsupportedMac)
-        #expect(Self.requestedOnSupportedMac != Self.requestedWithReduceTransparency)
+        #expect(OPNLiquidGlassPolicy.requestedOnSupportedMac != .off)
+        #expect(OPNLiquidGlassPolicy.requestedOnSupportedMac != Self.requestedOnUnsupportedMac)
+        #expect(OPNLiquidGlassPolicy.requestedOnSupportedMac != Self.requestedWithReduceTransparency)
     }
 
     // MARK: - NEW badge and search
@@ -125,7 +122,7 @@ import Testing
             ("on-inert", true, true),
         ]
         for state in states {
-            let image = try #require(render(settingsRow(isOn: state.isOn, isInert: state.isInert)), "\(state.name) did not render")
+            let image = try #require(GlassEvidence.renderOffscreen(settingsRow(isOn: state.isOn, isInert: state.isInert)), "\(state.name) did not render")
             #expect(image.size.width > 0)
             writeSnapshot(image, name: "liquid-glass-row-\(state.name).png")
         }
@@ -138,10 +135,10 @@ import Testing
     @MainActor @Test(arguments: EligibleSurface.allCases)
     func anIneligiblePolicyDrawsTheSameFlatSurface(surface: EligibleSurface) throws {
         OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
-        let offImage = try #require(render(view(for: surface, policy: .off)))
-        let unsupportedImage = try #require(render(view(for: surface, policy: Self.requestedOnUnsupportedMac)))
-        let suppressedImage = try #require(render(view(for: surface, policy: Self.requestedWithReduceTransparency)))
-        let glassImage = try #require(render(view(for: surface, policy: Self.requestedOnSupportedMac)))
+        let offImage = try #require(GlassEvidence.renderOffscreen(view(for: surface, policy: .off)))
+        let unsupportedImage = try #require(GlassEvidence.renderOffscreen(view(for: surface, policy: Self.requestedOnUnsupportedMac)))
+        let suppressedImage = try #require(GlassEvidence.renderOffscreen(view(for: surface, policy: Self.requestedWithReduceTransparency)))
+        let glassImage = try #require(GlassEvidence.renderOffscreen(view(for: surface, policy: .requestedOnSupportedMac)))
 
         #expect(pngData(offImage) == pngData(unsupportedImage), "an unsupported Mac did not draw the flat treatment")
         #expect(pngData(offImage) == pngData(suppressedImage), "Reduce Transparency did not draw the flat treatment")
@@ -209,13 +206,6 @@ import Testing
         .frame(width: 720, alignment: .leading)
         .background(OPNDesign.Surface.panel)
         .environment(\.opnSettingsNarrowRows, false)
-    }
-
-    @MainActor
-    private func render(_ view: some View) -> NSImage? {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        return renderer.nsImage
     }
 
     private func pngData(_ image: NSImage) -> Data? {

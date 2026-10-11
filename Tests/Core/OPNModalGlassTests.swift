@@ -7,10 +7,6 @@ import Testing
 /// the message text has to stay legible over the scrim and whatever sits behind it.
 @MainActor
 @Suite(.serialized) struct OPNModalGlassTests {
-    private static let requestedOnSupportedMac = OPNLiquidGlassPolicy(
-        isRequested: true, isSupported: true, isReduceTransparency: false
-    )
-
     private static let stageSize = CGSize(width: 900, height: 620)
 
     /// The panel is centred at a fixed 440pt width; this is the band its message sits in.
@@ -19,24 +15,18 @@ import Testing
     /// The panel's message and footer sit on the material, so it cannot change the panel's geometry.
     @Test func theConfirmationPanelKeepsItsGeometryWithGlassOn() throws {
         let flat = try #require(GlassEvidence.renderOffscreen(panel(policy: .off)), "the flat panel did not render")
-        let glass = try #require(GlassEvidence.renderOffscreen(panel(policy: Self.requestedOnSupportedMac)), "the glass panel did not render")
+        let glass = try #require(GlassEvidence.renderOffscreen(panel(policy: .requestedOnSupportedMac)), "the glass panel did not render")
         #expect(flat.size == glass.size, "the material changed the panel's layout")
     }
 
     /// Composited: the panel's fill is drawn by the window server when the material is on, so an
     /// offscreen render cannot show it. Writes both modes for a person to judge readability against.
-    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theConfirmationPanelDrawsGlass() async throws {
-        let glass = try await GlassEvidence.captureInWindow(
-            panel(policy: Self.requestedOnSupportedMac),
+    @Test(.enabled(if: GlassEvidence.isGlassCaptureAvailable)) func theConfirmationPanelDrawsGlass() async throws {
+        let (glass, flat) = try await GlassEvidence.captureBothModes(
+            named: "confirmation-modal",
             over: BrightGlassBackdrop(),
             size: Self.stageSize,
-            named: "confirmation-modal-glass.png"
-        )
-        let flat = try await GlassEvidence.captureInWindow(
-            panel(policy: .off),
-            over: BrightGlassBackdrop(),
-            size: Self.stageSize,
-            named: "confirmation-modal-flat.png"
+            surface: panel
         )
 
         // The panel is small in the stage, so the comparison is over the panel's own body: a
@@ -55,22 +45,16 @@ import Testing
 
     /// The post-session summary, a second modal of the same family, so the batch that was added with
     /// it is covered by a composited capture rather than only by the shared treatment.
-    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theSessionInsightsPanelDrawsGlass() async throws {
+    @Test(.enabled(if: GlassEvidence.isGlassCaptureAvailable)) func theSessionInsightsPanelDrawsGlass() async throws {
         let insights = try #require(Self.insights, "the session insights fixture did not build")
-        let glass = try await GlassEvidence.captureInWindow(
-            SessionInsightsOverlay(insights: insights, uiScale: 1, dismiss: { _ in })
-                .environment(\.opnLiquidGlass, Self.requestedOnSupportedMac),
+        let (glass, flat) = try await GlassEvidence.captureBothModes(
+            named: "session-insights",
             over: BrightGlassBackdrop(),
-            size: Self.stageSize,
-            named: "session-insights-glass.png"
-        )
-        let flat = try await GlassEvidence.captureInWindow(
+            size: Self.stageSize
+        ) { policy in
             SessionInsightsOverlay(insights: insights, uiScale: 1, dismiss: { _ in })
-                .environment(\.opnLiquidGlass, .off),
-            over: BrightGlassBackdrop(),
-            size: Self.stageSize,
-            named: "session-insights-flat.png"
-        )
+                .environment(\.opnLiquidGlass, policy)
+        }
 
         let difference = glass.meanAbsoluteDifference(from: flat, in: GlassCapture.wholeImage)
         #expect(difference > 2, "the session insights panel did not follow the policy: mean delta \(difference)")

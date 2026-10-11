@@ -7,17 +7,13 @@ import Testing
 /// Co-Op BETA badge has to stay readable above a glass plate.
 @MainActor
 @Suite(.serialized) struct CatalogTopBarGlassTests {
-    private static let requestedOnSupportedMac = OPNLiquidGlassPolicy(
-        isRequested: true, isSupported: true, isReduceTransparency: false
-    )
-
     private static let barWidth: CGFloat = 1100
 
     /// The trigger carries its own padding in both modes, so the material cannot resize the bar.
     @Test func theBarKeepsItsGeometryWithGlassOn() throws {
         OPNDesign.applyTheme(accent: .cloudGreen, appearance: .dark, systemColorScheme: .dark)
         let flat = try #require(GlassEvidence.renderOffscreen(topBar(policy: .off)), "the flat bar did not render")
-        let glass = try #require(GlassEvidence.renderOffscreen(topBar(policy: Self.requestedOnSupportedMac)), "the glass bar did not render")
+        let glass = try #require(GlassEvidence.renderOffscreen(topBar(policy: .requestedOnSupportedMac)), "the glass bar did not render")
         #expect(flat.size == glass.size, "the material changed the bar's layout")
         #expect(glass.size.height == CatalogVendorLayout.appBarHeight(scale: 1))
     }
@@ -26,7 +22,7 @@ import Testing
     /// A `GlassEffectContainer` around the icon row composites its glass over the badge and buries it.
     @Test(.enabled(if: GlassEvidence.captureDirectory != nil)) func theRemoteCoOpBadgeReadsAboveTheGlass() async throws {
         let capture = try await GlassEvidence.captureInWindow(
-            topBar(policy: Self.requestedOnSupportedMac),
+            topBar(policy: .requestedOnSupportedMac),
             over: BrightGlassBackdrop(),
             size: CGSize(width: Self.barWidth, height: CatalogVendorLayout.appBarHeight(scale: 1)),
             named: "catalog-top-bar-glass.png"

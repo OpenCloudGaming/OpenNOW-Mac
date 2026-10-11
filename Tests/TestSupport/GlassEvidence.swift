@@ -3,21 +3,17 @@ import SwiftUI
 import Testing
 @testable import OpenNOW
 
-/// Composited Liquid Glass evidence.
-///
-/// Liquid Glass is drawn by the window server, so an `ImageRenderer` shows nothing of it and a screen
-/// grab comes back black while the display is asleep. These put a view in a real window over a bright
-/// backdrop and measure what was composed.
+/// Composited Liquid Glass evidence. Liquid Glass is drawn by the window server, so an `ImageRenderer`
+/// shows nothing of it and a screen grab comes back black while the display is asleep.
 enum GlassEvidence {
     /// Opt-in capture directory, shared so every glass suite agrees on where its evidence lands.
     nonisolated static var captureDirectory: String? {
         ProcessInfo.processInfo.environment["OPN_SNAPSHOT_DIR"]
     }
 
-    /// Whether a composited capture can show glass at all. A glass-versus-flat comparison needs both
-    /// a directory to write into and a Mac that draws the material: below macOS 26 both policies take
-    /// the flat branch, so the comparison could only fail.
-    nonisolated static var canCaptureGlass: Bool {
+    /// Whether a glass-versus-flat comparison is meaningful: it needs a directory to write into and a
+    /// Mac that draws the material, since below macOS 26 both policies take the flat branch.
+    nonisolated static var isGlassCaptureAvailable: Bool {
         captureDirectory != nil && OPNLiquidGlassPolicy.isSupportedOnThisMac
     }
 
@@ -28,6 +24,30 @@ enum GlassEvidence {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         return renderer.nsImage
+    }
+
+    /// Captures `surface` with the material on and off, which is the comparison every glass suite
+    /// makes. Writes `<name>-glass.png` and `<name>-flat.png` and returns both.
+    @MainActor
+    static func captureBothModes(
+        named name: String,
+        over backdrop: some View,
+        size: CGSize,
+        @ViewBuilder surface: (OPNLiquidGlassPolicy) -> some View
+    ) async throws -> (glass: GlassCapture, flat: GlassCapture) {
+        let glass = try await captureInWindow(
+            surface(.requestedOnSupportedMac),
+            over: backdrop,
+            size: size,
+            named: "\(name)-glass.png"
+        )
+        let flat = try await captureInWindow(
+            surface(.off),
+            over: backdrop,
+            size: size,
+            named: "\(name)-flat.png"
+        )
+        return (glass, flat)
     }
 
     /// Captures `content` in a borderless window over `backdrop`, writes the PNG into the capture
@@ -92,9 +112,8 @@ struct GlassCapture {
     /// The whole capture, for a surface that fills it.
     static let wholeImage = CGRect(x: 0, y: 0, width: 1, height: 1)
 
-    /// Mean absolute grey-level difference from `other` inside `rect`. Measured over the surface
-    /// rather than the frame, so a panel that quietly stopped drawing the material fails instead of
-    /// passing on a whole-image average.
+    /// Mean absolute grey-level difference from `other` inside `rect`. Measured over the surface, so a
+    /// panel that quietly stopped drawing the material fails instead of passing on a whole-image mean.
     func meanAbsoluteDifference(from other: GlassCapture, in rect: CGRect) -> Double {
         guard let left = pixels, let right = other.pixels else { return 0 }
         let samples = left.indices(in: rect)
@@ -151,7 +170,7 @@ private struct GlassPixels {
         let height = image.height
         guard width > 0, height > 0 else { return nil }
         var bytes = [UInt8](repeating: 0, count: width * height * 4)
-        let didDraw = bytes.withUnsafeMutableBytes { buffer -> Bool in
+        let isDrawn = bytes.withUnsafeMutableBytes { buffer -> Bool in
             guard let context = CGContext(
                 data: buffer.baseAddress,
                 width: width,
@@ -167,7 +186,7 @@ private struct GlassPixels {
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
             return true
         }
-        guard didDraw else { return nil }
+        guard isDrawn else { return nil }
         self.bytes = bytes
         self.bytesPerRow = width * 4
         self.width = width
@@ -198,6 +217,14 @@ private struct GlassPixels {
         let colour = colour(at: index)
         return UInt8((colour.red * 299 + colour.green * 587 + colour.blue * 114) / 1000)
     }
+}
+
+extension OPNLiquidGlassPolicy {
+    /// The policy a Mac that asked for glass and can draw it resolves to, which every glass suite's
+    /// comparison needs.
+    static let requestedOnSupportedMac = OPNLiquidGlassPolicy(
+        isRequested: true, isSupported: true, isReduceTransparency: false
+    )
 }
 
 /// Bright, busy content behind a glass surface: a saturated gradient, hard stripes and heavy type, so
