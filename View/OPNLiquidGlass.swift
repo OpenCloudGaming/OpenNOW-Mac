@@ -27,6 +27,14 @@ struct OPNLiquidGlassPolicy: Equatable, Sendable {
     }
 }
 
+/// Values the material needs on surfaces it cannot darken by itself.
+enum OPNLiquidGlass {
+    /// Darkens the material on a surface that sits over video or over a scrim, where the bare glass is
+    /// legible for primary text and not for the dimmer tiers. Measured against composited captures, not
+    /// chosen by eye: see DESIGN.md.
+    static let legibilityScrim = Color.black.opacity(0.6)
+}
+
 private struct OPNLiquidGlassKey: EnvironmentKey {
     static let defaultValue = OPNLiquidGlassPolicy.off
 }
@@ -128,9 +136,10 @@ extension View {
         stroke: Stroke,
         lineWidth: CGFloat = 1,
         tint: Color? = nil,
+        glassScrim: Color? = nil,
         isInteractive: Bool = false
     ) -> some View {
-        opnLiquidGlassChrome(role: role, scale: scale, tint: tint, isInteractive: isInteractive) {
+        opnLiquidGlassChrome(role: role, scale: scale, tint: tint, glassScrim: glassScrim, isInteractive: isInteractive) {
             ZStack {
                 OPNCornerShape(role: role, scale: scale).fill(fill)
                 OPNCornerShape(role: role, scale: scale).strokeBorder(stroke, lineWidth: lineWidth)

@@ -97,7 +97,8 @@ struct OPNReportIssueModal: View {
             role: .panel,
             scale: uiScale,
             fill: OPNDesign.Surface.panel,
-            stroke: OPNDesign.Stroke.regular
+            stroke: OPNDesign.Stroke.regular,
+            glassScrim: OPNLiquidGlass.legibilityScrim
         )
         .shadow(color: .black.opacity(0.58), radius: 28 * uiScale, y: 20 * uiScale)
         .onExitCommand { presentation.dismiss() }
