@@ -10,6 +10,7 @@
 //
 
 import AppKit
+import GameController
 import SwiftUI
 
 @MainActor
@@ -19,10 +20,13 @@ final class OPNStreamWindowPresenter {
     /// One window per session, keyed by the session's own id: two accounts can stream at once, and
     /// each window belongs to the session that opened it.
     private(set) var windows: [UUID: OPNStreamWindow] = [:]
+    /// Creation order, which is the order the couch co-op layout deals windows out in.
+    private var windowOrder: [UUID] = []
     private var presentedConfigurationIDs: [UUID: UUID] = [:]
     private var hostingViews: [UUID: NSHostingView<OPNStreamWindowRootView>] = [:]
     /// Held so the observation is not dropped the moment it is installed.
     private var sessionChangeObserver: NSObjectProtocol?
+    private var screenChangeObserver: NSObjectProtocol?
 
     /// Per-window full-screen bookkeeping, tracked from `present` so a dismissal that lands
     /// mid-enter is recognised before AppKit sets `.fullScreen`.
@@ -113,6 +117,14 @@ final class OPNStreamWindowPresenter {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.syncWithOwnedSessions() }
         }
+        // swiftlint:disable:next view_owns_long_lived_effect -- application-lifetime AppKit presenter, installed once by the app delegate
+        screenChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.retileWindows() }
+        }
     }
 
     /// Brings every owned session's window up to date: one window per session that has a stream, and
@@ -139,7 +151,7 @@ final class OPNStreamWindowPresenter {
         // the first and read as a replacement. Cascaded clear, the way macOS does it.
         let cascaded = Self.cascadedFrame(for: window.frame, taken: windows.values.map(\.frame))
         window.setFrame(OPNStreamWindowFrameStore.onScreen(cascaded), display: false)
-        let hostingView = NSHostingView(rootView: OPNStreamWindowRootView(configuration: configuration, session: session))
+        let hostingView = NSHostingView(rootView: OPNStreamWindowRootView(configuration: configuration, session: session, layoutState: window.layoutState))
         window.contentView = hostingView
         // The game's title belongs to the window the game is in; the catalog window keeps its own.
         window.title = Self.windowTitle(for: configuration)
@@ -151,6 +163,7 @@ final class OPNStreamWindowPresenter {
         OPNStreamWindowCloseGuard.install(on: window)
 
         windows[session.id] = window
+        windowOrder.append(session.id)
         hostingViews[session.id] = hostingView
         presentedConfigurationIDs[session.id] = configuration.id
         // Tracked for the window's whole life so a mid-enter dismissal sees the transition.
@@ -165,6 +178,8 @@ final class OPNStreamWindowPresenter {
         case .takeKey: window.makeKeyAndOrderFront(nil)
         case .orderFrontWithoutActivating: window.orderFront(nil)
         }
+        retileWindows()
+        updateBackgroundGamepadInput()
         OPNLog.info(.launch, "Stream window presented for \(configuration.applicationID) session=\(session.id)")
     }
 
@@ -175,10 +190,13 @@ final class OPNStreamWindowPresenter {
         presentedConfigurationIDs[sessionID] = nil
         hostingViews[sessionID] = nil
         windows[sessionID] = nil
+        windowOrder.removeAll { $0 == sessionID }
         OPNStreamWindowCloseGuard.uninstall(from: window)
         window.closeRequestHandler = nil
         window.sessionSurface = nil
         dismissWindow(window)
+        retileWindows()
+        updateBackgroundGamepadInput()
     }
 
     /// Decides whether this window can go out now or has to wait for a full-screen transition.
@@ -253,6 +271,63 @@ final class OPNStreamWindowPresenter {
         styleMask.contains(.fullScreen)
     }
 
+    /// Takes `deviceIDs` out of every stream that is already running, so the pads a new window plays
+    /// with stop answering in the others. Streams that have not resolved their surface yet have
+    /// nothing to take them from.
+    func takePads(_ deviceIDs: Set<InputDeviceID>) {
+        guard !deviceIDs.isEmpty else { return }
+        for window in windows.values { window.sessionSurface?.disableControllersForStream(deviceIDs) }
+    }
+
+    /// Lets pads keep playing in the background exactly while couch co-op has two or more streams up,
+    /// and tells GameController to deliver their values while the app is not frontmost.
+    private func updateBackgroundGamepadInput() {
+        let isAllowed = OPNCouchCoopInputPolicy.allowsBackgroundGamepads(
+            isFlagEnabled: OPNLabs.isCouchCoopEnabled,
+            liveStreamCount: windows.count
+        )
+        GCController.shouldMonitorBackgroundEvents = isAllowed
+        for window in windows.values { window.allowsBackgroundGamepadInput = isAllowed }
+    }
+
+    /// Which windows the couch co-op layout places, and where. A window the reader placed, a window
+    /// in Picture in Picture and a window in its own full-screen Space are not the layout's to move.
+    /// Fewer than two placeable windows is not a layout at all: tiled windows go back to where they
+    /// were, and with the flag off nothing is ever tiled.
+    func retileWindows() {
+        let ordered = windowOrder.compactMap { windows[$0] }
+        let placeable = OPNLabs.isCouchCoopEnabled
+            ? ordered.filter { Self.isPlaceableByLayout($0) }
+            : []
+        guard placeable.count >= 2 else {
+            for window in ordered where window.layoutState.isAutoTiled { releaseTile(window) }
+            return
+        }
+        let tiles = OPNStreamTileLayout.tiles(
+            screens: NSScreen.screens.map(\.frame),
+            windowCount: placeable.count,
+            orientation: OPNStreamTileOrientation.stored
+        )
+        guard tiles.count == placeable.count else { return }
+        for (window, tile) in zip(placeable, tiles) {
+            window.layoutState.isAutoTiled = true
+            OPNStreamBorderless.enter(window, frame: tile.frame)
+        }
+        for window in ordered where window.layoutState.isAutoTiled && !placeable.contains(where: { $0 === window }) {
+            releaseTile(window)
+        }
+    }
+
+    private static func isPlaceableByLayout(_ window: OPNStreamWindow) -> Bool {
+        !window.layoutState.isManuallyPlaced && !window.isPictureInPicture && !window.styleMask.contains(.fullScreen)
+    }
+
+    private func releaseTile(_ window: OPNStreamWindow) {
+        window.layoutState.isAutoTiled = false
+        OPNStreamBorderless.exit(window)
+        window.clearLayoutFrame()
+    }
+
     /// Observers live on the `WindowPresentation`, never on the presenter, so two windows at once
     /// route to the right one.
     @discardableResult
@@ -276,9 +351,23 @@ final class OPNStreamWindowPresenter {
                 self?.endTransition(.exiting, for: id)
             }
         }
-        presentation.observerTokens = [willEnter, didEnter, willExit, didExit]
+        let layoutTokens = [NSWindow.didMoveNotification, NSWindow.didResizeNotification].map { name in
+            center.addObserver(forName: name, object: window, queue: .main) { [weak window] _ in
+                MainActor.assumeIsolated { window.map(OPNStreamWindowPresenter.noteFrameChange) }
+            }
+        }
+        presentation.observerTokens = [willEnter, didEnter, willExit, didExit] + layoutTokens
         presentations[id] = presentation
         return presentation
+    }
+
+    /// A tiled window that is no longer where the layout put it was taken by the reader, and stays
+    /// theirs: the layout stops placing it.
+    private static func noteFrameChange(_ window: OPNStreamWindow) {
+        guard window.layoutState.isAutoTiled, !window.isAtLayoutFrame else { return }
+        window.layoutState.isAutoTiled = false
+        window.layoutState.isManuallyPlaced = true
+        window.clearLayoutFrame()
     }
 
     private func setTransition(_ transition: FullScreenTransition, for id: ObjectIdentifier) {

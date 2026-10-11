@@ -28,7 +28,55 @@ struct LabsSettingsPage: View {
                 }
             }
             .settingsSection("labs")
+            if isCouchCoopEnabled {
+                CouchCoopTilingCard(uiScale: uiScale)
+            }
         }
+    }
+
+    @AppStorage(OPNLabs.couchCoop.storageKey) private var isCouchCoopEnabled = false
+}
+
+/// How two or more stream windows share a screen. Shown only while Couch Co-op is on, since nothing
+/// else reads it.
+struct CouchCoopTilingCard: View {
+    let uiScale: CGFloat
+
+    @State private var orientation = OPNStreamTileOrientation.auto
+
+    var body: some View {
+        SettingsCard(title: "Couch Co-op Layout", badge: .experimental, uiScale: uiScale) {
+            Text("With two accounts on two screens each stream fills its own screen. When streams share a screen they split it, and this decides how.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            SettingsDivider(uiScale: uiScale)
+            HStack {
+                Text("Split shared screens")
+                    .font(.settingsFont(size: 13 * uiScale, weight: .bold))
+                    .foregroundStyle(OPNDesign.Text.primary)
+                Spacer(minLength: 0)
+                OPNDropdownMenu(items: OPNStreamTileOrientation.allCases.map { option in
+                    OPNDropdownItem(id: option.id, title: option.title, isSelected: option == orientation) {
+                        orientation = option
+                        OPNStreamTileOrientation.store(option)
+                    }
+                }) {
+                    HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+                        Text(orientation.title)
+                            .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                            .foregroundStyle(OPNDesign.Text.primary)
+                        Image(systemName: "chevron.down")
+                            .font(.settingsFont(size: 9 * uiScale, weight: .bold))
+                    }
+                    .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
+                    .frame(height: 30 * uiScale)
+                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.075)))
+                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                }
+            }
+        }
+        .onAppear { orientation = OPNStreamTileOrientation.stored }
     }
 }
 

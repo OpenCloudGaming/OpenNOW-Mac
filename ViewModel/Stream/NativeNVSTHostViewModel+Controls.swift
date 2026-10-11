@@ -392,7 +392,30 @@ extension NativeNVSTHostViewModel {
 
     /// The full-screen tile and its focus entry share this rather than each writing the condition
     /// out: a PiP window is small and floating, and there is no full screen to enter from it.
-    var isFullScreenTileDisabled: Bool { nativeView?.window == nil || isPictureInPicture }
+    var isFullScreenTileDisabled: Bool { nativeView?.window == nil || isPictureInPicture || isBorderlessWindow }
+
+    private var streamLayoutState: OPNStreamWindowLayoutState? {
+        (nativeView?.window as? OPNStreamWindow)?.layoutState
+    }
+
+    var isBorderlessWindow: Bool { streamLayoutState?.isBorderless ?? false }
+
+    /// Borderless is a couch co-op mode, so the tile exists only behind the flag, and like full
+    /// screen it has nothing to act on in a small floating window or in a native full-screen Space.
+    var isBorderlessTileAvailable: Bool { OPNLabs.isCouchCoopEnabled }
+
+    var isBorderlessTileDisabled: Bool {
+        nativeView?.window == nil || isPictureInPicture || streamWindowIsFullScreen || isFullScreenTransitioning
+    }
+
+    /// The reader's own choice, so the layout stops placing this window: it stays where the toggle
+    /// left it, borderless or not.
+    func toggleBorderlessFullScreen() {
+        guard isBorderlessTileAvailable, !isBorderlessTileDisabled, !isEnding, !didEnd,
+              let window = nativeView?.window as? OPNStreamWindow else { return }
+        OPNStreamBorderless.toggleByReader(window)
+        showNativeTransientStreamMessage(window.layoutState.isBorderless ? "Borderless full screen" : "Leaving borderless full screen")
+    }
 
     /// The window owns the transition: nothing here touches the style mask, collection behaviour,
     /// aspect ratio or frame - `WindowFitting` grants `.fullScreenPrimary` before the window
@@ -401,7 +424,7 @@ extension NativeNVSTHostViewModel {
     func toggleNativeFullScreen() {
         // There is no full screen to enter from a small floating window; the tile is disabled in
         // PiP and this is the same answer for the menu bar and the shortcut.
-        guard let window = nativeView?.window, !isFullScreenTransitioning, !isPictureInPicture else { return }
+        guard let window = nativeView?.window, !isFullScreenTransitioning, !isPictureInPicture, !isBorderlessWindow else { return }
         guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
         // Read before the toggle: `.fullScreen` is only inserted once the transition finishes.
         let isEnteringFullScreen = !window.styleMask.contains(.fullScreen)
@@ -428,6 +451,7 @@ extension NativeNVSTHostViewModel {
     func togglePictureInPicture() {
         guard let window = nativeView?.window as? OPNStreamWindow, !isEnding, !didEnd else { return }
         guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
+        if window.layoutState.isBorderless { OPNStreamBorderless.releaseToReader(window) }
         switch OPNStreamPictureInPicture.request(
             isPictureInPicture: isPictureInPicture,
             isFullScreen: window.styleMask.contains(.fullScreen),

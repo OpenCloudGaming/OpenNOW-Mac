@@ -17,6 +17,7 @@ import SwiftUI
 struct OPNStreamWindowRootView: View {
     let configuration: StreamLaunchConfiguration
     let session: OPNGameSession
+    let layoutState: OPNStreamWindowLayoutState
     @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScale = OPNInterfacePreferences.defaultUIScale
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
@@ -45,7 +46,7 @@ struct OPNStreamWindowRootView: View {
             GeometryReader { proxy in
                 StreamStageLayout(
                     viewport: proxy.size,
-                    topInset: windowTopInset,
+                    topInset: layoutState.isBorderless ? 0 : windowTopInset,
                     aspectRatio: CGFloat(session.streamProfile.aspectRatio)
                 ) { _ in
                     StreamHostView(
@@ -74,7 +75,7 @@ struct OPNStreamWindowRootView: View {
         }
         .ignoresSafeArea(edges: .all)
         .background(Color.black)
-        .background(StreamWindowAspectConfigurator(aspectRatio: session.streamProfile.aspectRatio, isLocked: true))
+        .background(StreamWindowAspectConfigurator(aspectRatio: session.streamProfile.aspectRatio, isLocked: !layoutState.releasesAspectLock))
         .environment(\.opnUIScale, uiScale)
         .opnObservingCornerStyle()
         .opnObservingLiquidGlass()
