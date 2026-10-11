@@ -17,6 +17,22 @@ struct ControllerMappingDevice: Equatable, Identifiable, Sendable {
 @MainActor
 final class ControllerMappingDevices: ObservableObject {
     static let shared = ControllerMappingDevices()
+
+    /// Where this registry looks for hardware. The live defaults are the real GameController and
+    /// Steam HID monitors; a test substitutes a scripted list so selection and routing can be
+    /// exercised end to end without hardware attached.
+    @MainActor
+    struct Discovery {
+        var nativeControllers: () -> [GCController]
+        var steamDeviceIDs: () -> [InputDeviceID]
+
+        static let live = Discovery(
+            nativeControllers: { NativeGamepadMonitor.availableNativeControllers() },
+            steamDeviceIDs: { SteamControllerHIDMonitor.shared.activeDeviceIDs }
+        )
+    }
+
+    var discovery = Discovery.live
     @Published private(set) var devices: [ControllerMappingDevice] = []
     @Published private(set) var playerOrder = ControllerPlayerOrder()
     private let orderChanges = PassthroughSubject<Void, Never>()
@@ -63,10 +79,10 @@ final class ControllerMappingDevices: ObservableObject {
     deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
     func refresh() {
-        let native = NativeGamepadMonitor.availableNativeControllers()
+        let native = discovery.nativeControllers()
         nativeIDs = identities.update(native.map(ObjectIdentifier.init))
         controllers.removeAll()
-        var next = SteamControllerHIDMonitor.shared.activeDeviceIDs.enumerated().map { index, id in
+        var next = discovery.steamDeviceIDs().enumerated().map { index, id in
             ControllerMappingDevice(id: id, name: "Steam Controller \(index + 1)", family: .steam, hasTouchpad: false)
         }
         for (index, controller) in native.enumerated() {

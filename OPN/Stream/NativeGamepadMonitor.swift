@@ -96,9 +96,11 @@ public final class NativeGamepadMonitor {
     private var chordTracker = StreamOSKChordTracker()
     private var guideTapTracker = SteamGuideTapTracker()
     private var onScreenKeyboardCapturedDevices: Set<InputDeviceID> = []
-    private var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
+    /// Internal, not private: the stream-selection extension narrows a haptic release to the
+    /// devices that actually lost their slot.
+    var hapticStates: [ObjectIdentifier: ControllerHapticState] = [:]
     /// Pending "motors off" for each Steam Controller currently rumbling.
-    private var steamRumbleStopTasks: [InputDeviceID: Task<Void, Never>] = [:]
+    var steamRumbleStopTasks: [InputDeviceID: Task<Void, Never>] = [:]
     private var steamRumbleCommandsSent = 0
     private var accessibilityPromptShown = false
 
@@ -112,11 +114,25 @@ public final class NativeGamepadMonitor {
     /// Returning true hands the raw snapshot to the on-screen keyboard instead of
     /// the binding engine. The keyboard also owns button navigation while active.
     public var onScreenKeyboardCapture: ((InputDeviceID, ControllerInputSnapshot) -> Bool)?
+    /// A controller that arrived mid-stream and is therefore admitted disabled in this stream. The
+    /// host turns this into the brief arrival notice; admission itself still needs the HUD toggle.
+    public var onStreamControllerArrival: ((String) -> Void)?
+
+    /// This stream's admission decision, layered over the shared order. Owned here rather than in
+    /// the registry so a second stream's selection cannot be read or written by this one, and
+    /// released with the monitor when the stream ends. Written only through `setStreamEnabled` in
+    /// the stream-selection extension.
+    var streamSelection = ControllerStreamSelection()
 
     let mappingProvider: any ControllerMappingProviding
+    /// The shared order and device list this monitor reads. Injected so a test can script discovery;
+    /// production always passes the app-wide registry.
+    let registry: ControllerMappingDevices
 
-    init(mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared) {
+    init(mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared,
+         registry: ControllerMappingDevices = .shared) {
         self.mappingProvider = mappingProvider
+        self.registry = registry
         observerTokens = [
             NotificationCenter.default.addObserver(forName: .GCControllerDidConnect, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.refreshControllerSlots() }
@@ -129,7 +145,7 @@ public final class NativeGamepadMonitor {
         mappingSubscription = mappingProvider.revisionPublisher.dropFirst().sink { [weak self] _ in
             self?.refreshMappingConfiguration()
         }
-        orderSubscription = ControllerMappingDevices.shared.orderChangesPublisher.sink { [weak self] in
+        orderSubscription = registry.orderChangesPublisher.sink { [weak self] in
             self?.refreshControllerSlots()
         }
     }
@@ -291,16 +307,6 @@ public final class NativeGamepadMonitor {
     /// one in every three hundred rather than flooding a log during a rumble-heavy fight.
     private var hapticCommandsSeen = 0
 
-    public func stopHaptics() {
-        hapticStates.values.forEach { $0.stop() }
-        hapticStates.removeAll()
-        for (deviceID, task) in steamRumbleStopTasks {
-            task.cancel()
-            SteamControllerHIDMonitor.shared.sendRumble(deviceID: deviceID, leftAmplitude: 0, rightAmplitude: 0)
-        }
-        steamRumbleStopTasks.removeAll()
-    }
-
     /// A Steam Controller's rumble is a *state* set by feature report, not a timed pattern, so a
     /// command with a duration is a set now and a clear later. A newer command for the same pad
     /// replaces the pending clear: games refresh the state every frame while vibrating and the
@@ -343,21 +349,32 @@ public final class NativeGamepadMonitor {
         return (nativePaths + steamPaths).sorted { $0.playerIndex < $1.playerIndex }
     }
 
-    private func refreshControllerSlots() {
+    /// Internal, not private: `setStreamEnabled` in the stream-selection extension re-runs it after
+    /// changing this stream's admission.
+    func refreshControllerSlots() {
         let previousSteamSlots = pollState.steamControllerSlots
-        let registry = ControllerMappingDevices.shared
+        let previousControllerSlots = pollState.controllerSlots
         registry.refresh()
+        let arrivals = streamSelection.synchronize(devices: registry.orderedDevices.map {
+            ControllerStreamSelection.Device(id: $0.id, name: $0.name)
+        })
+        for arrival in arrivals { onStreamControllerArrival?(arrival.name) }
         let nativeIDs = registry.devices.reduce(into: [InputDeviceID: ObjectIdentifier]()) { result, device in
             if let controller = registry.controller(for: device.id) { result[device.id] = ObjectIdentifier(controller) }
         }
-        let assignments = ControllerSlotAssignments(order: registry.playerOrder,
-                                                    steamIDs: Set(SteamControllerHIDMonitor.shared.activeDeviceIDs), nativeIDs: nativeIDs)
+        // The shared order is filtered to this stream's admitted devices *before* the four-slot
+        // limit, so disabling a device compacts the remaining players instead of leaving a hole.
+        // Read the Steam membership off the registry rather than the HID monitor so the filtered
+        // assignment is built from one discovery snapshot — and so a scripted registry is honored.
+        let steamIDs = Set(registry.devices.filter { $0.family == .steam }.map(\.id))
+        let assignments = ControllerSlotAssignments(deviceIDs: streamSelection.activeDeviceIDs,
+                                                    steamIDs: steamIDs, nativeIDs: nativeIDs)
         let newSteamSlots = assignments.steam
         let newControllerSlots = assignments.native
         let cachedControllers = registry.orderedDevices.compactMap { registry.controller(for: $0.id) }
             .filter { newControllerSlots[ObjectIdentifier($0)] != nil }
-        if newSteamSlots != previousSteamSlots || newControllerSlots != pollState.controllerSlots {
-            prepareForControllerSlotChange()
+        if newSteamSlots != previousSteamSlots || newControllerSlots != previousControllerSlots {
+            prepareForControllerSlotChange(keepingSteamSlots: newSteamSlots, keepingControllerSlots: newControllerSlots)
         }
         pollingQueue.sync {
             pollState.controllerSlots = newControllerSlots
@@ -547,7 +564,7 @@ public final class NativeGamepadMonitor {
 }
 
 @MainActor
-private final class ControllerHapticState {
+final class ControllerHapticState {
     private let controller: GCController
     private var engines: [GCHapticsLocality: CHHapticEngine] = [:]
     private var players: [GCHapticsLocality: any CHHapticPatternPlayer] = [:]

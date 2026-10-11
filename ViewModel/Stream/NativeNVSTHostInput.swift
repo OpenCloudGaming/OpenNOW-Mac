@@ -259,6 +259,9 @@ extension NativeNVSTHostViewModel {
             self.onScreenKeyboard.handleSteamSnapshot(deviceID: deviceID, snapshot: snapshot)
             return true
         }
+        view.onStreamControllerArrival = { [weak self] name in
+            self?.announceStreamControllerArrival(name)
+        }
         onScreenKeyboard.onOutput = { [weak self] output in
             self?.sendOnScreenKeyboardOutput(output)
         }
@@ -283,6 +286,13 @@ extension NativeNVSTHostViewModel {
                 self.handleHUDGamepad(state)
             }
         }
+    }
+
+    /// A controller that joined mid-stream is admitted disabled, so the notice says what to do
+    /// rather than implying it is already playing.
+    private func announceStreamControllerArrival(_ name: String) {
+        guard isConnected, !isEnding, !didEnd else { return }
+        showNativeTransientStreamMessage("\(name) connected — enable it in this stream")
     }
 
     /// The sheet consumes the settings-focus command vocabulary, not the HUD's step type.
