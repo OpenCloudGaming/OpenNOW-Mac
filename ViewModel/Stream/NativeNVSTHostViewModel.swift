@@ -463,7 +463,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         guard !Task.isCancelled, !didEnd, !isEnding else { return false }
         isConnected = true
         // The stream is live, so a controller that turns up from here was not connected at launch and
-        // needs an explicit enable in this stream; everything discovered during the queue did not.
+        // plays only while a slot is free; everything discovered during the queue plays outright.
         nativeView.markStreamLive()
         sessionLimit = StreamSessionSidebarLimit(session: session)
         nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible

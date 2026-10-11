@@ -112,7 +112,7 @@ public final class NativeGamepadMonitor {
     /// Returning true hands the raw snapshot to the on-screen keyboard instead of
     /// the binding engine. The keyboard also owns button navigation while active.
     public var onScreenKeyboardCapture: ((InputDeviceID, ControllerInputSnapshot) -> Bool)?
-    /// A controller that arrived mid-stream and is therefore admitted disabled in this stream. The
+    /// A controller that arrived with no free slot, so it needs an explicit enable in this stream. The
     /// host turns this into the brief arrival notice; admission itself still needs the HUD toggle.
     public var onStreamControllerArrival: ((String) -> Void)?
 
@@ -635,7 +635,7 @@ extension NativeGamepadMonitor {
     }
 
     /// The session is presented, which ends the launch window: a controller that appears from here on
-    /// was not connected at launch, so it needs an explicit enable in this stream.
+    /// was not connected at launch, so it plays only while one of the four slots is free.
     func markStreamLive() {
         isStreamLive = true
     }
@@ -645,7 +645,8 @@ extension NativeGamepadMonitor {
     private func synchronizeStreamSelection() -> [ControllerStreamSelection.Device] {
         let devices = registry.orderedDevices.map { ControllerStreamSelection.Device(id: $0.id, name: $0.name) }
         var next = streamSelection
-        let arrivals = next.synchronize(devices: devices, admission: isStreamLive ? .admitDisabled : .admitEnabled)
+        let arrivals = next.synchronize(devices: devices,
+                                        admission: isStreamLive ? .admitEnabledWhenASlotIsFree : .admitEnabled)
         streamSelection = next
         return arrivals
     }

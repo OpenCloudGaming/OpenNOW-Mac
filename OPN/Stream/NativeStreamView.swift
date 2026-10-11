@@ -349,7 +349,7 @@ public final class NativeStreamView: NSView {
         get { gamepadMonitor.onScreenKeyboardCapture }
         set { gamepadMonitor.onScreenKeyboardCapture = newValue }
     }
-    /// A controller that arrived mid-stream, and is therefore admitted disabled in this stream.
+    /// A controller that arrived with no free slot, and is therefore admitted disabled in this stream.
     /// Set by the active stream host so the arrival can be announced without admitting the device.
     public var onStreamControllerArrival: ((String) -> Void)? {
         get { gamepadMonitor.onStreamControllerArrival }

@@ -56,7 +56,7 @@ import Testing
         monitor.stop()
     }
 
-    @Test func midStreamArrivalIsAdmittedDisabledUntilThisStreamEnablesIt() throws {
+    @Test func aMidStreamArrivalTakesAFreeSlotWithoutWaitingForThisStream() throws {
         let (store, defaults, suite) = try makeStore()
         defer { defaults.removePersistentDomain(forName: suite) }
         let first = GCController.withExtendedGamepad()
@@ -73,13 +73,36 @@ import Testing
         monitor.onStreamControllerArrival = { arrivals.append($0) }
         monitor.refreshInputState()
         let secondID = try #require(registry.id(for: second))
-        #expect(arrivals.count == 1)
-        #expect(monitor.streamControllerRows.first { $0.id == secondID }?.state == .newlyIdentified)
-        #expect(monitor.inputPaths().map(\.playerIndex) == [0])
-
-        monitor.setStreamEnabled(true, for: secondID)
-        #expect(monitor.topology.playerIndices == [0, 1])
+        #expect(arrivals.isEmpty, "a controller that took a slot needs no notice")
+        #expect(monitor.inputPaths().map(\.playerIndex) == [0, 1])
+        #expect(monitor.streamControllerRows.first { $0.id == secondID }?.state == .active(playerIndex: 1))
         #expect(registry.playerOrder.deviceIDs == [firstID, secondID])
+        monitor.stop()
+    }
+
+    @Test func aMidStreamArrivalWithNoFreeSlotWaitsForThisStreamToEnableIt() throws {
+        let (store, defaults, suite) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let playing = (0..<4).map { _ in GCController.withExtendedGamepad() }
+        var natives: [GCController] = playing
+        let registry = ControllerMappingDevices(discovery: .init(nativeControllers: { natives }, steamDeviceIDs: { [] }))
+        let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
+        #expect(monitor.topology.playerIndices == [0, 1, 2, 3])
+        monitor.markStreamLive()
+
+        let fifth = GCController.withExtendedGamepad()
+        natives = playing + [fifth]
+        var arrivals: [String] = []
+        monitor.onStreamControllerArrival = { arrivals.append($0) }
+        monitor.refreshInputState()
+        let fifthID = try #require(registry.id(for: fifth))
+        #expect(arrivals.count == 1, "the stream has to say so when there is no room")
+        #expect(monitor.streamControllerRows.first { $0.id == fifthID }?.state == .newlyIdentified)
+        #expect(monitor.topology.playerIndices == [0, 1, 2, 3])
+
+        monitor.setStreamEnabled(true, for: fifthID)
+        #expect(monitor.streamControllerRows.first { $0.id == fifthID }?.state == .waiting)
+        #expect(monitor.topology.playerIndices == [0, 1, 2, 3], "a fifth controller waits instead of taking a slot")
         monitor.stop()
     }
 

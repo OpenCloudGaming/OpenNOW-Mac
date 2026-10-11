@@ -36,10 +36,11 @@ struct ControllerStreamSelection: Equatable, Sendable {
 
     /// How a device this session has not seen before is admitted.
     enum ArrivalAdmission: Equatable, Sendable {
-        /// It was connected when the stream launched, so it plays.
+        /// It was connected when the stream launched, so it plays — waiting once the four slots are taken.
         case admitEnabled
-        /// It appeared after the stream went live, so it needs an explicit enable in this stream.
-        case admitDisabled
+        /// It appeared after the stream went live, so it plays only while a slot is free and otherwise
+        /// waits for an explicit enable in this stream.
+        case admitEnabledWhenASlotIsFree
     }
 
     /// A device is known once this session has seen it, and holds a slot only while it is both
@@ -47,7 +48,7 @@ struct ControllerStreamSelection: Equatable, Sendable {
     private var names: [InputDeviceID: String] = [:]
     private var knownIDs: Set<InputDeviceID> = []
     private var enabledIDs: Set<InputDeviceID> = []
-    /// Devices admitted disabled, still awaiting an explicit decision in this stream.
+    /// Arrivals the stream had no slot for, still awaiting an explicit decision in this stream.
     private var newlyIdentifiedIDs: Set<InputDeviceID> = []
     /// The shared order as of the last synchronization, so rows and slots read one snapshot.
     private var connectedIDs: [InputDeviceID] = []
@@ -62,20 +63,25 @@ struct ControllerStreamSelection: Equatable, Sendable {
     mutating func synchronize(devices: [Device], admission: ArrivalAdmission) -> [Device] {
         let arrivals = devices.filter { !knownIDs.contains($0.id) }
         for device in devices { names[device.id] = device.name }
-        for arrival in arrivals { admit(arrival, admission: admission) }
+        for arrival in arrivals {
+            knownIDs.insert(arrival.id)
+            enabledIDs.insert(arrival.id)
+        }
         connectedIDs = devices.map(\.id)
         disconnectedIDs = knownIDs.subtracting(connectedIDs).sorted { $0.rawValue < $1.rawValue }
+        withdrawArrivalsWithoutASlot(arrivals, admission: admission)
         return arrivals
     }
 
-    private mutating func admit(_ arrival: Device, admission: ArrivalAdmission) {
-        knownIDs.insert(arrival.id)
-        if admission == .admitEnabled {
-            enabledIDs.insert(arrival.id)
-            return
+    /// Capacity belongs to the whole admitted set, so arrivals are folded in enabled first and the
+    /// ones the stream had no room for are withdrawn once the slot map exists.
+    private mutating func withdrawArrivalsWithoutASlot(_ arrivals: [Device], admission: ArrivalAdmission) {
+        guard admission == .admitEnabledWhenASlotIsFree else { return }
+        let slots = playerIndices
+        for arrival in arrivals where slots[arrival.id] == nil {
+            enabledIDs.remove(arrival.id)
+            newlyIdentifiedIDs.insert(arrival.id)
         }
-        enabledIDs.remove(arrival.id)
-        newlyIdentifiedIDs.insert(arrival.id)
     }
 
     /// Enabling clears the new-device prompt; disabling keeps the row and the remembered choice, so

@@ -35,7 +35,7 @@ import Testing
         #expect(rows.first?.isEnableToggleShown == true)
     }
 
-    @Test func unknownMidStreamArrivalShowsTheNewDevicePrompt() {
+    @Test func anArrivalTheStreamHadNoSlotForShowsTheNewDevicePrompt() {
         let rows = ControllerOrderRows.stream([streamRow("n", isEnabled: false, state: .newlyIdentified)], families: [:])
         #expect(rows.first?.slotLabel == "NEW")
         #expect(rows.first?.statusDetail == "New controller — enable in this stream")
