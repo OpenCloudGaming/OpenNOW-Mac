@@ -26,7 +26,7 @@ import Testing
 
     /// Composited: the dock's fill is drawn by the window server when the material is on, so an
     /// offscreen render cannot show it. Writes both modes for a person to judge readability against.
-    @Test(.enabled(if: GlassEvidence.captureDirectory != nil)) func theDockDrawsGlassOverBrightVideo() async throws {
+    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theDockDrawsGlassOverBrightVideo() async throws {
         let glass = try await GlassEvidence.captureInWindow(
             dock(policy: Self.requestedOnSupportedMac),
             over: BrightGlassBackdrop(),
@@ -54,7 +54,7 @@ import Testing
 
     /// The on-screen keyboard is another panel over the stream, and it needs no live session: it draws
     /// from its own controller state. Writes both modes for a person to judge readability against.
-    @Test(.enabled(if: GlassEvidence.captureDirectory != nil)) func theOnScreenKeyboardDrawsGlass() async throws {
+    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theOnScreenKeyboardDrawsGlass() async throws {
         let glass = try await GlassEvidence.captureInWindow(
             keyboard(policy: Self.requestedOnSupportedMac),
             over: BrightGlassBackdrop(),

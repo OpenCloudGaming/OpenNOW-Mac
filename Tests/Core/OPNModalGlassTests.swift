@@ -25,7 +25,7 @@ import Testing
 
     /// Composited: the panel's fill is drawn by the window server when the material is on, so an
     /// offscreen render cannot show it. Writes both modes for a person to judge readability against.
-    @Test(.enabled(if: GlassEvidence.captureDirectory != nil)) func theConfirmationPanelDrawsGlass() async throws {
+    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theConfirmationPanelDrawsGlass() async throws {
         let glass = try await GlassEvidence.captureInWindow(
             panel(policy: Self.requestedOnSupportedMac),
             over: BrightGlassBackdrop(),
@@ -55,7 +55,7 @@ import Testing
 
     /// The post-session summary, a second modal of the same family, so the batch that was added with
     /// it is covered by a composited capture rather than only by the shared treatment.
-    @Test(.enabled(if: GlassEvidence.captureDirectory != nil)) func theSessionInsightsPanelDrawsGlass() async throws {
+    @Test(.enabled(if: GlassEvidence.canCaptureGlass)) func theSessionInsightsPanelDrawsGlass() async throws {
         let insights = try #require(Self.insights, "the session insights fixture did not build")
         let glass = try await GlassEvidence.captureInWindow(
             SessionInsightsOverlay(insights: insights, uiScale: 1, dismiss: { _ in })

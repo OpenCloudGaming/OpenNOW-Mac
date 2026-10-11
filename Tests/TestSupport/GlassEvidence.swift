@@ -14,6 +14,13 @@ enum GlassEvidence {
         ProcessInfo.processInfo.environment["OPN_SNAPSHOT_DIR"]
     }
 
+    /// Whether a composited capture can show glass at all. A glass-versus-flat comparison needs both
+    /// a directory to write into and a Mac that draws the material: below macOS 26 both policies take
+    /// the flat branch, so the comparison could only fail.
+    nonisolated static var canCaptureGlass: Bool {
+        captureDirectory != nil && OPNLiquidGlassPolicy.isSupportedOnThisMac
+    }
+
     /// An offscreen render, for the assertions that do not need the window server: layout parity and
     /// the flat path.
     @MainActor
@@ -45,12 +52,14 @@ enum GlassEvidence {
         window.contentView = hosting
         window.setFrameOrigin(NSPoint(x: 200, y: 260))
         window.orderFrontRegardless()
+        // Deferred, not called at the end: either sleep can throw on cancellation, and a window left
+        // on screen would pollute every later capture.
+        defer { window.orderOut(nil) }
 
         try await Task.sleep(for: .milliseconds(1200))
         _ = captureWindow(CGWindowID(window.windowNumber))
         try await Task.sleep(for: .milliseconds(400))
         let captured = captureWindow(CGWindowID(window.windowNumber))
-        window.orderOut(nil)
 
         let image = try #require(captured, "the window server returned no image for our own window")
         try write(image, named: name, into: directory)
@@ -87,12 +96,12 @@ struct GlassCapture {
     /// rather than the frame, so a panel that quietly stopped drawing the material fails instead of
     /// passing on a whole-image average.
     func meanAbsoluteDifference(from other: GlassCapture, in rect: CGRect) -> Double {
-        guard let left = grayBytes(image), let right = grayBytes(other.image), left.count == right.count else { return 0 }
-        let samples = indices(of: image, in: rect)
+        guard let left = pixels, let right = other.pixels else { return 0 }
+        let samples = left.indices(in: rect)
         guard !samples.isEmpty else { return 0 }
         var total = 0
         for index in samples {
-            total += abs(Int(left[index]) - Int(right[index]))
+            total += abs(Int(left.luma(at: index)) - Int(right.luma(at: index)))
         }
         return Double(total) / Double(samples.count)
     }
@@ -100,65 +109,94 @@ struct GlassCapture {
     /// The median relative luminance inside `rect`: the surface's own background, with glyphs treated
     /// as outliers rather than as the thing being measured.
     func medianLuminance(in rect: CGRect) -> Double {
-        guard let bytes = grayBytes(image) else { return 1 }
-        let samples = indices(of: image, in: rect)
+        guard let pixels else { return 1 }
+        let samples = pixels.indices(in: rect)
         guard !samples.isEmpty else { return 1 }
-        let luminances = samples.map { relativeLuminance(gray: bytes[$0]) }.sorted()
+        let luminances = samples.map { relativeLuminance(gray: pixels.luma(at: $0)) }.sorted()
         return luminances[luminances.count / 2]
     }
 
     /// Pixels inside `rect` where green leads the other channels by more than `threshold`. The way to
     /// prove an accent-coloured badge is drawn above a plate rather than buried under it.
     func greenDominantPixelCount(in rect: CGRect, threshold: Int) -> Int {
-        guard let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return 0 }
-        let bytesPerPixel = max(image.bitsPerPixel / 8, 1)
+        guard let pixels else { return 0 }
         var count = 0
-        for index in indices(of: image, in: rect) {
-            let offset = index * bytesPerPixel
-            let red = Int(bytes[offset])
-            let green = Int(bytes[offset + 1])
-            let blue = Int(bytes[offset + 2])
-            if green - max(red, blue) > threshold { count += 1 }
+        for index in pixels.indices(in: rect) {
+            let colour = pixels.colour(at: index)
+            if colour.green - max(colour.red, colour.blue) > threshold { count += 1 }
         }
         return count
     }
 
-    private func indices(of image: CGImage, in rect: CGRect) -> [Int] {
-        let minX = Int(rect.minX * CGFloat(image.width))
-        let maxX = Int(rect.maxX * CGFloat(image.width))
-        let minY = Int(rect.minY * CGFloat(image.height))
-        let maxY = Int(rect.maxY * CGFloat(image.height))
-        var indices = [Int]()
-        for y in minY..<maxY {
-            for x in minX..<maxX {
-                indices.append(y * image.width + x)
-            }
-        }
-        return indices
-    }
-
-    /// Luma of each pixel, row by row, so a rect's indices address this array directly.
-    private func grayBytes(_ image: CGImage) -> [UInt8]? {
-        guard let data = image.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return nil }
-        let bytesPerPixel = max(image.bitsPerPixel / 8, 1)
-        var gray = [UInt8]()
-        gray.reserveCapacity(image.width * image.height)
-        for y in 0..<image.height {
-            for x in 0..<image.width {
-                let offset = y * image.bytesPerRow + x * bytesPerPixel
-                let red = Int(bytes[offset])
-                let green = Int(bytes[offset + 1])
-                let blue = Int(bytes[offset + 2])
-                gray.append(UInt8((red * 299 + green * 587 + blue * 114) / 1000))
-            }
-        }
-        return gray
-    }
+    /// The capture redrawn into one known layout, so a padded stride or a different source channel
+    /// order cannot skew a measurement.
+    private var pixels: GlassPixels? { GlassPixels(image) }
 
     /// WCAG relative luminance from an 8-bit sRGB grey value.
     private func relativeLuminance(gray: UInt8) -> Double {
         let channel = Double(gray) / 255
         return channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+    }
+}
+
+/// A capture's pixels as 8-bit RGBA, top row first, so callers can address them by index.
+private struct GlassPixels {
+    private let bytes: [UInt8]
+    private let bytesPerRow: Int
+    private let width: Int
+    private let height: Int
+
+    init?(_ image: CGImage) {
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0 else { return nil }
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let didDraw = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+            ) else { return false }
+            // Flipped so the buffer's first row is the image's top row, matching a normalized rect.
+            context.translateBy(x: 0, y: CGFloat(height))
+            context.scaleBy(x: 1, y: -1)
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard didDraw else { return nil }
+        self.bytes = bytes
+        self.bytesPerRow = width * 4
+        self.width = width
+        self.height = height
+    }
+
+    /// The pixel indices a normalized rect covers, row by row.
+    func indices(in rect: CGRect) -> [Int] {
+        let minX = Int(rect.minX * CGFloat(width))
+        let maxX = Int(rect.maxX * CGFloat(width))
+        let minY = Int(rect.minY * CGFloat(height))
+        let maxY = Int(rect.maxY * CGFloat(height))
+        var indices = [Int]()
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                indices.append(y * width + x)
+            }
+        }
+        return indices
+    }
+
+    func colour(at index: Int) -> (red: Int, green: Int, blue: Int) {
+        let offset = (index / width) * bytesPerRow + (index % width) * 4
+        return (Int(bytes[offset]), Int(bytes[offset + 1]), Int(bytes[offset + 2]))
+    }
+
+    func luma(at index: Int) -> UInt8 {
+        let colour = colour(at: index)
+        return UInt8((colour.red * 299 + colour.green * 587 + colour.blue * 114) / 1000)
     }
 }
 
