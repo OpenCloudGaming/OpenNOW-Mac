@@ -132,7 +132,6 @@ struct VendorEmbeddedSessionAdPlayer: View {
     let onFailed: (String) -> Void
     @StateObject private var playback = SessionAdPlaybackModel()
     @AppStorage(Self.volumePreferenceKey) private var volume = 1.0
-    private let timer = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -193,7 +192,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
             playback.start(ad: ad, volume: volume)
         }
         .onDisappear { playback.stop() }
-        .onReceive(timer) { _ in playback.updateCountdown() }
+        .task { await playback.runCountdownTicker() }
     }
 }
 

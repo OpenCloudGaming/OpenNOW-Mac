@@ -9,6 +9,18 @@ public struct OPNCollectionSymbol: Hashable, Sendable {
     public let name: String
     public let category: String
     let keywords: [String]
+
+    /// Derived once at load so `matchScore` does not rebuild them for every symbol of every query.
+    let searchName: String
+    let searchTokens: [String]
+
+    init(name: String, category: String, keywords: [String]) {
+        self.name = name
+        self.category = category
+        self.keywords = keywords
+        self.searchName = name.lowercased()
+        self.searchTokens = searchName.split(separator: ".").map(String.init)
+    }
 }
 
 /// One picker category.
@@ -87,28 +99,35 @@ public enum OPNCollectionSymbolCatalog {
 
     // MARK: - Matching
 
+    /// The weight of the strongest rule a term satisfies, best first: a whole token of the name,
+    /// then a token prefix, then a keyword, then a substring of the name, then the category.
+    private enum MatchWeight {
+        static let token = 100
+        static let tokenPrefix = 60
+        static let keyword = 50
+        static let keywordPrefix = 25
+        static let nameSubstring = 30
+        static let category = 10
+    }
+
     private static func matchScore(_ symbol: OPNCollectionSymbol, terms: [String]) -> Int {
-        let name = symbol.name.lowercased()
-        let tokens = name.split(separator: ".").map(String.init)
         var total = 0
         for term in terms {
-            if tokens.contains(term) {
-                total += 100
-            } else if tokens.contains(where: { $0.hasPrefix(term) }) {
-                total += 60
-            } else if symbol.keywords.contains(term) {
-                total += 50
-            } else if symbol.keywords.contains(where: { $0.hasPrefix(term) }) {
-                total += 25
-            } else if name.contains(term) {
-                total += 30
-            } else if symbol.category.contains(term) {
-                total += 10
-            } else {
-                return -1
-            }
+            guard let weight = matchWeight(term, in: symbol) else { return -1 }
+            total += weight
         }
         return total
+    }
+
+    /// `nil` when the symbol matches none of the term's rules, which rejects it from the results.
+    private static func matchWeight(_ term: String, in symbol: OPNCollectionSymbol) -> Int? {
+        if symbol.searchTokens.contains(term) { return MatchWeight.token }
+        if symbol.searchTokens.contains(where: { $0.hasPrefix(term) }) { return MatchWeight.tokenPrefix }
+        if symbol.keywords.contains(term) { return MatchWeight.keyword }
+        if symbol.keywords.contains(where: { $0.hasPrefix(term) }) { return MatchWeight.keywordPrefix }
+        if symbol.searchName.contains(term) { return MatchWeight.nameSubstring }
+        if symbol.category.contains(term) { return MatchWeight.category }
+        return nil
     }
 
     // MARK: - Loading
