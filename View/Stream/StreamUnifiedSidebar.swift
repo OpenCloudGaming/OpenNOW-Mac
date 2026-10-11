@@ -53,11 +53,15 @@ struct StreamUnifiedSidebar<Content: View>: View {
                 footer
             }
             .frame(width: StreamHUDTheme.dockWidth(for: proxy.size.width), height: proxy.size.height, alignment: .topLeading)
-            // The fill, the trailing rule and the top accent strip are contained by the dock's own
-            // shape, while the content stays outside the clip so an open dropdown is never cropped.
+            // The fill is what the Liquid Glass material replaces; the trailing rule and the top
+            // accent strip are state and stay crisp above it. The content stays outside the clip so
+            // an open dropdown is never cropped.
             .background {
                 ZStack(alignment: .topLeading) {
-                    StreamHUDTheme.panel.opacity(0.985)
+                    Color.clear
+                        .opnLiquidGlassChrome(role: .panel) {
+                            StreamHUDTheme.panel.opacity(0.985)
+                        }
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
                         Rectangle().fill(StreamHUDTheme.divider).frame(width: 1)
