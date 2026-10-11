@@ -110,9 +110,14 @@ struct CatalogCollectionsPickerOverlay: View {
             }
             .frame(width: min(520 * uiScale, 520), alignment: .topLeading)
             .frame(maxHeight: 560 * uiScale, alignment: .topLeading)
-            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
+            .opnLiquidGlassChrome(
+                role: .panel,
+                scale: uiScale,
+                fill: OPNDesign.Surface.deep.opacity(0.98),
+                stroke: OPNDesign.Stroke.subtle,
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .opnCornerClip(role: .panel, scale: uiScale)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
@@ -249,9 +254,14 @@ struct CatalogCollectionsManagerOverlay: View {
             }
             .frame(width: min(560 * uiScale, 560), alignment: .topLeading)
             .frame(maxHeight: 600 * uiScale, alignment: .topLeading)
-            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
+            .opnLiquidGlassChrome(
+                role: .panel,
+                scale: uiScale,
+                fill: OPNDesign.Surface.deep.opacity(0.98),
+                stroke: OPNDesign.Stroke.subtle,
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .opnCornerClip(role: .panel, scale: uiScale)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
@@ -428,9 +438,14 @@ struct CatalogCollectionsDialogOverlay: View {
             }
             .padding(22 * uiScale)
             .frame(width: min(440 * uiScale, 440), alignment: .leading)
-            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
+            .opnLiquidGlassChrome(
+                role: .panel,
+                scale: uiScale,
+                fill: OPNDesign.Surface.deep.opacity(0.98),
+                stroke: OPNDesign.Stroke.subtle,
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .opnCornerClip(role: .panel, scale: uiScale)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }
@@ -486,9 +501,14 @@ struct CatalogCollectionsNoticeOverlay: View {
             }
             .padding(24 * uiScale)
             .frame(width: min(480 * uiScale, 480), alignment: .leading)
-            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
+            .opnLiquidGlassChrome(
+                role: .panel,
+                scale: uiScale,
+                fill: OPNDesign.Surface.deep.opacity(0.98),
+                stroke: OPNDesign.Stroke.subtle,
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .opnCornerClip(role: .panel, scale: uiScale)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }

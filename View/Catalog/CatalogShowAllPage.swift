@@ -245,7 +245,9 @@ private struct CatalogSortDropdownPanel: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(OPNCornerShape(role: .panel).fill(OPNDesign.Surface.overlay.opacity(0.985)))
+        .opnLiquidGlassChrome(role: .panel, glassScrim: OPNLiquidGlass.legibilityScrim) {
+            OPNCornerShape(role: .panel).fill(OPNDesign.Surface.overlay.opacity(0.985))
+        }
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(OPNDesign.accent)

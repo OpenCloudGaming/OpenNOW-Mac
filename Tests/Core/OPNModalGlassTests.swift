@@ -53,6 +53,44 @@ import Testing
         )
     }
 
+    /// The post-session summary, a second modal of the same family, so the batch that was added with
+    /// it is covered by a composited capture rather than only by the shared treatment.
+    @Test(.enabled(if: GlassEvidence.captureDirectory != nil)) func theSessionInsightsPanelDrawsGlass() async throws {
+        let insights = try #require(Self.insights, "the session insights fixture did not build")
+        let glass = try await GlassEvidence.captureInWindow(
+            SessionInsightsOverlay(insights: insights, uiScale: 1, dismiss: { _ in })
+                .environment(\.opnLiquidGlass, Self.requestedOnSupportedMac),
+            over: BrightGlassBackdrop(),
+            size: Self.stageSize,
+            named: "session-insights-glass.png"
+        )
+        let flat = try await GlassEvidence.captureInWindow(
+            SessionInsightsOverlay(insights: insights, uiScale: 1, dismiss: { _ in })
+                .environment(\.opnLiquidGlass, .off),
+            over: BrightGlassBackdrop(),
+            size: Self.stageSize,
+            named: "session-insights-flat.png"
+        )
+
+        let difference = glass.meanAbsoluteDifference(from: flat, in: GlassCapture.wholeImage)
+        #expect(difference > 2, "the session insights panel did not follow the policy: mean delta \(difference)")
+    }
+
+    private static let insights: SessionInsights? = SessionInsights(
+        report: StreamReport(
+            title: "Cyberpunk 2077",
+            success: true,
+            reason: .completed,
+            message: "",
+            durationSeconds: 3_720,
+            metadata: ["streamResolution": "2560x1440", "streamFps": "60", "streamCodec": "H264"]
+        ),
+        endedAt: Date(timeIntervalSince1970: 1_760_000_000),
+        fallbackResolution: "1920x1080",
+        fallbackCodec: "H264",
+        fallbackFrameRate: 60
+    )
+
     /// The real confirmation panel, scrim and all; the capture supplies the backdrop behind it.
     private func panel(policy: OPNLiquidGlassPolicy) -> some View {
         OPNConfirmationPanel(

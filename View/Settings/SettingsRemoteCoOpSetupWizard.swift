@@ -140,8 +140,13 @@ struct RemoteCoOpSetupWizard: View {
         }
         .padding(24 * uiScale)
         .frame(width: 580 * uiScale, alignment: .leading)
-        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
-        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .opnLiquidGlassChrome(
+            role: .panel,
+            scale: uiScale,
+            fill: OPNDesign.Surface.panel,
+            stroke: OPNDesign.Stroke.regular,
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
         .onAppear {
             reachabilityChoice = hasTunnel ? .tunnel : (hasHostedSignaling ? .hostedSignaling : .tunnel)
         }

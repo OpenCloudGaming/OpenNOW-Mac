@@ -112,7 +112,7 @@ struct CatalogMainMenuPanel: View {
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
         // One backing for the whole open panel; rows and hover fills stay in the content layer.
-        .opnLiquidGlassChrome(role: .panel, scale: uiScale) {
+        .opnLiquidGlassChrome(role: .panel, scale: uiScale, glassScrim: OPNLiquidGlass.legibilityScrim) {
             OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.overlay.opacity(0.985))
         }
         .overlay(alignment: .trailing) {

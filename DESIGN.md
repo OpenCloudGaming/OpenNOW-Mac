@@ -246,17 +246,22 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   Mac and Reduce Transparency all draw byte-identical flat chrome**, never a thin approximation of
   glass. A surface with no backing of its own today passes `EmptyView()`, so Off is exactly today's
   appearance. `isInteractive` belongs to enabled, actionable controls only; panels and backings
-  leave it off. `glassScrim` inserts a darkening layer between the material and the content, and is
-  applied only on the glass path — the one surface that sits over video uses it to hold its text
-  contrast floor (see **HUD Dock**).
+  leave it off. `glassScrim` inserts a darkening layer between the material and the content, on the
+  glass path only. **Every glass panel backing takes it**, because every one of them carries text
+  over content the app does not control — video, artwork, or a scrim over either — and the bare
+  material drops the dimmer tiers below their floor there (measured: 2.3:1 for Text Tertiary over
+  bright video, 8.6:1 once the scrim is on). Small controls on the app's own opaque chrome do not.
 - **Eligible surfaces**: the menu-bar popover's tab row and session controls; the catalog top
-  bar's icon plates, account trigger and expanded search field; the catalog main menu and account
-  menu panel backings; the shared dropdown panel (`OPNDropdownPanel`, inherited by `OPNContextMenu`
-  and every `OPNDropdownMenu` trigger); the game-detail favorite, overflow and store-selector
-  controls; controller mode's close button and hint-bar backing; the screenshots and recordings
-  library refresh buttons and sort triggers; the screenshot and recording editor header bars; the
-  stream HUD's (⌘G) dock backing; and the app-shell modal panels — confirmation, report an issue,
-  update, and the account chooser. A modal's opaque app-bar strip stays opaque on the glass body.
+  bar's icon plates, account trigger and expanded search field; the catalog main menu, account menu
+  and Show All sort menu panel backings; the shared dropdown panel (`OPNDropdownPanel`, inherited by
+  `OPNContextMenu` and every `OPNDropdownMenu` trigger); the game-detail favorite, overflow and
+  store-selector controls; controller mode's close button, hint-bar backing and overlay panels
+  (game detail, collection picker); the screenshots and recordings library refresh buttons and sort
+  triggers; the screenshot and recording editor header bars; the stream HUD's (⌘G) dock backing; the
+  collections manager, collection icon picker and screenshots empty-state panels; the session
+  insights summary; the What's New list; and the app-shell modal panels — confirmation, report an
+  issue, update, account chooser, and the Remote Co-Op setup and relay wizards. A modal's opaque
+  app-bar strip stays opaque on the glass body.
 - **Excluded**: game tiles and posters, artwork, images, video, backgrounds, settings cards, dense
   inspectors, telemetry and metrics, scrims, meters, progress bars, and functional crop, timeline
   and selection geometry. Inside the HUD, sections, rows and the opaque `StreamHUDDropdown` panels

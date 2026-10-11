@@ -103,7 +103,8 @@ struct OPNDropdownPanel: View {
             role: .panel,
             scale: uiScale,
             fill: OPNDesign.Surface.panelRaised,
-            stroke: OPNDesign.Stroke.regular
+            stroke: OPNDesign.Stroke.regular,
+            glassScrim: OPNLiquidGlass.legibilityScrim
         )
     }
 
