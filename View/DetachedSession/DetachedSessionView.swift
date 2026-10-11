@@ -76,6 +76,16 @@ struct DetachedSessionView: View {
         .onDisappear { viewModel.discardPendingSelection(for: selectedAccount?.storedAccountID) }
     }
 
+    /// The sign-in belongs to the main window, so this window steps back to an ordinary level first:
+    /// raised above the stream windows it would sit over the main window and hide the very flow it
+    /// just started.
+    private static func addAccountInMainWindow() {
+        NSApp.keyWindow?.level = .normal
+        OPNMainWindow.reveal()
+        OPNMenuBarSessionModel.shared.requestAddAccount()
+        OPNMainWindow.bringForward()
+    }
+
     private var selectedAccount: LoginAccount? {
         guard let email = viewModel.selectedEmail else { return nil }
         return accounts.first { $0.email == email }
@@ -124,9 +134,7 @@ struct DetachedSessionView: View {
                 accountRow(row)
             }
             Button {
-                OPNMainWindow.reveal()
-                OPNMenuBarSessionModel.shared.requestAddAccount()
-                OPNMainWindow.bringForward()
+                Self.addAccountInMainWindow()
             } label: {
                 Label("Add account…", systemImage: "person.badge.plus")
             }
@@ -273,11 +281,7 @@ struct DetachedSessionView: View {
                 signedOutAccountEmails: [],
                 pendingGameShortcut: .constant(nil),
                 onSwitch: { _ in },
-                onAddAccount: {
-                    OPNMainWindow.reveal()
-                    OPNMenuBarSessionModel.shared.requestAddAccount()
-                    OPNMainWindow.bringForward()
-                },
+                onAddAccount: { Self.addAccountInMainWindow() },
                 onPresentAccountChooser: {},
                 onSignOut: { _ in },
                 onForget: { _ in },
@@ -329,7 +333,8 @@ private struct DetachedSessionWindowConfigurator: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.isOpaque = true
             window.backgroundColor = .black
-            window.level = OPNStreamBorderless.aboveCoveringLevel
+            let hasCoveringStream = OPNStreamWindowPresenter.shared.windows.values.contains { $0.layoutState.isBorderless }
+            window.level = hasCoveringStream ? OPNStreamBorderless.aboveCoveringLevel : .normal
             if window.title != title { window.title = title }
         }
     }
