@@ -92,16 +92,15 @@ final class SteamControllerTestModel: ObservableObject {
                 self?.receiveBattery(level, charging: SteamControllerHIDMonitor.shared.batteryCharging[id] ?? false, from: id)
             }
         )
+        // Starts the gyro stepping loop too, when there is a pad to read.
         refreshConnection()
-        startGyroStepping()
     }
 
     func stop() {
         stopRumble()
         selectedDeviceID = nil
         clearTelemetry()
-        gyroStepTask?.cancel()
-        gyroStepTask = nil
+        stopGyroStepping()
         guard let consumerKey else { return }
         SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
         SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
@@ -144,6 +143,17 @@ final class SteamControllerTestModel: ObservableObject {
         }
     }
 
+    /// Retires the stepping loop when there is nothing to step.
+    ///
+    /// The loop wakes the main actor every 16 ms and `stepGyroReadout()` only early-returns with
+    /// nothing selected, so an open tester page with no pad paid 62 main-actor wakeups a second for
+    /// a readout it was not showing. `refreshConnection()` owns both ends of it: it starts the loop
+    /// once a pad is selected and active, and stops it when the selection clears or the pad goes.
+    private func stopGyroStepping() {
+        gyroStepTask?.cancel()
+        gyroStepTask = nil
+    }
+
     private func stepGyroReadout() {
         guard selectedDeviceID != nil else {
             gyroReadout = .notConfigured
@@ -184,8 +194,10 @@ final class SteamControllerTestModel: ObservableObject {
         guard let selectedDeviceID, monitor.activeDeviceIDs.contains(selectedDeviceID) else {
             stopRumble()
             clearTelemetry()
+            stopGyroStepping()
             return
         }
+        startGyroStepping()
         isConnected = true
         deviceID = selectedDeviceID.rawValue
         receiveBattery(monitor.batteryLevels[selectedDeviceID], charging: monitor.batteryCharging[selectedDeviceID] ?? false, from: selectedDeviceID)

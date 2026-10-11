@@ -87,6 +87,10 @@ public final class NvstSctpAssociation: @unchecked Sendable {
     private var partialMessages: [UInt16: InboundMessage] = [:]
     private var discardedStreams: Set<UInt16> = []
     private static let maximumMessageBytes = 1_048_576
+    /// Scratch space for `usrsctp_recvv`, hoisted out of `drainInbound()`: the association drains
+    /// once per inbound burst, and allocating 64 KB on each drain was churn on the receive path.
+    /// `drainInbound()` holds `lock` for its whole body, so a single reused buffer is safe.
+    private var drainBuffer = [UInt8](repeating: 0, count: 65_536)
 
     public var inboundPackets: UInt64 { lock.withLock { receivedPacketCount } }
     /// SCTP notifications seen (mostly association changes). Read-only; the association subscribes
@@ -200,14 +204,13 @@ public final class NvstSctpAssociation: @unchecked Sendable {
         defer { lock.unlock() }
         guard let socket else { return 0 }
         var delivered = 0
-        var buffer = [UInt8](repeating: 0, count: 65_536)
         while true {
             guard self.socket != nil else { return delivered }
             var info = sctp_rcvinfo()
             var infoLength = socklen_t(MemoryLayout<sctp_rcvinfo>.size)
             var infoType: UInt32 = 0
             var flags: Int32 = 0
-            let count = buffer.withUnsafeMutableBytes {
+            let count = drainBuffer.withUnsafeMutableBytes {
                 usrsctp_recvv(socket, $0.baseAddress, $0.count, nil, nil, &info, &infoLength, &infoType, &flags)
             }
             guard count > 0 else { return delivered }
@@ -215,12 +218,12 @@ public final class NvstSctpAssociation: @unchecked Sendable {
                 if flags & MSG_NOTIFICATION != 0 {
                     notificationCount &+= 1
                     // `sn_type` is the first two bytes, host order (little-endian here).
-                    if buffer.count >= 2, buffer[0] == 0x09, buffer[1] == 0x00 { streamResetCount &+= 1 }
+                    if drainBuffer.count >= 2, drainBuffer[0] == 0x09, drainBuffer[1] == 0x00 { streamResetCount &+= 1 }
                 }
                 continue
             }
             guard let message = assemble(streamID: info.rcv_sid, ppid: UInt32(bigEndian: info.rcv_ppid),
-                                         payload: Data(buffer[..<count]), isComplete: flags & MSG_EOR != 0) else { continue }
+                                         payload: Data(drainBuffer[..<count]), isComplete: flags & MSG_EOR != 0) else { continue }
             handleInbound(message)
             delivered += 1
         }

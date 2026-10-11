@@ -9,6 +9,23 @@ public struct OPNCollectionSymbol: Hashable, Sendable {
     public let name: String
     public let category: String
     let keywords: [String]
+
+    /// `name` lowercased and split on its `.` separators, derived once per symbol.
+    ///
+    /// `matchScore` built both on every symbol of the pool on every keystroke — 7,172 lowercased
+    /// strings and 7,172 `split` allocations per query against the full set, driven straight from
+    /// the picker's body. Deriving them once at load trades a lowercased name and a token array per
+    /// symbol for the picker's lifetime against that churn; the scoring itself is unchanged.
+    let searchName: String
+    let searchTokens: [String]
+
+    init(name: String, category: String, keywords: [String]) {
+        self.name = name
+        self.category = category
+        self.keywords = keywords
+        self.searchName = name.lowercased()
+        self.searchTokens = searchName.split(separator: ".").map(String.init)
+    }
 }
 
 /// One picker category.
@@ -88,8 +105,8 @@ public enum OPNCollectionSymbolCatalog {
     // MARK: - Matching
 
     private static func matchScore(_ symbol: OPNCollectionSymbol, terms: [String]) -> Int {
-        let name = symbol.name.lowercased()
-        let tokens = name.split(separator: ".").map(String.init)
+        let name = symbol.searchName
+        let tokens = symbol.searchTokens
         var total = 0
         for term in terms {
             if tokens.contains(term) {
