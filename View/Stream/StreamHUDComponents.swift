@@ -18,6 +18,9 @@ enum StreamHUDTheme {
     static let panel = Color(red: 23 / 255, green: 23 / 255, blue: 23 / 255)
     static let surfaceRaised = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
     static let divider = Color.white.opacity(0.10)
+    /// Keeps the dock dark over bright video, where the bare material drops the dimmer text tiers
+    /// below their contrast floor. Tuned by measuring the composited capture, not by eye.
+    static let glassScrim = Color.black.opacity(0.6)
     static let textPrimary = Color.white.opacity(0.96)
     static let textSecondary = Color.white.opacity(0.72)
     static let textTertiary = Color.white.opacity(0.52)

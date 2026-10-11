@@ -59,7 +59,7 @@ struct StreamUnifiedSidebar<Content: View>: View {
             .background {
                 ZStack(alignment: .topLeading) {
                     Color.clear
-                        .opnLiquidGlassChrome(role: .panel) {
+                        .opnLiquidGlassChrome(role: .panel, glassScrim: StreamHUDTheme.glassScrim) {
                             StreamHUDTheme.panel.opacity(0.985)
                         }
                     HStack(spacing: 0) {

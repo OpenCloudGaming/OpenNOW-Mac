@@ -65,6 +65,7 @@ private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
     let role: OPNDesign.CornerRole
     let scale: CGFloat
     let tint: Color?
+    let glassScrim: Color?
     let isInteractive: Bool
     @ViewBuilder let flat: () -> Flat
 
@@ -74,10 +75,20 @@ private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *), policy.isEffective {
-            content.glassEffect(glassEffect, in: geometry.shape(role, scale: scale))
+            content
+                .background { scrim }
+                .glassEffect(glassEffect, in: geometry.shape(role, scale: scale))
         } else {
             content.background { flat() }
         }
+    }
+
+    /// Sits between the material and the content, so it darkens the glass without touching the flat
+    /// path. A surface over video needs it: the bare material is legible for primary text and not for
+    /// the dimmer tiers.
+    @ViewBuilder
+    private var scrim: some View {
+        if let glassScrim { glassScrim }
     }
 
     @available(macOS 26.0, *)
@@ -95,6 +106,7 @@ extension View {
         role: OPNDesign.CornerRole,
         scale: CGFloat = 1,
         tint: Color? = nil,
+        glassScrim: Color? = nil,
         isInteractive: Bool = false,
         @ViewBuilder flat: @escaping () -> Flat
     ) -> some View {
@@ -102,6 +114,7 @@ extension View {
             role: role,
             scale: scale,
             tint: tint,
+            glassScrim: glassScrim,
             isInteractive: isInteractive,
             flat: flat
         ))

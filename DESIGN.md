@@ -246,7 +246,9 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   Mac and Reduce Transparency all draw byte-identical flat chrome**, never a thin approximation of
   glass. A surface with no backing of its own today passes `EmptyView()`, so Off is exactly today's
   appearance. `isInteractive` belongs to enabled, actionable controls only; panels and backings
-  leave it off.
+  leave it off. `glassScrim` inserts a darkening layer between the material and the content, and is
+  applied only on the glass path — the one surface that sits over video uses it to hold its text
+  contrast floor (see **HUD Dock**).
 - **Eligible surfaces**: the menu-bar popover's tab row and session controls; the catalog top
   bar's icon plates, account trigger and expanded search field; the catalog main menu and account
   menu panel backings; the shared dropdown panel (`OPNDropdownPanel`, inherited by `OPNContextMenu`
@@ -1119,8 +1121,10 @@ no stream is playing there, and the action that matters is RESUME rather than FO
 ### HUD Dock (unified stream HUD)
 
 Full-height leading dock, width `min(344, max(268, streamWidth * 0.72))`. Panel
-background @ 0.985, or the Liquid Glass material when that setting is on — the fill is what the
-material replaces, while the trailing rule and the top accent bar stay crisp above it. Corner Style
+background @ 0.985, or the Liquid Glass material over a 0.6 black scrim when that setting is on — the
+fill is what the material replaces, while the trailing rule and the top accent bar stay crisp above
+it. The scrim is measured, not decorative: over the brightest video the bare material left Text
+Tertiary at 2.3:1, and 0.6 restores 4.7:1 while the content still reads through the glass. Corner Style
 `panel` geometry (the fill, the trailing rule and the top accent bar are clipped together so the bar
 follows the corners, while the dock's content stays outside the clip so an open dropdown is never
 cropped), 1px Divider trailing edge, 2px accent bar along the top edge. The dock's sections, rows
