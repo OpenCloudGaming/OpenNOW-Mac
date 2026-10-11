@@ -136,6 +136,10 @@ struct CatalogTopBar: View {
                             .help("Join Remote Co-Op")
                         }
                     }
+                    // One sampling region for the icon row: the plates sit 4pt apart, which is
+                    // exactly the case `GlassEffectContainer` exists for. A no-op while glass is
+                    // off, so the flat row is the row that already shipped.
+                    .opnLiquidGlassContainer(spacing: 4 * uiScale)
                     Button {
                         showsAccountMenu.toggle()
                         showsMainMenu = false
@@ -159,6 +163,9 @@ struct CatalogTopBar: View {
                                 .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
                                 .opnMotion(OPNDesign.Motion.toggle, value: showsAccountMenu)
                         }
+                        // The trigger had no backing of its own, so Off hands back nothing and the
+                        // bar reads exactly as it did before the setting existed.
+                        .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) { EmptyView() }
                     }
                     .buttonStyle(.opnPressable(scale: 0.97))
                     .accessibilityLabel("Open account menu")
@@ -262,8 +269,12 @@ struct CatalogTopBar: View {
         }
         .padding(.horizontal, 18 * uiScale)
         .frame(height: 46 * uiScale)
-        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
-        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .opnLiquidGlassChrome(role: .control, scale: uiScale) {
+            ZStack {
+                OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field)
+                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1)
+            }
+        }
         .onExitCommand { setSearchExpanded(false) }
     }
 }
@@ -319,6 +330,10 @@ struct CatalogAccountAvatar: View {
 
 /// The plate every top-bar control sits on: fixed size, dark tint and a 3pt accent underline when
 /// active. Shared so the bar reads as one row of controls and its metrics exist once.
+///
+/// With Liquid Glass on, the tint is what the material replaces — the plate is a navigation
+/// control, which is exactly the layer Apple reserves glass for. The accent underline is state
+/// rather than a backing, so it stays on both paths and a hovered or open control still says so.
 private struct CatalogTopBarPlate: ViewModifier {
     let isActive: Bool
     @Environment(\.opnUIScale) private var uiScale
@@ -326,11 +341,17 @@ private struct CatalogTopBarPlate: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(width: 44 * uiScale, height: 40 * uiScale)
-            // The plate's tint and its accent underline share one clip, so the underline ends where
-            // the plate does rather than squaring off its corners.
-            .background {
+            .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) {
+                if isActive {
+                    Color.black.opacity(0.22)
+                        .opnCornerClip(role: .control, scale: uiScale)
+                }
+            }
+            // The underline and the plate share one clip, so the underline ends where the plate
+            // does rather than squaring off its corners.
+            .overlay {
                 ZStack(alignment: .bottom) {
-                    isActive ? Color.black.opacity(0.22) : Color.clear
+                    Color.clear
                     Rectangle()
                         .fill(isActive ? OPNDesign.accent : Color.clear)
                         .frame(height: 3)

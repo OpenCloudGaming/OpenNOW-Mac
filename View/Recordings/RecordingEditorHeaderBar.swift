@@ -34,7 +34,11 @@ struct RecordingEditorHeaderBar: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-            .background(OPNDesign.Surface.deep)
+            // One backing for the whole header bar. Its action buttons keep their own flat fills:
+            // the cluster gets one glass layer, not a glass parent with glass children.
+            .opnLiquidGlassChrome(role: .panel, scale: uiScale) {
+                OPNDesign.Surface.deep
+            }
             .overlay(alignment: .bottom) { Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1) }
             .overlay(alignment: .top) {
                 Rectangle()

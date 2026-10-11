@@ -30,8 +30,12 @@ extension GameDetailPanel {
                     .catalogFont(size: 15, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 40 * uiScale, height: 40 * uiScale)
-                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
-                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) {
+                        ZStack {
+                            OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08))
+                            OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
+                        }
+                    }
             }
             .buttonStyle(.plain)
             .overlay {
@@ -52,6 +56,9 @@ extension GameDetailPanel {
             .onChange(of: game.catalogIdentity) { _, _ in showsActionsMenu = false }
         }
         .fixedSize(horizontal: true, vertical: false)
+        // The secondary controls are the glass elements here; the Play CTA beside them is not, and
+        // a container leaves non-glass content alone.
+        .opnLiquidGlassContainer(spacing: 10)
     }
 
     func favoriteActionButton(game: OPNCatalogGameObject) -> some View {
@@ -122,8 +129,12 @@ extension GameDetailPanel {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .frame(height: 28 * uiScale)
                     .padding(.horizontal, 10 * uiScale)
-                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.10)))
-                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) {
+                        ZStack {
+                            OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.10))
+                            OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Change game store, currently \(option.title)")

@@ -113,6 +113,7 @@ struct ContentView: View {
             .environment(\.opnUIScale, uiScale)
             .environment(\.opnTileDensity, tileDensity)
             .opnObservingCornerStyle()
+            .opnObservingLiquidGlass()
             .onDisappear { root.unbind() }
             // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`
             // before it calls `onAppear`, so the two would race.

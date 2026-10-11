@@ -42,25 +42,29 @@ extension View {
         }
     }
 
-    /// An icon tab in the popover's top row. On macOS 26 and later the tabs are Liquid Glass
-    /// elements, the way the session controls are — Apple lists navigation among the things the
-    /// material is for — with the selected one tinted so the choice reads without a second layer of
-    /// chrome. A `GlassEffectContainer` in the panel gathers the row into one sampling region, the
-    /// same treatment the controls get. Before macOS 26 there is no glass to draw, so the tabs fall
-    /// back to the translucent fill the rest of the surface uses, accent-marked when selected.
+    /// An icon tab in the popover's top row. When the Liquid Glass preference is on and macOS 26 or
+    /// later can draw it, the tabs are glass elements the way the session controls are — Apple lists
+    /// navigation among the things the material is for — with the selected one tinted so the choice
+    /// reads without a second layer of chrome. A `GlassEffectContainer` in the panel gathers the row
+    /// into one sampling region, the same treatment the controls get. Off, or before macOS 26, the
+    /// tabs fall back to the translucent fill the rest of the surface uses, accent-marked when
+    /// selected: that fill is the menu bar's documented flat path, not a thin approximation of glass.
     func opnMenuBarTab(isSelected: Bool) -> some View {
         modifier(OPNMenuBarTabModifier(isSelected: isSelected))
     }
 }
 
 /// The glass shape has to be resolved from the environment, which a `Shape` cannot read, so the two
-/// glass paths live in modifiers of their own.
+/// glass paths live in modifiers of their own. Both also read the Liquid Glass policy: the material
+/// is what this surface already drew on macOS 26, and Off has to take it away rather than leave the
+/// one app-owned glass effect the toggle is supposed to cover.
 private struct OPNMenuBarControlModifier: ViewModifier {
     @Environment(\.opnCornerGeometry) private var geometry
+    @Environment(\.opnLiquidGlass) private var policy
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
+        if #available(macOS 26.0, *), policy.isEffective {
             content.glassEffect(.regular.interactive(), in: geometry.shape(.control))
         } else {
             content.background(geometry.shape(.control).fill(OPNDesign.Fill.neutral(0.08)))
@@ -72,12 +76,13 @@ private struct OPNMenuBarTabModifier: ViewModifier {
     let isSelected: Bool
 
     @Environment(\.opnCornerGeometry) private var geometry
+    @Environment(\.opnLiquidGlass) private var policy
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *), isSelected {
+        if #available(macOS 26.0, *), policy.isEffective, isSelected {
             content.glassEffect(.regular.tint(OPNDesign.accent).interactive(), in: geometry.shape(.control))
-        } else if #available(macOS 26.0, *) {
+        } else if #available(macOS 26.0, *), policy.isEffective {
             content.glassEffect(.regular.interactive(), in: geometry.shape(.control))
         } else {
             content

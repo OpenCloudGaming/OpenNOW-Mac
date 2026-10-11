@@ -323,9 +323,13 @@ struct CatalogFavoriteButton: View {
                 .catalogFont(size: iconSize, weight: .bold)
                 .foregroundStyle(isFavorite ? .black.opacity(0.88) : OPNDesign.Semantic.favorite)
                 .frame(width: side * uiScale, height: side * uiScale)
-                .background(OPNCornerShape(role: .control, scale: uiScale).fill(isFavorite ? OPNDesign.Semantic.favorite : OPNDesign.Fill.neutral(0.08)))
-                .overlay {
-                    OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
+                // Favorited is carried by the glyph and by the glass tint, so the state still reads
+                // when the material replaces the fill.
+                .opnLiquidGlassChrome(role: .control, scale: uiScale, tint: isFavorite ? OPNDesign.Semantic.favorite : nil, isInteractive: true) {
+                    ZStack {
+                        OPNCornerShape(role: .control, scale: uiScale).fill(isFavorite ? OPNDesign.Semantic.favorite : OPNDesign.Fill.neutral(0.08))
+                        OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Semantic.favorite.opacity(isFavorite ? 1 : 0.55), lineWidth: 1)
+                    }
                 }
                 .contentShape(Rectangle())
         }

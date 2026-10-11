@@ -11,6 +11,10 @@ struct ThemeSettingsPage: View {
     @AppStorage(OPNThemePreferences.accentColorKey) private var accentColorRawValue = OPNThemePreferences.AccentColor.cloudGreen.rawValue
     @AppStorage(OPNThemePreferences.appearanceKey) private var appearanceRawValue = OPNThemePreferences.Appearance.dark.rawValue
     @AppStorage(OPNThemePreferences.cornerStyleKey) private var cornerStyleRawValue = OPNThemePreferences.CornerStyle.square.rawValue
+    @AppStorage(OPNThemePreferences.isLiquidGlassEnabledKey) private var isLiquidGlassEnabled = false
+    /// Read at the page rather than only where glass is drawn, so the row can say why a saved On
+    /// is not in effect instead of showing a switch that looks active and paints nothing.
+    @Environment(\.accessibilityReduceTransparency) private var isReduceTransparency
 
     private var selectedAppearanceIndex: Int {
         let appearance = OPNThemePreferences.Appearance(rawValue: appearanceRawValue) ?? .dark
@@ -35,6 +39,27 @@ struct ThemeSettingsPage: View {
     private var selectedTileTitleVisibilityIndex: Int {
         let visibility = OPNThemePreferences.TileTitleVisibility(rawValue: tileTitleVisibilityRawValue) ?? .onHover
         return OPNThemePreferences.TileTitleVisibility.allCases.firstIndex(of: visibility) ?? 0
+    }
+
+    /// What the stored preference resolves to on this Mac right now. The same gate the surfaces
+    /// draw through, so the row and the app can never disagree about whether glass is on.
+    private var liquidGlassPolicy: OPNLiquidGlassPolicy {
+        OPNLiquidGlassPolicy(
+            isRequested: isLiquidGlassEnabled,
+            isSupported: OPNLiquidGlassPolicy.isSupportedOnThisMac,
+            isReduceTransparency: isReduceTransparency
+        )
+    }
+
+    /// The proposed help text, plus whichever reason the setting cannot take effect here. An On
+    /// switch that draws nothing has to say why.
+    private var liquidGlassSubtitle: String {
+        let base = "Use Liquid Glass for selected controls and navigation on macOS 26 or later. Off by default. Native macOS window and popover appearance is controlled by the system."
+        guard isLiquidGlassEnabled, !liquidGlassPolicy.isEffective else { return base }
+        if !liquidGlassPolicy.isSupported {
+            return "\(base) This Mac runs a version of macOS older than 26, so the flat appearance is used."
+        }
+        return "\(base) macOS Reduce Transparency is on, so the flat appearance is used."
     }
 
     private var selectedAccentColorIndex: Int {
@@ -70,6 +95,13 @@ struct ThemeSettingsPage: View {
                 SettingsOptionRow(title: "Corner Style", subtitle: "Choose square or rounded corners for app controls, cards, and panels. Square keeps today's geometry; Rounded is opt-in and applies everywhere right away.", options: OPNThemePreferences.CornerStyle.allCases.map(\.label), selectedIndex: selectedCornerStyleIndex, isNew: OPNNewSettings.isNew(.cornerStyle), uiScale: uiScale) { index in
                     OPNNewSettings.acknowledge(.cornerStyle)
                     cornerStyleRawValue = OPNThemePreferences.CornerStyle.allCases[index].rawValue
+                }
+                SettingsDivider(uiScale: uiScale)
+                // The switch keeps taking the click on a Mac that cannot draw glass: the choice is
+                // saved and travels with the account, it just does not claim to be in effect here.
+                SettingsToggleRow(title: "Liquid Glass", subtitle: liquidGlassSubtitle, isOn: isLiquidGlassEnabled, isNew: OPNNewSettings.isNew(.liquidGlass), isInert: isLiquidGlassEnabled && !liquidGlassPolicy.isEffective, uiScale: uiScale) { newValue in
+                    OPNNewSettings.acknowledge(.liquidGlass)
+                    isLiquidGlassEnabled = newValue
                 }
             }
             .settingsSection("appearance")

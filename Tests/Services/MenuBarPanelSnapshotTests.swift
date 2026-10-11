@@ -244,6 +244,40 @@ import Testing
         try renderContent(card, named: name, minimumHeight: minimumHeight)
     }
 
+    /// The panel's chrome under every Liquid Glass policy, offscreen. Two things are asserted here
+    /// and they are the ones an offscreen render can prove: Off, an unsupported Mac and Reduce
+    /// Transparency are one and the same flat treatment, and turning the material on is a swap
+    /// rather than a relayout. What the material itself looks like is the composited capture below.
+    @Test func thePanelRendersUnderEveryLiquidGlassPolicy() async throws {
+        try await withPanel(phase: .streaming, title: "Cyberpunk 2077") { panel in
+            let off = try #require(renderImage(panel.environment(\.opnLiquidGlass, .off)))
+            let unsupported = try #require(renderImage(panel.environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
+                isRequested: true, isSupported: false, isReduceTransparency: false
+            ))))
+            let suppressed = try #require(renderImage(panel.environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
+                isRequested: true, isSupported: true, isReduceTransparency: true
+            ))))
+            let on = try #require(renderImage(panel.environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
+                isRequested: true, isSupported: true, isReduceTransparency: false
+            ))))
+
+            #expect(pngData(off) == pngData(unsupported), "an unsupported Mac did not draw the flat chrome")
+            #expect(pngData(off) == pngData(suppressed), "Reduce Transparency did not draw the flat chrome")
+            #expect(off.size == on.size, "the glass policy changed the panel's layout")
+            #expect(off.size.width >= OPNMenuBarPanel.width, "the panel collapsed horizontally")
+        }
+    }
+
+    private func renderImage(_ content: some View) -> NSImage? {
+        let renderer = ImageRenderer(content: content.background(Color.black))
+        renderer.scale = 2
+        return renderer.nsImage
+    }
+
+    private func pngData(_ image: NSImage) -> Data? {
+        image.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }
+    }
+
     private func renderContent(_ content: some View, named name: String, minimumHeight: CGFloat) throws {
         let renderer = ImageRenderer(content: content)
         renderer.scale = 2
@@ -272,6 +306,24 @@ import Testing
         try await Task.sleep(for: .milliseconds(80))
 
         try await captureInWindow(OPNMenuBarPanel(session: model), named: "menu-bar-glass-over-backdrop.png", height: 330)
+    }
+
+    /// The preference On, captured the way the material has to be captured: the window server draws
+    /// Liquid Glass, so an offscreen render cannot show it. Compare with
+    /// `theGlassChromeRendersInAWindow`, which is the same panel on a Mac that resolves the default.
+    @Test(.enabled(if: captureEnabled)) func theGlassChromeRendersWithThePreferenceOn() async throws {
+        let model = OPNMenuBarSessionModel()
+        let source = PanelStubSource()
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: .streaming, title: "Cyberpunk 2077", recentGames: Self.games)
+        model.attach(source: source)
+        defer { model.detachSource(source) }
+        try await Task.sleep(for: .milliseconds(80))
+
+        let panel = OPNMenuBarPanel(session: model)
+            .environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
+                isRequested: true, isSupported: true, isReduceTransparency: false
+            ))
+        try await captureInWindow(panel, named: "menu-bar-glass-preference-on.png", height: 330)
     }
 
     /// The Collections tab with the scrolling paths on screen: seven members in the open collection.

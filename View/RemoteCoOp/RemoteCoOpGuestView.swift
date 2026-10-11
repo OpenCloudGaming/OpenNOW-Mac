@@ -54,6 +54,7 @@ struct RemoteCoOpGuestView: View {
             }
         }
         .opnObservingCornerStyle()
+        .opnObservingLiquidGlass()
     }
 
     /// A singleton SwiftUI `Window` scene - what this window is - does not reliably pick up

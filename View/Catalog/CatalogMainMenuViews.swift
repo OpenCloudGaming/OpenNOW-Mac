@@ -111,7 +111,11 @@ struct CatalogMainMenuPanel: View {
             }
         }
         .frame(width: CatalogVendorLayout.mainMenuWidth(scale: uiScale), height: availableHeight, alignment: .topLeading)
-        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.overlay.opacity(0.985)))
+        // One backing for the whole open panel: the rows, hover fills and section labels stay in
+        // the content layer, so glass is not stacked on glass.
+        .opnLiquidGlassChrome(role: .panel, scale: uiScale) {
+            OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.overlay.opacity(0.985))
+        }
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(OPNDesign.Stroke.subtle)

@@ -97,10 +97,15 @@ struct OPNDropdownPanel: View {
         .frame(minWidth: width == nil ? Self.minimumWidth(scale: uiScale) : nil)
         .frame(maxWidth: width == nil ? .infinity : nil)
         .frame(width: width)
-        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panelRaised))
-        .overlay {
-            OPNCornerShape(role: .panel, scale: uiScale)
-                .strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
+        // The shared open-panel backing for every dropdown and context menu in the app. The rows,
+        // selection and destructive colours and the scrolling stay exactly as they are: this is one
+        // glass layer for the panel, not one per row.
+        .opnLiquidGlassChrome(role: .panel, scale: uiScale) {
+            ZStack {
+                OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panelRaised)
+                OPNCornerShape(role: .panel, scale: uiScale)
+                    .strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
+            }
         }
     }
 

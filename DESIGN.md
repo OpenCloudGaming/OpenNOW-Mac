@@ -223,6 +223,76 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   `contentShape(Rectangle())` never changes. Native window chrome, traffic lights, system dialogs
   and popover shells remain system-owned.
 
+## Liquid Glass
+
+- **Setting**: Settings → Look → Appearance → Liquid Glass, beneath Corner Style. **Off by
+  default**: a missing stored value reads off, so an upgrade — including one that restores settings
+  from iCloud — keeps the appearance the installation already had. There is no migration that turns
+  it on. Changing it applies immediately, without a restart and without disturbing a running
+  stream.
+- **One policy, not per-component checks**: every eligible surface resolves
+  `\.opnLiquidGlass`, an `OPNLiquidGlassPolicy` carrying three facts — whether the user asked for
+  glass, whether this Mac can draw it (macOS 26 or later), and whether macOS Reduce Transparency is
+  on. Glass is drawn only when all three say yes. The policy is injected at each detached root
+  (`.opnObservingLiquidGlass()`) exactly as the corner geometry is, because SwiftUI does not inherit
+  environment across an `NSHostingView` or a separate scene; the collection-view grid passes it
+  across its hosting boundary explicitly, and repaints the hosted tiles and detail panel in place on
+  a change — no data reload, no layout invalidation, no scroll or selection reset.
+- **One helper, one flat branch**: an eligible surface is drawn with
+  `.opnLiquidGlassChrome(role:scale:tint:isInteractive:) { ... }`, which draws
+  `glassEffect(_:in:)` with the semantic `OPNCornerShape` role when the policy is effective and the
+  closure's treatment when it is not. The closure is not a second appearance invented for the
+  toggle: it is the fill, border and shadow the surface already shipped, so **Off, an unsupported
+  Mac and Reduce Transparency all draw byte-identical flat chrome**, never a thin approximation of
+  glass. A surface with no backing of its own today passes `EmptyView()`, so Off is exactly today's
+  appearance. `isInteractive` belongs to enabled, actionable controls only; panels and backings
+  leave it off.
+- **Eligible surfaces** (the initial rollout): the menu-bar popover's tab row and session controls;
+  the catalog top bar's icon plates, account trigger and expanded search field; the catalog main
+  menu and account menu panel backings; the shared dropdown panel (`OPNDropdownPanel`, inherited by
+  `OPNContextMenu` and every `OPNDropdownMenu` trigger); the game-detail favorite, overflow and
+  store-selector controls; controller mode's close button and hint-bar backing; the screenshots and
+  recordings library refresh buttons and sort triggers; and the screenshot and recording editor
+  header bars.
+- **Excluded**: game tiles and posters, artwork, images, video, backgrounds, settings cards, dense
+  inspectors, telemetry and metrics, scrims, meters, progress bars, and functional crop, timeline
+  and selection geometry. The full stream HUD — including its opaque `StreamHUDDropdown` panels —
+  stays non-glass, and PiP and the Remote Co-Op floating controls are follow-up candidates that need
+  their own over-video readability and GPU-cost validation. Login forms, confirmations and
+  error/recovery panels stay unchanged.
+- **Native chrome is not ours to promise away**: Off disables every app-owned custom glass,
+  including the menu-bar controls that already used it, but the status item's popover and macOS
+  window chrome are drawn by the system and stay as the system draws them. This is stated in the
+  setting's own help text rather than left implied.
+- **One glass layer per cluster**: neighboring glass elements are gathered with
+  `.opnLiquidGlassContainer(spacing:)` (the menu-bar tab row at 6, its control row at 8, the
+  catalog top bar's icon row at 4, the game-detail action row at 10) and a cluster or panel gets one
+  glass layer rather than a glass parent with glass children. Rows, hover fills, section labels,
+  glyph pills, account summaries and the editor header bars' action buttons stay in the content
+  layer; `OPNPressableButtonStyle` is never converted wholesale, because it is used by content and
+  rows too.
+- **State survives the material**: the catalog top bar's accent underline, the menu-bar selected
+  tab's accent tint and `onAccent` ink (which follows the *effective* mode, not merely the OS
+  version), the favorite control's tinted glass when favorited, and every disabled, destructive and
+  selected treatment are kept. Interaction effects are applied to enabled, actionable controls only.
+- **Geometry is unchanged by the material**: glass is drawn in the surface's semantic corner shape,
+  so Square stays square and Rounded stays rounded, and turning the setting on never relayouts a
+  control. Shapes scale once, following the same `uiScale` rule as every other app-owned surface;
+  menu-bar chrome keeps its documented fixed sizing.
+- **Accessibility**: Reduce Transparency forces the flat path without overwriting the saved choice,
+  so turning it back off restores the eligible appearance. Reduce Motion is respected by the
+  existing `opnMotion` vocabulary; glass adds no morphing of its own. On a Mac older than macOS 26
+  the row stays discoverable and says so, and a saved On is drawn through
+  `SettingsToggleRow.isInert` so an unavailable material is never shown as active — the switch still
+  takes the click and still saves the choice.
+- **Appearance, accent, Corner Style and Interface Scale stay independent**: Liquid Glass is a
+  material decision over the same palette and geometry, not a fourth theme. It is not part of
+  stream identity or catalog identity, so nothing is reparented or rebuilt to update chrome.
+- **NEW badge**: the row is registered provisionally at `0.16.0`, the release it is planned for. The
+  anchor is the **first stable release that actually contains the setting**, verified against that
+  release's tagged source and built app before shipping; a beta is judged on its intended stable base
+  version, and acknowledgements made during a beta are preserved when the stable release lands.
+
 ## Components
 
 ### Buttons (app shell)
@@ -479,12 +549,15 @@ history carries no timestamp for is title-only.
 Above the cards sits a compact **icon tab row** (`OPNMenuBarTab`): a game controller for the session
 surface the panel has always been, a heart for the account's favorites, and the catalog's collection
 glyph (`square.stack.3d.up.fill`) for the account's own collections. The tabs are the popover's
-navigation, one of the things Apple names Liquid Glass for, so on macOS 26 and later each tab is a
-glass element in its own `GlassEffectContainer` — the selected one tinted with the accent, the
-unselected one plain interactive glass — exactly as the session control row is gathered. On older
-systems they fall back to the translucent fill with an accent stroke on the selected tab. The
-selected tab's glyph uses `OPNDesign.onAccent`, the ink designed to be read on an accent fill: the
-ordinary text ink all but disappears on the tinted glass. The account card sits between the tab row
+navigation, one of the things Apple names Liquid Glass for, so with the Liquid Glass preference on
+and macOS 26 or later each tab is a glass element in its own `GlassEffectContainer` — the selected
+one tinted with the accent, the unselected one plain interactive glass — exactly as the session
+control row is gathered. Otherwise they draw the translucent fill with an accent stroke on the
+selected tab: that fill is the menu bar's **flat path**, the treatment Off restores, not a thin
+approximation of glass. The selected tab's glyph uses `OPNDesign.onAccent`, the ink designed to be
+read on an accent fill, because the ordinary text ink all but disappears on the tinted glass; on the
+flat path it keeps the primary ink, so the ink follows the effective mode rather than the OS
+version alone. See **Liquid Glass** for the policy both paths resolve through. The account card sits between the tab row
 and the tab content and is **fixed across switches** — who is signed in does not depend on which tab
 is showing, so the card, and the account dropdown's state, stay put.
 

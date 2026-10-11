@@ -29,4 +29,19 @@ import Testing
             #expect(OPNNewSettings.compareVersions(row.introducedIn, "0.0.0") == .orderedDescending, "\(row)")
         }
     }
+
+    /// Liquid Glass is registered provisionally at the release it is planned for. The anchor is the
+    /// first stable release that actually contains the setting, so this value moves if that release
+    /// ships without it — and a beta is judged on its intended stable base version, not its suffix.
+    @Test func liquidGlassIsRegisteredProvisionallyAtThePlannedRelease() {
+        let introducedIn = OPNNewSettings.Row.liquidGlass.introducedIn
+        #expect(introducedIn == "0.16.0")
+        #expect(OPNNewSettings.isNew(introducedIn: introducedIn, currentVersion: "0.15.0", acknowledged: false))
+        #expect(OPNNewSettings.isNew(introducedIn: introducedIn, currentVersion: "0.16.0-beta.1", acknowledged: false))
+        #expect(OPNNewSettings.isNew(introducedIn: introducedIn, currentVersion: "0.16.0", acknowledged: false))
+        // Expires on the next release, a patch included, without a removal list to maintain.
+        #expect(!OPNNewSettings.isNew(introducedIn: introducedIn, currentVersion: "0.16.1", acknowledged: false))
+        // Changing the setting retires the tag, and the acknowledgement survives a version bump.
+        #expect(!OPNNewSettings.isNew(introducedIn: introducedIn, currentVersion: "0.16.0", acknowledged: true))
+    }
 }

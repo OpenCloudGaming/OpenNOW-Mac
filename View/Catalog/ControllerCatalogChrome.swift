@@ -37,8 +37,12 @@ struct ControllerOverlayHeader: View {
                     .catalogFont(size: 16, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.secondary)
                     .frame(width: 38 * uiScale, height: 38 * uiScale)
-                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
-                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) {
+                        ZStack {
+                            OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08))
+                            OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1)
+                        }
+                    }
             }
             .buttonStyle(.plain)
         }
@@ -113,7 +117,9 @@ struct ControllerHintBar: View {
         }
         .frame(width: layout.contentWidth, alignment: .leading)
         .frame(height: 46 * uiScale)
-        .background {
+        // One backing for the whole strip. The glyph pills and labels inside it are the content
+        // layer and stay flat, so the strip is not glass stacked on glass.
+        .opnLiquidGlassChrome(role: .control, scale: uiScale) {
             ZStack(alignment: .top) {
                 Color.black.opacity(0.36)
                 Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1)

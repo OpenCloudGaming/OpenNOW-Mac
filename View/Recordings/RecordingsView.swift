@@ -251,8 +251,12 @@ struct RecordingsView: View {
                         .font(.recordingsFont(size: 15 * uiScale, weight: .bold))
                         .foregroundStyle(OPNDesign.Text.primary)
                         .frame(width: 40 * uiScale, height: 40 * uiScale)
-                        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle))
-                        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
+                        .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) {
+                            ZStack {
+                                OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Stroke.subtle)
+                                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
                 .help("Refresh recordings")
@@ -288,8 +292,12 @@ struct RecordingsView: View {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
                     .frame(height: 32 * uiScale)
-                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(RecordingsLayout.card))
-                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
+                    .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) {
+                        ZStack {
+                            OPNCornerShape(role: .control, scale: uiScale).fill(RecordingsLayout.card)
+                            OPNCornerShape(role: .control, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1)
+                        }
+                    }
                 }
 
                 Spacer()
