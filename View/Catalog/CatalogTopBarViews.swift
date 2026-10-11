@@ -73,7 +73,7 @@ struct CatalogTopBar: View {
 
                 HStack(spacing: 24 * uiScale) {
                     Spacer()
-                    HStack(spacing: 24 * uiScale) {
+                    HStack(spacing: 14 * uiScale) {
                     HStack(spacing: 4 * uiScale) {
                         if viewModel.selectedMainPage == .games {
                             // Cmd+K opens the field and puts the caret in it, and focuses it again
@@ -136,9 +136,8 @@ struct CatalogTopBar: View {
                             .help("Join Remote Co-Op")
                         }
                     }
-                    // One sampling region for the icon row; its plates sit 4pt apart. A no-op while
-                    // glass is off, so the flat row is the row that already shipped.
-                    .opnLiquidGlassContainer(spacing: 4 * uiScale)
+                    // No GlassEffectContainer here: it composites its glass above an overlay on a
+                    // glass plate, which buries the Remote Co-Op BETA badge and the hover underline.
                     Button {
                         showsAccountMenu.toggle()
                         showsMainMenu = false
@@ -162,8 +161,10 @@ struct CatalogTopBar: View {
                                 .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
                                 .opnMotion(OPNDesign.Motion.toggle, value: showsAccountMenu)
                         }
-                        // The trigger had no backing of its own, so Off hands back nothing and the
-                        // bar reads exactly as it did before the setting existed.
+                        // The padding is the plate's own, and the row spacing below gives up exactly
+                        // what it adds, so the avatar holds its place whether glass is on or off.
+                        .padding(.horizontal, 10 * uiScale)
+                        .padding(.vertical, 4 * uiScale)
                         .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) { EmptyView() }
                     }
                     .buttonStyle(.opnPressable(scale: 0.97))

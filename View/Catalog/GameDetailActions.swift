@@ -57,8 +57,6 @@ extension GameDetailPanel {
             .onChange(of: game.catalogIdentity) { _, _ in showsActionsMenu = false }
         }
         .fixedSize(horizontal: true, vertical: false)
-        // The secondary controls are the glass elements; the Play CTA beside them is not.
-        .opnLiquidGlassContainer(spacing: 10)
     }
 
     func favoriteActionButton(game: OPNCatalogGameObject) -> some View {
