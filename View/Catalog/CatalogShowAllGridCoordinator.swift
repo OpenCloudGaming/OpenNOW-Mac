@@ -85,9 +85,8 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         let resolvedCornerGeometry = update?.cornerGeometry ?? cornerGeometry
         let isCornerStyleChanged = resolvedCornerGeometry != cornerGeometry
         cornerGeometry = resolvedCornerGeometry
-        // The hosted tiles and detail panel are separate hosting roots, so a live glass toggle has
-        // to reach them the same way a corner-style change does: by repainting the hosted content
-        // in place, not by reloading data or invalidating layout.
+        // The hosted tiles and detail panel are separate hosting roots, so a live glass toggle reaches
+        // them by repainting in place, exactly as a corner-style change does.
         let resolvedLiquidGlass = update?.liquidGlass ?? liquidGlass
         let isLiquidGlassChanged = resolvedLiquidGlass != liquidGlass
         liquidGlass = resolvedLiquidGlass

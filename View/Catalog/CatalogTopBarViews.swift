@@ -136,9 +136,8 @@ struct CatalogTopBar: View {
                             .help("Join Remote Co-Op")
                         }
                     }
-                    // One sampling region for the icon row: the plates sit 4pt apart, which is
-                    // exactly the case `GlassEffectContainer` exists for. A no-op while glass is
-                    // off, so the flat row is the row that already shipped.
+                    // One sampling region for the icon row; its plates sit 4pt apart. A no-op while
+                    // glass is off, so the flat row is the row that already shipped.
                     .opnLiquidGlassContainer(spacing: 4 * uiScale)
                     Button {
                         showsAccountMenu.toggle()
@@ -269,12 +268,12 @@ struct CatalogTopBar: View {
         }
         .padding(.horizontal, 18 * uiScale)
         .frame(height: 46 * uiScale)
-        .opnLiquidGlassChrome(role: .control, scale: uiScale) {
-            ZStack {
-                OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field)
-                OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1)
-            }
-        }
+        .opnLiquidGlassChrome(
+            role: .control,
+            scale: uiScale,
+            fill: OPNDesign.Surface.field,
+            stroke: OPNDesign.Stroke.subtle
+        )
         .onExitCommand { setSearchExpanded(false) }
     }
 }
@@ -329,11 +328,7 @@ struct CatalogAccountAvatar: View {
 }
 
 /// The plate every top-bar control sits on: fixed size, dark tint and a 3pt accent underline when
-/// active. Shared so the bar reads as one row of controls and its metrics exist once.
-///
-/// With Liquid Glass on, the tint is what the material replaces — the plate is a navigation
-/// control, which is exactly the layer Apple reserves glass for. The accent underline is state
-/// rather than a backing, so it stays on both paths and a hovered or open control still says so.
+/// active. Glass replaces the tint; the underline is state and stays on both paths.
 private struct CatalogTopBarPlate: ViewModifier {
     let isActive: Bool
     @Environment(\.opnUIScale) private var uiScale

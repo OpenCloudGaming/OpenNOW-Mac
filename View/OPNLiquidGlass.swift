@@ -1,24 +1,13 @@
 import SwiftUI
 
-/// The app's opt-in Liquid Glass appearance, resolved once per subtree.
-///
-/// Three things decide what an eligible surface actually draws, and only the first is a choice the
-/// user owns: whether they asked for glass at all, whether this Mac can draw it (macOS 26 and
-/// later), and whether the system is asking for less transparency. Resolving them into one value
-/// keeps every surface asking the same question, and keeps Off honest — the flat treatment a
-/// surface already had is what it draws whenever the answer is no.
-///
-/// This is deliberately not a design token: it carries no colour, no shape and no geometry. It is
-/// the capability/accessibility gate that decides which of two already-existing appearances a
-/// surface wears.
+/// The app's opt-in Liquid Glass appearance, resolved once per subtree. Three facts decide what an
+/// eligible surface draws; only the first is the user's choice.
 struct OPNLiquidGlassPolicy: Equatable, Sendable {
-    /// The stored preference. Off when the key was never written, which is what makes an upgrade
-    /// keep the appearance it already had.
+    /// The stored preference. Off when the key was never written, so an upgrade keeps its appearance.
     var isRequested: Bool
     /// This Mac can draw native Liquid Glass.
     var isSupported: Bool
-    /// macOS Reduce Transparency is on, which forces the flat path without touching the stored
-    /// preference.
+    /// macOS Reduce Transparency is on. Forces the flat path without touching the stored preference.
     var isReduceTransparency: Bool
 
     /// Whether eligible surfaces draw glass right now.
@@ -31,8 +20,7 @@ struct OPNLiquidGlassPolicy: Equatable, Sendable {
         isReduceTransparency: false
     )
 
-    /// The one place the OS floor is written down, so the settings row and every surface agree on
-    /// what "unsupported" means.
+    /// The one place the OS floor is written down, so the settings row and every surface agree.
     static var isSupportedOnThisMac: Bool {
         if #available(macOS 26.0, *) { return true }
         return false
@@ -50,10 +38,8 @@ extension EnvironmentValues {
     }
 }
 
-/// Injects the live policy into the environment. Every detached root observes it itself — the main
-/// window, each stream window, the menu-bar scene and the Remote Co-Op window — for the same reason
-/// the corner geometry does: SwiftUI does not inherit environment across an `NSHostingView` or a
-/// separate scene, so a root that only received the value once would keep drawing a stale answer.
+/// Injects the live policy at a detached root. SwiftUI inherits neither across an `NSHostingView`
+/// nor across a scene, so a root that received the value once would keep drawing a stale answer.
 private struct OPNLiquidGlassInjectionModifier: ViewModifier {
     @AppStorage(OPNThemePreferences.isLiquidGlassEnabledKey) private var isLiquidGlassEnabled = false
     @Environment(\.accessibilityReduceTransparency) private var isReduceTransparency
@@ -73,13 +59,8 @@ extension View {
     }
 }
 
-/// Draws an eligible chrome surface with Liquid Glass when the policy allows it, and with the flat
-/// treatment the caller hands over when it does not.
-///
-/// The flat branch is not a second appearance invented for the toggle: it is the fills, borders and
-/// shadows the surface already shipped, which is why every call site passes over its own exact
-/// treatment rather than a thin-material approximation. A surface that has no backing of its own
-/// today passes `EmptyView()`, so Off is byte-for-byte today's appearance.
+/// Draws one eligible chrome surface with Liquid Glass when the policy allows it, and with `flat`
+/// when it does not. `flat` is the surface's existing treatment, never a thin material substitute.
 private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
     let role: OPNDesign.CornerRole
     let scale: CGFloat
@@ -101,19 +82,15 @@ private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
 
     @available(macOS 26.0, *)
     private var glassEffect: Glass {
-        var effect = Glass.regular
-        if isInteractive { effect = effect.interactive() }
-        if let tint { effect = effect.tint(tint) }
-        return effect
+        let effect = Glass.regular.interactive(isInteractive)
+        guard let tintColor = tint else { return effect }
+        return effect.tint(tintColor)
     }
 }
 
 extension View {
-    /// Applies the app's opt-in Liquid Glass to one chrome surface, falling back to `flat` — the
-    /// treatment the surface already had — whenever the policy is not effective.
-    ///
-    /// `isInteractive` belongs to enabled, actionable controls only: a press and a hover answering
-    /// through the material is what says the control is live. Panels and backings leave it off.
+    /// Applies opt-in Liquid Glass to one chrome surface, falling back to `flat` when it is off.
+    /// `isInteractive` belongs to enabled, actionable controls only; panels leave it off.
     func opnLiquidGlassChrome<Flat: View>(
         role: OPNDesign.CornerRole,
         scale: CGFloat = 1,
@@ -121,14 +98,36 @@ extension View {
         isInteractive: Bool = false,
         @ViewBuilder flat: @escaping () -> Flat
     ) -> some View {
-        modifier(OPNLiquidGlassChromeModifier(role: role, scale: scale, tint: tint, isInteractive: isInteractive, flat: flat))
+        modifier(OPNLiquidGlassChromeModifier(
+            role: role,
+            scale: scale,
+            tint: tint,
+            isInteractive: isInteractive,
+            flat: flat
+        ))
+    }
+
+    /// The flat treatment most eligible surfaces share: a role-shaped fill under a 1pt border.
+    func opnLiquidGlassChrome<Fill: ShapeStyle, Stroke: ShapeStyle>(
+        role: OPNDesign.CornerRole,
+        scale: CGFloat = 1,
+        fill: Fill,
+        stroke: Stroke,
+        lineWidth: CGFloat = 1,
+        tint: Color? = nil,
+        isInteractive: Bool = false
+    ) -> some View {
+        opnLiquidGlassChrome(role: role, scale: scale, tint: tint, isInteractive: isInteractive) {
+            ZStack {
+                OPNCornerShape(role: role, scale: scale).fill(fill)
+                OPNCornerShape(role: role, scale: scale).strokeBorder(stroke, lineWidth: lineWidth)
+            }
+        }
     }
 }
 
-/// Gathers neighboring glass elements into one sampling region, the way Apple asks for when several
-/// glass shapes sit side by side: one region, and shapes that can interact rather than sample each
-/// other. A no-op when the policy is not effective, so the flat path keeps exactly the layout it
-/// always had.
+/// Gathers neighboring glass elements into one sampling region. A no-op while glass is off, so the
+/// flat path keeps the layout it already had.
 private struct OPNLiquidGlassContainerModifier: ViewModifier {
     let spacing: CGFloat
 

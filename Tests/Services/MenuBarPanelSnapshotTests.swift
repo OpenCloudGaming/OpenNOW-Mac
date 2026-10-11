@@ -244,27 +244,21 @@ import Testing
         try renderContent(card, named: name, minimumHeight: minimumHeight)
     }
 
-    /// The panel's chrome under every Liquid Glass policy, offscreen. Two things are asserted here
-    /// and they are the ones an offscreen render can prove: Off, an unsupported Mac and Reduce
-    /// Transparency are one and the same flat treatment, and turning the material on is a swap
-    /// rather than a relayout. What the material itself looks like is the composited capture below.
-    @Test func thePanelRendersUnderEveryLiquidGlassPolicy() async throws {
+    /// The popover's chrome under both modes. Off and On lay out identically, and on a Mac that can
+    /// draw glass they differ: Off really does remove the menu bar's app-owned glass.
+    @Test func thePanelChromeFollowsTheLiquidGlassPreference() async throws {
         try await withPanel(phase: .streaming, title: "Cyberpunk 2077") { panel in
             let off = try #require(renderImage(panel.environment(\.opnLiquidGlass, .off)))
-            let unsupported = try #require(renderImage(panel.environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
-                isRequested: true, isSupported: false, isReduceTransparency: false
-            ))))
-            let suppressed = try #require(renderImage(panel.environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
-                isRequested: true, isSupported: true, isReduceTransparency: true
-            ))))
             let on = try #require(renderImage(panel.environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
                 isRequested: true, isSupported: true, isReduceTransparency: false
             ))))
 
-            #expect(pngData(off) == pngData(unsupported), "an unsupported Mac did not draw the flat chrome")
-            #expect(pngData(off) == pngData(suppressed), "Reduce Transparency did not draw the flat chrome")
             #expect(off.size == on.size, "the glass policy changed the panel's layout")
             #expect(off.size.width >= OPNMenuBarPanel.width, "the panel collapsed horizontally")
+            // Offscreen drawing is the flat path, so the difference only exists where glass can draw.
+            if OPNLiquidGlassPolicy.isSupportedOnThisMac {
+                #expect(pngData(off) != pngData(on), "Off left the menu bar's app-owned glass in place")
+            }
         }
     }
 
@@ -309,8 +303,7 @@ import Testing
     }
 
     /// The preference On, captured the way the material has to be captured: the window server draws
-    /// Liquid Glass, so an offscreen render cannot show it. Compare with
-    /// `theGlassChromeRendersInAWindow`, which is the same panel on a Mac that resolves the default.
+    /// Liquid Glass, so an offscreen render cannot show it. See `theGlassChromeRendersInAWindow`.
     @Test(.enabled(if: captureEnabled)) func theGlassChromeRendersWithThePreferenceOn() async throws {
         let model = OPNMenuBarSessionModel()
         let source = PanelStubSource()

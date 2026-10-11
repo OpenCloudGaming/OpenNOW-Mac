@@ -88,9 +88,8 @@ struct CatalogShowAllGridUpdateTests {
         #expect(pngData(of: fixture.scrollView) != gridBefore, "the visible tiles were not repainted for the new style")
     }
 
-    /// The same in-place repaint contract for the Liquid Glass preference. The hosted detail row is
-    /// the grid's eligible surface, so flipping the preference must repaint it without reloading the
-    /// grid, resizing the tiles, moving the selection, or moving the scroll position.
+    /// The same in-place repaint contract for the Liquid Glass preference: the hosted detail row is
+    /// the grid's eligible surface, so a flip must repaint it without disturbing grid state.
     @Test func aLiquidGlassChangeRepaintsTheHostedDetailWithoutReloading() async throws {
         let fixture = GridFixture()
         defer { fixture.close() }

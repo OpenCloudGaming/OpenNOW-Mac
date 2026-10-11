@@ -46,9 +46,8 @@ enum OPNNewSettings {
             case .instantReplay, .sessionInsights: "0.11.0"
             case .captureLocations: "0.14.0"
             case .maintenanceWatch, .matchMacPointerSpeed: "0.15.0"
-            // Provisional: 0.16.0 is the release Liquid Glass is planned for. The anchor is the
-            // first stable release that actually contains the setting, so this moves if 0.16.0
-            // ships without it — acknowledgements made while it was provisional are kept either way.
+            // Provisional: the anchor is the first stable release that actually contains Liquid Glass,
+            // so this moves if 0.16.0 ships without it. Acknowledgements made now are kept.
             case .cornerStyle, .liquidGlass: "0.16.0"
             }
         }

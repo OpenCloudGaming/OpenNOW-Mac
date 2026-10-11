@@ -75,8 +75,7 @@ struct ScreenshotEditorView: View {
         .padding(.horizontal, 22 * uiScale)
         .padding(.vertical, 16 * uiScale)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // One backing for the whole header bar. Its action buttons keep their own flat fills: the
-        // cluster gets one glass layer, not a glass parent with glass children.
+        // One backing for the whole header bar; its action buttons keep their own flat fills.
         .opnLiquidGlassChrome(role: .panel, scale: uiScale) {
             OPNDesign.Surface.deep
         }

@@ -169,10 +169,8 @@ enum OPNThemePreferences {
         set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: cornerStyleKey) }
     }
 
-    /// Whether eligible controls and navigation are drawn with native Liquid Glass. Opt-in and off
-    /// by default: a key that was never written reads false, so an upgrade keeps the flat appearance
-    /// the installation already had. Whether glass is actually drawn also depends on this Mac being
-    /// able to draw it and on Reduce Transparency, which the view layer resolves.
+    /// Whether eligible controls and navigation draw native Liquid Glass. Opt-in and off by default:
+    /// a missing key reads false, and the view layer still gates it on OS support and Reduce Transparency.
     static var isLiquidGlassEnabled: Bool {
         get { OPNAppPreferenceStorage.standard.bool(forKey: isLiquidGlassEnabledKey) }
         set { OPNAppPreferenceStorage.standard.set(newValue, forKey: isLiquidGlassEnabledKey) }

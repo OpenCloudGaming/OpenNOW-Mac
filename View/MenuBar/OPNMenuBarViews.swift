@@ -123,9 +123,8 @@ struct OPNMenuBarPanel: View {
 
     // MARK: - Tabs
 
-    /// The tabs are glass when the preference is on, so the row is gathered into one
-    /// `GlassEffectContainer` the same way the session controls are: one sampling region, and shapes
-    /// that can interact rather than sample each other.
+    /// The tabs are glass when the preference is on, so the row is gathered into one sampling region
+    /// the same way the session controls are.
     private var tabBar: some View {
         tabTiles.opnLiquidGlassContainer(spacing: 6)
     }
@@ -157,11 +156,8 @@ struct OPNMenuBarPanel: View {
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
-    /// The selected tab's glyph sits on an accent-tinted glass, where the ordinary text ink all but
-    /// disappears. `OPNDesign.onAccent` is the ink designed to be read on an accent fill, so it keeps
-    /// the mark legible whatever the accent preset. The flat path has no tint to fight and keeps the
-    /// primary ink — so the ink follows the effective glass mode, not merely the OS version, or a
-    /// selected tab on macOS 26 with the preference off would paint ink for a fill it is not on.
+    /// The selected tab's glyph needs `onAccent` ink on tinted glass and primary ink on the flat fill,
+    /// so the ink follows the effective mode rather than the OS version alone.
     private func tabIconInk(isSelected: Bool) -> Color {
         guard isSelected else { return OPNDesign.Text.secondary }
         if liquidGlassPolicy.isEffective { return OPNDesign.onAccent }

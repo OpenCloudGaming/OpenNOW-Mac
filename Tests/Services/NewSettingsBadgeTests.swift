@@ -30,9 +30,8 @@ import Testing
         }
     }
 
-    /// Liquid Glass is registered provisionally at the release it is planned for. The anchor is the
-    /// first stable release that actually contains the setting, so this value moves if that release
-    /// ships without it — and a beta is judged on its intended stable base version, not its suffix.
+    /// Registered provisionally at the release it is planned for: the anchor is the first stable
+    /// release that actually contains Liquid Glass, and a beta is judged on its stable base version.
     @Test func liquidGlassIsRegisteredProvisionallyAtThePlannedRelease() {
         let introducedIn = OPNNewSettings.Row.liquidGlass.introducedIn
         #expect(introducedIn == "0.16.0")
