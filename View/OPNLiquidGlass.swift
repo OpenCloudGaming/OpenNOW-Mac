@@ -29,9 +29,8 @@ struct OPNLiquidGlassPolicy: Equatable, Sendable {
 
 /// Values the material needs on surfaces it cannot darken by itself.
 enum OPNLiquidGlass {
-    /// Darkens the material on a surface that sits over video or over a scrim, where the bare glass is
-    /// legible for primary text and not for the dimmer tiers. Measured against composited captures, not
-    /// chosen by eye: see DESIGN.md.
+    /// Darkens the material on a surface over video or over a scrim, where bare glass is legible for
+    /// primary text and not for the dimmer tiers. Measured from composited captures; see DESIGN.md.
     static let legibilityScrim = Color.black.opacity(0.6)
 }
 
@@ -92,8 +91,7 @@ private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
     }
 
     /// Sits between the material and the content, so it darkens the glass without touching the flat
-    /// path. A surface over video needs it: the bare material is legible for primary text and not for
-    /// the dimmer tiers.
+    /// path, which is what a surface over video or over a scrim needs.
     @ViewBuilder
     private var scrim: some View {
         if let glassScrim { glassScrim }
