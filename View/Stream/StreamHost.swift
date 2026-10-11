@@ -80,6 +80,7 @@ struct NativeNVSTMediaStreamSurface: View {
             // so arriving a turn later is safe.
             NativeNVSTStreamHostView(
                 mappingGameIdentity: configuration.mappingGameIdentity,
+                owningAccountID: configuration.owningAccountID,
                 onResolve: { view in
                     Task { @MainActor in
                         model.nativeView = view
@@ -166,11 +167,12 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
     /// The game this surface is streaming, so its pad mappings resolve from its own overrides rather
     /// than from whichever game's session started last.
     let mappingGameIdentity: String
+    let owningAccountID: String
     let onResolve: @MainActor (NativeStreamView) -> Void
     var onWindowChanged: @MainActor (NSWindow?) -> Void = { _ in }
 
     func makeNSView(context: Context) -> NativeNVSTSurfaceContainerView {
-        let view = NativeNVSTSurfaceContainerView(frame: .zero, mappingGameIdentity: mappingGameIdentity)
+        let view = NativeNVSTSurfaceContainerView(frame: .zero, mappingGameIdentity: mappingGameIdentity, owningAccountID: owningAccountID)
         view.onResolve = onResolve
         view.onWindowChanged = onWindowChanged
         return view
@@ -202,8 +204,16 @@ private struct NativeNVSTStreamHostView: NSViewRepresentable {
         var onWindowChanged: (@MainActor (NSWindow?) -> Void)?
         private var didResolve = false
 
-        init(frame frameRect: NSRect, mappingGameIdentity: String) {
-            streamView = NativeStreamView(frame: .zero, mappingProvider: ControllerMappingGameProvider(gameIdentity: mappingGameIdentity))
+        init(frame frameRect: NSRect, mappingGameIdentity: String, owningAccountID: String) {
+            let selection = OPNStreamControllerPreset.shared.take(forAccount: owningAccountID)
+            streamView = NativeStreamView(
+                frame: .zero,
+                mappingProvider: ControllerMappingGameProvider(gameIdentity: mappingGameIdentity),
+                initiallyDisabledControllers: selection.disabled
+            )
+            OPNStreamWindowPresenter.shared.takePads(
+                selection.handedOff(connected: ControllerMappingDevices.shared.orderedDevices.map(\.id))
+            )
             super.init(frame: frameRect)
             wantsLayer = true
             layer?.backgroundColor = NSColor.black.cgColor

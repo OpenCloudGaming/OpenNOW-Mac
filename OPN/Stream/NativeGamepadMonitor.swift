@@ -516,6 +516,20 @@ extension NativeGamepadMonitor {
         return true
     }
 
+    /// Disables every listed device that this stream knows, in one slot refresh. The couch co-op
+    /// preset and the hand-off between windows both land here, so the pads another window plays
+    /// with are out of this one before its first poll.
+    func disableForStream(_ deviceIDs: Set<InputDeviceID>) {
+        var next = streamSelection
+        let changed = deviceIDs.filter { next.setEnabled(false, for: $0) }
+        guard !changed.isEmpty else { return }
+        streamSelection = next
+        OPNStreamTelemetry.capture("webrtc.input.gamepad.stream_selection", level: .info,
+                                   message: "Controllers left out of this stream.",
+                                   attributes: ["count": String(changed.count)])
+        refreshControllerSlots()
+    }
+
     /// The HUD's rows for this stream: effective player per enabled device, plus the remembered rows
     /// for whatever is disabled, waiting or gone.
     var streamControllerRows: [ControllerStreamSelection.Row] { streamSelection.rows }

@@ -22,3 +22,14 @@ extension NativeNVSTHostViewModel {
         return StreamControllerSelectionContext(monitor: nativeView.gamepadMonitor)
     }
 }
+
+@MainActor
+extension NativeNVSTHostViewModel {
+    func setBackgroundGamepadInput(_ isAllowed: Bool) {
+        nativeView?.allowsBackgroundGamepadInput = isAllowed
+    }
+
+    func disableControllersForStream(_ deviceIDs: Set<InputDeviceID>) {
+        nativeView?.gamepadMonitor.disableForStream(deviceIDs)
+    }
+}

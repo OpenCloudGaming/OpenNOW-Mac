@@ -46,9 +46,16 @@ extension StreamLaunchConfiguration {
     /// The catalog identity of the game this session runs, snapshotted at launch so its controller
     /// mappings follow its own game rather than whichever one started last.
     static let mappingGameIdentityKey = "mappingGameIdentity"
+    /// The stable id of the account that owns the session, so per-account choices made before the
+    /// stream existed (which controllers it plays with) find their way to it.
+    static let owningAccountIDKey = "owningAccountID"
 
     var owningAccountDisplayName: String {
         (metadata[Self.owningAccountDisplayNameKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var owningAccountID: String {
+        (metadata[Self.owningAccountIDKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var mappingGameIdentity: String {
@@ -59,9 +66,10 @@ extension StreamLaunchConfiguration {
     /// by, whose game it is, and which game's mappings it uses. The id has to come from the session
     /// that owns the launch - the stream surface registers its commands under the configuration's id,
     /// so a different one here would leave every targeted control reaching nothing.
-    func snapshottingSession(id: UUID, ownerDisplayName: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
+    func snapshottingSession(id: UUID, ownerDisplayName: String, ownerAccountID: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
         var metadata = metadata
         metadata[Self.owningAccountDisplayNameKey] = ownerDisplayName
+        metadata[Self.owningAccountIDKey] = ownerAccountID
         metadata[Self.mappingGameIdentityKey] = mappingGameIdentity
         return StreamLaunchConfiguration(
             id: id,
