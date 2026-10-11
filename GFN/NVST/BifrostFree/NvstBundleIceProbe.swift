@@ -37,9 +37,7 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
     private var punchTimer: DispatchSourceTimer?
     private var reportTimer: DispatchSourceTimer?
     private var counters = NvstInboundCounters()
-    /// Scratch space for `recvfrom`, hoisted out of `drain()`: the read source fires once per
-    /// inbound datagram, and allocating 64 KB on every wake-up was pure churn on the read queue.
-    /// The read queue is serial, so a single reused buffer is safe.
+    /// One inbound datagram at a time; the read queue is serial, so a single buffer is safe.
     private var drainBuffer = [UInt8](repeating: 0, count: 65_536)
 
     public init(handoff: NVSTVideoHandoff, descriptor: Int32, logger: (@Sendable (String) -> Void)? = nil) throws {

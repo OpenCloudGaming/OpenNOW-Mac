@@ -87,9 +87,7 @@ public final class NvstSctpAssociation: @unchecked Sendable {
     private var partialMessages: [UInt16: InboundMessage] = [:]
     private var discardedStreams: Set<UInt16> = []
     private static let maximumMessageBytes = 1_048_576
-    /// Scratch space for `usrsctp_recvv`, hoisted out of `drainInbound()`: the association drains
-    /// once per inbound burst, and allocating 64 KB on each drain was churn on the receive path.
-    /// `drainInbound()` holds `lock` for its whole body, so a single reused buffer is safe.
+    /// One inbound SCTP message at a time; `drainInbound()` holds `lock` for its whole body.
     private var drainBuffer = [UInt8](repeating: 0, count: 65_536)
 
     public var inboundPackets: UInt64 { lock.withLock { receivedPacketCount } }

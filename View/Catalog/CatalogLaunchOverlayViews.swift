@@ -192,15 +192,7 @@ struct VendorEmbeddedSessionAdPlayer: View {
             playback.start(ad: ad, volume: volume)
         }
         .onDisappear { playback.stop() }
-        // A `.task` loop rather than a `Timer.publish` stored on the view: a publisher built in a
-        // view struct is rebuilt on every re-render, which resets the interval before it ever fires
-        // — the same reason `NativeNVSTHostViewModel.pollControllerBatteries()` drives its own loop.
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(250))
-                playback.updateCountdown()
-            }
-        }
+        .task { await playback.runCountdownTicker() }
     }
 }
 

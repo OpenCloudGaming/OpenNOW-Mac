@@ -74,6 +74,14 @@ final class SessionAdPlaybackModel: ObservableObject {
         remainingSeconds = duration > 0 ? max(0, Int(ceil(duration - elapsed))) : 0
     }
 
+    /// Drives `updateCountdown` for as long as the overlay is on screen; the view's `.task` cancels it.
+    func runCountdownTicker() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(250))
+            updateCountdown()
+        }
+    }
+
     var countdownText: String {
         let minutes = max(0, remainingSeconds) / 60
         let seconds = max(0, remainingSeconds) % 60

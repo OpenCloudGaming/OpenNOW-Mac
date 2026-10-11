@@ -89,14 +89,13 @@ extension NvstBifrostFreeTransport {
             }
         }
         mediaFrameContinuation = mediaContinuation
-        // The periodic request below only exists while a guest is bound, and its first pass asks for
-        // an IDR before it sleeps — so a bind is both what pulls the keyframe and what restarts it.
-        remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in Task { await self?.startCoOpKeyframeRequests() } }
+        // A bind restarts the periodic request below, whose first pass asks for an IDR before it sleeps.
+        remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in Task { await self?.restartCoOpKeyframeRequests() } }
         // A browser guest cannot be sent the seat's HEVC, so its own H.264 encode starts only when it
         // connects; pulling a keyframe the moment its media starts is what gets it a picture without
         // waiting for the periodic request.
-        remoteCoOpBrowserEgress?.onGuestJoined = { [weak self] in Task { await self?.startCoOpKeyframeRequests() } }
-        startCoOpKeyframeRequests()
+        remoteCoOpBrowserEgress?.onGuestJoined = { [weak self] in Task { await self?.restartCoOpKeyframeRequests() } }
+        restartCoOpKeyframeRequests()
         let pipeline = makeVideoPipeline(handoff: handoff, decoder: decoder, receiver: receiver, mediaContinuation: mediaContinuation)
         videoPipeline = pipeline
         receiver.onAccessUnit = { [weak pipeline] unit in pipeline?.submit(unit) }
@@ -126,25 +125,23 @@ extension NvstBifrostFreeTransport {
     /// `receiver` is passed in rather than read off `self`: this runs before `self.receiver` is
     /// assigned, and a capture list evaluates eagerly, so capturing the property would bind a
     /// permanently nil weak reference and silence every keyframe request the pipeline makes.
-    /// Pulls an IDR from the seat every couple of seconds while a native guest is bound, so a guest
-    /// that joins mid-stream can start. The seat sends no periodic keyframe of its own.
-    ///
-    /// The loop exists only while a guest is bound: it checks before asking and returns when none is,
-    /// and the guest-bind hooks above restart it. It used to check *after* the sleep, which meant a
-    /// 2 s wake-up for the whole session of a stream nobody was co-oping and no way to stop it — the
-    /// loop had already paid for the sleep by the time it could see there was nothing to ask for.
-    /// The check is first and the request is before the sleep, so a restart still pulls an IDR at
-    /// once rather than a full interval later.
-    private func startCoOpKeyframeRequests() {
+    /// Pulls an IDR from the seat every couple of seconds while a co-op guest is connected, so a
+    /// guest that joins mid-stream can start; the seat sends no periodic keyframe of its own.
+    private func restartCoOpKeyframeRequests() {
         coOpKeyframeTask?.cancel()
         coOpKeyframeTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                guard remoteCoOpNativeBroadcaster.hasBoundGuests || remoteCoOpBrowserEgress?.hasGuests == true else { return }
+                guard isCoOpGuestConnected else { return }
                 await requestKeyframeOverControlChannel()
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+    }
+
+    /// Read from the task above, which does not run on this actor.
+    private nonisolated var isCoOpGuestConnected: Bool {
+        remoteCoOpNativeBroadcaster.hasBoundGuests || remoteCoOpBrowserEgress?.hasGuests == true
     }
 
     /// The interval that stands in for a display whose refresh the client could not read.
@@ -406,10 +403,8 @@ extension NvstBifrostFreeTransport {
         qosFeedbackTask = Task { [weak self] in await self?.runQosFeedback() }
     }
 
-    /// The three reports the seat's rate controller wants, on the actor and behind one hop.
-    ///
-    /// They used to be three `await`s from a task that does not run on the transport actor, so every
-    /// 18 Hz tick queued behind the actor three times. The cadence is untouched — only the hop count.
+    /// The three reports the seat's rate controller wants, sent on this actor behind the single hop
+    /// that starts the loop instead of one hop each per tick. The 18 Hz cadence is unchanged.
     private func runQosFeedback() async {
         while !Task.isCancelled {
             sendQosReport()

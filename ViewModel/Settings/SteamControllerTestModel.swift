@@ -92,7 +92,6 @@ final class SteamControllerTestModel: ObservableObject {
                 self?.receiveBattery(level, charging: SteamControllerHIDMonitor.shared.batteryCharging[id] ?? false, from: id)
             }
         )
-        // Starts the gyro stepping loop too, when there is a pad to read.
         refreshConnection()
     }
 
@@ -143,12 +142,7 @@ final class SteamControllerTestModel: ObservableObject {
         }
     }
 
-    /// Retires the stepping loop when there is nothing to step.
-    ///
-    /// The loop wakes the main actor every 16 ms and `stepGyroReadout()` only early-returns with
-    /// nothing selected, so an open tester page with no pad paid 62 main-actor wakeups a second for
-    /// a readout it was not showing. `refreshConnection()` owns both ends of it: it starts the loop
-    /// once a pad is selected and active, and stops it when the selection clears or the pad goes.
+    /// Owned by `refreshConnection()`: the loop runs only while a selected pad is active.
     private func stopGyroStepping() {
         gyroStepTask?.cancel()
         gyroStepTask = nil
