@@ -67,7 +67,8 @@ struct CatalogShowAllGridView: NSViewRepresentable {
             self,
             scale: uiScale,
             density: context.environment.opnTileDensity,
-            cornerGeometry: context.environment.opnCornerGeometry
+            cornerGeometry: context.environment.opnCornerGeometry,
+            liquidGlass: context.environment.opnLiquidGlass
         )
     }
 
@@ -98,6 +99,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
         isQueuedForPatching: Bool,
         scale: CGFloat,
         cornerGeometry: OPNCornerGeometry,
+        liquidGlass: OPNLiquidGlassPolicy,
         tileTitleVisibility: OPNThemePreferences.TileTitleVisibility,
         onSelect: @escaping () -> Void,
         onPlay: @escaping () -> Void,
@@ -118,6 +120,7 @@ final class CatalogShowAllGridItem: NSCollectionViewItem {
             )
             .environment(\.opnUIScale, scale)
             .environment(\.opnCornerGeometry, cornerGeometry)
+            .environment(\.opnLiquidGlass, liquidGlass)
         )
         if let hostingView = hostingView {
             hostingView.rootView = tile
@@ -370,8 +373,12 @@ final class CatalogShowAllGridLayout: NSCollectionViewLayout {
 final class CatalogShowAllGridDetailRow: NSView, NSCollectionViewElement {
     private var hostingView: NSHostingView<AnyView>?
 
-    func configure(detailPanel: any View, cornerGeometry: OPNCornerGeometry) {
-        let rootView = AnyView(detailPanel.environment(\.opnCornerGeometry, cornerGeometry))
+    func configure(detailPanel: any View, cornerGeometry: OPNCornerGeometry, liquidGlass: OPNLiquidGlassPolicy) {
+        let rootView = AnyView(
+            detailPanel
+                .environment(\.opnCornerGeometry, cornerGeometry)
+                .environment(\.opnLiquidGlass, liquidGlass)
+        )
         if let hostingView = hostingView {
             hostingView.rootView = rootView
         } else {

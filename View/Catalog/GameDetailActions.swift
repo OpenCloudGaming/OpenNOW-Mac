@@ -30,8 +30,13 @@ extension GameDetailPanel {
                     .catalogFont(size: 15, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.primary)
                     .frame(width: 40 * uiScale, height: 40 * uiScale)
-                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
-                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .opnLiquidGlassChrome(
+                        role: .control,
+                        scale: uiScale,
+                        fill: OPNDesign.Fill.neutral(0.08),
+                        stroke: OPNDesign.Stroke.regular,
+                        isInteractive: true
+                    )
             }
             .buttonStyle(.plain)
             .overlay {
@@ -122,8 +127,13 @@ extension GameDetailPanel {
                     .foregroundStyle(OPNDesign.Text.primary)
                     .frame(height: 28 * uiScale)
                     .padding(.horizontal, 10 * uiScale)
-                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.10)))
-                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .opnLiquidGlassChrome(
+                        role: .control,
+                        scale: uiScale,
+                        fill: OPNDesign.Fill.neutral(0.10),
+                        stroke: OPNDesign.Stroke.regular,
+                        isInteractive: true
+                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Change game store, currently \(option.title)")

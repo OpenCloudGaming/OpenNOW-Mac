@@ -140,6 +140,7 @@ enum OPNThemePreferences {
     static let appearanceKey = "OpenNOW.Interface.Appearance"
     static let cornerStyleKey = "OpenNOW.Interface.CornerStyle"
     static let isJumpBackInEnabledKey = "OpenNOW.Interface.JumpBackIn"
+    static let isLiquidGlassEnabledKey = "OpenNOW.Interface.LiquidGlass"
 
     /// Non-SwiftUI/AppKit access point: whatever the stored raw value is, an unknown one falls
     /// back to the shipping default rather than surfacing as an optional everywhere it is read.
@@ -166,6 +167,13 @@ enum OPNThemePreferences {
     static var cornerStyle: CornerStyle {
         get { CornerStyle(storedRawValue: OPNAppPreferenceStorage.standard.string(forKey: cornerStyleKey) ?? "") }
         set { OPNAppPreferenceStorage.standard.set(newValue.rawValue, forKey: cornerStyleKey) }
+    }
+
+    /// Whether eligible controls and navigation draw native Liquid Glass. Opt-in and off by default:
+    /// a missing key reads false, and the view layer still gates it on OS support and Reduce Transparency.
+    static var isLiquidGlassEnabled: Bool {
+        get { OPNAppPreferenceStorage.standard.bool(forKey: isLiquidGlassEnabledKey) }
+        set { OPNAppPreferenceStorage.standard.set(newValue, forKey: isLiquidGlassEnabledKey) }
     }
 
     /// Whether the home page draws the Jump Back In rail above My Favorites. Shipping default is

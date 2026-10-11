@@ -60,9 +60,14 @@ struct CatalogCollectionIconPickerOverlay: View {
             }
             .frame(width: min(620 * uiScale, 620), alignment: .topLeading)
             .frame(maxHeight: 660 * uiScale, alignment: .topLeading)
-            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.deep.opacity(0.98)))
+            .opnLiquidGlassChrome(
+                role: .panel,
+                scale: uiScale,
+                fill: OPNDesign.Surface.deep.opacity(0.98),
+                stroke: OPNDesign.Stroke.subtle,
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
             .overlay(alignment: .top) { Rectangle().fill(OPNDesign.accent).frame(height: 2) }
-            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
             .opnCornerClip(role: .panel, scale: uiScale)
             .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         }

@@ -38,13 +38,13 @@ struct ControllerCollectionPickerOverlay: View {
                     .padding(.bottom, 20 * uiScale)
             }
             .frame(maxWidth: 460 * uiScale, maxHeight: .infinity, alignment: .topLeading)
-            .background {
-                ZStack(alignment: .leading) {
-                    OPNDesign.Surface.deep.opacity(0.98)
-                    Rectangle().fill(OPNDesign.accent).frame(width: 3)
-                }
-                .opnCornerClip(role: .panel, scale: uiScale)
+            .opnLiquidGlassChrome(role: .panel, scale: uiScale, glassScrim: OPNLiquidGlass.legibilityScrim) {
+                OPNDesign.Surface.deep.opacity(0.98)
             }
+            .overlay(alignment: .leading) {
+                Rectangle().fill(OPNDesign.accent).frame(width: 3)
+            }
+            .opnCornerClip(role: .panel, scale: uiScale)
             .padding(.leading, layout.leadingInset)
             .padding(.trailing, layout.trailingInset)
         }

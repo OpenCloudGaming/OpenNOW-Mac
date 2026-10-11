@@ -21,8 +21,12 @@ extension NativeNVSTMediaStreamSurface {
                     .buttonStyle(.bordered)
             }
             .padding(30)
-            .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.96)))
-            .overlay(OPNCornerShape(role: .panel).strokeBorder(StreamHUDTheme.accent.opacity(0.4), lineWidth: 1))
+            .opnLiquidGlassChrome(
+                role: .panel,
+                fill: StreamHUDTheme.panel.opacity(0.96),
+                stroke: StreamHUDTheme.accent.opacity(0.4),
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
         }
     }
 
@@ -32,8 +36,12 @@ extension NativeNVSTMediaStreamSurface {
             .foregroundStyle(StreamHUDTheme.textPrimary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(OPNCornerShape(role: .control).fill(Color.black.opacity(0.86)))
-            .overlay(OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.accent.opacity(0.55), lineWidth: 1))
+            .opnLiquidGlassChrome(
+                role: .control,
+                fill: Color.black.opacity(0.86),
+                stroke: StreamHUDTheme.accent.opacity(0.55),
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
             .shadow(color: .black.opacity(0.5), radius: 12, y: 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.top, 24)
@@ -116,11 +124,12 @@ extension NativeNVSTMediaStreamSurface {
         // Clipped after the accent strip is drawn, so the strip and the header bar follow the
         // panel's corners; the fill, border and shadow are added outside the clip.
         .opnCornerClip(role: .panel)
-        .background(OPNCornerShape(role: .panel).fill(StreamHUDTheme.panel.opacity(0.985)))
-        .overlay {
-            OPNCornerShape(role: .panel)
-                .strokeBorder(StreamHUDTheme.accent.opacity(0.28), lineWidth: 1)
-        }
+        .opnLiquidGlassChrome(
+            role: .panel,
+            fill: StreamHUDTheme.panel.opacity(0.985),
+            stroke: StreamHUDTheme.accent.opacity(0.28),
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
         .shadow(color: .black.opacity(0.58), radius: 28, x: 0, y: 20)
     }
 }

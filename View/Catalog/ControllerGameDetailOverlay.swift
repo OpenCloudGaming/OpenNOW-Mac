@@ -302,14 +302,17 @@ struct ControllerGameDetailOverlay: View {
                 .padding(.bottom, 22 * uiScale)
             }
             .frame(width: min(560 * uiScale, max(layout.size.width - metrics.horizontalPadding * 2, 1)), alignment: .topLeading)
-            .background {
-                ZStack(alignment: .top) {
-                    OPNDesign.Surface.deep.opacity(0.98)
-                    Rectangle().fill(OPNDesign.accent).frame(height: 2)
-                }
-                .opnCornerClip(role: .panel, scale: uiScale)
+            .opnLiquidGlassChrome(
+                role: .panel,
+                scale: uiScale,
+                fill: OPNDesign.Surface.deep.opacity(0.98),
+                stroke: OPNDesign.Stroke.subtle,
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
+            .overlay(alignment: .top) {
+                Rectangle().fill(OPNDesign.accent).frame(height: 2)
             }
-            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+            .opnCornerClip(role: .panel, scale: uiScale)
         }
     }
 

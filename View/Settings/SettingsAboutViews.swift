@@ -294,8 +294,13 @@ struct DiagnosticsUploadConfirmationDialog: View {
             }
             .padding(22 * uiScale)
             .frame(width: 430 * uiScale, alignment: .leading)
-            .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.overlay))
-            .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+            .opnLiquidGlassChrome(
+                role: .panel,
+                scale: uiScale,
+                fill: OPNDesign.Surface.overlay,
+                stroke: OPNDesign.Stroke.regular,
+                glassScrim: OPNLiquidGlass.legibilityScrim
+            )
             .shadow(color: .black.opacity(0.62), radius: 34 * uiScale, x: 0, y: 18 * uiScale)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -116,6 +116,7 @@ enum SettingsSearchIndex {
     private static let themeEntries: [SettingsSearchEntry] = [
         SettingsSearchEntry("Appearance", .theme, "appearance", keywords: ["light", "dark", "mode", "system", "theme", "night"]),
         SettingsSearchEntry("Corner Style", .theme, "appearance", keywords: ["corner", "square", "rounded", "shape", "radius", "geometry", "edges", "appearance", "theme"]),
+        SettingsSearchEntry("Liquid Glass", .theme, "appearance", keywords: ["glass", "liquid glass", "transparency", "blur", "material", "macos 26", "appearance", "theme"]),
         SettingsSearchEntry("Interface Scale", .theme, "interface", keywords: ["ui", "size", "zoom", "text size", "5k"]),
         SettingsSearchEntry("Accent Colour", .theme, "accent", keywords: [
             "color", "colour", "highlight", "tint", "theme", "cloud green", "sky", "violet", "magenta", "amber", "coral",

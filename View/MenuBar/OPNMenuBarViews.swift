@@ -39,6 +39,7 @@ struct OPNMenuBarSceneContent: View {
                 MenuBarPopoverWindowReader { session.observePopoverWindow($0) }
             }
             .opnObservingCornerStyle()
+            .opnObservingLiquidGlass()
     }
 }
 
@@ -79,6 +80,7 @@ enum OPNMenuBarTab: String, CaseIterable, Identifiable {
 struct OPNMenuBarPanel: View {
     @ObservedObject var session: OPNMenuBarSessionModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.opnLiquidGlass) private var liquidGlassPolicy
 
     /// Wide enough for a game title beside its artwork, narrow enough to stay a popover.
     static let width: CGFloat = 316
@@ -121,15 +123,10 @@ struct OPNMenuBarPanel: View {
 
     // MARK: - Tabs
 
-    /// The tabs are glass on macOS 26 and later, so the row is gathered into one
-    /// `GlassEffectContainer` the same way the session controls are: one sampling region, and shapes
-    /// that can interact rather than sample each other.
-    @ViewBuilder private var tabBar: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 6) { tabTiles }
-        } else {
-            tabTiles
-        }
+    /// The tabs are glass when the preference is on, so the row is gathered into one sampling region
+    /// the same way the session controls are.
+    private var tabBar: some View {
+        tabTiles.opnLiquidGlassContainer(spacing: 6)
     }
 
     private var tabTiles: some View {
@@ -159,13 +156,11 @@ struct OPNMenuBarPanel: View {
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
-    /// The selected tab's glyph sits on an accent-tinted glass, where the ordinary text ink all but
-    /// disappears. `OPNDesign.onAccent` is the ink designed to be read on an accent fill, so it keeps
-    /// the mark legible whatever the accent preset. The older, untinted fill path has no tint to
-    /// fight and keeps the primary ink.
+    /// The selected tab's glyph needs `onAccent` ink on tinted glass and primary ink on the flat fill,
+    /// so the ink follows the effective mode rather than the OS version alone.
     private func tabIconInk(isSelected: Bool) -> Color {
         guard isSelected else { return OPNDesign.Text.secondary }
-        if #available(macOS 26.0, *) { return OPNDesign.onAccent }
+        if liquidGlassPolicy.isEffective { return OPNDesign.onAccent }
         return OPNDesign.Text.primary
     }
 
@@ -223,12 +218,8 @@ struct OPNMenuBarPanel: View {
     /// The controls are the popover's glass elements, and a container is what Apple asks for when
     /// several glass shapes sit next to each other: one sampling region, and shapes that can interact
     /// rather than sample each other.
-    @ViewBuilder private var controlRow: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 8) { controlTiles }
-        } else {
-            controlTiles
-        }
+    private var controlRow: some View {
+        controlTiles.opnLiquidGlassContainer(spacing: 8)
     }
 
     private var controlTiles: some View {

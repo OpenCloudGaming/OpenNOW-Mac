@@ -50,8 +50,13 @@ struct SessionInsightsOverlay: View {
         // Clipped so the full-width accent bar follows the panel's own corners; the border and shadow
         // are drawn outside the clip.
         .opnCornerClip(role: .panel, scale: uiScale)
-        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
-        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+        .opnLiquidGlassChrome(
+            role: .panel,
+            scale: uiScale,
+            fill: OPNDesign.Surface.panel,
+            stroke: OPNDesign.Stroke.regular,
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
         .shadow(color: .black.opacity(0.58), radius: 28 * uiScale, y: 20 * uiScale)
     }
 

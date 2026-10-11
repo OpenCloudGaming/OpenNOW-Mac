@@ -353,8 +353,13 @@ struct ScreenshotEmptyPlayer: View {
                 .frame(maxWidth: 420 * uiScale)
         }
         .padding(36 * uiScale)
-        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(RecordingsLayout.surface))
-        .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(RecordingsLayout.stroke, lineWidth: 1) }
+        .opnLiquidGlassChrome(
+            role: .panel,
+            scale: uiScale,
+            fill: RecordingsLayout.surface,
+            stroke: RecordingsLayout.stroke,
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
         .shadow(color: .black.opacity(0.42), radius: 22 * uiScale, y: 10 * uiScale)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

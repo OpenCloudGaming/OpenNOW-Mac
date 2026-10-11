@@ -9,6 +9,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         let scale: CGFloat
         let density: CGFloat
         let cornerGeometry: OPNCornerGeometry
+        let liquidGlass: OPNLiquidGlassPolicy
     }
 
     private var parent: CatalogShowAllGridView
@@ -25,13 +26,26 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
     private var isPosterLayout = false
     private var tileTitleVisibility: OPNThemePreferences.TileTitleVisibility = .onHover
     private var cornerGeometry = OPNCornerGeometry.square
+    private var liquidGlass = OPNLiquidGlassPolicy.off
 
     init(_ parent: CatalogShowAllGridView) {
         self.parent = parent
     }
 
-    func update(_ parent: CatalogShowAllGridView, scale: CGFloat, density: CGFloat, cornerGeometry: OPNCornerGeometry) {
-        pendingUpdate = Update(parent: parent, scale: scale, density: density, cornerGeometry: cornerGeometry)
+    func update(
+        _ parent: CatalogShowAllGridView,
+        scale: CGFloat,
+        density: CGFloat,
+        cornerGeometry: OPNCornerGeometry,
+        liquidGlass: OPNLiquidGlassPolicy
+    ) {
+        pendingUpdate = Update(
+            parent: parent,
+            scale: scale,
+            density: density,
+            cornerGeometry: cornerGeometry,
+            liquidGlass: liquidGlass
+        )
         scheduleLayoutUpdate()
     }
 
@@ -71,6 +85,11 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         let resolvedCornerGeometry = update?.cornerGeometry ?? cornerGeometry
         let isCornerStyleChanged = resolvedCornerGeometry != cornerGeometry
         cornerGeometry = resolvedCornerGeometry
+        // The hosted tiles and detail panel are separate hosting roots, so a live glass toggle reaches
+        // them by repainting in place, exactly as a corner-style change does.
+        let resolvedLiquidGlass = update?.liquidGlass ?? liquidGlass
+        let isLiquidGlassChanged = resolvedLiquidGlass != liquidGlass
+        liquidGlass = resolvedLiquidGlass
         let isSizingChanged = applySizing(to: layout, scale: update?.scale ?? scale, density: update?.density ?? density)
         let isGeometryChanged = isViewportChanged || previousDetailRowHeight != layout.detailRowHeight
         let selectedIdentity = parent.selectedGame?.catalogIdentity
@@ -94,14 +113,14 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
         }
         // A style-only change repaints the visible tiles in place: no reload and no layout pass, so
         // scroll position and selection are untouched.
-        if !isFullReload, isCornerStyleChanged {
+        if !isFullReload, isCornerStyleChanged || isLiquidGlassChanged {
             refreshVisibleItemContent(in: collectionView)
         }
         if !isFullReload, isSelectionChanged || isGeometryChanged {
             applyLayout(to: collectionView, layout: layout, isAnimated: isSelectionChanged)
         }
         collectionView.frame.size.height = layout.collectionViewContentSize.height
-        if isViewportChanged || isCornerStyleChanged { refreshDetailRows(in: collectionView) }
+        if isViewportChanged || isCornerStyleChanged || isLiquidGlassChanged { refreshDetailRows(in: collectionView) }
         if isSelectionChanged, let detailRowFrame = layout.detailRowFrame {
             collectionView.animator().scrollToVisible(detailRowFrame)
         }
@@ -175,7 +194,8 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
                 viewportHeight: lastViewportHeight
             )
             .environment(\.opnUIScale, scale),
-            cornerGeometry: cornerGeometry
+            cornerGeometry: cornerGeometry,
+            liquidGlass: liquidGlass
         )
     }
 
@@ -203,6 +223,7 @@ final class CatalogShowAllGridCoordinator: NSObject, NSCollectionViewDataSource,
             isQueuedForPatching: parent.isQueuedForPatching(game),
             scale: scale,
             cornerGeometry: cornerGeometry,
+            liquidGlass: liquidGlass,
             tileTitleVisibility: tileTitleVisibility,
             onSelect: { [weak self] in self?.parent.onSelect(game) },
             onPlay: { [weak self] in self?.parent.onPlay(game) },

@@ -73,7 +73,7 @@ struct CatalogTopBar: View {
 
                 HStack(spacing: 24 * uiScale) {
                     Spacer()
-                    HStack(spacing: 24 * uiScale) {
+                    HStack(spacing: 14 * uiScale) {
                     HStack(spacing: 4 * uiScale) {
                         if viewModel.selectedMainPage == .games {
                             // Cmd+K opens the field and puts the caret in it, and focuses it again
@@ -136,6 +136,8 @@ struct CatalogTopBar: View {
                             .help("Join Remote Co-Op")
                         }
                     }
+                    // No GlassEffectContainer here: it composites its glass above an overlay on a
+                    // glass plate, which buries the Remote Co-Op BETA badge and the hover underline.
                     Button {
                         showsAccountMenu.toggle()
                         showsMainMenu = false
@@ -159,6 +161,11 @@ struct CatalogTopBar: View {
                                 .rotationEffect(.degrees(showsAccountMenu ? 180 : 0))
                                 .opnMotion(OPNDesign.Motion.toggle, value: showsAccountMenu)
                         }
+                        // The padding is the plate's own, and the row spacing below gives up exactly
+                        // what it adds, so the avatar holds its place whether glass is on or off.
+                        .padding(.horizontal, 10 * uiScale)
+                        .padding(.vertical, 4 * uiScale)
+                        .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) { EmptyView() }
                     }
                     .buttonStyle(.opnPressable(scale: 0.97))
                     .accessibilityLabel("Open account menu")
@@ -262,8 +269,12 @@ struct CatalogTopBar: View {
         }
         .padding(.horizontal, 18 * uiScale)
         .frame(height: 46 * uiScale)
-        .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.field))
-        .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+        .opnLiquidGlassChrome(
+            role: .control,
+            scale: uiScale,
+            fill: OPNDesign.Surface.field,
+            stroke: OPNDesign.Stroke.subtle
+        )
         .onExitCommand { setSearchExpanded(false) }
     }
 }
@@ -318,7 +329,7 @@ struct CatalogAccountAvatar: View {
 }
 
 /// The plate every top-bar control sits on: fixed size, dark tint and a 3pt accent underline when
-/// active. Shared so the bar reads as one row of controls and its metrics exist once.
+/// active. Glass replaces the tint; the underline is state and stays on both paths.
 private struct CatalogTopBarPlate: ViewModifier {
     let isActive: Bool
     @Environment(\.opnUIScale) private var uiScale
@@ -326,11 +337,17 @@ private struct CatalogTopBarPlate: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(width: 44 * uiScale, height: 40 * uiScale)
-            // The plate's tint and its accent underline share one clip, so the underline ends where
-            // the plate does rather than squaring off its corners.
-            .background {
+            .opnLiquidGlassChrome(role: .control, scale: uiScale, isInteractive: true) {
+                if isActive {
+                    Color.black.opacity(0.22)
+                        .opnCornerClip(role: .control, scale: uiScale)
+                }
+            }
+            // The underline and the plate share one clip, so the underline ends where the plate
+            // does rather than squaring off its corners.
+            .overlay {
                 ZStack(alignment: .bottom) {
-                    isActive ? Color.black.opacity(0.22) : Color.clear
+                    Color.clear
                     Rectangle()
                         .fill(isActive ? OPNDesign.accent : Color.clear)
                         .frame(height: 3)

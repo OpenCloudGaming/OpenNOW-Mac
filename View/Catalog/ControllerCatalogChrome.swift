@@ -37,8 +37,13 @@ struct ControllerOverlayHeader: View {
                     .catalogFont(size: 16, weight: .bold)
                     .foregroundStyle(OPNDesign.Text.secondary)
                     .frame(width: 38 * uiScale, height: 38 * uiScale)
-                    .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.08)))
-                    .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+                    .opnLiquidGlassChrome(
+                        role: .control,
+                        scale: uiScale,
+                        fill: OPNDesign.Fill.neutral(0.08),
+                        stroke: OPNDesign.Stroke.regular,
+                        isInteractive: true
+                    )
             }
             .buttonStyle(.plain)
         }
@@ -113,7 +118,8 @@ struct ControllerHintBar: View {
         }
         .frame(width: layout.contentWidth, alignment: .leading)
         .frame(height: 46 * uiScale)
-        .background {
+        // One backing for the whole strip; the glyph pills and labels inside stay flat.
+        .opnLiquidGlassChrome(role: .control, scale: uiScale) {
             ZStack(alignment: .top) {
                 Color.black.opacity(0.36)
                 Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1)

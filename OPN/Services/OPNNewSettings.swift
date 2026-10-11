@@ -34,6 +34,7 @@ enum OPNNewSettings {
         case maintenanceWatch
         case matchMacPointerSpeed
         case cornerStyle
+        case liquidGlass
 
         /// The marketing version the row shipped in.
         nonisolated var introducedIn: String {
@@ -45,7 +46,9 @@ enum OPNNewSettings {
             case .instantReplay, .sessionInsights: "0.11.0"
             case .captureLocations: "0.14.0"
             case .maintenanceWatch, .matchMacPointerSpeed: "0.15.0"
-            case .cornerStyle: "0.16.0"
+            // Provisional: the anchor is the first stable release that actually contains Liquid Glass,
+            // so this moves if 0.16.0 ships without it. Acknowledgements made now are kept.
+            case .cornerStyle, .liquidGlass: "0.16.0"
             }
         }
     }

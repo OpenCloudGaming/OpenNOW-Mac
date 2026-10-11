@@ -9,7 +9,7 @@ struct CatalogShowAllGridUpdateTests {
         let fixture = GridFixture()
         defer { fixture.close() }
         fixture.collectionView.onLayout = {
-            fixture.coordinator.update(fixture.grid(), scale: 1.25, density: 1, cornerGeometry: .square)
+            fixture.coordinator.update(fixture.grid(), scale: 1.25, density: 1, cornerGeometry: .square, liquidGlass: .off)
             fixture.coordinator.scheduleLayoutUpdate()
             #expect(fixture.collectionView.reloadCount == 0)
         }
@@ -27,9 +27,9 @@ struct CatalogShowAllGridUpdateTests {
     @Test func queuedUpdatesApplyOneConsistentSnapshot() async throws {
         let fixture = GridFixture()
         defer { fixture.close() }
-        fixture.coordinator.update(fixture.grid(selectedGame: fixture.games[0]), scale: 1.25, density: 1, cornerGeometry: .square)
+        fixture.coordinator.update(fixture.grid(selectedGame: fixture.games[0]), scale: 1.25, density: 1, cornerGeometry: .square, liquidGlass: .off)
         let latestGames = Array(fixture.games.suffix(2))
-        fixture.coordinator.update(fixture.grid(games: latestGames, selectedGame: latestGames[1]), scale: 1.5, density: 0.82, cornerGeometry: .square)
+        fixture.coordinator.update(fixture.grid(games: latestGames, selectedGame: latestGames[1]), scale: 1.5, density: 0.82, cornerGeometry: .square, liquidGlass: .off)
 
         #expect(fixture.collectionView.reloadCount == 0)
         #expect(fixture.coordinator.collectionView(fixture.collectionView, numberOfItemsInSection: 0) == fixture.games.count)
@@ -57,7 +57,7 @@ struct CatalogShowAllGridUpdateTests {
         let fixture = GridFixture()
         defer { fixture.close() }
         fixture.model.selectedGame = fixture.games[0]
-        fixture.coordinator.update(fixture.grid(selectedGame: fixture.games[0]), scale: 1, density: 1, cornerGeometry: .square)
+        fixture.coordinator.update(fixture.grid(selectedGame: fixture.games[0]), scale: 1, density: 1, cornerGeometry: .square, liquidGlass: .off)
         fixture.window.orderFrontRegardless()
         await settleLayout(in: fixture.window)
 
@@ -72,7 +72,8 @@ struct CatalogShowAllGridUpdateTests {
             fixture.grid(selectedGame: fixture.games[0]),
             scale: 1,
             density: 1,
-            cornerGeometry: OPNCornerGeometry(style: .rounded)
+            cornerGeometry: OPNCornerGeometry(style: .rounded),
+            liquidGlass: .off
         )
         await settleLayout(in: fixture.window)
 
@@ -87,10 +88,51 @@ struct CatalogShowAllGridUpdateTests {
         #expect(pngData(of: fixture.scrollView) != gridBefore, "the visible tiles were not repainted for the new style")
     }
 
+    /// The same in-place repaint contract for the Liquid Glass preference: the hosted detail row is
+    /// the grid's eligible surface, so a flip must repaint it without disturbing grid state.
+    @Test func aLiquidGlassChangeRepaintsTheHostedDetailWithoutReloading() async throws {
+        let fixture = GridFixture()
+        defer { fixture.close() }
+        fixture.model.selectedGame = fixture.games[0]
+        fixture.coordinator.update(
+            fixture.grid(selectedGame: fixture.games[0]),
+            scale: 1, density: 1, cornerGeometry: .square, liquidGlass: .off
+        )
+        fixture.window.orderFrontRegardless()
+        await settleLayout(in: fixture.window)
+
+        let reloadsBefore = fixture.collectionView.reloadCount
+        let tileWidthBefore = fixture.layout.minTileWidth
+        let selectedBefore = fixture.layout.selectedItemIndex
+        let scrollBefore = fixture.scrollView.contentView.bounds.origin
+        let detailRow = try #require(
+            fixture.collectionView.visibleSupplementaryViews(ofKind: CatalogShowAllGridLayout.detailRowKind).first,
+            "no visible detail row to repaint"
+        )
+        let detailBefore = try #require(pngData(of: detailRow))
+
+        fixture.coordinator.update(
+            fixture.grid(selectedGame: fixture.games[0]),
+            scale: 1, density: 1, cornerGeometry: .square,
+            liquidGlass: OPNLiquidGlassPolicy(isRequested: true, isSupported: true, isReduceTransparency: false)
+        )
+        await settleLayout(in: fixture.window)
+
+        #expect(fixture.collectionView.reloadCount == reloadsBefore, "a glass change reloaded the grid")
+        #expect(fixture.layout.minTileWidth == tileWidthBefore, "a glass change resized the tiles")
+        #expect(fixture.layout.selectedItemIndex == selectedBefore, "a glass change moved the selection")
+        #expect(fixture.scrollView.contentView.bounds.origin == scrollBefore, "a glass change moved the scroll position")
+        // Offscreen drawing is the flat path, so the pixel difference only exists where the platform
+        // can draw glass at all; the composited appearance evidence is the opt-in capture suite.
+        if OPNLiquidGlassPolicy.isSupportedOnThisMac {
+            #expect(pngData(of: detailRow) != detailBefore, "the hosted detail row was not repainted for the new glass policy")
+        }
+    }
+
     @Test func dismantlingDiscardsQueuedUpdates() async {
         let fixture = GridFixture()
         defer { fixture.close() }
-        fixture.coordinator.update(fixture.grid(), scale: 1.5, density: 1, cornerGeometry: .square)
+        fixture.coordinator.update(fixture.grid(), scale: 1.5, density: 1, cornerGeometry: .square, liquidGlass: .off)
         CatalogShowAllGridView.dismantleNSView(fixture.scrollView, coordinator: fixture.coordinator)
 
         await finishMainQueueTurn()

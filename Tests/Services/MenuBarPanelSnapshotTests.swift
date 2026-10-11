@@ -244,6 +244,34 @@ import Testing
         try renderContent(card, named: name, minimumHeight: minimumHeight)
     }
 
+    /// The popover's chrome under both modes. Off and On lay out identically, and on a Mac that can
+    /// draw glass they differ: Off really does remove the menu bar's app-owned glass.
+    @Test func thePanelChromeFollowsTheLiquidGlassPreference() async throws {
+        try await withPanel(phase: .streaming, title: "Cyberpunk 2077") { panel in
+            let off = try #require(renderImage(panel.environment(\.opnLiquidGlass, .off)))
+            let on = try #require(renderImage(panel.environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
+                isRequested: true, isSupported: true, isReduceTransparency: false
+            ))))
+
+            #expect(off.size == on.size, "the glass policy changed the panel's layout")
+            #expect(off.size.width >= OPNMenuBarPanel.width, "the panel collapsed horizontally")
+            // Offscreen drawing is the flat path, so the difference only exists where glass can draw.
+            if OPNLiquidGlassPolicy.isSupportedOnThisMac {
+                #expect(pngData(off) != pngData(on), "Off left the menu bar's app-owned glass in place")
+            }
+        }
+    }
+
+    private func renderImage(_ content: some View) -> NSImage? {
+        let renderer = ImageRenderer(content: content.background(Color.black))
+        renderer.scale = 2
+        return renderer.nsImage
+    }
+
+    private func pngData(_ image: NSImage) -> Data? {
+        image.tiffRepresentation.flatMap { NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }
+    }
+
     private func renderContent(_ content: some View, named name: String, minimumHeight: CGFloat) throws {
         let renderer = ImageRenderer(content: content)
         renderer.scale = 2
@@ -272,6 +300,23 @@ import Testing
         try await Task.sleep(for: .milliseconds(80))
 
         try await captureInWindow(OPNMenuBarPanel(session: model), named: "menu-bar-glass-over-backdrop.png", height: 330)
+    }
+
+    /// The preference On, captured the way the material has to be captured: the window server draws
+    /// Liquid Glass, so an offscreen render cannot show it. See `theGlassChromeRendersInAWindow`.
+    @Test(.enabled(if: captureEnabled)) func theGlassChromeRendersWithThePreferenceOn() async throws {
+        let model = OPNMenuBarSessionModel()
+        let source = PanelStubSource()
+        source.snapshot = OPNMenuBarSessionSnapshot(phase: .streaming, title: "Cyberpunk 2077", recentGames: Self.games)
+        model.attach(source: source)
+        defer { model.detachSource(source) }
+        try await Task.sleep(for: .milliseconds(80))
+
+        let panel = OPNMenuBarPanel(session: model)
+            .environment(\.opnLiquidGlass, OPNLiquidGlassPolicy(
+                isRequested: true, isSupported: true, isReduceTransparency: false
+            ))
+        try await captureInWindow(panel, named: "menu-bar-glass-preference-on.png", height: 330)
     }
 
     /// The Collections tab with the scrolling paths on screen: seven members in the open collection.

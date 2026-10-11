@@ -54,6 +54,7 @@ struct RemoteCoOpGuestView: View {
             }
         }
         .opnObservingCornerStyle()
+        .opnObservingLiquidGlass()
     }
 
     /// A singleton SwiftUI `Window` scene - what this window is - does not reliably pick up
@@ -273,7 +274,13 @@ struct RemoteCoOpGuestView: View {
                 .buttonStyle(OPNCompactButtonStyle(role: .destructive, uiScale: uiScale))
         }
         .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
-        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .opnLiquidGlassChrome(
+            role: .panel,
+            scale: uiScale,
+            fill: OPNDesign.Surface.panel,
+            stroke: OPNDesign.Stroke.subtle,
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
     }
 
     /// The only way out of a live session that is not closing the window. Every other phase has an
@@ -288,7 +295,14 @@ struct RemoteCoOpGuestView: View {
             .foregroundStyle(OPNDesign.Text.primary)
             .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
             .padding(.vertical, OPNDesign.Spacing.xxSmall(scale: uiScale))
-            .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.scrim))
+            .opnLiquidGlassChrome(
+                role: .control,
+                scale: uiScale,
+                fill: OPNDesign.Surface.scrim,
+                stroke: OPNDesign.Stroke.subtle,
+                glassScrim: OPNLiquidGlass.legibilityScrim,
+                isInteractive: true
+            )
         }
         .buttonStyle(.opnPressable(scale: 0.95))
         .accessibilityLabel("Leave this session")
@@ -346,8 +360,14 @@ struct RemoteCoOpGuestView: View {
                 .foregroundStyle(OPNDesign.Text.primary)
                 .padding(.horizontal, OPNDesign.Spacing.small(scale: uiScale))
                 .frame(height: OPNDesign.Spacing.controlRow(scale: uiScale))
-                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Surface.scrim))
-                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
+                .opnLiquidGlassChrome(
+                    role: .control,
+                    scale: uiScale,
+                    fill: OPNDesign.Surface.scrim,
+                    stroke: OPNDesign.Stroke.subtle,
+                    glassScrim: OPNLiquidGlass.legibilityScrim,
+                    isInteractive: true
+                )
                 .contentShape(Rectangle())
             }
             .help("Lower your own stream quality. The host sets the maximum.")
@@ -391,7 +411,13 @@ struct RemoteCoOpGuestView: View {
                 .buttonStyle(OPNCompactButtonStyle(role: .primary, uiScale: uiScale))
         }
         .padding(OPNDesign.Spacing.xLarge(scale: uiScale))
-        .background(OPNCornerShape(role: .panel, scale: uiScale).fill(OPNDesign.Surface.panel))
+        .opnLiquidGlassChrome(
+            role: .panel,
+            scale: uiScale,
+            fill: OPNDesign.Surface.panel,
+            stroke: OPNDesign.Stroke.subtle,
+            glassScrim: OPNLiquidGlass.legibilityScrim
+        )
         .overlay { OPNCornerShape(role: .panel, scale: uiScale).strokeBorder(.white.opacity(0.14), lineWidth: 1) }
     }
 }
