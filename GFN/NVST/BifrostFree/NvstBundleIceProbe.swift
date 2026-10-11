@@ -37,6 +37,8 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
     private var punchTimer: DispatchSourceTimer?
     private var reportTimer: DispatchSourceTimer?
     private var counters = NvstInboundCounters()
+    /// One inbound datagram at a time; the read queue is serial, so a single buffer is safe.
+    private var drainBuffer = [UInt8](repeating: 0, count: 65_536)
 
     public init(handoff: NVSTVideoHandoff, descriptor: Int32, logger: (@Sendable (String) -> Void)? = nil) throws {
         guard descriptor >= 0 else { throw ProbeError.noSocket }
@@ -102,17 +104,16 @@ public final class NvstBundleIceProbe: @unchecked Sendable {
     // MARK: - Internals
 
     private func drain() {
-        var buffer = [UInt8](repeating: 0, count: 65_536)
         while true {
             var peer = sockaddr_in()
             var peerLength = socklen_t(MemoryLayout<sockaddr_in>.size)
             let received = withUnsafeMutablePointer(to: &peer) { pointer in
                 pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
-                    recvfrom(descriptor, &buffer, buffer.count, 0, sockaddrPointer, &peerLength)
+                    recvfrom(descriptor, &drainBuffer, drainBuffer.count, 0, sockaddrPointer, &peerLength)
                 }
             }
             if received <= 0 { return }
-            let datagram = Data(buffer[0..<received])
+            let datagram = Data(drainBuffer[0..<received])
             lock.lock()
             counters.record(datagram: datagram)
             lock.unlock()

@@ -89,16 +89,13 @@ extension NvstBifrostFreeTransport {
             }
         }
         mediaFrameContinuation = mediaContinuation
-        remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in
-            Task { await self?.requestKeyframeOverControlChannel() }
-        }
+        // A bind restarts the periodic request below, whose first pass asks for an IDR before it sleeps.
+        remoteCoOpNativeBroadcaster.onGuestBound = { [weak self] in Task { await self?.restartCoOpKeyframeRequests() } }
         // A browser guest cannot be sent the seat's HEVC, so its own H.264 encode starts only when it
         // connects; pulling a keyframe the moment its media starts is what gets it a picture without
         // waiting for the periodic request.
-        remoteCoOpBrowserEgress?.onGuestJoined = { [weak self] in
-            Task { await self?.requestKeyframeOverControlChannel() }
-        }
-        startCoOpKeyframeRequests()
+        remoteCoOpBrowserEgress?.onGuestJoined = { [weak self] in Task { await self?.restartCoOpKeyframeRequests() } }
+        restartCoOpKeyframeRequests()
         let pipeline = makeVideoPipeline(handoff: handoff, decoder: decoder, receiver: receiver, mediaContinuation: mediaContinuation)
         videoPipeline = pipeline
         receiver.onAccessUnit = { [weak pipeline] unit in pipeline?.submit(unit) }
@@ -128,20 +125,23 @@ extension NvstBifrostFreeTransport {
     /// `receiver` is passed in rather than read off `self`: this runs before `self.receiver` is
     /// assigned, and a capture list evaluates eagerly, so capturing the property would bind a
     /// permanently nil weak reference and silence every keyframe request the pipeline makes.
-    /// Pulls an IDR from the seat every couple of seconds while a native guest is bound, so a guest
-    /// that joins mid-stream can start. The seat sends no periodic keyframe of its own. It runs for the
-    /// whole session but only asks while a guest is actually connected.
-    private func startCoOpKeyframeRequests() {
+    /// Pulls an IDR from the seat every couple of seconds while a co-op guest is connected, so a
+    /// guest that joins mid-stream can start; the seat sends no periodic keyframe of its own.
+    private func restartCoOpKeyframeRequests() {
         coOpKeyframeTask?.cancel()
         coOpKeyframeTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                if Task.isCancelled { return }
                 guard let self else { return }
-                guard remoteCoOpNativeBroadcaster.hasBoundGuests || remoteCoOpBrowserEgress?.hasGuests == true else { continue }
+                guard isCoOpGuestConnected else { return }
                 await requestKeyframeOverControlChannel()
+                try? await Task.sleep(for: .seconds(2))
             }
         }
+    }
+
+    /// Read from the task above, which does not run on this actor.
+    private nonisolated var isCoOpGuestConnected: Bool {
+        remoteCoOpNativeBroadcaster.hasBoundGuests || remoteCoOpBrowserEgress?.hasGuests == true
     }
 
     /// The interval that stands in for a display whose refresh the client could not read.
@@ -400,14 +400,17 @@ extension NvstBifrostFreeTransport {
     func startQosFeedback() {
         guard !isTornDown, qosFeedbackTask == nil else { return }
         logger?("NVST QoS feedback started (\(String(format: "%.0f", 1 / NvstQosReport.interval))/s)")
-        qosFeedbackTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                await self.sendQosReport()
-                await self.sendRtpStatsWhenDue()
-                await self.sendControlChannelStatsWhenDue()
-                try? await Task.sleep(for: .seconds(NvstQosReport.interval))
-            }
+        qosFeedbackTask = Task { [weak self] in await self?.runQosFeedback() }
+    }
+
+    /// The three reports the seat's rate controller wants, sent on this actor behind the single hop
+    /// that starts the loop instead of one hop each per tick. The 18 Hz cadence is unchanged.
+    private func runQosFeedback() async {
+        while !Task.isCancelled {
+            sendQosReport()
+            sendRtpStatsWhenDue()
+            sendControlChannelStatsWhenDue()
+            try? await Task.sleep(for: .seconds(NvstQosReport.interval))
         }
     }
 

@@ -93,15 +93,13 @@ final class SteamControllerTestModel: ObservableObject {
             }
         )
         refreshConnection()
-        startGyroStepping()
     }
 
     func stop() {
         stopRumble()
         selectedDeviceID = nil
         clearTelemetry()
-        gyroStepTask?.cancel()
-        gyroStepTask = nil
+        stopGyroStepping()
         guard let consumerKey else { return }
         SteamControllerHIDMonitor.shared.unregister(key: consumerKey)
         SteamControllerHIDMonitor.shared.endInputCapture(key: consumerKey)
@@ -144,6 +142,12 @@ final class SteamControllerTestModel: ObservableObject {
         }
     }
 
+    /// Owned by `refreshConnection()`: the loop runs only while a selected pad is active.
+    private func stopGyroStepping() {
+        gyroStepTask?.cancel()
+        gyroStepTask = nil
+    }
+
     private func stepGyroReadout() {
         guard selectedDeviceID != nil else {
             gyroReadout = .notConfigured
@@ -184,8 +188,10 @@ final class SteamControllerTestModel: ObservableObject {
         guard let selectedDeviceID, monitor.activeDeviceIDs.contains(selectedDeviceID) else {
             stopRumble()
             clearTelemetry()
+            stopGyroStepping()
             return
         }
+        startGyroStepping()
         isConnected = true
         deviceID = selectedDeviceID.rawValue
         receiveBattery(monitor.batteryLevels[selectedDeviceID], charging: monitor.batteryCharging[selectedDeviceID] ?? false, from: selectedDeviceID)
