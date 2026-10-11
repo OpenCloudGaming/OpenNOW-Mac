@@ -14,8 +14,10 @@ struct CatalogContentView: View {
     @State private var heroIndex = 0
     @State private var heroAutoScrollEnabled = true
     @State private var isPointerInsideDetailPanel = false
+    @State private var hasLoggedFirstFrameRailWindow = false
     @Environment(\.accessibilityReduceMotion) private var isSystemReduceMotionEnabled
     @Environment(\.opnUIScale) private var uiScale
+    @Environment(\.opnTileDensity) private var tileDensity
     @AppStorage(OPNHomeLayout.modeKey) private var homeLayoutRawValue = OPNHomeLayout.Mode.classic.rawValue
     @AppStorage(OPNThemePreferences.isMotionReducedKey) private var isReduceMotionPreferenceEnabled = false
     /// Seconds between hero rotations. Driven by a `.task` loop rather than a `Timer.publish`
@@ -196,6 +198,19 @@ struct CatalogContentView: View {
                     }
                     .onChange(of: viewModel.selectedGameRevealRequest) { _, _ in
                         scrollToSelectedRail(selectedRailScrollAnchor, proxy: proxy)
+                    }
+                    // Once, on the first width that has actually settled: the tiles these rails
+                    // materialize before the reader scrolls, so the bound is on the record.
+                    .onChange(of: viewport.size.width, initial: true) { _, width in
+                        guard !hasLoggedFirstFrameRailWindow, width > 0 else { return }
+                        hasLoggedFirstFrameRailWindow = true
+                        CatalogRailMaterialization.logFirstFrameWindow(
+                            sections: sections,
+                            availableWidth: width,
+                            scale: uiScale,
+                            density: tileDensity,
+                            isPoster: isPosterHome
+                        )
                     }
                 }
                 // A `ScrollView` is as wide as its widest content, and the running-stream banner's

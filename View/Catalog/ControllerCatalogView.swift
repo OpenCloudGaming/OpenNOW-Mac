@@ -263,9 +263,11 @@ struct ControllerCatalogView: View {
         .onDisappear { controllerViewModel.unbind() }
         .onChange(of: viewModel.selectedMainPage) { _, _ in controllerViewModel.synchronizeNavigationSelection() }
         .onChange(of: viewModel.selectedCatalogDestination) { _, _ in controllerViewModel.synchronizeNavigationSelection() }
-        .onChange(of: viewModel.catalogSections.map(\.id)) { _, _ in controllerViewModel.clampRailSelection(sectionCount: viewModel.catalogSections.count) }
-        .onChange(of: viewModel.catalogGames.map(\.catalogIdentity)) { _, _ in
-            controllerViewModel.searchResultIndex = min(controllerViewModel.searchResultIndex, max(viewModel.catalogGames.count - 1, 0))
+        // Both clamps depend on the count alone, so the trigger is the count. Comparing identity
+        // lists allocated a `[String]` of every rail and of the whole browse result per body pass.
+        .onChange(of: viewModel.catalogSections.count) { _, count in controllerViewModel.clampRailSelection(sectionCount: count) }
+        .onChange(of: viewModel.catalogGames.count) { _, count in
+            controllerViewModel.searchResultIndex = min(controllerViewModel.searchResultIndex, max(count - 1, 0))
         }
     }
 

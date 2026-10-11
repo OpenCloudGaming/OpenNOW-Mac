@@ -487,6 +487,7 @@ final class CatalogViewModel {
     @ObservationIgnored var cachedHeroRotationGames: [OPNCatalogGameObject]?
     @ObservationIgnored var cachedBaseCatalogSections: [CatalogSectionModel]?
     @ObservationIgnored var cachedCatalogSections: [CatalogSectionModel]?
+    @ObservationIgnored var cachedHomeRailRows: [CatalogHomeRail]?
     @ObservationIgnored var cachedAllKnownGames: [OPNCatalogGameObject]?
     @ObservationIgnored var cachedMainPanelGames: [OPNCatalogGameObject]?
     @ObservationIgnored var cachedJumpBackInGames: [OPNCatalogGameObject]?
@@ -499,6 +500,7 @@ final class CatalogViewModel {
         cachedHeroRotationGames = nil
         cachedBaseCatalogSections = nil
         cachedCatalogSections = nil
+        cachedHomeRailRows = nil
         cachedAllKnownGames = nil
         cachedMainPanelGames = nil
         cachedJumpBackInGames = nil

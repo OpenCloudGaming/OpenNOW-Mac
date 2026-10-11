@@ -8,12 +8,13 @@
 import Foundation
 
 extension CatalogViewModel {
-    /// Rails show a handful of tiles at a time, so only the leading games and the section's own
-    /// promo tiles are worth warming.
-    func prefetchRailImages(section: CatalogSectionModel, games: [OPNCatalogGameObject]) {
+    /// Rails show a handful of tiles at a time, so only the games the rail can actually display and
+    /// the section's own promo tiles are worth warming. `limit` is that screen; a rail that warms
+    /// past it downloads artwork for tiles the reader has to scroll to reach.
+    func prefetchRailImages(section: CatalogSectionModel, games: [OPNCatalogGameObject], limit: Int = 8) {
         var urls: [URL] = []
         var seen = Set<String>()
-        for game in games.prefix(8) {
+        for game in games.prefix(max(limit, 0)) {
             appendPrefetchURL(game.bestTileImageURL, width: 768, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestWideImageURL, width: 768, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &urls, seen: &seen)
@@ -24,12 +25,12 @@ extension CatalogViewModel {
         prefetchImages(urls)
     }
 
-    /// Poster rails show more tiles per screen than wide rails, hence the larger prefix. No
+    /// Poster rails show more tiles per screen than wide rails, hence the larger default. No
     /// `bestWideImageURL` - nothing in Poster draws it.
-    func prefetchPosterImages(section: CatalogSectionModel, games: [OPNCatalogGameObject]) {
+    func prefetchPosterImages(section: CatalogSectionModel, games: [OPNCatalogGameObject], limit: Int = 10) {
         var urls: [URL] = []
         var seen = Set<String>()
-        for game in games.prefix(10) {
+        for game in games.prefix(max(limit, 0)) {
             appendPrefetchURL(game.bestPosterImageURL, width: 512, urls: &urls, seen: &seen)
             appendPrefetchURL(game.bestLogoImageURL, width: CatalogLogoArtwork.requestWidth, urls: &urls, seen: &seen)
         }

@@ -97,6 +97,8 @@ extension CatalogViewModel {
     /// Every home rail as the customization card sees it, in the arranged order and including the
     /// ones switched off. The three fixed rails are always present, so they can be arranged empty.
     var homeRailRows: [CatalogHomeRail] {
+        _ = (baseCatalogSections, sortedUserCollections, homeRailArrangement)
+        if let cachedHomeRailRows { return cachedHomeRailRows }
         let rails = baseCatalogSections.filter { $0.kind != .catalog }
         let railsByID = sectionsIndexedByID(rails)
         var canonicalOrder = OPNHomeCustomization.fixedRailOrder
@@ -119,13 +121,15 @@ extension CatalogViewModel {
             }
         }
         let orderedIDs = OPNHomeCustomization.orderedIdentities(canonicalOrder, by: homeRailArrangement.order)
-        return orderedIDs.map { id in
+        let rows = orderedIDs.map { id in
             CatalogHomeRail(
                 id: id,
                 title: railsByID[id]?.title ?? collectionTitles[id] ?? OPNHomeCustomization.fixedRailTitle(for: id) ?? id,
                 isVisible: isHomeRailVisible(id)
             )
         }
+        cachedHomeRailRows = rows
+        return rows
     }
 
     func isHomeRailVisible(_ id: String) -> Bool {
