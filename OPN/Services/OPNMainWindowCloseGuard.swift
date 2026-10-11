@@ -22,6 +22,14 @@ enum OPNMainWindow {
         }
     }
 
+    /// Puts the window in front of everything else, for a request that starts in another window and
+    /// ends in this one.
+    static func bringForward() {
+        guard let window = existing() else { return }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     /// Whether a surface outside the window has to build one before handing it work.
     ///
     /// The close button hides the window rather than tearing the scene down, so a hidden or minimized
