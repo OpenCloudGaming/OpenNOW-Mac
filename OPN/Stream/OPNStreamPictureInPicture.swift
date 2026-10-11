@@ -152,3 +152,13 @@ enum OPNStreamWindowChrome {
         window.isMovableByWindowBackground = isPictureInPicture
     }
 }
+
+extension OPNStreamWindowChrome {
+    /// Borderless drops the traffic lights and nothing else: the window stays where the layout put it
+    /// rather than becoming draggable, because a stray drag would take it out of the layout.
+    static func applyBorderless(to window: NSWindow, isBorderless: Bool) {
+        for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(button)?.isHidden = isBorderless
+        }
+    }
+}

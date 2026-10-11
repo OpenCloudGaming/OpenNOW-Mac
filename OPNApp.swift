@@ -20,6 +20,10 @@ struct OPNApp: App {
     /// changes nothing, which is what breaks the loop.
     @State private var isMenuBarStatusItemInserted = OPNMenuBarSessionModel.shared.isStatusItemInserted
 
+    /// Mirrors the Couch Co-op Labs flag so the Stream menu follows it live: the flag is the only
+    /// thing that decides whether the Detach New Session command exists.
+    @AppStorage(OPNLabs.couchCoop.storageKey) private var isCouchCoopEnabled = false
+
     let sharedModelContainer: ModelContainer
 
     init() {
@@ -258,6 +262,11 @@ struct OPNApp: App {
                 Button("Join Remote Co-Op as Guest…") {
                     openWindow(id: "remote-coop-guest")
                 }
+                if isCouchCoopEnabled {
+                    Button("Detach New Session…") {
+                        openWindow(id: OPNDetachedSessionScene.id, value: UUID())
+                    }
+                }
                 Button("Toggle Microphone") {
                     _ = StreamSessionLifecycle.sendCommand(.toggleMicrophone)
                 }
@@ -301,6 +310,13 @@ struct OPNApp: App {
         .onChange(of: menuBarStatusItem.isInserted) { @MainActor _, isInserted in
             isMenuBarStatusItemInserted = isInserted
         }
+
+        WindowGroup("Detached Session", id: OPNDetachedSessionScene.id, for: UUID.self) { _ in
+            DetachedSessionView()
+                .environmentObject(systemAppearance)
+        }
+        .defaultSize(width: 1100, height: 680)
+        .modelContainer(sharedModelContainer)
 
         Window("Join Remote Co-Op", id: "remote-coop-guest") {
             RemoteCoOpGuestView()

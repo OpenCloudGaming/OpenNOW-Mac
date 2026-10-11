@@ -38,6 +38,20 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeHUDDisplayTiles: [NativeHUDTile] {
+        let tiles = nativeHUDBaseDisplayTiles
+        guard model.isBorderlessTileAvailable else { return tiles }
+        return tiles + [
+            NativeHUDTile(id: "borderless-full-screen",
+                          title: model.isBorderlessWindow ? "Leave Borderless" : "Borderless Full Screen",
+                          subtitle: model.isBorderlessWindow ? "Borderless" : "Fill the screen, keep the Spaces",
+                          systemName: "rectangle.dashed",
+                          isActive: model.isBorderlessWindow,
+                          isDisabled: model.isBorderlessTileDisabled,
+                          action: model.toggleBorderlessFullScreen),
+        ]
+    }
+
+    private var nativeHUDBaseDisplayTiles: [NativeHUDTile] {
         [
             NativeHUDTile(id: "floating-stats",
                           title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",
@@ -80,8 +94,8 @@ extension NativeNVSTMediaStreamSurface {
                           isDisabled: false,
                           action: { model.showingControllerMapping = true }),
             NativeHUDTile(id: "controller-order",
-                          title: "Reorder Controllers",
-                          subtitle: "Choose Player 1–4",
+                          title: "Controllers",
+                          subtitle: "Enable in this stream · Player 1–4",
                           systemName: "arrow.up.arrow.down",
                           isActive: false,
                           isDisabled: false,

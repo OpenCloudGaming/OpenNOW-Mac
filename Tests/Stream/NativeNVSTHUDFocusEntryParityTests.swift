@@ -28,6 +28,26 @@ struct NativeNVSTHUDFocusEntryParityTests {
         #expect(focusIDs(in: "input", on: model) == surface.nativeHUDInputTiles.map(\.id))
     }
 
+    /// The borderless tile exists only behind the Couch Co-op flag, and when it does a pad reaches it
+    /// the same way the pointer does.
+    @Test func theBorderlessTileAndItsFocusEntryAppearTogetherBehindTheFlag() {
+        let previous = OPNLabs.isCouchCoopEnabled
+        defer { OPNLabs.setEnabled(OPNLabs.couchCoop, previous) }
+
+        OPNLabs.setEnabled(OPNLabs.couchCoop, false)
+        let (offSurface, offModel) = makeHUDSurface()
+        #expect(!offSurface.nativeHUDDisplayTiles.map(\.id).contains("borderless-full-screen"))
+        #expect(!offModel.hudFocusEntries.map(\.id).contains("borderless-full-screen"))
+
+        OPNLabs.setEnabled(OPNLabs.couchCoop, true)
+        let (onSurface, onModel) = makeHUDSurface()
+        #expect(onSurface.nativeHUDDisplayTiles.map(\.id).contains("borderless-full-screen"))
+        #expect(focusIDs(in: "display", on: onModel) == onSurface.nativeHUDDisplayTiles.map(\.id))
+        let tile = onSurface.nativeHUDDisplayTiles.first { $0.id == "borderless-full-screen" }
+        let entry = onModel.hudFocusEntries.first { $0.id == "borderless-full-screen" }
+        #expect(tile?.isDisabled == entry?.isDisabled)
+    }
+
     /// The AUDIO panel has no tiles any more: the mute tiles were replaced by the volume sliders'
     /// leading icons, so its rows are hand-listed here in draw order — output above microphone, each
     /// volume a two-entry row of its mute icon and its slider.

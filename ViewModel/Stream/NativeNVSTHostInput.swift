@@ -57,6 +57,7 @@ extension NativeNVSTHostViewModel {
     func attachStreamWindow(_ window: NSWindow?) {
         guard let window = window as? OPNStreamWindow, !didEnd else { return }
         window.sessionSurface = self
+        nativeView?.allowsBackgroundGamepadInput = window.allowsBackgroundGamepadInput
     }
 
     /// The HUD's full-screen tile reads `streamWindowIsFullScreen` rather than the style mask, so it
@@ -147,7 +148,8 @@ extension NativeNVSTHostViewModel {
         }
         guard path != nil, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
         if view.remoteInputEnabled, !NativeNVSTInputDispatcher.isNeutralizing(event),
-           !Self.acceptsWhileNotFrontmost(event, isPictureInPictureMode: view.isPictureInPictureMode) {
+           !Self.acceptsWhileNotFrontmost(event, isPictureInPictureMode: view.isPictureInPictureMode,
+                                          allowsBackgroundGamepad: view.allowsBackgroundGamepadInput) {
             guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
         }
         lastAcceptedStreamInputAt = Date()
@@ -179,13 +181,14 @@ extension NativeNVSTHostViewModel {
 
     /// Whether an event reaches the game without this window being frontmost.
     ///
-    /// Only the gamepad, and only in PiP. PiP is a small floating surface that never activates the
+    /// Only the gamepad, and only in PiP or while couch co-op has several streams running. PiP is a small floating surface that never activates the
     /// app, so a game pad - a device the system delivers to the process rather than to a window -
     /// has to keep working while the user is in another app; that is the mode's whole point. The
     /// keyboard and mouse stay gated: typing or clicking in the app the user moved to must not reach
     /// the game.
-    static func acceptsWhileNotFrontmost(_ event: UserInputEvent, isPictureInPictureMode: Bool) -> Bool {
-        guard isPictureInPictureMode else { return false }
+    static func acceptsWhileNotFrontmost(_ event: UserInputEvent, isPictureInPictureMode: Bool,
+                                         allowsBackgroundGamepad: Bool = false) -> Bool {
+        guard isPictureInPictureMode || allowsBackgroundGamepad else { return false }
         if case .gamepad = event { return true }
         return false
     }
@@ -259,6 +262,9 @@ extension NativeNVSTHostViewModel {
             self.onScreenKeyboard.handleSteamSnapshot(deviceID: deviceID, snapshot: snapshot)
             return true
         }
+        view.onStreamControllerArrival = { [weak self] name in
+            self?.announceStreamControllerArrival(name)
+        }
         onScreenKeyboard.onOutput = { [weak self] output in
             self?.sendOnScreenKeyboardOutput(output)
         }
@@ -283,6 +289,13 @@ extension NativeNVSTHostViewModel {
                 self.handleHUDGamepad(state)
             }
         }
+    }
+
+    /// A controller that joined mid-stream is admitted disabled, so the notice says what to do
+    /// rather than implying it is already playing.
+    private func announceStreamControllerArrival(_ name: String) {
+        guard isConnected, !isEnding, !didEnd else { return }
+        showNativeTransientStreamMessage("\(name) connected — enable it in this stream")
     }
 
     /// The sheet consumes the settings-focus command vocabulary, not the HUD's step type.

@@ -35,6 +35,7 @@ extension NativeNVSTHostViewModel {
         for attempt in 1...Self.sessionReadyFullScreenAttemptLimit {
             try? await Task.sleep(for: Self.sessionReadyFullScreenRetryDelay)
             guard !Task.isCancelled else { return }
+            if let window = nativeView?.window as? OPNStreamWindow, window.layoutState.suppressesNativeFullScreen { return }
             attemptCount = attempt
             switch nativeFullScreenEntryAttempt() {
             case .stop, .alreadyFullScreen:

@@ -197,6 +197,14 @@ public final class NativeStreamView: NSView {
             updateControllerMappingFocus()
         }
     }
+    /// Couch co-op: this stream's pads keep playing while another stream window has the focus. Keyboard
+    /// and mouse stay with the frontmost window either way. Set by the presenter as windows come and go.
+    public internal(set) var allowsBackgroundGamepadInput = false {
+        didSet {
+            guard oldValue != allowsBackgroundGamepadInput else { return }
+            updateControllerMappingFocus()
+        }
+    }
     public var locksPointerWhenRelativeModeSelected = false
     public var confinesCursorToWindowInAbsoluteMode = false {
         didSet {
@@ -349,6 +357,12 @@ public final class NativeStreamView: NSView {
         get { gamepadMonitor.onScreenKeyboardCapture }
         set { gamepadMonitor.onScreenKeyboardCapture = newValue }
     }
+    /// A controller that arrived mid-stream, and is therefore admitted disabled in this stream.
+    /// Set by the active stream host so the arrival can be announced without admitting the device.
+    public var onStreamControllerArrival: ((String) -> Void)? {
+        get { gamepadMonitor.onStreamControllerArrival }
+        set { gamepadMonitor.onStreamControllerArrival = newValue }
+    }
     public var hidesCursorWhilePointerLocked = true {
         didSet {
             guard isPointerLocked else { return }
@@ -413,8 +427,11 @@ public final class NativeStreamView: NSView {
 
     /// The provider is fixed per surface: a stream's mappings come from the game it was launched for,
     /// which is what keeps two accounts' concurrent games from sharing one game's overrides.
-    init(frame frameRect: NSRect, mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared) {
+    init(frame frameRect: NSRect,
+         mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared,
+         initiallyDisabledControllers: Set<InputDeviceID> = []) {
         gamepadMonitor = NativeGamepadMonitor(mappingProvider: mappingProvider)
+        gamepadMonitor.disableForStream(initiallyDisabledControllers)
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
