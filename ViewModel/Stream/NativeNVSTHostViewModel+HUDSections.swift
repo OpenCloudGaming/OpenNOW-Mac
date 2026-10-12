@@ -237,6 +237,17 @@ extension NativeNVSTHostViewModel {
         hudVisibleFocusID == section.focusID
     }
 
+    /// The row the dock scrolls into view: the row the pad's ring stands on, resolved through the
+    /// model's own row layout so the dock and the pad agree on what a row is.
+    ///
+    /// Nil while the ring is hidden. The HUD seeds a focus cursor when it opens but draws no ring
+    /// until the pad moves, and scrolling to a cursor nobody can see would open the dock part way
+    /// down its list.
+    var hudScrollAnchorID: String? {
+        guard let focused = hudVisibleFocusID else { return nil }
+        return StreamHUDFocusEntry.scrollAnchor(for: focused, in: hudFocusEntries)
+    }
+
     // MARK: - Pad focus navigation
 
     func handleHUDGamepad(_ state: GamepadState) {

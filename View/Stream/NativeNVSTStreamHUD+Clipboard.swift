@@ -27,6 +27,7 @@ struct StreamHUDClipboardPanel: View {
     var body: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.clipboard.title,
+            focusID: OPNStreamHUDSection.clipboard.focusID,
             spacing: 8,
             // A Labs feature, so the panel says so. The section only exists while its flag is on.
             tag: .experimental,
@@ -55,6 +56,7 @@ struct StreamHUDClipboardPanel: View {
         ) { mode in
             model.setClipboardCaptureMode(mode)
         }
+        .hudFocusAnchor(NativeNVSTHostViewModel.clipboardCaptureModeFocusID)
     }
 
     @ViewBuilder private var emptyState: some View {
@@ -77,11 +79,13 @@ struct StreamHUDClipboardPanel: View {
                         onCopy: { model.copyClipboardEntry(entry) },
                         onRemove: { model.removeClipboardEntry(entry) }
                     )
+                    .hudFocusAnchor(NativeNVSTMediaStreamSurface.clipboardFocusID(for: entry))
                 }
             }
             StreamHUDClipboardClearButton(isArmed: clipboard.isClearArmed, isFocused: model.hudVisibleFocusID == NativeNVSTHostViewModel.clipboardClearFocusID) {
                 model.requestClearClipboardHistory()
             }
+            .hudFocusAnchor(NativeNVSTHostViewModel.clipboardClearFocusID)
         }
     }
 

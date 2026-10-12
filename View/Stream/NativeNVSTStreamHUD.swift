@@ -13,6 +13,7 @@ extension NativeNVSTMediaStreamSurface {
             sessionLimit: model.sessionLimit,
             powerAction: { model.showStreamControls() },
             isPowerFocused: model.hudVisibleFocusID == "quit-menu",
+            scrollAnchorID: model.hudScrollAnchorID,
             isClockVisible: model.isHUDClockVisible,
             customizeAction: { model.setHUDCustomizeVisible(true) },
             shortcutsHelpAction: { model.setShortcutsHelpVisible(true) },
