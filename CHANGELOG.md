@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.16.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.15.0...v0.16.0) (2026-10-12)
+
+
+### Features
+
+* add corner style ([#104](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/104)) ([c542618](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c5426188a487e11b09d50d5283db0c864214db9e))
+* add liquid glass ([#107](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/107)) ([c959856](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c959856445f203b1833d00acbaab0501895b1cca))
+* per-stream controller enablement in the controller panel ([#109](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/109)) ([c4e2b3e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c4e2b3e1f84cb0895b221266d074b40c4dcd0cc1))
+
+
+### Bug Fixes
+
+* bound what each home rail materializes on the first frame ([#106](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/106)) ([1d464fd](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1d464fd65ef883891404b163f32e2f9c4a9af3b8))
+* deliver catalog tile hover outside the view update pass ([#110](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/110)) ([2708633](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/2708633ab33f1d6bbfba8640bee52939c750bfaa))
+* replace the catalog hover timer with scroll-linked invalidation ([#103](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/103)) ([0a58b18](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0a58b188e539c2c9ff534794ee6d67e1fe04920c))
+* route the launch loading artwork through the image cache ([#100](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/100)) ([e9d98ff](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e9d98ffcb14411247d58f0a1c17d92a38f013925))
+
 ## [0.15.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.14.0...v0.15.0) (2026-10-06)
 
 
