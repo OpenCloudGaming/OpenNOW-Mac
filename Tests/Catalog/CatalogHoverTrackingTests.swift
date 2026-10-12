@@ -5,7 +5,8 @@ import Testing
 /// Covers the invalidation path the catalog hover tracker is built on: the highlight follows the
 /// content when a scroll moves it under a stationary pointer, and it releases the tile that scrolled
 /// away. The pointer is steered through the tracking surface's injected location, so no test moves
-/// the real cursor.
+/// the real cursor. Hover is delivered outside SwiftUI's update pass, so every expectation waits for
+/// it rather than reading it straight after the event.
 @Suite(.serialized, .disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason))) @MainActor
 struct CatalogHoverTrackingTests {
     @Test func aScrollMovesTheHighlightWithoutMovingThePointer() async {
@@ -13,7 +14,7 @@ struct CatalogHoverTrackingTests {
         defer { fixture.close() }
 
         fixture.reconcileHover()
-        #expect(fixture.hoveredTile == "pageTile")
+        await fixture.settleHover(on: "pageTile")
 
         // The rail tile is two clip views down: this needs every clip view above it, not the nearest.
         fixture.scrollPage(to: 100)
@@ -32,14 +33,14 @@ struct CatalogHoverTrackingTests {
 
         fixture.scrollPage(to: 100)
         fixture.reconcileHover()
-        #expect(fixture.hoveredTile == "railTile")
+        await fixture.settleHover(on: "railTile")
 
         fixture.scrollRail(to: 700)
         await fixture.settleHover(on: "railTile2")
         #expect(fixture.hoveredTile == "railTile2")
     }
 
-    @Test func pointerMovementStillDrivesHoverWithoutAScroll() throws {
+    @Test func pointerMovementStillDrivesHoverWithoutAScroll() async throws {
         let fixture = HoverFixture()
         defer { fixture.close() }
         let event = try #require(NSEvent.mouseEvent(
@@ -56,25 +57,37 @@ struct CatalogHoverTrackingTests {
 
         fixture.pointCursor(at: NSPoint(x: 200, y: 50))
         fixture.pageTile.mouseEntered(with: event)
-        #expect(fixture.hoveredTile == "pageTile")
+        await fixture.settleHover(on: "pageTile")
 
         // The pointer slides sideways off the tile into the gutter beside it.
         fixture.pointCursor(at: NSPoint(x: 450, y: 50))
         fixture.pageTile.mouseMoved(with: event)
-        #expect(fixture.hoveredTile == nil)
+        await fixture.settleHover(on: nil)
 
         // And onto the rail, which the page scroll has brought under it.
         fixture.scrollPage(to: 100)
         fixture.pointCursor(at: NSPoint(x: 200, y: 50))
         fixture.railTile.mouseEntered(with: event)
-        #expect(fixture.hoveredTile == "railTile")
+        await fixture.settleHover(on: "railTile")
 
         fixture.pointCursor(at: NSPoint(x: 450, y: 50))
         fixture.railTile.mouseExited(with: event)
-        #expect(fixture.hoveredTile == nil)
+        await fixture.settleHover(on: nil)
     }
 
-    @Test func aPointerOverTheClippedPartOfATileDoesNotHoverIt() {
+    /// The reported defect: the tracker wrote SwiftUI state synchronously, so a tile moving under a
+    /// stationary pointer — or a dismantled one reporting its exit — wrote it inside the layout pass
+    /// that caused the move, which SwiftUI reports as modifying state during view update.
+    @Test func hoverIsDeliveredOutsideTheLayoutPassThatMovedTheTile() async {
+        let fixture = HoverFixture()
+        defer { fixture.close() }
+
+        fixture.reconcileHover()
+        #expect(fixture.hoveredTile == nil, "the state write landed inside the pass that reported the move")
+        await fixture.settleHover(on: "pageTile")
+    }
+
+    @Test func aPointerOverTheClippedPartOfATileDoesNotHoverIt() async {
         let fixture = HoverFixture()
         defer { fixture.close() }
 
@@ -84,11 +97,11 @@ struct CatalogHoverTrackingTests {
 
         fixture.pointCursor(at: NSPoint(x: 350, y: 50))
         fixture.reconcileHover()
-        #expect(fixture.hoveredTile == "straddlingTile")
+        await fixture.settleHover(on: "straddlingTile")
 
         fixture.pointCursor(at: NSPoint(x: 450, y: 50))
         fixture.reconcileHover()
-        #expect(fixture.hoveredTile == nil)
+        await fixture.settleHover(on: nil)
     }
 }
 
@@ -139,9 +152,9 @@ private final class HoverFixture {
         window.orderFrontRegardless()
 
         for (surface, name) in surfaces {
-            surface.onHover = { [weak self] hovering in
+            surface.onHover = { [weak self] isHovering in
                 guard let self else { return }
-                if hovering {
+                if isHovering {
                     self.hoveredTile = name
                 } else if self.hoveredTile == name {
                     self.hoveredTile = nil
@@ -173,8 +186,8 @@ private final class HoverFixture {
         scroll(railScrollView, to: NSPoint(x: offset, y: 0))
     }
 
-    /// The clip view posts its bounds change through a main-queue notification, so the hover state
-    /// settles a turn later. Wait for it rather than assuming a single turn is enough.
+    /// Hover is delivered on the next main-actor turn, outside the update pass, and a clip view's
+    /// bounds change reaches the surface a turn after that. Wait rather than assuming one turn.
     func settleHover(on expected: String?) async {
         for _ in 0..<20 {
             if hoveredTile == expected { return }
