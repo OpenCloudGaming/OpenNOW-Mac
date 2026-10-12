@@ -127,6 +127,39 @@ struct NativeNVSTOutputDeviceSelectionTests {
         }
     }
 
+    /// "Default Device" is requested with an empty UID, so the change can never resolve back to the
+    /// request itself: it resolves to the system default's own UID. The switch has to settle on the
+    /// route the device reports, or the one choice every user can make reports a failure.
+    @Test func aConfirmedDefaultDeviceRouteIsSaved() {
+        withExclusivePreferenceDomain {
+            let key = "OpenNOW.Stream.OutputDeviceId"
+            let previous = OPNAppPreferenceStorage.standard.object(forKey: key)
+            defer {
+                if previous == nil { OPNAppPreferenceStorage.standard.removeObject(forKey: key) }
+                if let previous { OPNAppPreferenceStorage.standard.set(previous, forKey: key) }
+            }
+            let model = modelWithTwoDevices()
+            model.outputDeviceUID = "usb-out"
+            model.outputDevicePendingUID = ""
+            model.handleNativeOutputDeviceChange(change(resolved: "built-in", preferred: nil))
+            #expect(model.outputDeviceUID.isEmpty)
+            #expect(model.outputDevicePendingUID == nil)
+            #expect(OPNAppPreferenceStorage.standard.object(forKey: key) == nil, "Default Device is the absence of a saved choice")
+            #expect(model.transientStreamMessage == "Audio Output: Default Device")
+        }
+    }
+
+    /// The same request with nothing usable resolved is still a failure, not a saved Default Device.
+    @Test func aDefaultDeviceRequestWithNoUsableOutputRollsBack() {
+        let model = modelWithTwoDevices()
+        model.outputDeviceUID = "usb-out"
+        model.outputDevicePendingUID = ""
+        model.handleNativeOutputDeviceChange(change(resolved: nil, preferred: nil, isOutputUsable: false))
+        #expect(model.outputDeviceUID == "usb-out")
+        #expect(model.outputDevicePendingUID == nil)
+        #expect(model.transientStreamMessage == "No audio output device available.")
+    }
+
     /// The picker is unusable with only the synthetic default to offer, and while a switch is in
     /// flight behind the same transport call.
     @Test func theRowIsDisabledWhileUnusable() {
