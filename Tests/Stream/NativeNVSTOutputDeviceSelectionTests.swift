@@ -110,13 +110,7 @@ struct NativeNVSTOutputDeviceSelectionTests {
 
     /// A route the device confirms is written through to the preference Settings reads.
     @Test func aConfirmedRouteIsSaved() {
-        withExclusivePreferenceDomain {
-            let key = "OpenNOW.Stream.OutputDeviceId"
-            let previous = OPNAppPreferenceStorage.standard.object(forKey: key)
-            defer {
-                if previous == nil { OPNAppPreferenceStorage.standard.removeObject(forKey: key) }
-                if let previous { OPNAppPreferenceStorage.standard.set(previous, forKey: key) }
-            }
+        withPreservedOutputDevicePreference {
             let model = modelWithTwoDevices()
             model.outputDeviceUID = ""
             model.outputDevicePendingUID = "usb-out"
@@ -127,24 +121,17 @@ struct NativeNVSTOutputDeviceSelectionTests {
         }
     }
 
-    /// "Default Device" is requested with an empty UID, so the change can never resolve back to the
-    /// request itself: it resolves to the system default's own UID. The switch has to settle on the
-    /// route the device reports, or the one choice every user can make reports a failure.
+    /// "Default Device" is asked for as an empty UID, so the change resolves to the system default's
+    /// own UID and can never echo the request back. The switch must still settle on that route.
     @Test func aConfirmedDefaultDeviceRouteIsSaved() {
-        withExclusivePreferenceDomain {
-            let key = "OpenNOW.Stream.OutputDeviceId"
-            let previous = OPNAppPreferenceStorage.standard.object(forKey: key)
-            defer {
-                if previous == nil { OPNAppPreferenceStorage.standard.removeObject(forKey: key) }
-                if let previous { OPNAppPreferenceStorage.standard.set(previous, forKey: key) }
-            }
+        withPreservedOutputDevicePreference {
             let model = modelWithTwoDevices()
             model.outputDeviceUID = "usb-out"
             model.outputDevicePendingUID = ""
             model.handleNativeOutputDeviceChange(change(resolved: "built-in", preferred: nil))
             #expect(model.outputDeviceUID.isEmpty)
             #expect(model.outputDevicePendingUID == nil)
-            #expect(OPNAppPreferenceStorage.standard.object(forKey: key) == nil, "Default Device is the absence of a saved choice")
+            #expect(OPNAppPreferenceStorage.standard.object(forKey: OPNStreamPreferences.Keys.outputDeviceId) == nil, "Default Device is the absence of a saved choice")
             #expect(model.transientStreamMessage == "Audio Output: Default Device")
         }
     }
