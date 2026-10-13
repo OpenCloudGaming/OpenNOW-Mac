@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.16.0...v0.17.0) (2026-10-13)
+
+
+### Features
+
+* add page change shortcuts ([#114](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/114)) ([1493a9a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1493a9af124bd813e04bd0521989baf21295fe1e))
+
+
+### Bug Fixes
+
+* Default Device output switch settles on the resolved route ([#112](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/112)) ([bd7c715](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/bd7c715e531ddbd080fef821a17c1a1658f89297))
+* scroll the HUD dock to keep the pad's focus row visible ([#113](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/113)) ([a955c06](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a955c066bd80f11dbdb59b1bef22fe16eaa86678))
+
 ## [0.16.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.15.0...v0.16.0) (2026-10-12)
 
 
