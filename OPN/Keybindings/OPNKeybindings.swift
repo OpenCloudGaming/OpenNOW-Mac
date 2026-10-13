@@ -19,7 +19,7 @@ enum KeybindingSection: String, CaseIterable, Identifiable, Sendable {
     var subtitle: String {
         switch self {
         case .stream: return "Shortcuts that act on an active session."
-        case .catalog: return "Shortcuts for browsing your library."
+        case .catalog: return "Shortcuts for browsing your library and moving between its pages."
         }
     }
 }
@@ -40,6 +40,8 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
     case showShortcutsHelp
     case openSearch
     case captureStreamText
+    case openSettings
+    case openCatalog
 
     public var id: String { rawValue }
 
@@ -63,7 +65,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .toggleUnifiedHUD, .toggleStatsHUD, .toggleMicrophone, .toggleRecording, .saveReplay, .takeScreenshot, .toggleAntiAFK, .togglePointerCapture, .showQuitMenu, .showShortcutsHelp, .captureStreamText:
             return .stream
-        case .openSearch:
+        case .openSearch, .openSettings, .openCatalog:
             return .catalog
         }
     }
@@ -82,6 +84,8 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showShortcutsHelp: return "Show Shortcuts"
         case .openSearch: return "Search Games"
         case .captureStreamText: return "Capture Frame Text"
+        case .openSettings: return "Open Settings"
+        case .openCatalog: return "Back to Catalog"
         }
     }
 
@@ -99,6 +103,8 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showShortcutsHelp: return "Show the list of in-stream shortcuts."
         case .openSearch: return "Focus the search field in the games catalog."
         case .captureStreamText: return "File the selected text into the clipboard history, and pass the copy on to the game."
+        case .openSettings: return "Open the Settings page in the main window."
+        case .openCatalog: return "Leave a stream or a library page and return to the games catalog."
         }
     }
 
@@ -116,6 +122,8 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .showShortcutsHelp: return OPNKeyCombo(keyCode: 44, modifiers: .command)
         case .openSearch: return OPNKeyCombo(keyCode: 40, modifiers: .command)
         case .captureStreamText: return OPNKeyCombo(keyCode: 8, modifiers: .command)
+        case .openSettings: return OPNKeyCombo(keyCode: 43, modifiers: .command)
+        case .openCatalog: return OPNKeyCombo(keyCode: 8, modifiers: [.command, .shift])
         }
     }
 
@@ -141,7 +149,7 @@ public enum KeybindingAction: String, CaseIterable, Identifiable, Sendable {
         case .togglePointerCapture: return .togglePointerCapture
         case .showQuitMenu: return .showQuitMenu
         case .showShortcutsHelp: return .showShortcutsHelp
-        case .openSearch: return nil
+        case .openSearch, .openSettings, .openCatalog: return nil
         case .captureStreamText: return .captureStreamText
         }
     }
@@ -322,6 +330,13 @@ final class OPNKeybindingsObserver: ObservableObject, @unchecked Sendable {
     /// recomputes its chord when the binding moves.
     func combo(for action: KeybindingAction) -> OPNKeyCombo {
         OPNKeybindings.standard.combo(for: action)
+    }
+
+    /// The chord the action answers to right now, which is what a menu item should advertise: none
+    /// while it is disabled, so the Disable button in Keybindings takes the chord off the menu bar
+    /// with it rather than leaving a menu item that still fires.
+    func activeCombo(for action: KeybindingAction) -> OPNKeyCombo? {
+        OPNKeybindings.standard.combos(for: action).first
     }
 
     func hasCustomBinding(for action: KeybindingAction) -> Bool {
