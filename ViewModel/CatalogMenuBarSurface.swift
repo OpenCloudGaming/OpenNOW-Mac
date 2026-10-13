@@ -185,15 +185,19 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
         checkActiveHomeSession()
     }
 
-    /// The window's own pages, asked for from outside it. Both of the actions behind this exist here
-    /// and nowhere else: what "a new session" and "the recordings" mean is the catalog's question,
-    /// not the surface's.
+    /// The window's own pages, asked for from outside it. The actions behind this exist here and
+    /// nowhere else: what "a new session", "the recordings" and "the settings" mean is the catalog's
+    /// question, not the surface's.
     func showMainPage(_ page: OPNMainWindowPage) {
         switch page {
         case .home:
             showGames()
         case .recordings:
             showRecordings()
+        case .settings:
+            // The group the page is already on, so ⌘, while Settings is open focuses it rather than
+            // sending the reader back to Account.
+            showSettings(selectedSettingsGroup)
         }
     }
 

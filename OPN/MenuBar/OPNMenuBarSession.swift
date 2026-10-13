@@ -164,12 +164,14 @@ struct OPNMenuBarSessionSnapshot: Equatable, Sendable {
 
 /// One of the main window's pages, for a surface outside the window to ask for by name. A reduction
 /// of `CatalogMainPage` rather than that type itself: the surfaces that ask are in the service layer,
-/// and only the two pages they can reach are worth naming here.
+/// and only the pages they can reach are worth naming here.
 enum OPNMainWindowPage: Equatable, Sendable {
     /// Where a session is started: the catalog home.
     case home
     /// The recording library, where an export the Dock reported progress for can be found again.
     case recordings
+    /// The Settings page, which the app menu's Settings item and ⌘, open.
+    case settings
 }
 
 /// A window that owns the launch flow: it describes an in-flight launch (so the menu bar can follow
