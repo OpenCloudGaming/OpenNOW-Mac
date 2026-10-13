@@ -110,13 +110,7 @@ struct NativeNVSTOutputDeviceSelectionTests {
 
     /// A route the device confirms is written through to the preference Settings reads.
     @Test func aConfirmedRouteIsSaved() {
-        withExclusivePreferenceDomain {
-            let key = "OpenNOW.Stream.OutputDeviceId"
-            let previous = OPNAppPreferenceStorage.standard.object(forKey: key)
-            defer {
-                if previous == nil { OPNAppPreferenceStorage.standard.removeObject(forKey: key) }
-                if let previous { OPNAppPreferenceStorage.standard.set(previous, forKey: key) }
-            }
+        withPreservedOutputDevicePreference {
             let model = modelWithTwoDevices()
             model.outputDeviceUID = ""
             model.outputDevicePendingUID = "usb-out"
@@ -125,6 +119,32 @@ struct NativeNVSTOutputDeviceSelectionTests {
             #expect(model.outputDevicePendingUID == nil)
             #expect(OPNStreamPreferences.loadProfile().outputDeviceId == "usb-out")
         }
+    }
+
+    /// "Default Device" is asked for as an empty UID, so the change resolves to the system default's
+    /// own UID and can never echo the request back. The switch must still settle on that route.
+    @Test func aConfirmedDefaultDeviceRouteIsSaved() {
+        withPreservedOutputDevicePreference {
+            let model = modelWithTwoDevices()
+            model.outputDeviceUID = "usb-out"
+            model.outputDevicePendingUID = ""
+            model.handleNativeOutputDeviceChange(change(resolved: "built-in", preferred: nil))
+            #expect(model.outputDeviceUID.isEmpty)
+            #expect(model.outputDevicePendingUID == nil)
+            #expect(OPNAppPreferenceStorage.standard.object(forKey: OPNStreamPreferences.Keys.outputDeviceId) == nil, "Default Device is the absence of a saved choice")
+            #expect(model.transientStreamMessage == "Audio Output: Default Device")
+        }
+    }
+
+    /// The same request with nothing usable resolved is still a failure, not a saved Default Device.
+    @Test func aDefaultDeviceRequestWithNoUsableOutputRollsBack() {
+        let model = modelWithTwoDevices()
+        model.outputDeviceUID = "usb-out"
+        model.outputDevicePendingUID = ""
+        model.handleNativeOutputDeviceChange(change(resolved: nil, preferred: nil, isOutputUsable: false))
+        #expect(model.outputDeviceUID == "usb-out")
+        #expect(model.outputDevicePendingUID == nil)
+        #expect(model.transientStreamMessage == "No audio output device available.")
     }
 
     /// The picker is unusable with only the synthetic default to offer, and while a switch is in

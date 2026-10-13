@@ -36,6 +36,20 @@ func withPreservedMicrophoneMode(_ body: () -> Void) {
     }
 }
 
+/// Restores the persisted output device around a test, so a switch one test makes cannot leak into
+/// the next one through `UserDefaults`.
+func withPreservedOutputDevicePreference(_ body: () -> Void) {
+    withExclusivePreferenceDomain {
+        let key = OPNStreamPreferences.Keys.outputDeviceId
+        let previous = OPNAppPreferenceStorage.standard.object(forKey: key)
+        defer {
+            if let previous { OPNAppPreferenceStorage.standard.set(previous, forKey: key) }
+            if previous == nil { OPNAppPreferenceStorage.standard.removeObject(forKey: key) }
+        }
+        body()
+    }
+}
+
 struct StubNativeNVSTSessionProvider: NativeNVSTSessionProvider {
     func startNativeNVSTSession(configuration: StreamLaunchConfiguration) async throws -> NativeNVSTSessionAllocation {
         throw NativeNVSTError.transportFailed("unused")
