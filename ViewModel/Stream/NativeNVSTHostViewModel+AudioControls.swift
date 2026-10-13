@@ -147,8 +147,7 @@ extension NativeNVSTHostViewModel {
         outputDeviceUpdateTask?.cancel()
         outputDeviceUpdateTask = nil
         outputDevicePendingUID = nil
-        let isRequestedRouteActive = change.resolvedUniqueID == requested && !change.isFallback && change.isRouteActivated
-        guard isRequestedRouteActive else {
+        guard isActivatingRequestedRoute(requested: requested, change: change) else {
             showNativeTransientStreamMessage(change.isOutputUsable ? "Could not switch audio output." : "No audio output device available.")
             OPNStreamTelemetry.capture("nvst.ui.output.device.unavailable", level: .warning, message: "Native NVST output device did not activate.", attributes: ["applicationID": configuration.applicationID, "deviceId": requested.isEmpty ? "default" : requested])
             return
@@ -156,6 +155,14 @@ extension NativeNVSTHostViewModel {
         outputDeviceUID = requested
         OPNStreamPreferences.saveOutputDeviceId(requested)
         showNativeTransientStreamMessage(outputDeviceStatusMessage(for: requested))
+    }
+
+    /// Confirms the reported route is the one the picker asked for: usable, activated, no fallback.
+    /// "Default Device" is asked for as an empty UID, so only the reported preference identifies it.
+    private func isActivatingRequestedRoute(requested: String, change: NvstOutputDeviceChange) -> Bool {
+        guard change.isOutputUsable, change.isRouteActivated, !change.isFallback else { return false }
+        if requested.isEmpty { return change.preferredUniqueID == nil }
+        return change.resolvedUniqueID == requested
     }
 
     private func abandonPendingOutputDevice(message: String) {
