@@ -247,6 +247,7 @@ struct OPNApp: App {
                     Label("Check for Updates…", systemImage: "arrow.triangle.2.circlepath")
                 }
             }
+            OPNCatalogCommands()
             CommandGroup(replacing: .help) {
                 Button {
                     OPNReportIssuePresentation.shared.present(context: .appEnvironment())

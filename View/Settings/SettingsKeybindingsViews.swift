@@ -37,10 +37,10 @@ extension OPNKeyCombo {
 }
 
 struct OPNKeyboardShortcutModifier: ViewModifier {
-    let combo: OPNKeyCombo
+    let combo: OPNKeyCombo?
 
     @ViewBuilder func body(content: Content) -> some View {
-        if let key = combo.keyEquivalent {
+        if let combo, let key = combo.keyEquivalent {
             content.keyboardShortcut(key, modifiers: combo.eventModifiers)
         } else {
             content
@@ -50,7 +50,9 @@ struct OPNKeyboardShortcutModifier: ViewModifier {
 
 extension View {
     /// Applies a rebindable chord to a menu item or hidden button when it has a menu representation.
-    func opnKeyboardShortcut(_ combo: OPNKeyCombo) -> some View {
+    /// A nil combo leaves the item click-only, which is how a disabled or unrepresentable binding
+    /// reads on the menu bar.
+    func opnKeyboardShortcut(_ combo: OPNKeyCombo?) -> some View {
         modifier(OPNKeyboardShortcutModifier(combo: combo))
     }
 }

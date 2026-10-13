@@ -76,6 +76,30 @@ private func makeKeybindings() -> OPNKeybindings {
     #expect(OPNKeyCombo.isBindableKeyCode(35))
 }
 
+@Test func itShipsTheCatalogPageShortcutsOnTheirStandardChords() {
+    let bindings = makeKeybindings()
+
+    #expect(bindings.combo(for: .openSettings).label == "⌘,")
+    #expect(bindings.combo(for: .openCatalog).label == "⇧⌘C")
+    #expect(KeybindingAction.openSettings.section == .catalog)
+    #expect(KeybindingAction.openCatalog.section == .catalog)
+    // They sit in the catalog card beside search, and none of the three shadows another.
+    #expect(bindings.conflictingActions(for: .openSettings).isEmpty)
+    #expect(bindings.conflictingActions(for: .openCatalog).isEmpty)
+    #expect(bindings.conflictingActions(for: .openSearch).isEmpty)
+}
+
+@Test func aDisabledCatalogPageShortcutAnswersToNothing() {
+    let bindings = makeKeybindings()
+
+    #expect(bindings.combos(for: .openCatalog) == [KeybindingAction.openCatalog.defaultCombo])
+
+    bindings.setEnabled(false, for: .openCatalog)
+
+    // What the Catalog menu advertises: no chord at all, rather than a chord that still fires.
+    #expect(bindings.combos(for: .openCatalog).isEmpty)
+}
+
 @Test func itLabelsThePointerReleaseShortcutTheWayTheInputCopyReadsIt() {
     let combo = OPNKeybindings.standard.combo(for: .togglePointerCapture)
     #expect(combo.label == "⌘P")
