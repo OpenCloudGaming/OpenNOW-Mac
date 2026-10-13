@@ -6,6 +6,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDRemoteCoOpPanel: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.coop.title,
+            focusID: OPNStreamHUDSection.coop.focusID,
             spacing: 8,
             tag: .beta,
             isCollapsed: model.isHUDSectionCollapsed(.coop),
@@ -59,6 +60,7 @@ extension NativeNVSTMediaStreamSurface {
                     }
                     Spacer(minLength: 0)
                 }
+                .hudFocusAnchor("coop-invite")
                 nativeHUDDetailRow(label: "Slots", value: "\(model.remoteCoOpSnapshot.preferences.effectiveReservedGuestSlots)")
                 nativeHUDDetailRow(label: "Quality", value: model.remoteCoOpSnapshot.preferences.qualityPreset.label)
                 nativeHUDDetailRow(label: "Latency", value: model.remoteCoOpSnapshot.preferences.latencyMode.label)
@@ -137,6 +139,7 @@ extension NativeNVSTMediaStreamSurface {
                 model.removeRemoteCoOpParticipant(participant.id)
             }
         }
+        .hudFocusAnchor(Self.remoteCoOpQualityFocusID(for: participant))
     }
 
     /// What the guest is actually receiving, under their row.

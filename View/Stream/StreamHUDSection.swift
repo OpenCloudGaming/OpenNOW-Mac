@@ -21,6 +21,9 @@ enum StreamHUDSectionTag: Equatable, Sendable {
 /// caller owns `isCollapsed`, and a folded section still draws its header so a pad can reopen it.
 struct StreamHUDSection<Content: View>: View {
     let label: String
+    /// The header's pad focus identity, which is also the id the dock scrolls it back to — the
+    /// header is a row of its own, so a folded section the pad stands on must stay on screen.
+    let focusID: String?
     let spacing: CGFloat
     /// Marks the section's trial state. Sits beside the label rather than in the content so it reads
     /// as a property of the feature, not of one control inside it.
@@ -42,6 +45,7 @@ struct StreamHUDSection<Content: View>: View {
 
     init(
         label: String,
+        focusID: String? = nil,
         spacing: CGFloat = 10,
         tag: StreamHUDSectionTag? = nil,
         caption: String? = nil,
@@ -52,6 +56,7 @@ struct StreamHUDSection<Content: View>: View {
         @ViewBuilder content: () -> Content
     ) {
         self.label = label
+        self.focusID = focusID
         self.spacing = spacing
         self.tag = tag
         self.caption = caption
@@ -108,6 +113,9 @@ struct StreamHUDSection<Content: View>: View {
                 OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.accent, lineWidth: 2).padding(-4)
             }
         }
+        // On the header, never on the section: an id on the whole panel would anchor the dock's
+        // scroll to the panel's centre, which for a tall open section is not where its header is.
+        .hudFocusAnchor(focusID)
     }
 
     private var headerLabel: some View {

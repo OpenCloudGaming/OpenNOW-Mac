@@ -1145,7 +1145,12 @@ title, the remaining session-time pill (accent, warning under five minutes, mono
 digits), and the close button. Footer: the live clock (11pt bold monospaced digits, off
 until enabled under `OpenNOW.Stream.HUDClockVisible`), then the Customize and Shortcuts
 entries. Gamepad/keyboard focus moves across action rows and section headers with accent
-focus strokes; the power button is itself a focus row. Section content is collapsible and
+focus strokes; the power button is itself a focus row. The dock's list follows the ring: the row the
+pad lands on is scrolled into view, centred and unanimated, so a dock taller than the window can be
+walked past its visible area without the selection leaving the screen. A row that holds two controls
+(a volume's icon and its slider, a clipboard entry's copy and remove) is one row to the pad, so
+left/right inside it never moves the list. The power button sits in the dock's header, outside that
+list, so focus on it scrolls nothing. Section content is collapsible and
 reorderable — see HUD Section.
 
 The **HUD Layout editor** (footer → Customize, `nativeHUDCustomizeOverlay`) is a centered

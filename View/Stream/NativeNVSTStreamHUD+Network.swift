@@ -13,6 +13,7 @@ struct NativeNVSTNetworkHUDPanel: View {
     var body: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.network.title,
+            focusID: OPNStreamHUDSection.network.focusID,
             spacing: 8,
             isCollapsed: isCollapsed,
             isFocused: isFocused,

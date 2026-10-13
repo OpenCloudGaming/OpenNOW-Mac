@@ -109,6 +109,20 @@ struct StreamHUDControllerRow: View {
 }
 
 extension View {
+    /// Names a HUD row for the pad: the dock scrolls the row the ring stands on into view, and
+    /// `proxy.scrollTo` reaches a row by identity, so a row the pad can stand on has to carry one.
+    ///
+    /// The id is the model's own entry id for the row's first control, which is what
+    /// `StreamHUDFocusEntry.scrollAnchor(for:in:)` resolves the pad's focus to. A row that holds
+    /// several controls — a volume's icon and its slider, a clipboard entry's copy and remove —
+    /// stamps the one its first entry owns, so left/right inside the row does not move the list.
+    ///
+    /// Applied per drawn row rather than per control: the presentational rows here take booleans,
+    /// not identities, and the ids belong where the focus comparisons already live.
+    func hudFocusAnchor(_ id: String?) -> some View {
+        modifier(StreamHUDFocusAnchorModifier(id: id))
+    }
+
     /// Focus indicator for HUD controls with no built-in `isFocused` styling of their own (a
     /// segmented `Picker`, a `Slider` row) — matches the accent-stroke language `StreamHUDActionRow`
     /// and `StreamHUDDropdown` already use for gamepad focus.
@@ -119,6 +133,20 @@ extension View {
                     OPNCornerShape(role: .control).strokeBorder(StreamHUDTheme.accent, lineWidth: 2)
                 }
             }
+    }
+}
+
+private struct StreamHUDFocusAnchorModifier: ViewModifier {
+    let id: String?
+
+    /// A nil id adds nothing at all: a row drawn for the pointer only must not be addressable, and
+    /// `.id(Optional)` would give it an identity `scrollTo(String)` can never match.
+    @ViewBuilder func body(content: Content) -> some View {
+        if let id {
+            content.id(id)
+        } else {
+            content
+        }
     }
 }
 

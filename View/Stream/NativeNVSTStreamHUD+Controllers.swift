@@ -10,6 +10,7 @@ extension NativeNVSTMediaStreamSurface {
             let tiles = nativeHUDControllerTiles
             StreamHUDSection(
                 label: OPNStreamHUDSection.controllers.title,
+                focusID: OPNStreamHUDSection.controllers.focusID,
                 spacing: 6,
                 caption: nativeHUDCaption(for: tiles, extra: [("rumble-intensity", "Rumble Intensity · A steps +25%, 0 is off")]),
                 isCollapsed: model.isHUDSectionCollapsed(.controllers),
@@ -42,6 +43,7 @@ extension NativeNVSTMediaStreamSurface {
                     isFocused: model.hudVisibleFocusID == "rumble-intensity",
                     action: { model.updateRumbleIntensity(percent: $0) }
                 )
+                .hudFocusAnchor("rumble-intensity")
                 .padding(.top, 4)
             }
         }
