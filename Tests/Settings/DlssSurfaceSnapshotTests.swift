@@ -93,6 +93,34 @@ import Testing
 
     // MARK: - Fixtures
 
+    @Test func theOverridesCardLabelsEachControlOnce() throws {
+        let source = try String(contentsOf: Self.overridesCardSourceURL, encoding: .utf8)
+        let titles = try Self.controlTitles(in: source)
+        #expect(titles.count > 5, "the source scan found almost nothing; the pattern has drifted")
+        // A heading that repeats the label of the control under it reads as two settings, which is
+        // exactly how the card shipped once.
+        let repeated = titles.filter { title, count in count > 1 }.keys.sorted()
+        #expect(repeated.isEmpty, "a control label is written more than once: \(repeated)")
+    }
+
+    private static var overridesCardSourceURL: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("View/Settings/SettingsDlssViews.swift")
+    }
+
+    /// Every literal label a control in the card is given, with how many times it is written.
+    private static func controlTitles(in source: String) throws -> [String: Int] {
+        let expression = try NSRegularExpression(pattern: #"title:\s*"([^"]+)""#)
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+        return expression.matches(in: source, range: range).reduce(into: [:]) { counts, match in
+            guard let titleRange = Range(match.range(at: 1), in: source) else { return }
+            counts[String(source[titleRange]), default: 0] += 1
+        }
+    }
+
     @MainActor
     private func overridesCard(scale: CGFloat, membership: DlssMembershipState, width: CGFloat? = nil) -> some View {
         let model = makeCatalogViewModelForTesting()

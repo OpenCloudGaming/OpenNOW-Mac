@@ -86,15 +86,10 @@ struct CloudDlssOverridesCard: View {
     // MARK: - Features
 
     private var superResolutionSection: some View {
-        VStack(alignment: .leading, spacing: 14 * uiScale) {
-            featureHeading(
-                title: "Super Resolution",
-                help: "Sets the resolution the game renders at before DLSS upscales it. Custom renders at a share of the stream resolution you pick.",
-                isIncluded: settingsState.isSuperResolutionEnabled
-            )
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
             SettingsOptionRow(
                 title: "Super Resolution",
-                subtitle: "Renders at a share of the stream resolution and upscales with AI.",
+                subtitle: "Sets the resolution the game renders at before DLSS upscales it. Custom renders at a share of the stream resolution you pick.",
                 options: DlssSuperResolutionMode.allCases.map(\.label),
                 selectedIndex: DlssSuperResolutionMode.allCases.firstIndex(of: settingsState.overrides.superResolution) ?? 0,
                 enabled: DlssSuperResolutionMode.allCases.map { _ in settingsState.isSuperResolutionEnabled },
@@ -102,9 +97,8 @@ struct CloudDlssOverridesCard: View {
             ) { index in
                 viewModel.setDlssSuperResolutionMode(DlssSuperResolutionMode.allCases[index])
             }
-            if isCustomSuperResolutionScaleVisible {
-                customScaleSlider
-            }
+            if !settingsState.isSuperResolutionEnabled { missingAccessNote }
+            if isCustomSuperResolutionScaleVisible { customScaleSlider }
         }
     }
 
@@ -127,15 +121,10 @@ struct CloudDlssOverridesCard: View {
     }
 
     private var frameGenerationSection: some View {
-        VStack(alignment: .leading, spacing: 14 * uiScale) {
-            featureHeading(
-                title: "Frame Generation",
-                help: "Dynamic adds generated frames only when they are needed to reach your frame rate. The multiplier is how many the cloud rig may insert per rendered frame.",
-                isIncluded: settingsState.isFrameGenerationEnabled
-            )
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
             SettingsOptionRow(
                 title: "Frame Generation",
-                subtitle: "Dynamic follows the frame rate you asked for; In-game leaves the choice to the game.",
+                subtitle: "Dynamic adds generated frames only when they are needed to reach your frame rate; In-game leaves the choice to the game.",
                 options: DlssFrameGenerationMode.allCases.map(\.label),
                 selectedIndex: DlssFrameGenerationMode.allCases.firstIndex(of: settingsState.overrides.frameGeneration) ?? 0,
                 enabled: [settingsState.isFrameGenerationEnabled, settingsState.isDynamicFrameGenerationEnabled],
@@ -143,9 +132,8 @@ struct CloudDlssOverridesCard: View {
             ) { index in
                 viewModel.setDlssFrameGenerationMode(DlssFrameGenerationMode.allCases[index])
             }
-            if isFrameMultiplierVisible {
-                frameMultiplierRow
-            }
+            if !settingsState.isFrameGenerationEnabled { missingAccessNote }
+            if isFrameMultiplierVisible { frameMultiplierRow }
         }
     }
 
@@ -167,15 +155,10 @@ struct CloudDlssOverridesCard: View {
     }
 
     private var rayReconstructionSection: some View {
-        VStack(alignment: .leading, spacing: 14 * uiScale) {
-            featureHeading(
-                title: "Ray Reconstruction",
-                help: "Replaces the game's ray-traced denoisers. Only ray-traced games use it.",
-                isIncluded: settingsState.isRayReconstructionEnabled
-            )
+        VStack(alignment: .leading, spacing: 10 * uiScale) {
             SettingsOptionRow(
                 title: "Ray Reconstruction",
-                subtitle: "Which DLSS model the cloud rig uses for ray reconstruction.",
+                subtitle: "Which DLSS model the cloud rig uses to replace the game's ray-traced denoisers. Only ray-traced games use it.",
                 options: DlssModelPreset.labels(for: DlssModelPreset.rayReconstructionModels),
                 selectedIndex: DlssModelPreset.rayReconstructionModels.firstIndex(of: settingsState.overrides.normalized().rayReconstructionModel) ?? 0,
                 enabled: DlssModelPreset.rayReconstructionModels.map { _ in settingsState.isRayReconstructionEnabled },
@@ -183,6 +166,7 @@ struct CloudDlssOverridesCard: View {
             ) { index in
                 viewModel.setDlssRayReconstructionModel(DlssModelPreset.rayReconstructionModels[index])
             }
+            if !settingsState.isRayReconstructionEnabled { missingAccessNote }
         }
     }
 
@@ -257,16 +241,12 @@ struct CloudDlssOverridesCard: View {
         }
     }
 
-    /// A feature's heading, with the reason beside it when the membership does not include it.
-    private func featureHeading(title: String, help: String, isIncluded: Bool) -> some View {
-        HStack(alignment: .center, spacing: 8 * uiScale) {
-            SettingsRowTitle(title: title, isNew: false, help: help, uiScale: uiScale)
-            if !isIncluded {
-                Text(DlssAccessCopy.missing)
-                    .font(.settingsFont(size: 11 * uiScale, weight: .bold))
-                    .foregroundStyle(OPNDesign.Text.muted)
-            }
-            Spacer(minLength: 0)
-        }
+    /// Why a control is unavailable, directly under the control it qualifies.
+    private var missingAccessNote: some View {
+        Text(DlssAccessCopy.missing)
+            .font(.settingsFont(size: 11 * uiScale, weight: .bold))
+            .foregroundStyle(OPNDesign.Text.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityLabel(DlssAccessCopy.missing)
     }
 }
