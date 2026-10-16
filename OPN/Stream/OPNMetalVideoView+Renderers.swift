@@ -49,6 +49,7 @@ extension OPNMetalVideoView {
         os_unfair_lock_lock(&frameLock)
         diagnostics.isHDR = appliedTransfer.isHDR
         let presentationModeLabel = presentationMode.label
+        let drawableCount = appliedDrawableCount
         os_unfair_lock_unlock(&frameLock)
         if let renderDiagnosticsHandler {
             os_unfair_lock_lock(&frameLock)
@@ -67,6 +68,9 @@ extension OPNMetalVideoView {
                 framesReceived: received,
                 framesDrawn: framesDrawn,
                 presentationMode: presentationModeLabel,
+                drawableCount: drawableCount,
+                requestedFps: targetFps,
+                drawableResolution: diagnostics.drawableResolution,
                 presentLatencyMs: present.latency,
                 presentLatencyMaxMs: present.maximum,
                 presentJitterMs: present.jitter
