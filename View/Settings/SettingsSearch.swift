@@ -60,6 +60,17 @@ enum SettingsSearchIndex {
         SettingsSearchEntry("HUD Stream", .video, "advanced", keywords: ["overlay", "metadata"]),
         SettingsSearchEntry("Power Saver", .video, "advanced", keywords: ["battery", "efficiency", "thermal"]),
         SettingsSearchEntry("MetalFX Upscaling", .video, "upscaling", keywords: ["upscale", "sharpen", "spatial", "metal"]),
+        SettingsSearchEntry("Cloud DLSS Overrides", .video, "dlss", keywords: [
+            "dlss", "nvidia", "override", "cloud rig", "beta", "upscale", "super resolution", "dlaa",
+            "frame generation", "ray reconstruction", "multiplier", "input resolution", "model preset",
+        ]),
+        SettingsSearchEntry("Super Resolution", .video, "dlss", keywords: [
+            "dlss", "upscal", "render resolution", "quality", "balanced", "performance", "ultra performance",
+            "custom", "dlaa", "antialiasing", "anti-aliasing", "native resolution", "nvidia",
+        ]),
+        SettingsSearchEntry("Frame Generation", .video, "dlss", keywords: ["dlss", "fg", "dynamic", "multiplier", "generated frames", "smooth", "nvidia"]),
+        SettingsSearchEntry("Ray Reconstruction", .video, "dlss", keywords: ["dlss", "rr", "ray tracing", "denoise", "nvidia"]),
+        SettingsSearchEntry("Model Preset", .video, "dlss", keywords: ["dlss", "recommended", "model", "preset", "nvidia"]),
         SettingsSearchEntry("Clarity", .video, "upscaling", keywords: ["sharpness", "upscale"]),
         SettingsSearchEntry("Noise Reduction", .video, "upscaling", keywords: ["denoise", "grain", "upscale"]),
         SettingsSearchEntry("Frame Pacing", .video, "presentation", keywords: ["latency", "smooth", "stutter", "vsync", "present"]),

@@ -314,20 +314,29 @@ extension CatalogViewModel {
         let userId = session.userId.isEmpty ? account.userId : session.userId
         guard !userId.isEmpty else {
             subscriptionStatus = .unavailable
+            dlssMembershipState = .signedOut
             return
         }
+        dlssMembershipState = .loading
         gameService.fetchSubscriptionInfo(userId: userId) { [weak self] success, subscription, error in
             guard let self else { return }
             if success {
                 self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
                 OPNStreamPreferences.saveEntitledAudioChannelCount(subscription.entitledAudioChannelCount)
                 OPNStreamPreferences.saveEntitledInGameSettingsPersistence(subscription.isInGameSettingsPersistenceEntitled)
+                // Re-evaluated on every account change. The stored copy is what the launch path
+                // filters against, and the saved preference is kept whatever it says.
+                OPNStreamPreferences.saveDlssEntitlements(subscription.dlssEntitlements)
+                self.dlssMembershipState = .loaded(subscription.dlssEntitlements)
                 let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !membershipTier.isEmpty {
                     self.account.membershipTier = membershipTier
                 }
             } else if self.refreshAuthIfNeeded(error: error) {
                 self.subscriptionStatus = .unavailable
+                self.dlssMembershipState = .unavailable
+            } else {
+                self.dlssMembershipState = .unavailable
             }
         }
     }

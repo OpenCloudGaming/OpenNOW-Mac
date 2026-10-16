@@ -476,10 +476,21 @@ struct CatalogView: View {
             guard isCatalogPageActive else { return }
             appliedCatalogThemeIdentity = newIdentity
         }
-        .onChange(of: viewModel.selectedMainPage) { @MainActor _, _ in
+        .onChange(of: viewModel.selectedMainPage) { @MainActor _, page in
+            // Compatibility lookups and their announcements belong to the catalog page. Leaving it
+            // stops the timers; coming back re-reads the saved copy rather than replaying anything
+            // that was queued. Ahead of the guard below, which is false on the way out.
+            if page == .games, let game = viewModel.selectedGame {
+                viewModel.beginDlssCompatibilityLookup(for: game)
+            } else {
+                viewModel.endDlssCompatibilityLookup()
+            }
             guard isCatalogPageActive else { return }
             appliedCatalogThemeIdentity = themeIdentity
             refreshSyncConflictAlert()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            viewModel.suspendDlssAnnouncements()
         }
         .onChange(of: cloudSync.pendingConflicts) { @MainActor _, _ in refreshSyncConflictAlert() }
         .onAppear { @MainActor in refreshSyncConflictAlert() }
