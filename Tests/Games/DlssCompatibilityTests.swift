@@ -212,25 +212,25 @@ import Testing
         #expect(transport.requestCount == 2)
     }
 
+    /// The bounded first wait, asserted from what the service did rather than from wall-clock time:
+    /// the first caller enters exactly one wait, and the second does not enter one at all.
     @Test func theFirstLookupWaitsAtMostTheBoundedTimeAndOnlyOnce() async {
-        let transport = DlssStubTransport(
-            [.success(makeDlssListDocument([makeDlssRawRow("Fortnite", ["NV, T", "", "", "", "NV, T"])]))],
-            delay: 2
-        )
-        let service = makeService(transport: transport, clock: .live)
+        let transport = DlssGatedTransport(rows: [makeDlssListRow("Fortnite", ["NV, T", "", "", "", "NV, T"])])
+        let clock = DlssControlledClock()
+        let service = makeService(transport: transport, clock: clock.compatibilityClock)
 
-        let start = Date()
-        let first = await service.index(waitingUpTo: 0.3)
-        #expect(first == nil)
-        #expect(Date().timeIntervalSince(start) < 1.2, "the bounded wait must not hold the caller for the whole download")
+        async let firstCaller = service.index(waitingUpTo: 1.5)
+        await clock.waitUntilSleeping()
+        clock.releaseSleeps()
+        #expect(await firstCaller == nil, "no index yet, and the wait ended rather than blocking")
+        #expect(clock.sleeps == 1)
 
-        // A second caller does not wait at all while the first attempt is still in flight.
-        let secondStart = Date()
-        let second = await service.index(waitingUpTo: 0.3)
-        #expect(second == nil)
-        #expect(Date().timeIntervalSince(secondStart) < 0.2)
+        // The second caller gets what is in hand without waiting behind the download.
+        #expect(await service.index(waitingUpTo: 1.5) == nil)
+        #expect(clock.sleeps == 1, "the second caller entered a bounded wait of its own")
         #expect(transport.requestCount == 1)
 
+        transport.release()
         await service.awaitPendingRefresh()
         #expect(await service.currentSnapshot(forTitle: "Fortnite").outcome.isMatched)
         #expect(transport.requestCount == 1)

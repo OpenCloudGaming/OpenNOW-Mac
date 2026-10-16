@@ -47,6 +47,11 @@ final class DlssGatedTransport: DlssCompatibilityTransport, @unchecked Sendable 
         self.isReleasedImmediately = isReleasedImmediately
     }
 
+    /// How many fetches the service has started.
+    var requestCount: Int {
+        lock.withLock { isRequested ? 1 : 0 }
+    }
+
     func release() {
         let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
             isReleased = true
@@ -148,6 +153,54 @@ final class DlssTestClock: @unchecked Sendable {
 
     var compatibilityClock: DlssCompatibilityClock {
         DlssCompatibilityClock(now: { [self] in now }, sleep: { _ in })
+    }
+}
+
+/// A clock whose sleep the test releases by hand, so a bounded wait is asserted from what the
+/// service asked for rather than from how long the machine took.
+final class DlssControlledClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+    private var sleepCount = 0
+    private var isSleepReleased = false
+
+    init(_ date: Date = Date(timeIntervalSince1970: 1_700_000_000)) {
+        current = date
+    }
+
+    var now: Date {
+        lock.withLock { current }
+    }
+
+    /// How many bounded waits the service has entered.
+    var sleeps: Int {
+        lock.withLock { sleepCount }
+    }
+
+    func advance(_ seconds: TimeInterval) {
+        lock.withLock { current = current.addingTimeInterval(seconds) }
+    }
+
+    /// Returns once the service is inside its bounded wait.
+    func waitUntilSleeping() async {
+        while lock.withLock({ sleepCount }) == 0 {
+            await Task.yield()
+        }
+    }
+
+    func releaseSleeps() {
+        lock.withLock { isSleepReleased = true }
+    }
+
+    var compatibilityClock: DlssCompatibilityClock {
+        DlssCompatibilityClock(now: { [self] in now }, sleep: { [self] _ in await waitForRelease() })
+    }
+
+    private func waitForRelease() async {
+        lock.withLock { sleepCount += 1 }
+        while !lock.withLock({ isSleepReleased }) {
+            await Task.yield()
+        }
     }
 }
 
