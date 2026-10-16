@@ -49,9 +49,6 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
     /// The drawable format the layer is configured for, guarded by `frameLock` like
     /// `appliedTransfer`, so the render thread never reads `CAMetalLayer` to find out.
     nonisolated(unsafe) var appliedOutputFormat: MTLPixelFormat = .bgra8Unorm
-    /// The drawable pool size the layer is configured for, kept beside `appliedOutputFormat` for the
-    /// same reason: the diagnostics path runs off the main actor.
-    nonisolated(unsafe) var appliedDrawableCount = OPNVideoPresentationMode.balanced.drawableCount
     nonisolated(unsafe) var framesReceived: UInt64 = 0
     nonisolated(unsafe) var framesDrawn: UInt64 = 0
     nonisolated(unsafe) var presentationMode = OPNVideoPresentationMode.balanced
@@ -120,9 +117,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         if let metalLayer = metalView.layer as? CAMetalLayer {
             metalLayer.presentsWithTransaction = false
             metalLayer.allowsNextDrawableTimeout = false
-            // The initial pacing mode is `balanced`, and no transition runs for a mode that is
-            // already active, so construction applies the pool policy itself.
-            applyDrawableCount(for: presentationMode, to: metalLayer)
+            metalLayer.maximumDrawableCount = presentationMode.drawableCount
         }
         addSubview(metalView)
         if let device = metalView.device {

@@ -51,26 +51,8 @@ enum OPNVideoPresentationMode: Int, Sendable {
     /// Whether the frame is drawn the moment it decodes rather than on the display link's tick.
     var isDecodeDriven: Bool { self == .lowestLatency || self == .vrr }
 
-    /// How many drawables the layer keeps available for this pacing mode.
-    ///
-    /// `balanced` and `smooth` draw on the display link's tick and can only start a draw once the
-    /// pool hands them a free surface, so a pool of two leaves the loop waiting on a drawable the
-    /// previous frame still holds. Measured on the affected A18 Pro MacBook Neo (built-in 60 Hz
-    /// display, macOS 26.4, Game Mode on): at two drawables the surface presented 29.99 FPS /
-    /// 33.34 ms, while the same surface reached 59.98 FPS / 16.67 ms whenever presentation was
-    /// composited. Read-only disassembly of the official GFN 2.0.89.141 client agrees on the shape —
-    /// `MetalAsyncVideoFrameRenderer::updateDrawableCount()` picks three drawables on a
-    /// fixed-refresh display and two when variable refresh is available. A third slot lets the next
-    /// draw start before the previous frame reaches the screen.
-    ///
-    /// Three *available* drawables do not mean three frames stay queued: the extra slot only removes
-    /// a stall, and the fixed-refresh modes still draw one frame per refresh. The costs are the
-    /// third drawable's GPU memory — about 23 MB at the 3274x1844 this was measured at, in BGRA —
-    /// and, when the pool does saturate, at most one more queued frame of latency.
-    ///
-    /// `lowestLatency` stays at two: it draws the moment a frame decodes and already coalesces a
-    /// burst into a single draw (`OPNManualDrawGate`), so it has no display-link cadence to keep.
-    /// `vrr` keeps the three it has always had.
+    /// How many drawables the layer keeps available for this pacing mode. The measurement behind it
+    /// and its memory/latency trade-offs are in `docs/StreamTransportArchitecture.md`.
     var drawableCount: Int {
         switch self {
         case .balanced, .smooth, .vrr: 3
@@ -248,7 +230,8 @@ extension OPNMetalVideoView {
     }
 
     /// Switches how frames meet the display. Main actor: it reconfigures the layer and the
-    /// display link.
+    /// display link. The drawable pool is applied even for the mode already active, because the
+    /// launch path re-selects the mode the view was built with and no transition follows it.
     func setPresentationMode(_ mode: OPNVideoPresentationMode) {
         os_unfair_lock_lock(&frameLock)
         let previous = presentationMode
@@ -257,10 +240,7 @@ extension OPNMetalVideoView {
         arrivalQueue.removeAll()
         os_unfair_lock_unlock(&frameLock)
         let drawableLayer = metalView.layer as? CAMetalLayer
-        // The pool policy is enforced before the unchanged-mode early return. The launch path
-        // re-selects the mode the view was constructed with, so no transition follows that call —
-        // and the count has to hold for the session, not only across a switch.
-        applyDrawableCount(for: mode, to: drawableLayer)
+        drawableLayer?.maximumDrawableCount = mode.drawableCount
         guard previous != mode else { return }
         switch mode {
         case .lowestLatency, .vrr:
@@ -277,19 +257,6 @@ extension OPNMetalVideoView {
         updateRenderThread()
         resetDrawCadence()
         OPNLog.info(.stream, "Video presentation mode \(previous.label) -> \(mode.label)")
-    }
-
-    /// Puts the layer's drawable pool at the size `mode`'s policy asks for, and records it so the
-    /// diagnostics path can report it without reading `CAMetalLayer` off the main actor. Also the
-    /// one place the pool is configured, so construction and transitions cannot drift apart.
-    func applyDrawableCount(for mode: OPNVideoPresentationMode, to layer: CAMetalLayer?) {
-        let count = mode.drawableCount
-        if #available(macOS 10.13, *) {
-            layer?.maximumDrawableCount = count
-        }
-        os_unfair_lock_lock(&frameLock)
-        appliedDrawableCount = count
-        os_unfair_lock_unlock(&frameLock)
     }
 
     /// The frame this refresh should draw, or nil when there is nothing new. `smooth` hands out

@@ -2,43 +2,42 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// The drawable-pool policy behind the beta for the A18 Pro Neo's fullscreen Direct/30: the two
-/// refresh-driven modes keep a third drawable so the display-link loop is not waiting on a surface
-/// the previous frame still holds, while the decode-driven `lowestLatency` keeps its two.
+/// The drawable-pool policy behind the beta for the A18 Pro Neo's fullscreen Direct/30.
 @Suite struct OPNVideoDrawablePolicyTests {
-    @Test func refreshDrivenModesKeepThreeDrawables() {
+    @Test func balancedPacingKeepsThreeDrawables() {
         #expect(OPNVideoPresentationMode.balanced.drawableCount == 3)
+    }
+
+    @Test func smoothPacingKeepsThreeDrawables() {
         #expect(OPNVideoPresentationMode.smooth.drawableCount == 3)
     }
 
-    @Test func lowestLatencyKeepsTwoDrawables() {
+    @Test func lowestLatencyPacingKeepsTwoDrawables() {
         #expect(OPNVideoPresentationMode.lowestLatency.drawableCount == 2)
     }
 
-    @Test func vrrKeepsItsExistingThreeDrawables() {
+    @Test func vrrPacingKeepsThreeDrawables() {
         #expect(OPNVideoPresentationMode.vrr.drawableCount == 3)
     }
 
-    @Test func everyPacingModeKeepsADoubleBufferedPoolAtLeast() {
-        for mode in [OPNVideoPresentationMode.balanced, .smooth, .lowestLatency, .vrr] {
-            #expect(mode.drawableCount >= 2)
-        }
-    }
-
-    /// Construction is the only thing that configures the default pacing mode: the launch path
-    /// re-selects `balanced` on a view that already is `balanced`, and `setPresentationMode` returns
-    /// early for an unchanged mode. Both paths have to land on the policy's count.
     @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
-    @MainActor func constructionAndAnUnchangedReselectionBothApplyThePolicy() throws {
+    @MainActor func aFreshViewStartsWithThePoolItsDefaultPacingModeAsksFor() throws {
         let view = OPNMetalVideoView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), targetFps: 60)
         let layer = try #require(view.metalLayer)
         #expect(layer.maximumDrawableCount == OPNVideoPresentationMode.balanced.drawableCount)
+    }
+
+    @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
+    @MainActor func reselectingTheActivePacingModeStillAppliesItsPool() throws {
+        let view = OPNMetalVideoView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), targetFps: 60)
+        let layer = try #require(view.metalLayer)
+        layer.maximumDrawableCount = OPNVideoPresentationMode.lowestLatency.drawableCount
         view.setPresentationMode(.balanced)
         #expect(layer.maximumDrawableCount == OPNVideoPresentationMode.balanced.drawableCount)
     }
 
     @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
-    @MainActor func everyModeTransitionRestoresItsOwnPoolSize() throws {
+    @MainActor func eachPacingModeTransitionAppliesItsOwnPool() throws {
         let view = OPNMetalVideoView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), targetFps: 60)
         let layer = try #require(view.metalLayer)
         for mode in [OPNVideoPresentationMode.lowestLatency, .smooth, .balanced, .vrr, .balanced] {
