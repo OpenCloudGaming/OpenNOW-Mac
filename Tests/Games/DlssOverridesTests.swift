@@ -51,7 +51,7 @@ import Testing
         #expect(normalized == DlssOverrides.useGameSettings)
     }
 
-    @Test func multiplierExistsOnlyForDynamicFrameGeneration() {
+    @Test func theMultiplierExistsOnlyForDynamicFrameGeneration() {
         let dynamic = DlssOverrides(
             superResolutionMode: 0,
             superResolutionModel: 0,
@@ -109,15 +109,15 @@ import Testing
     @Test func modelPresetsUseThePublishedLetters() {
         #expect(DlssModelPreset.label(for: 0) == "In-game")
         #expect(DlssModelPreset.label(for: 1) == "Recommended")
-        #expect(DlssModelPreset.superResolutionModels.map(DlssModelPreset.label(for:)) == [
+        #expect(DlssModelPreset.labels(for: DlssModelPreset.superResolutionModels) == [
             "In-game", "Recommended", "Preset A", "Preset B", "Preset C", "Preset D", "Preset E", "Preset F",
             "Preset J", "Preset K", "Preset L", "Preset M",
         ])
-        #expect(DlssModelPreset.rayReconstructionModels.map(DlssModelPreset.label(for:)) == ["In-game", "Recommended", "Preset D", "Preset F"])
-        #expect(DlssModelPreset.frameGenerationModels.map(DlssModelPreset.label(for:)) == ["In-game", "Recommended", "Preset A", "Preset B"])
+        #expect(DlssModelPreset.labels(for: DlssModelPreset.rayReconstructionModels) == ["In-game", "Recommended", "Preset D", "Preset F"])
+        #expect(DlssModelPreset.labels(for: DlssModelPreset.frameGenerationModels) == ["In-game", "Recommended", "Preset A", "Preset B"])
     }
 
-    @Test func nextSessionRequestDescribesTheRequestNotAnActivation() {
+    @Test func theNextSessionRequestDescribesARequestRatherThanAnActivation() {
         var overrides = DlssOverrides.useGameSettings
         overrides.superResolutionModel = 1
         overrides.superResolutionMode = DlssSuperResolutionMode.quality.rawValue
@@ -249,8 +249,8 @@ import Testing
 
     // MARK: - Persistence and the launch flow
 
-    @Test func theStoredPreferenceRoundTripsAndSurvivesALapsedMembership() throws {
-        try withDlssPreferencesPreserved {
+    @Test func theStoredPreferenceSurvivesALapsedMembership() {
+        withDlssPreferencesPreserved {
             let stored = DlssOverrides(
                 superResolutionMode: DlssSuperResolutionMode.balanced.rawValue,
                 superResolutionModel: 1,
@@ -281,8 +281,8 @@ import Testing
         }
     }
 
-    @Test func theHudResetPathDoesNotTouchTheCloudOverride() throws {
-        try withDlssPreferencesPreserved {
+    @Test func theHudResetPathDoesNotTouchTheCloudOverride() {
+        withDlssPreferencesPreserved {
             var stored = DlssOverrides.useGameSettings
             stored.superResolutionModel = 1
             stored.superResolutionMode = DlssSuperResolutionMode.quality.rawValue
@@ -373,55 +373,58 @@ import Testing
         overrides.superResolutionScale = 67
 
         let signedOut = DlssSettingsState.make(overrides: overrides, membership: .signedOut, isStreamRunning: false)
-        #expect(signedOut.statusText == "Sign in to check DLSS override availability.")
-        #expect(signedOut.showsSummary == false)
+        #expect(signedOut.statusText == DlssAccessCopy.signedOut)
+        #expect(signedOut.isSummaryVisible == false)
 
         let loading = DlssSettingsState.make(overrides: overrides, membership: .loading, isStreamRunning: false)
-        #expect(loading.statusText == "Checking your membership…")
+        #expect(loading.statusText == DlssAccessCopy.membershipLoading)
 
         let missing = DlssSettingsState.make(overrides: overrides, membership: .loaded(.none), isStreamRunning: false)
-        #expect(missing.statusText == "Not included with your membership.")
-        #expect(missing.superResolutionEnabled == false)
+        #expect(missing.statusText == DlssAccessCopy.missing)
+        #expect(missing.isSuperResolutionEnabled == false)
 
         let included = DlssSettingsState.make(
             overrides: overrides,
             membership: .loaded(DlssEntitlements(superResolution: DlssCapability(isEntitled: true, isUpsell: false))),
             isStreamRunning: true
         )
-        #expect(included.statusText == DlssSettingsState.descriptionText)
-        #expect(included.superResolutionEnabled)
-        #expect(included.showsSummary)
+        #expect(included.statusText == DlssAccessCopy.description)
+        #expect(included.isSuperResolutionEnabled)
+        #expect(included.isSummaryVisible)
         #expect(included.summaryText == "SR Quality 67%  ·  FG In-game  ·  RR In-game")
-        #expect(included.showsNextSessionOnlyNote)
-        #expect(DlssSettingsState.nextSessionOnlyText == "Saved for your next session. Your current stream is unchanged.")
+        #expect(included.isNextSessionOnlyNoteVisible)
+        #expect(DlssAccessCopy.nextSessionOnly == "Saved for your next session. Your current stream is unchanged.")
     }
 
     @Test func anUnavailableMembershipReadsAsMissingAccessRatherThanEntitled() {
         let state = DlssSettingsState.make(overrides: .useGameSettings, membership: .unavailable, isStreamRunning: false)
-        #expect(state.statusText == DlssSettingsState.missingAccessText)
-        #expect(!state.superResolutionEnabled)
-        #expect(!state.frameGenerationEnabled)
-        #expect(!state.rayReconstructionEnabled)
-        #expect(!state.showsSummary)
+        #expect(state.statusText == DlssAccessCopy.missing)
+        #expect(!state.isSuperResolutionEnabled)
+        #expect(!state.isFrameGenerationEnabled)
+        #expect(!state.isRayReconstructionEnabled)
+        #expect(!state.isSummaryVisible)
     }
 
-    private func withDlssPreferencesPreserved(_ body: () throws -> Void) rethrows {
-        preferenceDomainTestLock.lock()
-        defer { preferenceDomainTestLock.unlock() }
-        let defaults = UserDefaults.standard
-        let keys = ["OpenNOW.Stream.DlssOverrides", "OpenNOW.Stream.DlssEntitlements"]
-        let previous = keys.map { ($0, defaults.object(forKey: $0)) }
-        defer {
-            for (key, value) in previous {
-                if let value {
-                    defaults.set(value, forKey: key)
-                } else {
-                    defaults.removeObject(forKey: key)
-                }
-            }
-            defaults.synchronize()
-        }
-        for key in keys { defaults.removeObject(forKey: key) }
-        try body()
+    @Test func theAccessCopySeparatesWhatTheGameSupportsFromWhatTheAccountIncludes() {
+        let entitled = DlssMembershipState.loaded(DlssEntitlements(
+            superResolution: DlssCapability(isEntitled: true, isUpsell: false),
+            frameGeneration: DlssCapability(isEntitled: false, isUpsell: true),
+            rayReconstruction: DlssCapability(isEntitled: false, isUpsell: false),
+            frameGenerationMultipliers: [3, 4]
+        ))
+        #expect(DlssAccessCopy.accessText(for: .superResolution, membership: entitled) == DlssAccessCopy.included)
+        #expect(DlssAccessCopy.accessText(for: .frameGeneration, membership: entitled) == DlssAccessCopy.upsell)
+        #expect(DlssAccessCopy.accessText(for: .rayReconstruction, membership: entitled) == DlssAccessCopy.missing)
+        // The multiplier ceiling follows the frame-generation entitlement, not the listed maximum.
+        #expect(DlssAccessCopy.multiplierAccessText(for: entitled) == DlssAccessCopy.missing)
+
+        let dynamicIncluded = DlssMembershipState.loaded(DlssEntitlements(
+            frameGeneration: DlssCapability(isEntitled: true, isUpsell: false),
+            frameGenerationMultipliers: [3, 4]
+        ))
+        #expect(DlssAccessCopy.multiplierAccessText(for: dynamicIncluded) == "Your membership includes up to 4×.")
+        #expect(DlssAccessCopy.accessText(for: .superResolution, membership: .signedOut) == DlssAccessCopy.signedOut)
+        #expect(DlssAccessCopy.accessText(for: .superResolution, membership: .loading) == DlssAccessCopy.membershipLoading)
+        #expect(DlssAccessCopy.multiplierAccessText(for: .loaded(.none)) == DlssAccessCopy.missing)
     }
 }

@@ -67,7 +67,7 @@ import Testing
         #expect(posted().count == 1)
     }
 
-    @Test @MainActor func oneStartPerCycleEvenWhenBothStartsAreOffered() {
+    @Test @MainActor func oneStartIsScheduledPerCycleEvenWhenBothStartsAreOffered() {
         let (announcer, scheduler, posted) = makeAnnouncer()
         announcer.beginCycle()
         announcer.handle(.initialLookupStarted)
@@ -148,39 +148,5 @@ import Testing
             "Updating DLSS compatibility. Showing saved information.",
             "Couldn't update DLSS compatibility. Showing saved information.",
         ])
-    }
-}
-
-/// A scheduler the test drives by hand: nothing fires until `advance(by:)` passes its due time.
-@MainActor
-final class DlssVirtualScheduler: DlssAnnouncementScheduling {
-    private struct Item {
-        let id: Int
-        let due: TimeInterval
-        let action: @MainActor () -> Void
-    }
-
-    private var now: TimeInterval = 0
-    private var items: [Item] = []
-    private var cancelled: Set<Int> = []
-    private var nextID = 0
-
-    func schedule(after delay: TimeInterval, _ action: @escaping @MainActor () -> Void) -> DlssAnnouncementTicket {
-        let id = nextID
-        nextID += 1
-        items.append(Item(id: id, due: now + delay, action: action))
-        return DlssAnnouncementTicket { [weak self] in
-            self?.cancelled.insert(id)
-        }
-    }
-
-    func advance(by seconds: TimeInterval) {
-        now += seconds
-        while true {
-            let due = items.filter { !cancelled.contains($0.id) && $0.due <= now }.min { $0.due < $1.due }
-            guard let due else { return }
-            items.removeAll { $0.id == due.id }
-            due.action()
-        }
     }
 }

@@ -1,17 +1,12 @@
 //  NVIDIA's DLSS games list: fetching it, caching it, and answering "what does the list say about
 //  this title" without ever holding a catalog load or a launch hostage.
-//
-//  The list is decoration. A missing, oversized or invalid document leaves every title unknown and
-//  the next demand retries - it never fails the catalog or the launch that asked for it. The first
-//  lookup in a process waits at most 1.5 seconds for the first attempt; after that the refresh runs
-//  in the background and a later result replaces what is shown, once.
 
 import Foundation
 
 /// A cached copy of the list: the parsed rows and when they were last successfully checked.
 public struct DlssCachedList: Codable, Equatable, Sendable {
-    public var rows: [DlssGamesRow]
-    public var checkedAt: Date
+    public let rows: [DlssGamesRow]
+    public let checkedAt: Date
 
     public init(rows: [DlssGamesRow], checkedAt: Date) {
         self.rows = rows
@@ -81,8 +76,8 @@ public struct DlssCompatibilityDiskCache: DlssCompatibilityCacheStoring {
 /// Time and waiting, injected so the TTL, the retry backoff and the bounded first wait are testable
 /// without a live network or a real clock.
 public struct DlssCompatibilityClock: Sendable {
-    public var now: @Sendable () -> Date
-    public var sleep: @Sendable (TimeInterval) async throws -> Void
+    public let now: @Sendable () -> Date
+    public let sleep: @Sendable (TimeInterval) async throws -> Void
 
     public init(now: @escaping @Sendable () -> Date, sleep: @escaping @Sendable (TimeInterval) async throws -> Void) {
         self.now = now
@@ -104,18 +99,11 @@ public actor OPNDlssCompatibilityService {
 
     /// What the app knows about the list right now.
     public enum ListState: Equatable, Sendable {
-        /// No usable data yet, and the first attempt is in flight.
         case loading
-        /// Usable data, checked within the cache lifetime.
         case ready
-        /// Saved data is past its lifetime and a refresh is in flight.
         case refreshing
-        /// Saved data is past its lifetime and the last refresh failed. Another demand retries no
-        /// sooner than the retry interval.
         case refreshFailed
-        /// Saved data is past its lifetime and no refresh is in flight.
         case stale
-        /// No usable data and the fetch failed.
         case unavailable
 
         public var hasSavedData: Bool {
@@ -134,12 +122,12 @@ public actor OPNDlssCompatibilityService {
     }
 
     public struct Snapshot: Equatable, Sendable {
-        public var outcome: DlssMatchOutcome
-        public var listState: ListState
-        public var lastSuccessfulCheck: Date?
-        /// The saved data came off disk this session rather than from a fetch this session, which is
-        /// what the "Cached ·" prefix on the freshness footer reports.
-        public var loadedFromCache: Bool
+        public let outcome: DlssMatchOutcome
+        public let listState: ListState
+        public let lastSuccessfulCheck: Date?
+        /// Whether the saved data came off disk this session, which is what the "Cached ·" prefix on
+        /// the freshness footer reports.
+        public let isLoadedFromCache: Bool
 
         public var hasSavedData: Bool { listState.hasSavedData }
         public var isStale: Bool { listState.isStale }
@@ -148,29 +136,29 @@ public actor OPNDlssCompatibilityService {
     private let transport: DlssCompatibilityTransport
     private let cache: DlssCompatibilityCacheStoring
     private let clock: DlssCompatibilityClock
-    private let listURL: URL
+    private let listURL: URL?
     private let cacheLifetime: TimeInterval
     private let retryInterval: TimeInterval
 
-    private var index: DlssGamesIndex?
+    private var gamesIndex: DlssGamesIndex?
     private var expiresAt = Date.distantPast
     private var retryAt = Date.distantPast
     private var isLoading = false
-    private var firstAttemptDone = false
-    private var firstWaitClaimed = false
+    private var isFirstAttemptDone = false
+    private var isFirstWaitClaimed = false
+    private var isFirstWaitEnded = false
+    private var isLastRefreshFailed = false
+    private var isLoadedFromCache = false
+    private var isCachedListRestored = false
     private var lastSuccessfulCheck: Date?
-    private var lastRefreshFailed = false
-    private var loadedFromCache = false
-    private var didPrepare = false
     private var loadTask: Task<Void, Never>?
     private var firstWaitContinuation: CheckedContinuation<Void, Never>?
-    private var firstWaitEnded = false
 
     public init(
         transport: DlssCompatibilityTransport = DlssHTTPTransport(),
         cache: DlssCompatibilityCacheStoring = DlssCompatibilityDiskCache(),
         clock: DlssCompatibilityClock = .live,
-        listURL: URL = DlssCompatibilityLimits.listURL,
+        listURL: URL? = URL(string: DlssCompatibilityLimits.listURLString),
         cacheLifetime: TimeInterval = DlssCompatibilityLimits.cacheLifetime,
         retryInterval: TimeInterval = DlssCompatibilityLimits.retryInterval
     ) {
@@ -182,163 +170,189 @@ public actor OPNDlssCompatibilityService {
         self.retryInterval = retryInterval
     }
 
-    /// The index, waiting at most `seconds` for the process's first attempt and never longer.
-    ///
-    /// Only one caller ever waits: the rest get whatever is in hand, so a slow download cannot make
-    /// a burst of catalog lookups all block behind it. The wait is ended either by the attempt
-    /// finishing or by its own timeout, whichever happens first - the download itself keeps going.
+    /// The index, waiting at most `seconds` for the process's first attempt and never longer. Only
+    /// one caller waits: a slow download cannot make a burst of lookups all block behind it.
     public func index(waitingUpTo seconds: TimeInterval = DlssCompatibilityLimits.firstLookupWait) async -> DlssGamesIndex? {
-        prepare()
-        startRefreshIfNeeded()
-        if let index { return index }
-        guard !firstAttemptDone, !firstWaitClaimed, isLoading else { return nil }
-        firstWaitClaimed = true
-        firstWaitEnded = false
+        restoreCachedList()
+        startRefreshWhenNeeded()
+        if let gamesIndex { return gamesIndex }
+        guard !isFirstAttemptDone, !isFirstWaitClaimed, isLoading else { return nil }
+        isFirstWaitClaimed = true
+        isFirstWaitEnded = false
         let clock = self.clock
         let timeout = Task { [weak self] in
             try? await clock.sleep(seconds)
             await self?.endFirstWait()
         }
         await withCheckedContinuation { continuation in
-            if firstWaitEnded {
+            if isFirstWaitEnded {
                 continuation.resume()
-            } else {
-                firstWaitContinuation = continuation
+                return
             }
+            firstWaitContinuation = continuation
         }
         timeout.cancel()
-        return index
+        return gamesIndex
     }
 
-    private func endFirstWait() {
-        firstWaitEnded = true
-        firstWaitContinuation?.resume()
-        firstWaitContinuation = nil
-    }
-
-    /// What the compatibility section should show for this title. Reading a snapshot is a demand:
-    /// it is what starts a refresh when the saved copy is past its lifetime.
+    /// What the compatibility section should show for this title. Reading a snapshot is a demand: it
+    /// is what starts a refresh when the saved copy is past its lifetime.
     public func snapshot(forTitle title: String) async -> Snapshot {
-        prepare()
-        startRefreshIfNeeded()
-        let outcome = index?.lookup(title) ?? .unknown
-        return Snapshot(
-            outcome: outcome,
-            listState: listState(),
-            lastSuccessfulCheck: lastSuccessfulCheck,
-            loadedFromCache: loadedFromCache
-        )
+        restoreCachedList()
+        startRefreshWhenNeeded()
+        return buildSnapshot(forTitle: title)
     }
 
     /// The snapshot without starting anything. For re-renders that must not add demand.
     public func currentSnapshot(forTitle title: String) -> Snapshot {
-        prepare()
-        return Snapshot(
-            outcome: index?.lookup(title) ?? .unknown,
-            listState: listState(),
-            lastSuccessfulCheck: lastSuccessfulCheck,
-            loadedFromCache: loadedFromCache
-        )
+        restoreCachedList()
+        return buildSnapshot(forTitle: title)
     }
 
     /// Waits for the in-flight refresh to finish, however long it takes. Used for the single
-    /// background update that may follow the UI's bounded wait; it never blocks a catalog load.
+    /// background update that may follow the UI's bounded wait.
     public func awaitPendingRefresh() async {
         while let task = loadTask {
             await task.value
         }
     }
 
-    private func prepare() {
-        guard !didPrepare else { return }
-        didPrepare = true
-        guard let cached = cache.load(), !cached.rows.isEmpty else { return }
-        index = DlssGamesIndex(rows: cached.rows)
-        lastSuccessfulCheck = cached.checkedAt
-        expiresAt = cached.checkedAt.addingTimeInterval(cacheLifetime)
-        loadedFromCache = true
+    private func buildSnapshot(forTitle title: String) -> Snapshot {
+        Snapshot(
+            outcome: gamesIndex?.lookup(title) ?? .unknown,
+            listState: currentListState(),
+            lastSuccessfulCheck: lastSuccessfulCheck,
+            isLoadedFromCache: isLoadedFromCache
+        )
     }
 
-    private func startRefreshIfNeeded() {
+    private func restoreCachedList() {
+        guard !isCachedListRestored else { return }
+        isCachedListRestored = true
+        guard let cached = cache.load(), !cached.rows.isEmpty else { return }
+        gamesIndex = DlssGamesIndex(rows: cached.rows)
+        lastSuccessfulCheck = cached.checkedAt
+        expiresAt = cached.checkedAt.addingTimeInterval(cacheLifetime)
+        isLoadedFromCache = true
+    }
+
+    private func startRefreshWhenNeeded() {
         let now = clock.now()
         guard !isLoading, now >= retryAt else { return }
-        guard index == nil || now >= expiresAt else { return }
+        guard gamesIndex == nil || now >= expiresAt else { return }
         isLoading = true
         loadTask = Task { await self.performLoad() }
     }
 
     private func performLoad() async {
+        guard let listURL else {
+            finishLoad(outcome: .failure(DlssCompatibilityFetchError.transport("invalid list URL")))
+            return
+        }
         do {
             let data = try await transport.fetchList(url: listURL, timeout: DlssCompatibilityLimits.fetchTimeout)
             let rows = try DlssGamesListParser.parse(data)
-            let completedAt = clock.now()
-            index = DlssGamesIndex(rows: rows)
-            expiresAt = completedAt.addingTimeInterval(cacheLifetime)
-            // A successful revalidation advances the last successful check even when the content is
-            // unchanged; a stale read never does.
-            lastSuccessfulCheck = completedAt
-            loadedFromCache = false
-            lastRefreshFailed = false
-            retryAt = .distantPast
-            cache.save(DlssCachedList(rows: rows, checkedAt: completedAt))
+            finishLoad(outcome: .success(rows))
         } catch {
-            lastRefreshFailed = true
-            // Back off on the next demand rather than polling. Saved data stays in place.
-            retryAt = clock.now().addingTimeInterval(retryInterval)
-            OPNDiagnostics.logWarningMessage(OPNDiagnostics.formattedLogMessage(level: "warning", area: "DLSS", message: "DLSS games list unavailable: \(Self.describe(error))"))
+            finishLoad(outcome: .failure(error))
+        }
+    }
+
+    private func finishLoad(outcome: Result<[DlssGamesRow], any Error>) {
+        switch outcome {
+        case let .success(rows):
+            acceptFetchedRows(rows)
+        case let .failure(error):
+            acceptFetchFailure(error)
         }
         isLoading = false
-        firstAttemptDone = true
+        isFirstAttemptDone = true
         loadTask = nil
         endFirstWait()
     }
 
-    private func listState() -> ListState {
-        guard index != nil else {
-            return firstAttemptDone && !isLoading ? .unavailable : .loading
+    private func acceptFetchedRows(_ rows: [DlssGamesRow]) {
+        let completedAt = clock.now()
+        gamesIndex = DlssGamesIndex(rows: rows)
+        expiresAt = completedAt.addingTimeInterval(cacheLifetime)
+        // A successful revalidation advances the last successful check even when nothing changed; a
+        // stale read never does.
+        lastSuccessfulCheck = completedAt
+        isLoadedFromCache = false
+        isLastRefreshFailed = false
+        retryAt = .distantPast
+        cache.save(DlssCachedList(rows: rows, checkedAt: completedAt))
+    }
+
+    private func acceptFetchFailure(_ error: any Error) {
+        isLastRefreshFailed = true
+        // Back off on the next demand rather than polling. Saved data stays in place.
+        retryAt = clock.now().addingTimeInterval(retryInterval)
+        OPNDiagnostics.logWarningMessage(
+            OPNDiagnostics.formattedLogMessage(level: "warning", area: "DLSS", message: "DLSS games list unavailable: \(Self.diagnosticMessage(for: error))")
+        )
+    }
+
+    private func currentListState() -> ListState {
+        guard gamesIndex != nil else {
+            guard isFirstAttemptDone, !isLoading else { return .loading }
+            return .unavailable
         }
-        if isLoading { return .refreshing }
-        if lastRefreshFailed { return .refreshFailed }
+        guard !isLoading else { return .refreshing }
+        guard !isLastRefreshFailed else { return .refreshFailed }
         return clock.now() >= expiresAt ? .stale : .ready
     }
 
-    private static func describe(_ error: Error) -> String {
+    private func endFirstWait() {
+        isFirstWaitEnded = true
+        firstWaitContinuation?.resume()
+        firstWaitContinuation = nil
+    }
+
+    private static func diagnosticMessage(for error: any Error) -> String {
         switch error {
         case let DlssCompatibilityFetchError.http(status): "HTTP \(status)"
         case DlssCompatibilityFetchError.tooLarge: "document larger than 4 MiB"
         case let DlssCompatibilityFetchError.transport(reason): reason
-        case DlssGamesListError.tooLarge: "document larger than 4 MiB"
         case let DlssGamesListError.malformed(reason): reason
+        case DlssGamesListError.tooLarge: "document larger than 4 MiB"
         default: String(describing: error)
         }
     }
 }
 
+/// The glyph a compatibility state carries. Text plus an icon, never colour alone.
+public enum DlssCompatibilityGlyph: Equatable, Sendable {
+    case none
+    /// An animated indicator, drawn only while the app is inside its bounded wait.
+    case progress
+    case clock
+    case warning
+    case question
+    case info
+}
+
 /// The compatibility section's exact copy, built from a snapshot. Pure, so every state combination
 /// can be asserted without rendering.
 public struct DlssCompatibilityPresentation: Equatable, Sendable {
-    public var statusText: String
-    public var statusSupportingText: String
-    public var statusShowsProgress: Bool
-    public var statusShowsWarning: Bool
+    public struct CompactChip: Equatable, Sendable {
+        public let label: String
+        public let accessibilityLabel: String
+        public let isStale: Bool
+    }
+
+    public let statusText: String
+    public let statusSupportingText: String
+    public let statusGlyph: DlssCompatibilityGlyph
     /// The feature table's source. Nil when the table is replaced by an unknown or unavailable
     /// message.
-    public var support: DlssGameSupport?
-    public var unknownTitle: String
-    public var unknownBody: String
-    public var freshnessText: String
-    public var freshnessSupportingText: String
-    public var freshnessShowsProgress: Bool
-    public var freshnessShowsWarning: Bool
-    public var freshnessHelpText: String
-    public var sourceFooter: String
-    public var compactChip: CompactChip?
-
-    public struct CompactChip: Equatable, Sendable {
-        public var label: String
-        public var accessibilityLabel: String
-        public var isStale: Bool
-    }
+    public let gameSupport: DlssGameSupport?
+    public let freshnessText: String
+    public let freshnessSupportingText: String
+    public let freshnessGlyph: DlssCompatibilityGlyph
+    public let freshnessHelpText: String
+    public let sourceFooter: String
+    public let compactChip: CompactChip?
 
     public static let unknownTitle = "DLSS compatibility unknown"
     public static let unknownBody = "We couldn't confirm this game's DLSS compatibility from NVIDIA's list. This does not mean DLSS is unsupported."
@@ -350,93 +364,108 @@ public struct DlssCompatibilityPresentation: Equatable, Sendable {
     public static let staleChipAccessibilityLabel = "DLSS compatibility information may be outdated."
     public static let freshChipAccessibilityLabel = "DLSS compatibility information available."
 
-    public static func make(_ snapshot: OPNDlssCompatibilityService.Snapshot, locale: Locale = .current) -> DlssCompatibilityPresentation {
-        let support = snapshot.outcome.support
-        let staleSupportingText = snapshot.lastSuccessfulCheck.map { "Last checked \(Self.timestamp($0, locale: locale)). Compatibility information may have changed." } ?? ""
-
-        var presentation = DlssCompatibilityPresentation(
-            statusText: "",
-            statusSupportingText: "",
-            statusShowsProgress: false,
-            statusShowsWarning: false,
-            support: support,
-            unknownTitle: "",
-            unknownBody: "",
-            freshnessText: "",
-            freshnessSupportingText: "",
-            freshnessShowsProgress: false,
-            freshnessShowsWarning: false,
-            freshnessHelpText: "",
-            sourceFooter: sourceFooter,
-            compactChip: nil
-        )
-
-        switch snapshot.listState {
-        case .loading:
-            presentation.statusText = loadingText
-            presentation.statusSupportingText = loadingSupportingText
-            presentation.statusShowsProgress = true
-        case .unavailable:
-            presentation.statusText = unavailableText
-        case .ready, .refreshing, .refreshFailed, .stale:
-            if support == nil {
-                presentation.statusText = unknownTitle
-                presentation.statusSupportingText = unknownBody
-            }
-        }
-
-        switch snapshot.listState {
-        case .ready:
-            let checked = snapshot.lastSuccessfulCheck.map { Self.timestamp($0, locale: locale) } ?? ""
-            presentation.freshnessText = snapshot.loadedFromCache ? "Cached · Checked \(checked)" : "Checked \(checked)"
-            presentation.freshnessHelpText = snapshot.loadedFromCache ? cachedHelpText : ""
-        case .refreshing:
-            presentation.freshnessText = "Saved information · Updating…"
-            presentation.freshnessSupportingText = staleSupportingText
-            presentation.freshnessShowsProgress = true
-            presentation.freshnessShowsWarning = true
-        case .refreshFailed:
-            presentation.freshnessText = "Saved information · Update unavailable"
-            presentation.freshnessSupportingText = staleSupportingText
-            presentation.freshnessShowsWarning = true
-        case .stale:
-            let checked = snapshot.lastSuccessfulCheck.map { Self.timestamp($0, locale: locale) } ?? ""
-            presentation.freshnessText = "Cached · Checked \(checked)"
-            presentation.freshnessSupportingText = staleSupportingText
-        case .loading, .unavailable:
-            break
-        }
-
-        if support != nil {
-            presentation.compactChip = CompactChip(
-                label: "DLSS",
-                accessibilityLabel: snapshot.isStale ? staleChipAccessibilityLabel : freshChipAccessibilityLabel,
-                isStale: snapshot.isStale
-            )
-        }
-        return presentation
-    }
-
-    private static func timestamp(_ date: Date, locale: Locale) -> String {
-        date.formatted(.dateTime.month(.abbreviated).day().year().hour().minute().locale(locale))
-    }
-
     /// What the section shows before anything is known. The view model replaces it with a real
     /// snapshot as soon as the bounded lookup answers.
     public static let checking = DlssCompatibilityPresentation(
         statusText: loadingText,
         statusSupportingText: loadingSupportingText,
-        statusShowsProgress: true,
-        statusShowsWarning: false,
-        support: nil,
-        unknownTitle: "",
-        unknownBody: "",
+        statusGlyph: .progress,
+        gameSupport: nil,
         freshnessText: "",
         freshnessSupportingText: "",
-        freshnessShowsProgress: false,
-        freshnessShowsWarning: false,
+        freshnessGlyph: .none,
         freshnessHelpText: "",
         sourceFooter: sourceFooter,
         compactChip: nil
     )
+
+    public static func make(_ snapshot: OPNDlssCompatibilityService.Snapshot, locale: Locale = .current) -> DlssCompatibilityPresentation {
+        let checkedTimestamp = snapshot.lastSuccessfulCheck.map { timestamp($0, locale: locale) }
+        return DlssCompatibilityPresentation(
+            statusText: statusText(for: snapshot),
+            statusSupportingText: statusSupportingText(for: snapshot),
+            statusGlyph: statusGlyph(for: snapshot),
+            gameSupport: snapshot.outcome.gameSupport,
+            freshnessText: freshnessText(for: snapshot, checkedTimestamp: checkedTimestamp),
+            freshnessSupportingText: freshnessSupportingText(for: snapshot, checkedTimestamp: checkedTimestamp),
+            freshnessGlyph: freshnessGlyph(for: snapshot),
+            freshnessHelpText: snapshot.isLoadedFromCache ? cachedHelpText : "",
+            sourceFooter: sourceFooter,
+            compactChip: compactChip(for: snapshot)
+        )
+    }
+
+    private static func statusText(for snapshot: OPNDlssCompatibilityService.Snapshot) -> String {
+        switch snapshot.listState {
+        case .loading: loadingText
+        case .unavailable: unavailableText
+        case .ready, .refreshing, .refreshFailed, .stale: snapshot.outcome.isMatched ? "" : unknownTitle
+        }
+    }
+
+    private static func statusSupportingText(for snapshot: OPNDlssCompatibilityService.Snapshot) -> String {
+        switch snapshot.listState {
+        case .loading: loadingSupportingText
+        case .unavailable: ""
+        case .ready, .refreshing, .refreshFailed, .stale: snapshot.outcome.isMatched ? "" : unknownBody
+        }
+    }
+
+    private static func statusGlyph(for snapshot: OPNDlssCompatibilityService.Snapshot) -> DlssCompatibilityGlyph {
+        switch snapshot.listState {
+        case .loading: .progress
+        case .unavailable: .info
+        case .ready, .refreshing, .refreshFailed, .stale: snapshot.outcome.isMatched ? .none : .question
+        }
+    }
+
+    private static func freshnessText(for snapshot: OPNDlssCompatibilityService.Snapshot, checkedTimestamp: String?) -> String {
+        switch snapshot.listState {
+        case .loading, .unavailable: ""
+        case .ready: checkedText(checkedTimestamp, isCached: snapshot.isLoadedFromCache)
+        case .stale: checkedText(checkedTimestamp, isCached: true)
+        case .refreshing: "Saved information · Updating…"
+        case .refreshFailed: "Saved information · Update unavailable"
+        }
+    }
+
+    private static func freshnessSupportingText(for snapshot: OPNDlssCompatibilityService.Snapshot, checkedTimestamp: String?) -> String {
+        switch snapshot.listState {
+        case .loading, .unavailable, .ready: ""
+        case .refreshing, .refreshFailed, .stale: staleSupportingText(checkedTimestamp)
+        }
+    }
+
+    private static func freshnessGlyph(for snapshot: OPNDlssCompatibilityService.Snapshot) -> DlssCompatibilityGlyph {
+        switch snapshot.listState {
+        case .loading, .unavailable: .none
+        case .ready: .clock
+        case .stale: .clock
+        case .refreshing: .progress
+        case .refreshFailed: .warning
+        }
+    }
+
+    private static func compactChip(for snapshot: OPNDlssCompatibilityService.Snapshot) -> CompactChip? {
+        guard snapshot.outcome.isMatched else { return nil }
+        return CompactChip(
+            label: "DLSS",
+            accessibilityLabel: snapshot.isStale ? staleChipAccessibilityLabel : freshChipAccessibilityLabel,
+            isStale: snapshot.isStale
+        )
+    }
+
+    private static func checkedText(_ checkedTimestamp: String?, isCached: Bool) -> String {
+        let checked = "Checked \(checkedTimestamp ?? "")"
+        guard isCached else { return checked }
+        return "Cached · \(checked)"
+    }
+
+    private static func staleSupportingText(_ checkedTimestamp: String?) -> String {
+        "Last checked \(checkedTimestamp ?? ""). Compatibility information may have changed."
+    }
+
+    private static func timestamp(_ date: Date, locale: Locale) -> String {
+        date.formatted(.dateTime.month(.abbreviated).day().year().hour().minute().locale(locale))
+    }
 }

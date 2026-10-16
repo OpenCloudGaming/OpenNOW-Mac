@@ -1,14 +1,10 @@
 //  The catalog's side of cloud DLSS: the global override the settings card edits, the membership
 //  state that decides what may be requested, and the selected game's compatibility presentation.
-//
-//  Everything here describes a request. Nothing in this file claims an override is active, and
-//  nothing in it touches the stream HUD.
 
 import Foundation
 
-/// Where the BETA tag belongs, in one place. The tag qualifies OpenNOW's integration, so it rides
-/// the two headings that present that integration - never the Video destination, never the other
-/// feature rows, and never the compact compatibility chip.
+/// Where the BETA tag belongs, in one place. The tag qualifies OpenNOW's integration, so it rides the
+/// two headings that present that integration and nothing else.
 enum DlssBetaScope {
     static let cardTitle = "Cloud DLSS Overrides"
     static let sectionTitle = "DLSS Compatibility"
@@ -16,8 +12,8 @@ enum DlssBetaScope {
     static let sectionHeadingAccessibilityLabel = "DLSS Compatibility, Beta"
     static let chipLabel = "DLSS"
 
-    /// The surfaces that carry the tag. The compact chip is listed as untagged so a future change
-    /// that tags it has to change this list deliberately.
+    /// The surfaces that carry the tag. The untagged list is stated so extending the tag is a
+    /// deliberate edit rather than a local judgement.
     static let taggedSurfaces = [cardTitle, sectionTitle]
     static let untaggedSurfaces = ["Video destination", "Compact compatibility chip", "Feature rows"]
 
@@ -26,59 +22,86 @@ enum DlssBetaScope {
     }
 }
 
+/// Every string the DLSS surfaces show, so the settings card and the game info section agree on the
+/// account's state and on what a missing entitlement means.
+enum DlssAccessCopy {
+    static let description = "Runs on the GeForce NOW cloud rig. Applies when your next session starts."
+    static let betaHelp = "OpenNOW's DLSS integration is in beta. Availability and results depend on the game, membership, and cloud rig."
+    static let signedOut = "Sign in to check DLSS override availability."
+    static let membershipLoading = "Checking your membership…"
+    static let missing = "Not included with your membership."
+    static let upsell = "Not included with your membership. Your membership can add it."
+    static let included = "Included with your membership"
+    static let nextSessionOnly = "Saved for your next session. Your current stream is unchanged."
+    static let summaryHeading = "Next session request"
+    static let resetAction = "Use game settings"
+    static let notIncludedList = "Not included: %@. A membership with these overrides unlocks them."
+
+    /// The card's one-line status.
+    static func statusText(for membership: DlssMembershipState) -> String {
+        guard !membership.isSignedOut else { return signedOut }
+        guard !membership.isLoading else { return membershipLoading }
+        guard membership.entitlements.hasAnyEntitlement else { return missing }
+        return description
+    }
+
+    /// One feature's membership position, which is separate from what the game supports.
+    static func accessText(for feature: DlssCompatibilityFeature, membership: DlssMembershipState) -> String {
+        guard !membership.isSignedOut else { return signedOut }
+        guard !membership.isLoading else { return membershipLoading }
+        let capability = membership.entitlements.capability(for: feature)
+        guard capability.isEntitled else { return capability.isUpsell ? upsell : missing }
+        return included
+    }
+
+    /// The account's multiplier ceiling, which is separate from the maximum NVIDIA lists.
+    static func multiplierAccessText(for membership: DlssMembershipState) -> String {
+        guard !membership.isSignedOut else { return signedOut }
+        guard !membership.isLoading else { return membershipLoading }
+        let entitlements = membership.entitlements
+        guard entitlements.frameGeneration.isEntitled, let highest = entitlements.highestAllowedFrameGenerationMultiplier else {
+            return missing
+        }
+        return "Your membership includes up to \(highest)×."
+    }
+
+    static func notIncludedList(_ labels: [String]) -> String {
+        String(format: notIncludedList, labels.joined(separator: ", "))
+    }
+}
+
 /// Everything the Cloud DLSS Overrides card renders, derived from the saved preference and the
 /// membership state so every combination is assertable without standing up a view.
 struct DlssSettingsState: Equatable, Sendable {
-    /// The card's one-line status: signed out, still checking, or what the controls will do.
-    var statusText: String
-    var superResolutionEnabled: Bool
-    var frameGenerationEnabled: Bool
+    let statusText: String
+    let isSuperResolutionEnabled: Bool
+    let isFrameGenerationEnabled: Bool
     /// Dynamic frame generation additionally needs at least one multiplier in the membership.
-    var dynamicFrameGenerationEnabled: Bool
-    var rayReconstructionEnabled: Bool
+    let isDynamicFrameGenerationEnabled: Bool
+    let isRayReconstructionEnabled: Bool
     /// Multipliers the membership includes, ascending. Empty when frame generation is not included.
-    var allowedMultipliers: [Int]
+    let allowedMultipliers: [Int]
     /// Features the membership lacks but NVIDIA upsells, in display order.
-    var upsellFeatureLabels: [String]
-    /// Whether the "Next session request" summary is meaningful yet.
-    var showsSummary: Bool
-    var summaryText: String
+    let upsellFeatureLabels: [String]
+    let isSummaryVisible: Bool
+    let summaryText: String
     /// True while a stream is live, so an edit says it applies to the next session rather than now.
-    var showsNextSessionOnlyNote: Bool
-    var overrides: DlssOverrides
-
-    static let descriptionText = "Runs on the GeForce NOW cloud rig. Applies when your next session starts."
-    static let betaHelpText = "OpenNOW's DLSS integration is in beta. Availability and results depend on the game, membership, and cloud rig."
-    static let signedOutText = "Sign in to check DLSS override availability."
-    static let membershipLoadingText = "Checking your membership…"
-    static let missingAccessText = "Not included with your membership."
-    static let nextSessionOnlyText = "Saved for your next session. Your current stream is unchanged."
-    static let summaryHeading = "Next session request"
-    static let resetActionTitle = "Use game settings"
+    let isNextSessionOnlyNoteVisible: Bool
+    let overrides: DlssOverrides
 
     static func make(overrides: DlssOverrides, membership: DlssMembershipState, isStreamRunning: Bool) -> DlssSettingsState {
         let entitlements = membership.entitlements
-        let statusText: String
-        if membership.isSignedOut {
-            statusText = signedOutText
-        } else if membership.isLoading {
-            statusText = membershipLoadingText
-        } else if !entitlements.hasAnyEntitlement {
-            statusText = missingAccessText
-        } else {
-            statusText = descriptionText
-        }
         return DlssSettingsState(
-            statusText: statusText,
-            superResolutionEnabled: entitlements.superResolution.isEntitled,
-            frameGenerationEnabled: entitlements.frameGeneration.isEntitled,
-            dynamicFrameGenerationEnabled: entitlements.supportsDynamicFrameGeneration,
-            rayReconstructionEnabled: entitlements.rayReconstruction.isEntitled,
+            statusText: DlssAccessCopy.statusText(for: membership),
+            isSuperResolutionEnabled: entitlements.superResolution.isEntitled,
+            isFrameGenerationEnabled: entitlements.frameGeneration.isEntitled,
+            isDynamicFrameGenerationEnabled: entitlements.supportsDynamicFrameGeneration,
+            isRayReconstructionEnabled: entitlements.rayReconstruction.isEntitled,
             allowedMultipliers: entitlements.allowedFrameGenerationMultipliers,
             upsellFeatureLabels: entitlements.upsellFeatureLabels,
-            showsSummary: entitlements.hasAnyEntitlement,
+            isSummaryVisible: entitlements.hasAnyEntitlement,
             summaryText: overrides.applyingAccess(entitlements).nextSessionRequestSummary,
-            showsNextSessionOnlyNote: isStreamRunning,
+            isNextSessionOnlyNoteVisible: isStreamRunning,
             overrides: overrides
         )
     }
@@ -96,8 +119,8 @@ extension CatalogViewModel {
     var dlssModelPreset: DlssModelPreset.Choice {
         let overrides = dlssOverrides.normalized()
         let models = [overrides.superResolutionModel, overrides.frameGenerationModel, overrides.rayReconstructionModel]
-        if models.allSatisfy({ $0 == 0 }) { return .inGame }
-        if models.allSatisfy({ $0 == 1 }) { return .recommended }
+        guard !models.allSatisfy({ $0 == 0 }) else { return .inGame }
+        guard !models.allSatisfy({ $0 == 1 }) else { return .recommended }
         return .custom
     }
 
@@ -108,8 +131,7 @@ extension CatalogViewModel {
         var overrides = dlssOverrides
         overrides.superResolutionMode = mode.rawValue
         overrides.superResolutionScale = mode.fixedInputScale ?? overrides.superResolutionScale
-        // Naming a mode is naming an override, so a model left to the game has to be raised with it.
-        if mode != .inGame, overrides.superResolutionModel == 0 { overrides.superResolutionModel = 1 }
+        raiseUnsetSuperResolutionModel(&overrides)
         saveDlssOverrides(overrides)
     }
 
@@ -118,7 +140,7 @@ extension CatalogViewModel {
         var overrides = dlssOverrides
         overrides.superResolutionMode = DlssSuperResolutionMode.custom.rawValue
         overrides.superResolutionScale = scale
-        if overrides.superResolutionModel == 0 { overrides.superResolutionModel = 1 }
+        raiseUnsetSuperResolutionModel(&overrides)
         saveDlssOverrides(overrides)
     }
 
@@ -126,10 +148,12 @@ extension CatalogViewModel {
         guard dlssMembershipState.entitlements.superResolution.isEntitled else { return }
         var overrides = dlssOverrides
         overrides.superResolutionModel = model
-        if model == 0 {
-            overrides.superResolutionMode = 0
-            overrides.superResolutionScale = DlssSuperResolutionMode.inGame.fixedInputScale ?? 100
+        guard model == 0 else {
+            saveDlssOverrides(overrides)
+            return
         }
+        overrides.superResolutionMode = DlssSuperResolutionMode.inGame.rawValue
+        overrides.superResolutionScale = DlssSuperResolutionMode.inGame.fixedInputScale ?? 100
         saveDlssOverrides(overrides)
     }
 
@@ -139,25 +163,29 @@ extension CatalogViewModel {
         guard mode != .dynamic || entitlements.supportsDynamicFrameGeneration else { return }
         var overrides = dlssOverrides
         overrides.frameGenerationMode = mode.rawValue
-        if mode == .inGame {
+        guard mode == .dynamic else {
             overrides.frameGenerationMultiplier = 0
-        } else {
-            if overrides.frameGenerationModel == 0 { overrides.frameGenerationModel = 1 }
-            let allowed = entitlements.allowedFrameGenerationMultipliers
-            if !allowed.contains(overrides.frameGenerationMultiplier) {
-                overrides.frameGenerationMultiplier = allowed.min() ?? DlssOverrides.frameGenerationMultipliers[0]
-            }
+            saveDlssOverrides(overrides)
+            return
         }
+        raiseUnsetFrameGenerationModel(&overrides)
+        let allowed = entitlements.allowedFrameGenerationMultipliers
+        guard !allowed.contains(overrides.frameGenerationMultiplier) else {
+            saveDlssOverrides(overrides)
+            return
+        }
+        overrides.frameGenerationMultiplier = allowed.min() ?? DlssOverrides.frameGenerationMultipliers[0]
         saveDlssOverrides(overrides)
     }
 
     func setDlssFrameGenerationMultiplier(_ multiplier: Int) {
         let entitlements = dlssMembershipState.entitlements
-        guard entitlements.frameGeneration.isEntitled, entitlements.allowedFrameGenerationMultipliers.contains(multiplier) else { return }
+        guard entitlements.frameGeneration.isEntitled else { return }
+        guard entitlements.allowedFrameGenerationMultipliers.contains(multiplier) else { return }
         var overrides = dlssOverrides
         overrides.frameGenerationMode = DlssFrameGenerationMode.dynamic.rawValue
         overrides.frameGenerationMultiplier = multiplier
-        if overrides.frameGenerationModel == 0 { overrides.frameGenerationModel = 1 }
+        raiseUnsetFrameGenerationModel(&overrides)
         saveDlssOverrides(overrides)
     }
 
@@ -165,10 +193,12 @@ extension CatalogViewModel {
         guard dlssMembershipState.entitlements.frameGeneration.isEntitled else { return }
         var overrides = dlssOverrides
         overrides.frameGenerationModel = model
-        if model == 0 {
-            overrides.frameGenerationMode = 0
-            overrides.frameGenerationMultiplier = 0
+        guard model == 0 else {
+            saveDlssOverrides(overrides)
+            return
         }
+        overrides.frameGenerationMode = DlssFrameGenerationMode.inGame.rawValue
+        overrides.frameGenerationMultiplier = 0
         saveDlssOverrides(overrides)
     }
 
@@ -187,21 +217,9 @@ extension CatalogViewModel {
         var overrides = dlssOverrides
         switch preset {
         case .inGame:
-            if entitlements.superResolution.isEntitled {
-                overrides.superResolutionModel = 0
-                overrides.superResolutionMode = 0
-                overrides.superResolutionScale = DlssSuperResolutionMode.inGame.fixedInputScale ?? 100
-            }
-            if entitlements.frameGeneration.isEntitled {
-                overrides.frameGenerationModel = 0
-                overrides.frameGenerationMode = 0
-                overrides.frameGenerationMultiplier = 0
-            }
-            if entitlements.rayReconstruction.isEntitled { overrides.rayReconstructionModel = 0 }
+            applyInGameModels(to: &overrides, entitlements: entitlements)
         case .recommended:
-            if entitlements.superResolution.isEntitled { overrides.superResolutionModel = 1 }
-            if entitlements.frameGeneration.isEntitled { overrides.frameGenerationModel = 1 }
-            if entitlements.rayReconstruction.isEntitled { overrides.rayReconstructionModel = 1 }
+            applyRecommendedModels(to: &overrides, entitlements: entitlements)
         case .custom:
             break
         }
@@ -212,6 +230,37 @@ extension CatalogViewModel {
         saveDlssOverrides(.useGameSettings)
     }
 
+    private func applyInGameModels(to overrides: inout DlssOverrides, entitlements: DlssEntitlements) {
+        if entitlements.superResolution.isEntitled {
+            overrides.superResolutionModel = 0
+            overrides.superResolutionMode = DlssSuperResolutionMode.inGame.rawValue
+            overrides.superResolutionScale = DlssSuperResolutionMode.inGame.fixedInputScale ?? 100
+        }
+        if entitlements.frameGeneration.isEntitled {
+            overrides.frameGenerationModel = 0
+            overrides.frameGenerationMode = DlssFrameGenerationMode.inGame.rawValue
+            overrides.frameGenerationMultiplier = 0
+        }
+        if entitlements.rayReconstruction.isEntitled { overrides.rayReconstructionModel = 0 }
+    }
+
+    private func applyRecommendedModels(to overrides: inout DlssOverrides, entitlements: DlssEntitlements) {
+        if entitlements.superResolution.isEntitled { overrides.superResolutionModel = 1 }
+        if entitlements.frameGeneration.isEntitled { overrides.frameGenerationModel = 1 }
+        if entitlements.rayReconstruction.isEntitled { overrides.rayReconstructionModel = 1 }
+    }
+
+    /// Naming a mode or a model is naming an override, so a model left to the game is raised with it.
+    private func raiseUnsetSuperResolutionModel(_ overrides: inout DlssOverrides) {
+        guard overrides.superResolutionModel == 0 else { return }
+        overrides.superResolutionModel = 1
+    }
+
+    private func raiseUnsetFrameGenerationModel(_ overrides: inout DlssOverrides) {
+        guard overrides.frameGenerationModel == 0 else { return }
+        overrides.frameGenerationModel = 1
+    }
+
     private func saveDlssOverrides(_ overrides: DlssOverrides) {
         OPNStreamPreferences.saveDlssOverrides(overrides)
         dlssOverrides = overrides
@@ -219,8 +268,41 @@ extension CatalogViewModel {
 
     // MARK: - Compatibility
 
-    /// The compact chip the detail panel may wear for this game. Nil until the lookup has answered
-    /// for this exact game, so an unknown or still-loading title gets no empty placeholder pill.
+    /// Starts (or joins) the lookup for the game whose details are open. The UI's bounded wait is the
+    /// first 1.5 seconds; a slow download finishes in the background and replaces the result once.
+    func beginDlssCompatibilityLookup(for game: OPNCatalogGameObject) {
+        let key = game.catalogIdentity
+        guard !isDlssLookupActive || dlssCompatibilityGameKey != key else { return }
+        dlssLookupTask?.cancel()
+        isDlssLookupActive = true
+        dlssAnnouncer.beginCycle()
+        startDlssCycleForChangedGame(key: key)
+        isDlssCompatibilityWaiting = true
+        let title = game.title
+        dlssLookupTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runDlssLookup(forTitle: title, key: key)
+        }
+    }
+
+    /// The details surface closed, the page changed, or the app went to the background: timers stop
+    /// and queued announcements are dropped, so a late result updates the section silently.
+    func endDlssCompatibilityLookup() {
+        dlssLookupTask?.cancel()
+        dlssLookupTask = nil
+        isDlssLookupActive = false
+        isDlssCompatibilityWaiting = false
+        dlssAnnouncer.endCycle()
+    }
+
+    /// The app lost focus. Timers stop; a result that lands afterwards is applied without an
+    /// announcement because the cycle is over.
+    func suspendDlssAnnouncements() {
+        dlssAnnouncer.endCycle()
+    }
+
+    /// The compact chip the detail panel may wear for this game. Nil until the lookup has answered for
+    /// this exact game, so an unknown or loading title gets no empty placeholder pill.
     func dlssCompactChip(for game: OPNCatalogGameObject) -> DlssCompatibilityPresentation.CompactChip? {
         guard dlssCompatibilityGameKey == game.catalogIdentity else { return nil }
         return dlssCompatibility.compactChip
@@ -234,81 +316,50 @@ extension CatalogViewModel {
         pendingSettingsSectionID = "dlss"
     }
 
-    /// Starts (or joins) the lookup for the game whose details are open. The UI's bounded wait is
-    /// the first 1.5 seconds; a slow download finishes in the background and replaces the result
-    /// once, and a failure leaves the saved copy in place.
-    func beginDlssCompatibilityLookup(for game: OPNCatalogGameObject) {
-        let key = game.catalogIdentity
-        guard !dlssLookupActive || dlssCompatibilityGameKey != key else { return }
-        dlssLookupTask?.cancel()
-        dlssLookupActive = true
-        dlssAnnouncer.beginCycle()
-        if dlssCompatibilityGameKey != key {
-            // A different game is a genuinely new cycle: the previous presentation and its queued
-            // announcements both belong to a game that is no longer on screen.
-            dlssCompatibilityGameKey = key
-            dlssLastSnapshot = nil
-            dlssCompatibility = .checking
-            dlssAnnouncer.handle(.initialLookupStarted)
-        }
-        dlssCompatibilityIsWaiting = true
-        let title = game.title
-        dlssLookupTask = Task { [weak self] in
-            guard let self else { return }
-            let service = self.dlssCompatibilityService
-            _ = await service.index(waitingUpTo: DlssCompatibilityLimits.presentationWait)
-            guard !Task.isCancelled, self.dlssCompatibilityGameKey == key else { return }
-            let snapshot = await service.currentSnapshot(forTitle: title)
-            self.applyDlssSnapshot(snapshot, key: key)
-            self.dlssCompatibilityIsWaiting = false
-            guard !snapshot.hasSavedData else { return }
-            // No usable data yet. Wait for the background attempt so a slow first download still
-            // lands, and so a failure can replace the loading state.
-            await service.awaitPendingRefresh()
-            guard !Task.isCancelled, self.dlssCompatibilityGameKey == key else { return }
-            let recovered = await service.currentSnapshot(forTitle: title)
-            self.applyDlssSnapshot(recovered, key: key)
-        }
+    private func startDlssCycleForChangedGame(key: String) {
+        guard dlssCompatibilityGameKey != key else { return }
+        dlssCompatibilityGameKey = key
+        lastDlssSnapshot = nil
+        dlssCompatibility = .checking
+        dlssAnnouncer.handle(.initialLookupStarted)
     }
 
-    /// The details surface closed, the page changed, or the app went to the background. Timers stop
-    /// and queued announcements are dropped; a result that lands afterwards still updates the
-    /// section, but silently.
-    func endDlssCompatibilityLookup() {
-        dlssLookupTask?.cancel()
-        dlssLookupTask = nil
-        dlssLookupActive = false
-        dlssCompatibilityIsWaiting = false
-        dlssAnnouncer.endCycle()
-    }
-
-    /// The app lost focus. Timers stop; the lookup result, if it lands, is applied without an
-    /// announcement because the cycle is over.
-    func suspendDlssAnnouncements() {
-        dlssAnnouncer.endCycle()
+    private func runDlssLookup(forTitle title: String, key: String) async {
+        let service = dlssCompatibilityService
+        _ = await service.index(waitingUpTo: DlssCompatibilityLimits.presentationWait)
+        guard !Task.isCancelled, dlssCompatibilityGameKey == key else { return }
+        let snapshot = await service.currentSnapshot(forTitle: title)
+        applyDlssSnapshot(snapshot, key: key)
+        isDlssCompatibilityWaiting = false
+        guard !snapshot.hasSavedData else { return }
+        // No usable data yet: wait for the background attempt so a slow first download still lands,
+        // and so a failure can replace the loading state.
+        await service.awaitPendingRefresh()
+        guard !Task.isCancelled, dlssCompatibilityGameKey == key else { return }
+        applyDlssSnapshot(await service.currentSnapshot(forTitle: title), key: key)
     }
 
     private func applyDlssSnapshot(_ snapshot: OPNDlssCompatibilityService.Snapshot, key: String) {
         guard dlssCompatibilityGameKey == key else { return }
-        let previous = dlssLastSnapshot
-        dlssLastSnapshot = snapshot
+        let previous = lastDlssSnapshot
+        lastDlssSnapshot = snapshot
         dlssCompatibility = DlssCompatibilityPresentation.make(snapshot)
-        // A re-read that returns exactly what was already shown is not a transition, so nothing is
-        // announced for it: that is what keeps re-renders and timestamp-only refreshes silent.
+        // A re-read that returns exactly what was already shown is not a transition: that is what
+        // keeps re-renders and timestamp-only refreshes silent.
         guard previous != snapshot else { return }
         announceDlssTransition(from: previous, to: snapshot)
     }
 
-    /// Only real transitions are announced. A re-render, a spinner tick or a footer timestamp
-    /// never reaches this, and an outcome whose text repeats what was already said is dropped by
-    /// the announcer itself.
+    /// Only real transitions are announced. An outcome whose text repeats what was already said is
+    /// dropped by the announcer itself.
     private func announceDlssTransition(from previous: OPNDlssCompatibilityService.Snapshot?, to current: OPNDlssCompatibilityService.Snapshot) {
         guard current.listState != .loading else { return }
         guard let previous else {
             announceFirstSnapshot(current)
             return
         }
-        if previous.listState != .refreshing, current.listState == .refreshing {
+        let isRefreshStarting = previous.listState != .refreshing && current.listState == .refreshing
+        guard !isRefreshStarting else {
             dlssAnnouncer.handle(.refreshStarted)
             return
         }
@@ -324,7 +375,7 @@ extension CatalogViewModel {
         case .refreshFailed:
             dlssAnnouncer.handle(.refreshFailedWithSavedData)
         case .ready, .stale:
-            dlssAnnouncer.handle(outcomeTransition(matched: current.outcome.isMatched, hadSavedData: false))
+            dlssAnnouncer.handle(outcomeAnnouncement(isMatched: current.outcome.isMatched, hadSavedData: false))
         case .loading:
             break
         }
@@ -339,22 +390,18 @@ extension CatalogViewModel {
         case .loading:
             break
         case .ready, .refreshing, .stale:
-            // A refresh that lands on the same result is a timestamp-only update: the footer
-            // moves, nothing is spoken. A first answer is always an outcome, even when it is
-            // "unknown"; so is a changed result, and a recovery from a failure the reader was told
-            // about.
-            let firstAnswer = !previous.hasSavedData && current.hasSavedData
-            let changed = previous.outcome.isMatched != current.outcome.isMatched
-            let recovers = previous.listState == .refreshFailed || previous.listState == .unavailable
-            guard firstAnswer || changed || recovers else { return }
-            dlssAnnouncer.handle(outcomeTransition(matched: current.outcome.isMatched, hadSavedData: previous.hasSavedData))
+            // A refresh landing on the same result is a timestamp-only update: the footer moves,
+            // nothing is spoken. A first answer, a changed result and a recovery all are outcomes.
+            let isFirstAnswer = !previous.hasSavedData && current.hasSavedData
+            let isResultChanged = previous.outcome.isMatched != current.outcome.isMatched
+            let isRecovery = previous.listState == .refreshFailed || previous.listState == .unavailable
+            guard isFirstAnswer || isResultChanged || isRecovery else { return }
+            dlssAnnouncer.handle(outcomeAnnouncement(isMatched: current.outcome.isMatched, hadSavedData: previous.hasSavedData))
         }
     }
 
-    private func outcomeTransition(matched: Bool, hadSavedData: Bool) -> DlssCompatibilityTransition {
-        if hadSavedData {
-            return matched ? .refreshSucceeded : .refreshSucceededUnknown
-        }
-        return matched ? .initialLookupSucceeded : .initialLookupUnknown
+    private func outcomeAnnouncement(isMatched: Bool, hadSavedData: Bool) -> DlssCompatibilityTransition {
+        guard hadSavedData else { return isMatched ? .initialLookupSucceeded : .initialLookupUnknown }
+        return isMatched ? .refreshSucceeded : .refreshSucceededUnknown
     }
 }

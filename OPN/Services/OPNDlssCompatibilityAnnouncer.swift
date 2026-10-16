@@ -1,14 +1,5 @@
-//  The polite VoiceOver sequence for DLSS compatibility lookups.
-//
-//  Two rules shape this. First, an announcement describes a semantic transition, never a render:
-//  re-renders, spinner ticks, a timestamp-only refresh and chip insertion must all stay silent.
-//  Second, the app owns only what it queued - submission is not proof of speech, and AppKit exposes
-//  no verified way to withdraw an utterance VoiceOver has already taken. So a start that has not
-//  been submitted yet is cancelled when the result arrives, while a start already submitted is left
-//  to finish and the outcome follows politely behind it.
-//
-//  Timing is deliberately independent of speech: the start is held for 500 ms so a fast answer
-//  replaces it, and outcomes coalesce for 200 ms so a burst of state changes reads as one update.
+//  The polite VoiceOver sequence for DLSS compatibility lookups. An announcement describes a
+//  semantic transition, never a render, and the app owns only what it queued.
 
 import AppKit
 import Foundation
@@ -41,8 +32,6 @@ public enum DlssCompatibilityTransition: Equatable, Sendable {
         self == .initialLookupStarted || self == .refreshStarted
     }
 
-    /// Whether the outcome reported confirmed compatibility. Used to tell a meaningful recovery
-    /// from a repeat.
     public var isSuccess: Bool {
         switch self {
         case .initialLookupSucceeded, .refreshSucceeded, .refreshSucceededUnknown: true
@@ -68,8 +57,6 @@ public final class DlssAnnouncementTicket {
         cancelAction?()
         cancelAction = nil
     }
-
-    public var isPending: Bool { cancelAction != nil }
 }
 
 @MainActor
@@ -94,7 +81,7 @@ public final class DlssMainQueueScheduler: DlssAnnouncementScheduling {
 @MainActor
 public enum DlssVoiceOver {
     public static func post(_ text: String) {
-        guard !text.isEmpty, let application = NSApp else { return }
+        guard !text.isEmpty, let application = NSApp, application.isActive else { return }
         NSAccessibility.post(
             element: application,
             notification: .announcementRequested,
@@ -106,7 +93,8 @@ public enum DlssVoiceOver {
     }
 }
 
-/// Owns at most one pending start and one pending outcome per lookup cycle.
+/// Owns at most one pending start and one pending outcome per lookup cycle. Timing is independent of
+/// speech: the start is held for 500 ms and outcomes coalesce for 200 ms.
 @MainActor
 public final class OPNDlssCompatibilityAnnouncer {
     public static let startDelay: TimeInterval = 0.5
@@ -116,14 +104,14 @@ public final class OPNDlssCompatibilityAnnouncer {
     private let post: @MainActor (String) -> Void
 
     private var cycle = 0
+    private var isActive = false
+    private var isStartScheduled = false
+    private var isStartSubmitted = false
+    private var isRecoveryAnnounced = false
+    private var isFailureReported = false
+    private var lastSubmittedAnnouncement: String?
     private var pendingStart: DlssAnnouncementTicket?
     private var pendingOutcome: DlssAnnouncementTicket?
-    private var isActive = false
-    private var startScheduled = false
-    private var submittedStart = false
-    private var submittedOutcome: String?
-    private var announcedRecovery = false
-    private var reportedFailure = false
 
     public init(
         scheduler: DlssAnnouncementScheduling = DlssMainQueueScheduler(),
@@ -133,59 +121,63 @@ public final class OPNDlssCompatibilityAnnouncer {
         self.post = post
     }
 
-    /// A new lookup cycle for a newly selected game, or an explicit retry. Anything still queued
-    /// from the previous cycle is dropped, and results arriving for it are ignored.
+    /// A new lookup cycle for a newly selected game, or an explicit retry. Anything still queued from
+    /// the previous cycle is dropped, and results arriving for it are ignored.
     public func beginCycle() {
-        cancelPending()
+        cancelPendingAnnouncements()
         isActive = true
         cycle += 1
-        startScheduled = false
-        submittedStart = false
-        submittedOutcome = nil
-        announcedRecovery = false
-        reportedFailure = false
+        resetCycleState()
     }
 
-    /// The section closed, another game was selected, or the app lost focus. Queued announcements
-    /// are cancelled and never replayed on return.
+    /// The section closed, another game was selected, or the app lost focus. Queued announcements are
+    /// cancelled and never replayed on return.
     public func endCycle() {
-        cancelPending()
+        cancelPendingAnnouncements()
         isActive = false
         cycle += 1
-        startScheduled = false
-        submittedStart = false
-        submittedOutcome = nil
-        announcedRecovery = false
-        reportedFailure = false
+        resetCycleState()
     }
 
     public func handle(_ transition: DlssCompatibilityTransition, isAutomaticRetry: Bool = false) {
-        // Nothing is announced outside a live cycle: a result that lands after the surface closed
-        // updates the section silently instead of being replayed on the next visit.
+        // Outside a live cycle nothing is announced: a late result updates the section silently.
         guard isActive else { return }
-        if transition.isStart {
-            // A background retry announcing its own start every sixty seconds is noise.
-            guard !isAutomaticRetry, !startScheduled else { return }
-            startScheduled = true
-            scheduleStart(transition)
+        guard !transition.isStart else {
+            handleStart(transition, isAutomaticRetry: isAutomaticRetry)
             return
         }
-        if isAutomaticRetry {
-            // A retry's failure is recorded even though it is not spoken, so a later success can be
-            // told apart from a first answer.
-            if transition.isFailure {
-                reportedFailure = true
-                return
-            }
-            guard transition.isSuccess, !announcedRecovery else { return }
-            // Nothing was ever said for this cycle, so there is no recovery to describe.
-            guard submittedStart || reportedFailure || submittedOutcome != nil else { return }
-            announcedRecovery = true
+        guard !isAutomaticRetry else {
+            handleAutomaticRetryOutcome(transition)
+            return
         }
-        if transition.isFailure { reportedFailure = true }
-        // A result cancels a start that has not been handed over yet, and replaces an outcome that
-        // has not been handed over yet. An identical repeat is dropped rather than spoken twice.
-        guard submittedOutcome != transition.announcement else { return }
+        submitOutcome(transition)
+    }
+
+    private func handleStart(_ transition: DlssCompatibilityTransition, isAutomaticRetry: Bool) {
+        // A background retry announcing its own start every sixty seconds is noise.
+        guard !isAutomaticRetry, !isStartScheduled else { return }
+        isStartScheduled = true
+        scheduleStartAnnouncement(transition)
+    }
+
+    private func handleAutomaticRetryOutcome(_ transition: DlssCompatibilityTransition) {
+        // A retry's failure is recorded even though it is silent, so a later success can be told
+        // apart from a first answer.
+        guard !transition.isFailure else {
+            isFailureReported = true
+            return
+        }
+        guard transition.isSuccess, !isRecoveryAnnounced else { return }
+        guard isStartSubmitted || isFailureReported || lastSubmittedAnnouncement != nil else { return }
+        isRecoveryAnnounced = true
+        submitOutcome(transition)
+    }
+
+    private func submitOutcome(_ transition: DlssCompatibilityTransition) {
+        guard lastSubmittedAnnouncement != transition.announcement else { return }
+        if transition.isFailure { isFailureReported = true }
+        // A result cancels a start that has not been handed over yet, and replaces an outcome that has
+        // not been handed over yet.
         pendingStart?.cancel()
         pendingStart = nil
         pendingOutcome?.cancel()
@@ -193,23 +185,31 @@ public final class OPNDlssCompatibilityAnnouncer {
         pendingOutcome = scheduler.schedule(after: Self.outcomeCoalescingDelay) { [weak self] in
             guard let self, self.cycle == token else { return }
             self.pendingOutcome = nil
-            self.submittedOutcome = transition.announcement
+            self.lastSubmittedAnnouncement = transition.announcement
             self.post(transition.announcement)
         }
     }
 
-    private func scheduleStart(_ transition: DlssCompatibilityTransition) {
+    private func scheduleStartAnnouncement(_ transition: DlssCompatibilityTransition) {
         pendingStart?.cancel()
         let token = cycle
         pendingStart = scheduler.schedule(after: Self.startDelay) { [weak self] in
             guard let self, self.cycle == token else { return }
             self.pendingStart = nil
-            self.submittedStart = true
+            self.isStartSubmitted = true
             self.post(transition.announcement)
         }
     }
 
-    private func cancelPending() {
+    private func resetCycleState() {
+        isStartScheduled = false
+        isStartSubmitted = false
+        isRecoveryAnnounced = false
+        isFailureReported = false
+        lastSubmittedAnnouncement = nil
+    }
+
+    private func cancelPendingAnnouncements() {
         pendingStart?.cancel()
         pendingStart = nil
         pendingOutcome?.cancel()

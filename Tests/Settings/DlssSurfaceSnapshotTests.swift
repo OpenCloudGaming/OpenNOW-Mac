@@ -114,13 +114,13 @@ import Testing
         let model = makeCatalogViewModelForTesting()
         model.dlssMembershipState = membership
         model.dlssCompatibilityGameKey = "test-game"
-        model.dlssCompatibilityIsWaiting = listState == .loading
+        model.isDlssCompatibilityWaiting = listState == .loading
         model.dlssCompatibility = DlssCompatibilityPresentation.make(
             OPNDlssCompatibilityService.Snapshot(
                 outcome: outcome,
                 listState: listState,
                 lastSuccessfulCheck: Date(timeIntervalSince1970: 1_700_000_000),
-                loadedFromCache: true
+                isLoadedFromCache: true
             )
         )
         return DlssCompatibilitySection(viewModel: model, uiScale: scale)

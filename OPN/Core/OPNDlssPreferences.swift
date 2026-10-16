@@ -1,15 +1,11 @@
-//  Where the cloud DLSS override preference and the membership entitlements that gate it live.
-//
-//  Two separate keys on purpose. The override is what the reader asked for and is kept even when
-//  access lapses; the entitlements are what the account currently includes and are re-read on every
-//  account change. Nothing joins them here — `DlssOverrides.applyingAccess` is what decides the
-//  object that may leave the Mac.
+//  Where the cloud DLSS override preference and the membership entitlements that gate it live. Two
+//  keys on purpose: the preference is what the reader asked for, the entitlements are the account's.
 
 import Foundation
 
 extension OPNStreamPreferences {
-    /// The stored global override. Never normalized on read: the normalization is applied where the
-    /// value is used, so a later rule change also fixes preferences already on disk.
+    /// The stored global override, never normalized on read: normalization is applied where the value
+    /// is used, so a later rule change also fixes preferences already on disk.
     public static func loadDlssOverrides() -> DlssOverrides {
         DlssOverrides(stored: storage.object(forKey: k.dlssOverrides) as? [String: Any])
     }
@@ -19,23 +15,23 @@ extension OPNStreamPreferences {
         storage.synchronize()
     }
 
-    /// The membership entitlements the launch path filters against, remembered so a session request
-    /// does not need a subscription fetch on its own path.
+    /// The entitlements the launch path filters against, remembered so a session request does not
+    /// need a subscription fetch on its own path.
     public static func loadDlssEntitlements() -> DlssEntitlements {
         guard let dictionary = storage.object(forKey: k.dlssEntitlements) as? [String: Any] else { return .none }
         return DlssEntitlements(
-            superResolution: capability(dictionary, "superResolution"),
-            frameGeneration: capability(dictionary, "frameGeneration"),
-            rayReconstruction: capability(dictionary, "rayReconstruction"),
-            frameGenerationMultipliers: (dictionary["frameGenerationMultipliers"] as? [Any])?.compactMap { $0 as? Int } ?? []
+            superResolution: capability(from: dictionary, key: "superResolution"),
+            frameGeneration: capability(from: dictionary, key: "frameGeneration"),
+            rayReconstruction: capability(from: dictionary, key: "rayReconstruction"),
+            frameGenerationMultipliers: multiplierValues(from: dictionary)
         )
     }
 
     public static func saveDlssEntitlements(_ entitlements: DlssEntitlements) {
         let dictionary: [String: Any] = [
-            "superResolution": ["isEntitled": entitlements.superResolution.isEntitled, "isUpsell": entitlements.superResolution.isUpsell],
-            "frameGeneration": ["isEntitled": entitlements.frameGeneration.isEntitled, "isUpsell": entitlements.frameGeneration.isUpsell],
-            "rayReconstruction": ["isEntitled": entitlements.rayReconstruction.isEntitled, "isUpsell": entitlements.rayReconstruction.isUpsell],
+            "superResolution": capabilityDictionary(entitlements.superResolution),
+            "frameGeneration": capabilityDictionary(entitlements.frameGeneration),
+            "rayReconstruction": capabilityDictionary(entitlements.rayReconstruction),
             "frameGenerationMultipliers": entitlements.frameGenerationMultipliers,
         ]
         storage.set(dictionary, forKey: k.dlssEntitlements)
@@ -55,12 +51,21 @@ extension OPNStreamPreferences {
         loadDlssOverrides().applyingAccess(loadDlssEntitlements())
     }
 
-    private static func capability(_ dictionary: [String: Any], _ key: String) -> DlssCapability {
+    private static func capability(from dictionary: [String: Any], key: String) -> DlssCapability {
         guard let value = dictionary[key] as? [String: Any] else { return DlssCapability() }
         return DlssCapability(
             isEntitled: (value["isEntitled"] as? Bool) ?? false,
             isUpsell: (value["isUpsell"] as? Bool) ?? false
         )
+    }
+
+    private static func capabilityDictionary(_ capability: DlssCapability) -> [String: Any] {
+        ["isEntitled": capability.isEntitled, "isUpsell": capability.isUpsell]
+    }
+
+    private static func multiplierValues(from dictionary: [String: Any]) -> [Int] {
+        guard let values = dictionary["frameGenerationMultipliers"] as? [Any] else { return [] }
+        return values.compactMap { $0 as? Int }
     }
 }
 
@@ -75,15 +80,11 @@ public enum DlssMembershipState: Equatable, Sendable {
     case unavailable
 
     public var entitlements: DlssEntitlements {
-        if case let .loaded(entitlements) = self { return entitlements }
-        return .none
+        guard case let .loaded(entitlements) = self else { return .none }
+        return entitlements
     }
 
-    public var isLoading: Bool {
-        self == .loading
-    }
+    public var isLoading: Bool { self == .loading }
 
-    public var isSignedOut: Bool {
-        self == .signedOut
-    }
+    public var isSignedOut: Bool { self == .signedOut }
 }

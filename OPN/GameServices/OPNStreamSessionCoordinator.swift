@@ -318,8 +318,8 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
         )
         var settings = resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
         settings["enablePersistingInGameSettings"] = bool(settings["enablePersistingInGameSettings"]) && OPNStreamPreferences.loadEntitledInGameSettingsPersistence()
-        // The cloud DLSS override is part of the same launch settings flow. It carries the saved
-        // preference unfiltered; the session payload builder is what applies membership access.
+        // The saved DLSS preference rides the launch settings flow unfiltered; the payload builder
+        // is what applies membership access.
         settings["dlssOverrides"] = OPNStreamPreferences.loadDlssOverrides().storedDictionary
         return settings
     }

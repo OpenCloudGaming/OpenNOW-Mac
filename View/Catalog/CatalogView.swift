@@ -477,9 +477,8 @@ struct CatalogView: View {
             appliedCatalogThemeIdentity = newIdentity
         }
         .onChange(of: viewModel.selectedMainPage) { @MainActor _, page in
-            // Compatibility lookups and their announcements belong to the catalog page. Leaving it
-            // stops the timers; coming back re-reads the saved copy rather than replaying anything
-            // that was queued. Ahead of the guard below, which is false on the way out.
+            // Compatibility lookups belong to the catalog page: leaving stops the timers, coming
+            // back re-reads rather than replaying. Ahead of the guard below, false on the way out.
             if page == .games, let game = viewModel.selectedGame {
                 viewModel.beginDlssCompatibilityLookup(for: game)
             } else {

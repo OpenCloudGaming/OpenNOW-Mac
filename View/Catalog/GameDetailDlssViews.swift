@@ -1,10 +1,5 @@
 //  DLSS compatibility on the full game info page: what NVIDIA's own list says about this game, kept
 //  strictly apart from what the membership includes and from what any override actually does.
-//
-//  The two halves are deliberately independent. Compatibility is the game's, sourced from NVIDIA and
-//  cached for a day; access is the account's, refreshed with the membership. A reader who has no
-//  override entitlement still learns what the game supports, and a game NVIDIA does not list is
-//  reported as unknown rather than as unsupported.
 
 import AppKit
 import SwiftUI
@@ -26,9 +21,9 @@ struct DlssCompatibilitySection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
             heading
-            statusElement
-            compatibilityBody
-            if presentation.support != nil {
+            statusRow
+            featureTable
+            if presentation.gameSupport != nil {
                 accessBlock
             }
             freshnessFooter
@@ -56,27 +51,16 @@ struct DlssCompatibilitySection: View {
     // MARK: - Status
 
     @ViewBuilder
-    private var statusElement: some View {
-        if presentation.statusText.isEmpty {
-            EmptyView()
-        } else {
+    private var statusRow: some View {
+        if !presentation.statusText.isEmpty {
             VStack(alignment: .leading, spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
                 HStack(spacing: 8 * uiScale) {
-                    if presentation.statusShowsProgress {
-                        loadingIndicator
-                    } else if presentation.statusShowsWarning {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .catalogFont(size: 12, weight: .bold)
-                            .foregroundStyle(OPNDesign.Semantic.warning)
-                    } else if presentation.support == nil, !presentation.unknownTitle.isEmpty {
-                        Image(systemName: "questionmark.circle")
-                            .catalogFont(size: 13, weight: .bold)
-                            .foregroundStyle(OPNDesign.Text.secondary)
-                    } else if presentation.statusText == DlssCompatibilityPresentation.unavailableText {
-                        Image(systemName: "info.circle")
-                            .catalogFont(size: 13, weight: .bold)
-                            .foregroundStyle(OPNDesign.Text.secondary)
-                    }
+                    DlssStatusGlyph(
+                        glyph: presentation.statusGlyph,
+                        isWaiting: viewModel.isDlssCompatibilityWaiting,
+                        isMotionReduced: isMotionReduced,
+                        uiScale: uiScale
+                    )
                     Text(presentation.statusText)
                         .catalogFont(size: 14, weight: .bold)
                         .foregroundStyle(OPNDesign.Text.primary)
@@ -89,43 +73,23 @@ struct DlssCompatibilitySection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            // The spinner and the status are one element: the indicator carries no label of its own.
+            // The indicator and the status are one element: the glyph carries no label of its own.
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(presentation.statusText)
             .accessibilityValue(presentation.statusSupportingText)
         }
     }
 
-    /// Progress while the app is still inside its bounded wait, and only then. Reduce Motion gets a
-    /// static neutral glyph instead of a spinner.
-    @ViewBuilder
-    private var loadingIndicator: some View {
-        if isMotionReduced {
-            Image(systemName: "clock")
-                .catalogFont(size: 12, weight: .bold)
-                .foregroundStyle(OPNDesign.Text.secondary)
-        } else if viewModel.dlssCompatibilityIsWaiting {
-            ProgressView()
-                .controlSize(.small)
-                .progressViewStyle(.circular)
-                .accessibilityHidden(true)
-        } else {
-            Image(systemName: "clock")
-                .catalogFont(size: 12, weight: .bold)
-                .foregroundStyle(OPNDesign.Text.secondary)
-        }
-    }
-
     // MARK: - Compatibility
 
     @ViewBuilder
-    private var compatibilityBody: some View {
-        if let support = presentation.support {
+    private var featureTable: some View {
+        if let gameSupport = presentation.gameSupport {
             VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-                ForEach(support.featureRows, id: \.feature.id) { row in
+                ForEach(gameSupport.featureRows, id: \.feature.id) { row in
                     DlssCompatibilityFeatureRow(feature: row.feature, support: row.support, uiScale: uiScale)
                 }
-                if let multiFrameGeneration = support.multiFrameGeneration {
+                if let multiFrameGeneration = gameSupport.multiFrameGeneration {
                     multiFrameGenerationRow(multiFrameGeneration)
                 }
             }
@@ -139,24 +103,8 @@ struct DlssCompatibilitySection: View {
             uiScale: uiScale,
             overrideTitle: "Multi Frame Generation",
             overrideDetail: "NVIDIA lists up to \(value.maxMultiplier)× generated frames per rendered frame.",
-            accountLimitText: multiFrameGenerationAccessText
+            accountLimitText: DlssAccessCopy.multiplierAccessText(for: membership)
         )
-    }
-
-    private var multiFrameGenerationAccessText: String {
-        switch membership {
-        case .signedOut:
-            return DlssSettingsState.signedOutText
-        case .loading:
-            return DlssSettingsState.membershipLoadingText
-        case .unavailable:
-            return DlssSettingsState.missingAccessText
-        case let .loaded(entitlements):
-            guard entitlements.frameGeneration.isEntitled, let highest = entitlements.highestAllowedFrameGenerationMultiplier else {
-                return DlssSettingsState.missingAccessText
-            }
-            return "Your membership includes up to \(highest)×."
-        }
     }
 
     // MARK: - Access
@@ -181,32 +129,13 @@ struct DlssCompatibilitySection: View {
                         .catalogFont(size: 12, weight: .bold)
                         .foregroundStyle(OPNDesign.Text.secondary)
                         .frame(width: 140 * uiScale, alignment: .leading)
-                    Text(accessText(for: feature))
+                    Text(DlssAccessCopy.accessText(for: feature, membership: membership))
                         .catalogFont(size: 12, weight: .medium)
                         .foregroundStyle(OPNDesign.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                 }
             }
-        }
-    }
-
-    private func accessText(for feature: DlssCompatibilityFeature) -> String {
-        switch membership {
-        case .signedOut: return DlssSettingsState.signedOutText
-        case .loading: return DlssSettingsState.membershipLoadingText
-        case .unavailable: return DlssSettingsState.missingAccessText
-        case let .loaded(entitlements):
-            let capability: DlssCapability
-            switch feature {
-            case .superResolution: capability = entitlements.superResolution
-            case .frameGeneration: capability = entitlements.frameGeneration
-            case .rayReconstruction: capability = entitlements.rayReconstruction
-            case .dlaa: capability = entitlements.superResolution
-            }
-            if capability.isEntitled { return "Included with your membership" }
-            if capability.isUpsell { return "Not included with your membership. Your membership can add it." }
-            return DlssSettingsState.missingAccessText
         }
     }
 
@@ -217,26 +146,12 @@ struct DlssCompatibilitySection: View {
         if !presentation.freshnessText.isEmpty {
             VStack(alignment: .leading, spacing: 4 * uiScale) {
                 HStack(spacing: 7 * uiScale) {
-                    if presentation.freshnessShowsProgress {
-                        if isMotionReduced {
-                            Image(systemName: "clock")
-                                .catalogFont(size: 11, weight: .bold)
-                                .foregroundStyle(OPNDesign.Text.tertiary)
-                        } else {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .progressViewStyle(.circular)
-                                .accessibilityHidden(true)
-                        }
-                    } else if presentation.freshnessShowsWarning {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .catalogFont(size: 11, weight: .bold)
-                            .foregroundStyle(OPNDesign.Semantic.warning)
-                    } else {
-                        Image(systemName: "clock")
-                            .catalogFont(size: 11, weight: .bold)
-                            .foregroundStyle(OPNDesign.Text.tertiary)
-                    }
+                    DlssStatusGlyph(
+                        glyph: presentation.freshnessGlyph,
+                        isWaiting: viewModel.isDlssCompatibilityWaiting,
+                        isMotionReduced: isMotionReduced,
+                        uiScale: uiScale * 0.85
+                    )
                     Text(presentation.freshnessText)
                         .catalogFont(size: 11, weight: .bold)
                         .foregroundStyle(OPNDesign.Text.tertiary)
@@ -256,7 +171,7 @@ struct DlssCompatibilitySection: View {
     }
 
     private var sourceFooter: some View {
-        Text(DlssCompatibilityPresentation.sourceFooter)
+        Text(presentation.sourceFooter)
             .catalogFont(size: 11, weight: .medium)
             .foregroundStyle(OPNDesign.Text.muted)
     }
@@ -284,8 +199,59 @@ struct DlssCompatibilitySection: View {
     }
 }
 
-/// One compatibility row: the feature name stays visible even when NVIDIA reports nothing for it,
-/// and the treatment is text plus an icon rather than colour alone.
+/// One glyph for every compatibility state. Reduce Motion, and a bounded wait that has already ended,
+/// both fall back to a static neutral indicator.
+struct DlssStatusGlyph: View {
+    let glyph: DlssCompatibilityGlyph
+    let isWaiting: Bool
+    let isMotionReduced: Bool
+    let uiScale: CGFloat
+
+    var body: some View {
+        switch glyph {
+        case .none: EmptyView()
+        case .progress: progressGlyph
+        case .clock: clockGlyph
+        case .warning: warningGlyph
+        case .question: neutralGlyph("questionmark.circle")
+        case .info: neutralGlyph("info.circle")
+        }
+    }
+
+    @ViewBuilder
+    private var progressGlyph: some View {
+        if isMotionReduced || !isWaiting {
+            clockGlyph
+        }
+        if !isMotionReduced, isWaiting {
+            ProgressView()
+                .controlSize(.small)
+                .progressViewStyle(.circular)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var clockGlyph: some View {
+        Image(systemName: "clock")
+            .catalogFont(size: 12 * uiScale, weight: .bold)
+            .foregroundStyle(OPNDesign.Text.tertiary)
+    }
+
+    private var warningGlyph: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .catalogFont(size: 12 * uiScale, weight: .bold)
+            .foregroundStyle(OPNDesign.Semantic.warning)
+    }
+
+    private func neutralGlyph(_ name: String) -> some View {
+        Image(systemName: name)
+            .catalogFont(size: 12 * uiScale, weight: .bold)
+            .foregroundStyle(OPNDesign.Text.secondary)
+    }
+}
+
+/// One compatibility row: the feature name stays visible even when NVIDIA reports nothing for it, and
+/// the treatment is text plus an icon rather than colour alone.
 struct DlssCompatibilityFeatureRow: View {
     let feature: DlssCompatibilityFeature
     let support: DlssSupport?
@@ -296,15 +262,13 @@ struct DlssCompatibilityFeatureRow: View {
 
     private var title: String { overrideTitle ?? feature.title }
 
-    private var detail: String {
+    private var supportDescription: String {
         if let overrideDetail { return overrideDetail }
         guard let support else { return "NVIDIA's list does not report support for this feature. This does not mean it is unsupported." }
         return support.helpText
     }
 
-    private var valueLabel: String {
-        support?.label ?? "Not reported"
-    }
+    private var reportedValueLabel: String { support?.label ?? "Not reported" }
 
     private var iconName: String {
         switch support {
@@ -326,10 +290,10 @@ struct DlssCompatibilityFeatureRow: View {
                 Text(title)
                     .catalogFont(size: 13, weight: .bold)
                     .foregroundStyle(isReported ? OPNDesign.Text.primary : OPNDesign.Text.secondary)
-                Text(valueLabel)
+                Text(reportedValueLabel)
                     .catalogFont(size: 12, weight: .bold)
                     .foregroundStyle(isReported ? OPNDesign.Text.secondary : OPNDesign.Text.tertiary)
-                Text(detail)
+                Text(supportDescription)
                     .catalogFont(size: 11.5, weight: .medium)
                     .foregroundStyle(OPNDesign.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -327,22 +327,21 @@ final class CatalogViewModel {
         }
     }
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable
-    /// The saved global cloud DLSS override, mirrored here so the settings card renders from state
-    /// rather than reading defaults on every body pass.
+    /// The saved global cloud DLSS override, mirrored here so the card renders from state.
     var dlssOverrides = DlssOverrides.useGameSettings
-    /// What the account's membership includes, kept apart from the entitlements themselves so a
-    /// membership that has not answered yet never renders as one that answered "no".
+    /// What the account's membership includes, kept apart from the entitlements so a membership that
+    /// has not answered yet never renders as one that answered "no".
     var dlssMembershipState = DlssMembershipState.signedOut
-    /// The selected game's compatibility presentation, plus whether the UI is still inside its
-    /// bounded first wait. Progress is drawn only while that wait is open.
+    /// The selected game's compatibility presentation. Progress is drawn only while the UI is still
+    /// inside its bounded first wait.
     var dlssCompatibility = DlssCompatibilityPresentation.checking
-    var dlssCompatibilityIsWaiting = false
+    var isDlssCompatibilityWaiting = false
     var dlssCompatibilityGameKey: String?
-    var dlssLookupActive = false
+    var isDlssLookupActive = false
     let dlssCompatibilityService: OPNDlssCompatibilityService
     let dlssAnnouncer: OPNDlssCompatibilityAnnouncer
     var dlssLookupTask: Task<Void, Never>?
-    var dlssLastSnapshot: OPNDlssCompatibilityService.Snapshot?
+    var lastDlssSnapshot: OPNDlssCompatibilityService.Snapshot?
     var favoriteGameIdentities: Set<String> = []
     var favoriteGames: [OPNCatalogGameObject] = [] {
         didSet { invalidateDerivedCatalogCaches() }

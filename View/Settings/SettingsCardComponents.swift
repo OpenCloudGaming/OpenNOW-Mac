@@ -23,9 +23,8 @@ struct SettingsCard<Content: View>: View {
     /// The card qualifies a setting added in the current release, so its header wears the NEW tag.
     /// Expires by version and by use exactly as a row's does.
     let isNew: Bool
-    /// When set, the header is one accessibility element carrying this label instead of a title and
-    /// a separate tag. A card whose badge belongs in its heading - the DLSS card - uses it so the
-    /// tag does not become a second automatic announcement.
+    /// When set, the header is one accessibility element with this label instead of a title plus a
+    /// separate tag, so a badge in the heading is not a second automatic announcement.
     let headingAccessibilityLabel: String?
     let uiScale: CGFloat
     private let content: Content
