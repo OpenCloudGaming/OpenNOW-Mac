@@ -264,8 +264,23 @@ struct NativeNVSTStatsOverlay: View {
                 NativeNVSTStatsPanel.Group(label: "TIMING", rows: nativeStatsTimingRows),
                 NativeNVSTStatsPanel.Group(label: "AUDIO", rows: nativeStatsAudioRows),
                 NativeNVSTStatsPanel.Group(label: "SESSION", rows: nativeStatsSessionRows),
+                nativeStatsDlssGroup,
             ]
         }
+    }
+
+    /// The cloud DLSS overrides this Mac will ask the seat for when the next session starts.
+    ///
+    /// CloudMatch never echoes the override back, so there is no live value to report: this is the
+    /// request, and the group says so. The live stream statistics stay what they are - readings from
+    /// the session that is running now.
+    var nativeStatsDlssGroup: NativeNVSTStatsPanel.Group {
+        let overrides = OPNStreamPreferences.effectiveDlssOverrides()
+        return NativeNVSTStatsPanel.Group(label: "DLSS · NEXT SESSION", rows: [
+            NativeNVSTStatsPanel.Row(label: "Super Resolution", value: overrides.superResolutionRequestLabel),
+            NativeNVSTStatsPanel.Row(label: "Frame Generation", value: overrides.frameGenerationRequestLabel),
+            NativeNVSTStatsPanel.Row(label: "Ray Reconstruction", value: overrides.rayReconstructionRequestLabel),
+        ])
     }
 
     var nativeStatsNetworkRows: [NativeNVSTStatsPanel.Row] {

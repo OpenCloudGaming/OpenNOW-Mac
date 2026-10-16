@@ -244,16 +244,26 @@ public struct DlssOverrides: Equatable, Sendable {
         return dictionary
     }
 
-    /// What the next session will ask for, described as a request rather than as a measurement.
-    public var nextSessionRequestSummary: String {
+    /// What the next session will ask for, described as a request rather than as a measurement. The
+    /// stats HUD and the settings card both read these, so the two can never disagree.
+    public var superResolutionRequestLabel: String {
         let overrides = normalized()
-        let superResolutionText = overrides.superResolution == .inGame
-            ? "In-game"
-            : "\(overrides.superResolution.label) \(overrides.superResolutionScale)%"
-        let frameGenerationText = overrides.frameGeneration == .dynamic
-            ? "Dynamic up to \(overrides.frameGenerationMultiplier)×"
-            : "In-game"
-        return "SR \(superResolutionText)  ·  FG \(frameGenerationText)  ·  RR \(DlssModelPreset.label(for: overrides.rayReconstructionModel))"
+        guard overrides.superResolution != .inGame else { return "In-game" }
+        return "\(overrides.superResolution.label) \(overrides.superResolutionScale)%"
+    }
+
+    public var frameGenerationRequestLabel: String {
+        let overrides = normalized()
+        guard overrides.frameGeneration == .dynamic else { return "In-game" }
+        return "Dynamic up to \(overrides.frameGenerationMultiplier)×"
+    }
+
+    public var rayReconstructionRequestLabel: String {
+        DlssModelPreset.label(for: normalized().rayReconstructionModel)
+    }
+
+    public var nextSessionRequestSummary: String {
+        "SR \(superResolutionRequestLabel)  ·  FG \(frameGenerationRequestLabel)  ·  RR \(rayReconstructionRequestLabel)"
     }
 
     private static func normalizedMultiplier(_ multiplier: Int, frameGenerationMode: Int) -> Int {

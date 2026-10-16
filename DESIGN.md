@@ -980,6 +980,17 @@ The beta scope is data, not styling: `DlssBetaScope` names the card and the sect
 tagged surfaces, and lists the Video destination, the feature rows and the compact chip as untagged,
 so extending the tag is a deliberate edit rather than a local judgement.
 
+The ⌘N stats overlay (`NativeNVSTStatsOverlay`) carries a third DLSS surface: a `DLSS · NEXT SESSION`
+group of three rows, one per feature, whose values come from the same
+`DlssOverrides.superResolutionRequestLabel` / `frameGenerationRequestLabel` /
+`rayReconstructionRequestLabel` the settings card's "Next session request" summary composes, so the
+two can never disagree. This is the ⌘N statistics overlay, not the ⌘G unified dock the feature
+excludes. It is the one DLSS surface that reports no live value at all: CloudMatch never echoes the
+override back, so the group label states that these are the values the *next* session will request
+rather than readings from the session on screen. It lives in the Advanced detail level, which is the
+panel's "everything the surface can report" level and its default; Compact and Minimum are the
+readings a session is judged by and stay untouched.
+
 ### Tags (`OPNBetaTag`, `OPNNewTag`)
 
 Two annotations ride inside another control's title and must not outweigh it: 8pt bold, tracking
