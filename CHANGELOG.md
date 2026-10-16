@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.17.0...v0.17.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* Triple buffering ([#118](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/118)) ([4d1b599](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/4d1b599119f2c44eef0eb86726bd73b7c3495a1c))
+
 ## [0.17.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.16.0...v0.17.0) (2026-10-13)
 
 
