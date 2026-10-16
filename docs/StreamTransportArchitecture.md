@@ -786,6 +786,32 @@ changes the same setup ran with none. Five causes, each fixed separately:
   which IOKit traps on ("Device has already been activated/cancelled") the first time Raw Mouse
   Input runs with Input Monitoring granted. It now opens first, as the gamepad reader does.
 
+### Three drawables for Balanced and Smooth, 2026-10-17
+
+- **The drawable pool is now a pacing policy, not a constant.** `OPNVideoPresentationMode.drawableCount`
+  owns it: Balanced, Smooth and VRR keep three drawables, Lowest Latency keeps two. Before this only
+  VRR asked for three; every other mode took the two the view was constructed with, and re-selecting
+  the mode already active returned before touching the layer at all.
+- **Why.** On the affected A18 Pro MacBook Neo (built-in 60 Hz display, macOS 26.4, Game Mode on) the
+  surface presented **29.99 FPS / 33.34 ms** in fullscreen with CMD+G closed, while the same surface
+  reached **59.98 FPS / 16.67 ms** whenever presentation was composited — Direct presentation is not
+  itself the limit. The refresh-driven loop can only start a draw once the pool hands it a free
+  surface, so a pool of two leaves it waiting on the drawable the previous frame still holds. The
+  official GFN 2.0.89.141 client reaches the same shape from the other side:
+  `MetalAsyncVideoFrameRenderer::updateDrawableCount()` selects three drawables on a fixed-refresh
+  display and two when variable refresh is available. This is a buffering hypothesis, not a proven
+  root cause — why OpenNOW lands on the two-drawable path with CMD+G closed is still unconfirmed.
+- **Trade-offs.** The third drawable costs GPU memory — roughly 23 MB at the 3274x1844 this was
+  measured at, in BGRA — and, when the pool does saturate, at most one more queued frame of latency.
+  Three *available* drawables do not mean three frames stay queued: the fixed-refresh modes still
+  draw one frame per refresh, so the extra slot only removes a stall.
+- **Diagnostics.** The render line, one every ~10 s, now leads with `mode`, `drawables`, `fps`,
+  `srcFmt`, `drawable` and `drawableSize`, so a beta report carries the effective policy without a
+  second source. No per-frame logging was added.
+- **Not established by this change.** Live windowed/fullscreen, CMD+G and per-mode checks belong to
+  the reporter's one-shot on the affected Neo. Verification here is unit coverage of the policy plus
+  a full-suite run on an M2 Ultra Mac Studio, which is regression coverage only.
+
 ## Rules
 
 - Stream-facing features use `NativeNVSTStreamingPath` contracts and the host view model.
