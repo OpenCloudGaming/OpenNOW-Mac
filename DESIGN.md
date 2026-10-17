@@ -950,6 +950,47 @@ beta - one unsettled card in a settled tab is a card badge, not a destination ta
 `SettingsCard(title:badge:isNew:uiScale:)` also lets a card wear the solid NEW tag when it qualifies
 a setting added in the current release; it expires by version and by use exactly as a row's does.
 
+### Cloud DLSS Overrides (`CloudDlssOverridesCard`, `DlssCompatibilitySection`)
+
+The two DLSS surfaces share one rule: they present *information about a request*, never a measured
+state. `CloudDlssOverridesCard` sits full width under Settings → Video, after the display/codec/
+bandwidth columns and before Profile Maintenance, outside the generic Advanced disclosure and
+separate from MetalFX, because DLSS runs on the cloud rig rather than on this Mac. Its header is the
+one card heading that folds itself into a single accessibility element: `SettingsCard` takes
+`headingAccessibilityLabel`, which makes the title and its BETA tag read as one heading
+("Cloud DLSS Overrides, Beta") instead of leaving the tag as a second automatic announcement. The
+card's status line states the account's position — signed out, checking, missing access, or what the
+controls will do — and an unentitled feature carries "Not included with your membership" beside its
+own control rather than only in the card tooltip.
+
+`DlssCompatibilitySection` is the NVIDIA TECHNOLOGY sub-section on the full game info page. Its
+feature rows are the only place in the app that renders a three-way reported state: `native` (neutral
+gamepad glyph, normal contrast), `override` (adjustment-slider glyph, normal contrast) and "Not
+reported" (neutral minus-circle, secondary text, feature name kept visible). No row is dimmed to
+disabled opacity, and no state is carried by colour alone. Whole-game unknown replaces the table with
+"DLSS compatibility unknown" and a question-mark-circle — never an invented per-feature result, a
+crossed-out icon, or a membership lock. Freshness is a separate footer with its own clock, progress
+and warning glyphs, so a stale list never reads as an unsupported feature. The compact chip that the
+detail panel wears is `DlssCompactCompatibilityChip`: the same 23pt capability chip as its
+neighbours, with a warning glyph appended when the saved copy is stale, and no chip at all when
+compatibility is unknown. Reduce Motion swaps the spinner for a static clock glyph rather than
+animating.
+
+The beta scope is data, not styling: `DlssBetaScope` names the card and the section as the only two
+tagged surfaces, and lists the Video destination, the feature rows and the compact chip as untagged,
+so extending the tag is a deliberate edit rather than a local judgement.
+
+The ⌘N stats overlay (`NativeNVSTStatsOverlay`) carries a third DLSS surface: a `DLSS · NEXT SESSION`
+group of three rows, one per feature, whose values come from the same
+`DlssOverrides.superResolutionRequestLabel` / `frameGenerationRequestLabel` /
+`rayReconstructionRequestLabel` the settings card's "Next session request" summary composes, so the
+two can never disagree. This is the ⌘N statistics overlay, not the ⌘G unified dock the feature
+excludes. It is the one DLSS surface that reports no live value at all: CloudMatch never echoes the
+override back, so the group label states that these are the values the *next* session will request
+rather than readings from the session on screen. It lives in the Advanced detail level, which is the
+panel's "everything the surface can report" level and its default; Compact and Minimum are the
+readings a session is judged by and stay untouched.
+
 ### Tags (`OPNBetaTag`, `OPNNewTag`)
 
 Two annotations ride inside another control's title and must not outweigh it: 8pt bold, tracking

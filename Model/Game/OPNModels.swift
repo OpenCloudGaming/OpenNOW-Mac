@@ -28,6 +28,8 @@ public struct OPNSubscriptionInfo: Equatable, Sendable {
     public var entitledAudioChannelCount = 0
     /// Whether the membership includes NVIDIA's in-game settings persistence feature.
     public var isInGameSettingsPersistenceEntitled = false
+    /// Which cloud DLSS overrides the membership includes, read from the same feature list.
+    public var dlssEntitlements = DlssEntitlements.none
 }
 
 public struct OPNGameVariant: Codable, Equatable, Sendable {

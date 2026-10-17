@@ -189,6 +189,12 @@ struct GameDetailPanel: View {
             .onChange(of: game.catalogIdentity) { _, _ in
                 activeImageIndex = 0
             }
+            .task(id: game.catalogIdentity) {
+                viewModel.beginDlssCompatibilityLookup(for: game)
+            }
+            .onDisappear {
+                viewModel.endDlssCompatibilityLookup()
+            }
         }
     }
 
@@ -253,6 +259,11 @@ struct GameDetailPanel: View {
                 .padding(.horizontal, 9)
                 .frame(height: 23)
                 .background(OPNCornerShape(role: .control).fill(chip == "For Premium Members" ? OPNDesign.Fill.neutral(0.22) : Color.black.opacity(0.18)))
+            }
+            // Rides beside the capability chips and only when NVIDIA's list actually matched this
+            // title. It reports that information exists, not that an override is in effect.
+            if let dlssChip = viewModel.dlssCompactChip(for: game) {
+                DlssCompactCompatibilityChip(chip: dlssChip, uiScale: uiScale)
             }
         }
         .frame(maxWidth: 520, alignment: .leading)

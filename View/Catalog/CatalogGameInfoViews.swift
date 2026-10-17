@@ -91,6 +91,9 @@ struct CatalogGameInfoOverlay: View {
                 guard !isMotionReduced else { hasEntered = true; return }
                 withAnimation(.easeOut(duration: 0.26)) { hasEntered = true }
             }
+            .task(id: game.catalogIdentity) {
+                viewModel.beginDlssCompatibilityLookup(for: game)
+            }
             .onChange(of: game.catalogIdentity) { _, _ in lightboxIndex = nil }
         }
     }
@@ -253,15 +256,22 @@ struct CatalogGameInfoOverlay: View {
                     screenshotStrip(images: images, metrics: metrics)
                 }
             }
-            if !technologies.isEmpty {
+            if !technologies.isEmpty || viewModel.dlssCompatibilityGameKey == game.catalogIdentity {
                 CatalogGameInfoSection(label: "NVIDIA TECHNOLOGY", uiScale: uiScale) {
-                    VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
-                        ForEach(technologies, id: \.self) { technology in
-                            CatalogFeatureAvailabilityRow(
-                                title: technology,
-                                message: GameDetailPresentation.featureMessage(technology),
-                                isLocked: GameDetailPresentation.featureIsLocked(technology)
-                            )
+                    VStack(alignment: .leading, spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
+                        if !technologies.isEmpty {
+                            VStack(alignment: .leading, spacing: OPNDesign.Spacing.small(scale: uiScale)) {
+                                ForEach(technologies, id: \.self) { technology in
+                                    CatalogFeatureAvailabilityRow(
+                                        title: technology,
+                                        message: GameDetailPresentation.featureMessage(technology),
+                                        isLocked: GameDetailPresentation.featureIsLocked(technology)
+                                    )
+                                }
+                            }
+                        }
+                        if viewModel.dlssCompatibilityGameKey == game.catalogIdentity {
+                            DlssCompatibilitySection(viewModel: viewModel, uiScale: uiScale)
                         }
                     }
                 }
