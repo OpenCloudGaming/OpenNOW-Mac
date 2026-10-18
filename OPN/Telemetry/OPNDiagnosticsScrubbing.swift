@@ -281,27 +281,48 @@ extension OPNDiagnostics {
     /// and every subsequent write read and rewrote the whole 8 MB — on a stream that logs counters
     /// every two seconds, that is a permanent read-modify-write of megabytes per line, reached
     /// after about an hour. Cutting back to three quarters buys ~2 MB of headroom per trim.
+    ///
+    /// The head survives alongside the tail: the session's configuration and negotiation are written
+    /// once, and a tail-only trim deleted them from exactly the long session a report comes from.
     static func trimDiagnosticsLogIfNeeded(url: URL, writtenBytes: Int) {
         guard writtenBytes > maxDiagnosticsLogBytes else { return }
         guard let data = try? Data(contentsOf: url) else { return }
-        let kept = Data(data.suffix(trimmedDiagnosticsLogBytes))
+        let marker = Data(diagnosticsTrimMarker.utf8)
+        let head = diagnosticsLogHead(of: data, limit: maxDiagnosticsLogHeadBytes)
+        let tailBudget = max(0, trimmedDiagnosticsLogBytes - head.count - marker.count)
+        let kept = head + marker + data.suffix(tailBudget)
         guard (try? kept.write(to: url, options: .atomic)) != nil else { return }
         // The atomic write replaced the file, so the handle now points at an unlinked inode.
         closeDiagnosticsLogHandle()
+    }
+
+    /// The log's opening bytes, cut back to the last complete line so a kept head never ends
+    /// mid-line.
+    static func diagnosticsLogHead(of data: Data, limit: Int) -> Data {
+        guard data.count > limit else { return data }
+        let window = String(decoding: data.prefix(limit), as: UTF8.self)
+        guard let lastNewline = window.lastIndex(of: "\n") else { return data.prefix(limit) }
+        return Data(window[...lastNewline].utf8)
     }
 
     static func diagnosticsUploadData(_ text: String) throws -> Data {
         let sanitized = sanitizedUploadLog(text)
         guard let sanitizedData = sanitized.data(using: .utf8), !sanitizedData.isEmpty else { throw OPNDiagnosticsUploadError.emptyLog }
         guard sanitizedData.count > maxDiagnosticsUploadBytes else { return sanitizedData }
-        let notice = "OpenNOW diagnostics upload\nNotice: upload is limited to the most recent \(maxDiagnosticsUploadBytes / 1024) KiB because the diagnostics paste service rejects larger payloads.\n\n"
-        guard let noticeData = notice.data(using: .utf8), noticeData.count < maxDiagnosticsUploadBytes else { throw OPNDiagnosticsUploadError.emptyLog }
-        let suffixByteCount = max(0, maxDiagnosticsUploadBytes - noticeData.count - 16)
-        var suffixText = String(decoding: sanitizedData.suffix(suffixByteCount), as: UTF8.self)
+        let head = diagnosticsLogHead(of: sanitizedData, limit: maxDiagnosticsUploadHeadBytes)
+        let notice = "OpenNOW diagnostics upload\nNotice: the paste service rejects larger payloads, so this upload carries the log's first \(head.count / 1024) KiB and its most recent lines, with the middle elided.\n\n"
+        guard let noticeData = notice.data(using: .utf8),
+              let markerData = diagnosticsUploadElisionMarker.data(using: .utf8),
+              noticeData.count + head.count + markerData.count < maxDiagnosticsUploadBytes else {
+            throw OPNDiagnosticsUploadError.emptyLog
+        }
+        let headText = String(decoding: head, as: UTF8.self)
+        let tailBudget = maxDiagnosticsUploadBytes - noticeData.count - head.count - markerData.count
+        var suffixText = String(decoding: sanitizedData.suffix(tailBudget), as: UTF8.self)
         if let newlineIndex = suffixText.firstIndex(of: "\n") {
             suffixText.removeSubrange(suffixText.startIndex...newlineIndex)
         }
-        while let uploadData = (notice + suffixText).data(using: .utf8) {
+        while let uploadData = (notice + headText + diagnosticsUploadElisionMarker + suffixText).data(using: .utf8) {
             if !uploadData.isEmpty, uploadData.count <= maxDiagnosticsUploadBytes { return uploadData }
             guard !suffixText.isEmpty else { break }
             suffixText.removeFirst()

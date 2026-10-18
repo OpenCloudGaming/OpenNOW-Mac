@@ -601,15 +601,18 @@ public final class NativeStreamView: NSView {
     /// libwebrtc session to pull them from. Also called on attach so settings chosen before the
     /// stream starts apply.
     private func pushBifrostFreeVideoSettings() {
-        OPNLog.info(.stream, "Video enhancement pushed mode=\(upscalingMode) target=\(upscalingTargetHeight) pillarbox=\(pillarboxFillMode.label) dim=\(pillarboxFillDim) renderer=\(nvstBifrostFreeRenderer != nil)")
-        nvstBifrostFreeRenderer?.setVideoEnhancement(mode: upscalingMode,
-                                                     sharpness: upscalingSharpness,
-                                                     denoise: upscalingDenoise,
-                                                     targetHeight: upscalingTargetHeight,
-                                                     pillarboxFillMode: pillarboxFillMode.rawValue,
-                                                     pillarboxFillDim: pillarboxFillDim,
-                                                     pillarboxFillColor: 0)
-        nvstBifrostFreeRenderer?.setPresentationMode(OPNVideoPresentationMode(rawValue: presentationMode) ?? .balanced)
+        // The line is the record of what the renderer was given, so it speaks only when there is
+        // one: the launch settings are stored before the renderer exists.
+        guard let renderer = nvstBifrostFreeRenderer else { return }
+        OPNLog.info(.stream, "Video enhancement pushed mode=\(upscalingMode) target=\(upscalingTargetHeight) pillarbox=\(pillarboxFillMode.label) dim=\(pillarboxFillDim)")
+        renderer.setVideoEnhancement(mode: upscalingMode,
+                                     sharpness: upscalingSharpness,
+                                     denoise: upscalingDenoise,
+                                     targetHeight: upscalingTargetHeight,
+                                     pillarboxFillMode: pillarboxFillMode.rawValue,
+                                     pillarboxFillDim: pillarboxFillDim,
+                                     pillarboxFillColor: 0)
+        renderer.setPresentationMode(OPNVideoPresentationMode(rawValue: presentationMode) ?? .balanced)
     }
 
 
@@ -636,7 +639,8 @@ public final class NativeStreamView: NSView {
     /// Attaches the Bifrost-free NVST renderer to the shared video surface. Unlike the Geronimo
     /// path, this transport decodes in-process and draws through the same Metal view the WebRTC
     /// path uses, so it needs no borderless renderer window.
-    public func attachNvstBifrostFreeRenderer(targetFps: Int32) -> NvstBifrostFreeVideoRenderer {
+    public func attachNvstBifrostFreeRenderer(targetFps: Int32,
+                                              launchSettings: OPNStreamLaunchVideoSettings) -> NvstBifrostFreeVideoRenderer {
         nvstBifrostFreeRenderer?.detach()
         // The seat's cursor state is per-session: it stops publishing notifications between
         // sessions and starts the next one compositing a cursor of its own again, so a stale
@@ -648,6 +652,12 @@ public final class NativeStreamView: NSView {
         // time, before the seat had been asked to draw anything to hide it behind.
         remoteCursorWantsPointer = nil
         seatCompositesCursor = false
+        setVideoEnhancement(mode: launchSettings.upscalingMode,
+                            sharpness: launchSettings.upscalingSharpness,
+                            denoise: launchSettings.upscalingDenoise,
+                            targetHeight: launchSettings.upscalingTargetHeight)
+        setPillarboxFill(mode: launchSettings.pillarboxFillModeIndex, dim: launchSettings.pillarboxFillDim)
+        setPresentationMode(launchSettings.presentationMode)
         let renderer = NvstBifrostFreeVideoRenderer(parentView: videoSurface, targetFps: targetFps)
         renderer.onDecodedSizeChanged = { [weak self] width, height in
             self?.setStreamContentSize(width: width, height: height)

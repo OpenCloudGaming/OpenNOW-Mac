@@ -15,6 +15,11 @@ struct OPNStreamScreenSnapshot: Sendable {
     let refreshRate: Int
     let maximumFramesPerSecond: Int
     let maximumPotentialExtendedDynamicRangeColorComponentValue: CGFloat
+    /// The screen's own name — "Built-in Retina Display", or an external display's model — so a
+    /// support log tells a built-in panel from a monitor without decoding a display number.
+    let localizedName: String
+    /// Whether the screen is the Mac's own panel.
+    let isBuiltIn: Bool
 
     @MainActor init?(screen: NSScreen?) {
         guard let screen else { return nil }
@@ -22,15 +27,18 @@ struct OPNStreamScreenSnapshot: Sendable {
         frameSize = screen.frame.size
         maximumFramesPerSecond = screen.maximumFramesPerSecond
         maximumPotentialExtendedDynamicRangeColorComponentValue = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+        localizedName = screen.localizedName
         guard let displayNumber = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else {
             screenNumber = nil
             pixelWidth = 0
             pixelHeight = 0
             refreshRate = 0
+            isBuiltIn = false
             return
         }
         screenNumber = displayNumber
         let displayID = CGDirectDisplayID(displayNumber)
+        isBuiltIn = CGDisplayIsBuiltin(displayID) != 0
         pixelWidth = CGDisplayPixelsWide(displayID)
         pixelHeight = CGDisplayPixelsHigh(displayID)
         let modeRefreshRate = CGDisplayCopyDisplayMode(displayID)?.refreshRate ?? 0

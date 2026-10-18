@@ -35,6 +35,7 @@ extension OPNIssueReportContext {
         context.region = SettingsRouteSnapshot(regionUrl: viewModel.selectedSettingsRegionUrl, revealSensitive: false).summary
         context.gameTitle = viewModel.activeStreamConfiguration?.title ?? ""
         context.cursorPolicy = viewModel.streamProfile.cursorPolicy.label
+        context.sessionConfiguration = OPNStreamSessionSnapshot.lastSessionLogLine
         context.survey = GxSurveyClientContext(
             userID: surveyIdentifier(viewModel.session.userId, viewModel.account.userId),
             idpID: surveyIdentifier(viewModel.session.idpId, viewModel.account.providerIdpId),

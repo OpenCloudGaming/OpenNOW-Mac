@@ -77,10 +77,39 @@ import Testing
         let body = try #require(DiagnosticsUploadURLProtocol.recordedBodies(host: host).first)
         let text = String(decoding: body, as: UTF8.self)
         #expect(body.count <= 384 * 1024)
-        #expect(text.contains("upload is limited to the most recent 384 KiB"))
+        #expect(text.contains("with the middle elided"))
         // This body is posted to a public paste service, so credentials must not reach it.
         #expect(!text.contains("secret-value"))
         #expect(!text.contains("10.1.2.3"))
+    }
+}
+
+/// The head of a log is where the launch lines, the session's configuration and its negotiation
+/// live, and they are the facts a "log from the start of the session" report is asked for.
+@Test func diagnosticsUploadKeepsTheStartOfTheLog() async throws {
+    try await networkTestIsolationLock.withLock {
+        let host = "diagnostics-head.example.test"
+        DiagnosticsUploadURLProtocol.install(host: host) { _, _ in
+            (201, Data("https://paste.c-net.org/head".utf8))
+        }
+        defer { DiagnosticsUploadURLProtocol.uninstall(host: host) }
+
+        let uploadURL = try #require(URL(string: "https://\(host)"))
+        var lines = ["SESSION-CONFIGURATION-LINE\n"]
+        lines.append(contentsOf: Array(repeating: "middle line\n", count: 40_000))
+        lines.append("SESSION-END-LINE\n")
+
+        let result = try await OPNDiagnostics.uploadDiagnosticsLog(lines.joined(),
+                                                                  session: diagnosticsUploadSession(),
+                                                                  uploadURL: uploadURL)
+        #expect(result.absoluteString == "https://paste.c-net.org/head")
+
+        let body = try #require(DiagnosticsUploadURLProtocol.recordedBodies(host: host).first)
+        let text = String(decoding: body, as: UTF8.self)
+        #expect(body.count <= 384 * 1024)
+        #expect(text.contains("SESSION-CONFIGURATION-LINE"))
+        #expect(text.contains("SESSION-END-LINE"))
+        #expect(text.contains("the middle of this run's log is not included"))
     }
 }
 

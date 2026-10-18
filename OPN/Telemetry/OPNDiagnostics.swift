@@ -18,6 +18,17 @@ enum OPNDiagnostics {
     /// What a trim cuts back to. Below the ceiling on purpose — see `trimDiagnosticsLogIfNeeded`.
     static let trimmedDiagnosticsLogBytes = 6 * 1024 * 1024
     static let maxDiagnosticsUploadBytes = 384 * 1024
+    /// What an oversized upload keeps from the log's start: the launch lines, the session's
+    /// configuration and its negotiation live there and nowhere else.
+    static let maxDiagnosticsUploadHeadBytes = 96 * 1024
+    /// What a trim keeps from the log's start, taken out of `trimmedDiagnosticsLogBytes` rather than
+    /// added to it, so the ceiling stays the ceiling.
+    static let maxDiagnosticsLogHeadBytes = 256 * 1024
+    /// Marks where a trimmed middle was dropped, so a reader is never left wondering why the
+    /// timeline jumps.
+    static let diagnosticsTrimMarker = "\n…(the middle of this run's log was trimmed)…\n"
+    /// The same marker for the upload, which elides the middle of a log too large for the service.
+    static let diagnosticsUploadElisionMarker = "\n…(the middle of this run's log is not included)…\n"
 
     // MARK: - Levels
 
