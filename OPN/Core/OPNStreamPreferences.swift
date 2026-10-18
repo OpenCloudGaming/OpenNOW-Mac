@@ -135,9 +135,8 @@ public enum OPNStreamPreferences {
     }
     public static func resolutionOptions(forAspect aspectIndex: Int) -> [OPNStreamResolutionOption] {
         switch aspectIndex {
-        // The stored selection is an index into these lists, so a new entry is appended and never
-        // inserted: every index that predates it has to keep resolving to the resolution it always
-        // did. 5120x2880 is 16:9 and sits after 4K for the same reason.
+        // The stored selection is an index into these lists: a new entry is appended, never inserted,
+        // so every earlier index keeps resolving to the resolution it always did.
         case 0: return [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440), (3840, 2160), (5120, 2880)].map(OPNStreamResolutionOption.init)
         case 1: return [(1280, 800), (1440, 900), (1680, 1050), (1920, 1200), (2560, 1600), (2880, 1800), (3456, 2160)].map(OPNStreamResolutionOption.init)
         case 2: return [(2560, 1080), (3440, 1440), (3840, 1600), (5120, 2160)].map(OPNStreamResolutionOption.init)
