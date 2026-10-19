@@ -210,6 +210,15 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   use `strokeBorder`, never `stroke`, so the 1pt line stays inside the frame. A full-width accent
   bar or rule that belongs to a panel is clipped with the panel's shape so it follows the corners,
   and shadows are applied outside the clip so they are not cut off.
+- **A corner on a seam stays square**: a surface pinned flush to a neighbour it shares an edge with
+  passes the free corners — `OPNDesign.Corner.Corners` (`.all` by default, `.bottom` for a band
+  under the app bar, `.top` for one on the window's bottom edge) — to `OPNCornerShape`,
+  `.opnCornerClip` and `.opnLiquidGlassChrome`, so the Corner Style rounds only the corners that have
+  room to curve into. A rounded corner on a seam cuts a notch of whatever is behind the surface out of
+  that seam: the running-stream and session status bands are pinned flush under the app bar and span
+  the page, so a rounded top corner showed the page background as a dark bite between the bar and the
+  band, and controller mode's hint strip sits on the window's bottom edge, where a rounded bottom
+  corner did the same. Square mode is unaffected either way — it is radius 0 on every corner.
 - **Fixed exceptions, whatever the setting** (annotate at the site with
   `swiftlint:disable:next design_no_corner_radius -- <why, referencing DESIGN.md>`): the avatar,
   the circular mic toggle and stream status dots, the login vendor icon buttons (`size * 0.32`),
@@ -247,7 +256,10 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   glass. A surface with no backing of its own today passes `EmptyView()`, so Off is exactly today's
   appearance. `isInteractive` belongs to enabled, actionable controls only; panels and backings
   leave it off. `glassScrim` inserts a darkening layer between the material and the content, on the
-  glass path only. **Every glass panel backing takes it**, because every one of them carries text
+  glass path only, clipped to the surface's own role shape: unclipped, its square corners reached
+  past the rounded material and painted a black ring around every scrimmed panel — and squared off
+  the panel's shadow with them, since a shadow is cast from what the view actually draws. **Every
+  glass panel backing takes it**, because every one of them carries text
   over content the app does not control — video, artwork, or a scrim over either — and the bare
   material drops the dimmer tiers below their floor there (measured: 2.3:1 for Text Tertiary over
   bright video, 8.6:1 once the scrim is on). Small controls on the app's own opaque chrome do not.
@@ -1114,7 +1126,9 @@ banner was laid out centred on the inflated width, which left only its right-han
 Chrome and control are the active-session banner's, shared through `VendorStatusBannerChrome` and
 `VendorActiveSessionBannerButtonStyle`: `OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline
 along the bottom, `CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a
-10pt bold accent eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold. Two
+10pt bold accent eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold. The
+band is pinned flush under the app bar and spans the page, so its top corners stay square whatever
+the Corner Style says and only its free bottom corners follow it — see Radius. Two
 lines, not three: the stream's own status message under the title only restated that it plays in
 its own window, and cost the banner a row of height. Actions: **FOCUS** (accent fill, the one
 action the session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular).

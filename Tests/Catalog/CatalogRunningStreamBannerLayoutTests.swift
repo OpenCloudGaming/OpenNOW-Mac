@@ -16,7 +16,7 @@ import Testing
     private static let channelTolerance = 0.01
 
     @Test func theBannerReachesBothEdgesOfThePageWhileARailRunsPastIt() throws {
-        let bitmap = try renderRunningStreamPage()
+        let bitmap = try renderRunningStreamPage(style: .square)
         let leadingEdge = try renderedColor(in: bitmap, x: 0, y: Self.bannerSampleRow)
         let trailingEdge = try renderedColor(in: bitmap, x: bitmap.pixelsWide - 1, y: Self.bannerSampleRow)
         let pageBackground = try renderedColor(in: bitmap, x: 0, y: bitmap.pixelsHigh - Self.pageSampleRowFromBottom)
@@ -33,11 +33,37 @@ import Testing
         )
     }
 
+    /// The band is pinned flush under the app bar and spans the page, so its top corners stay square
+    /// whatever the Corner Style says. A rounded one cut a notch of page background out of the seam
+    /// the band shares with the bar, which is what "the top border looks strange" was. Its free
+    /// bottom corners still follow the setting.
+    @Test func theBannerKeepsItsTopSeamSquareWhenCornersAreRounded() throws {
+        let rounded = try renderRunningStreamPage(style: .rounded)
+        let square = try renderRunningStreamPage(style: .square)
+        let leadingEdge = try renderedColor(in: rounded, x: 0, y: Self.bannerSampleRow)
+        let trailingEdge = try renderedColor(in: rounded, x: rounded.pixelsWide - 1, y: Self.bannerSampleRow)
+        let pageBackground = try renderedColor(in: rounded, x: 0, y: rounded.pixelsHigh - Self.pageSampleRowFromBottom)
+
+        #expect(
+            isSameColor(leadingEdge, trailingEdge),
+            "the top band is two colours: \(rgbTriplet(of: leadingEdge)) leading, \(rgbTriplet(of: trailingEdge)) trailing"
+        )
+        #expect(
+            !isSameColor(leadingEdge, pageBackground),
+            "a rounded top corner cut a notch out of the band's seam with the app bar"
+        )
+        #expect(
+            pngData(rounded) != pngData(square),
+            "the band stopped following the Corner Style"
+        )
+    }
+
     /// ImageRenderer draws the inset even though it skips `ScrollView` content, and the layout that
     /// places that inset still runs against the content's width - which is the behaviour under test.
-    private func renderRunningStreamPage() throws -> NSBitmapImageRep {
+    private func renderRunningStreamPage(style: OPNThemePreferences.CornerStyle) throws -> NSBitmapImageRep {
         let page = CatalogContentView(viewModel: try makeRunningStreamViewModel(), isActive: true)
             .frame(width: Self.pageSize.width, height: Self.pageSize.height)
+            .environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))
         let renderer = ImageRenderer(content: page)
         renderer.scale = 1
         let image = try #require(renderer.cgImage, "the page did not render")
@@ -76,6 +102,10 @@ import Testing
         abs(first.redComponent - second.redComponent) < Self.channelTolerance
             && abs(first.greenComponent - second.greenComponent) < Self.channelTolerance
             && abs(first.blueComponent - second.blueComponent) < Self.channelTolerance
+    }
+
+    private func pngData(_ bitmap: NSBitmapImageRep) -> Data? {
+        bitmap.representation(using: .png, properties: [:])
     }
 
     private func rgbTriplet(of color: NSColor) -> String {

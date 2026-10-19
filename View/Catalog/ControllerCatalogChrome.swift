@@ -118,13 +118,15 @@ struct ControllerHintBar: View {
         }
         .frame(width: layout.contentWidth, alignment: .leading)
         .frame(height: 46 * uiScale)
-        // One backing for the whole strip; the glyph pills and labels inside stay flat.
-        .opnLiquidGlassChrome(role: .control, scale: uiScale) {
+        // One backing for the whole strip; the glyph pills and labels inside stay flat. The strip is
+        // flush to the window's bottom edge, so its bottom corners stay square: rounded ones cut a
+        // notch of page background out of that seam.
+        .opnLiquidGlassChrome(role: .control, scale: uiScale, corners: .top) {
             ZStack(alignment: .top) {
                 Color.black.opacity(0.36)
                 Rectangle().fill(OPNDesign.Stroke.subtle).frame(height: 1)
             }
-            .opnCornerClip(role: .control, scale: uiScale)
+            .opnCornerClip(role: .control, scale: uiScale, corners: .top)
         }
     }
 }

@@ -71,6 +71,9 @@ extension View {
 private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
     let role: OPNDesign.CornerRole
     let scale: CGFloat
+    /// The corners the style rounds, shared by the material's shape and the flat clip so the two
+    /// paths agree on the outline. A surface pinned to a seam passes the free ones.
+    let corners: OPNDesign.Corner.Corners
     let tint: Color?
     let glassScrim: Color?
     let isInteractive: Bool
@@ -84,7 +87,7 @@ private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
         if #available(macOS 26.0, *), policy.isEffective {
             content
                 .background { scrim }
-                .glassEffect(glassEffect, in: geometry.shape(role, scale: scale))
+                .glassEffect(glassEffect, in: geometry.shape(role, scale: scale, corners: corners))
         } else {
             content.background { flat() }
         }
@@ -92,9 +95,16 @@ private struct OPNLiquidGlassChromeModifier<Flat: View>: ViewModifier {
 
     /// Sits between the material and the content, so it darkens the glass without touching the flat
     /// path, which is what a surface over video or over a scrim needs.
+    ///
+    /// Clipped to the surface's own shape: unclipped, the scrim's square corners reached past the
+    /// rounded material and painted a black ring around every scrimmed panel — and, because a shadow
+    /// is cast from what the view actually draws, it also squared off the panel's shadow. The scrim
+    /// only ever had a surface to darken inside the shape.
     @ViewBuilder
     private var scrim: some View {
-        if let glassScrim { glassScrim }
+        if let glassScrim {
+            glassScrim.clipShape(geometry.shape(role, scale: scale, corners: corners))
+        }
     }
 
     @available(macOS 26.0, *)
@@ -111,6 +121,7 @@ extension View {
     func opnLiquidGlassChrome<Flat: View>(
         role: OPNDesign.CornerRole,
         scale: CGFloat = 1,
+        corners: OPNDesign.Corner.Corners = .all,
         tint: Color? = nil,
         glassScrim: Color? = nil,
         isInteractive: Bool = false,
@@ -119,6 +130,7 @@ extension View {
         modifier(OPNLiquidGlassChromeModifier(
             role: role,
             scale: scale,
+            corners: corners,
             tint: tint,
             glassScrim: glassScrim,
             isInteractive: isInteractive,
@@ -130,6 +142,7 @@ extension View {
     func opnLiquidGlassChrome<Fill: ShapeStyle, Stroke: ShapeStyle>(
         role: OPNDesign.CornerRole,
         scale: CGFloat = 1,
+        corners: OPNDesign.Corner.Corners = .all,
         fill: Fill,
         stroke: Stroke,
         lineWidth: CGFloat = 1,
@@ -137,10 +150,10 @@ extension View {
         glassScrim: Color? = nil,
         isInteractive: Bool = false
     ) -> some View {
-        opnLiquidGlassChrome(role: role, scale: scale, tint: tint, glassScrim: glassScrim, isInteractive: isInteractive) {
+        opnLiquidGlassChrome(role: role, scale: scale, corners: corners, tint: tint, glassScrim: glassScrim, isInteractive: isInteractive) {
             ZStack {
-                OPNCornerShape(role: role, scale: scale).fill(fill)
-                OPNCornerShape(role: role, scale: scale).strokeBorder(stroke, lineWidth: lineWidth)
+                OPNCornerShape(role: role, scale: scale, corners: corners).fill(fill)
+                OPNCornerShape(role: role, scale: scale, corners: corners).strokeBorder(stroke, lineWidth: lineWidth)
             }
         }
     }
