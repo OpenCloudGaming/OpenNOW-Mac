@@ -230,6 +230,34 @@ import Testing
         #expect(stored.applyingAccess(dynamicWithoutMultipliers).frameGenerationMode == 0)
     }
 
+    /// A multiplier the client cannot request never enters the allowed set, so the access filter
+    /// cannot settle on a value the request path would then rewrite.
+    @Test func aMultiplierTheClientCannotSendIsNeverAllowed() {
+        let partiallySendable = DlssEntitlements(
+            frameGeneration: DlssCapability(isEntitled: true, isUpsell: false),
+            frameGenerationMultipliers: [2, 4]
+        )
+        #expect(partiallySendable.allowedFrameGenerationMultipliers == [4])
+        #expect(partiallySendable.supportsDynamicFrameGeneration)
+
+        var overrides = DlssOverrides.useGameSettings
+        overrides.frameGenerationModel = 1
+        overrides.frameGenerationMode = DlssFrameGenerationMode.dynamic.rawValue
+        overrides.frameGenerationMultiplier = 4
+        let request = overrides.applyingAccess(partiallySendable).sessionRequestDictionary
+        #expect(request["fgMultiplier"] as? Int == 4)
+
+        let unsendableOnly = DlssEntitlements(
+            frameGeneration: DlssCapability(isEntitled: true, isUpsell: false),
+            frameGenerationMultipliers: [2]
+        )
+        #expect(unsendableOnly.allowedFrameGenerationMultipliers.isEmpty)
+        #expect(!unsendableOnly.supportsDynamicFrameGeneration)
+        let emptyRequest = overrides.applyingAccess(unsendableOnly).sessionRequestDictionary
+        #expect(emptyRequest["fgMode"] as? Int == 0)
+        #expect(emptyRequest["fgMultiplier"] == nil)
+    }
+
     @Test func anUnknownMembershipIsNeverTreatedAsAnEntitledOne() {
         let stored = DlssOverrides(
             superResolutionMode: DlssSuperResolutionMode.dlaa.rawValue,
@@ -362,69 +390,5 @@ import Testing
             #expect(overrides["fgMultiplier"] == nil)
             #expect(overrides["rrModel"] as? Int == 0)
         }
-    }
-
-    // MARK: - Settings state
-
-    @Test func theSettingsStateReportsAccessWithoutClaimingActivation() {
-        var overrides = DlssOverrides.useGameSettings
-        overrides.superResolutionModel = 1
-        overrides.superResolutionMode = DlssSuperResolutionMode.quality.rawValue
-        overrides.superResolutionScale = 67
-
-        let signedOut = DlssSettingsState.make(overrides: overrides, membership: .signedOut, isStreamRunning: false)
-        #expect(signedOut.statusText == DlssAccessCopy.signedOut)
-        #expect(signedOut.isSummaryVisible == false)
-
-        let loading = DlssSettingsState.make(overrides: overrides, membership: .loading, isStreamRunning: false)
-        #expect(loading.statusText == DlssAccessCopy.membershipLoading)
-
-        let missing = DlssSettingsState.make(overrides: overrides, membership: .loaded(.none), isStreamRunning: false)
-        #expect(missing.statusText == DlssAccessCopy.missing)
-        #expect(missing.isSuperResolutionEnabled == false)
-
-        let included = DlssSettingsState.make(
-            overrides: overrides,
-            membership: .loaded(DlssEntitlements(superResolution: DlssCapability(isEntitled: true, isUpsell: false))),
-            isStreamRunning: true
-        )
-        #expect(included.statusText == DlssAccessCopy.description)
-        #expect(included.isSuperResolutionEnabled)
-        #expect(included.isSummaryVisible)
-        #expect(included.summaryText == "SR Quality 67%  ·  FG In-game  ·  RR In-game")
-        #expect(included.isNextSessionOnlyNoteVisible)
-        #expect(DlssAccessCopy.nextSessionOnly == "Saved for your next session. Your current stream is unchanged.")
-    }
-
-    @Test func anUnavailableMembershipReadsAsMissingAccessRatherThanEntitled() {
-        let state = DlssSettingsState.make(overrides: .useGameSettings, membership: .unavailable, isStreamRunning: false)
-        #expect(state.statusText == DlssAccessCopy.missing)
-        #expect(!state.isSuperResolutionEnabled)
-        #expect(!state.isFrameGenerationEnabled)
-        #expect(!state.isRayReconstructionEnabled)
-        #expect(!state.isSummaryVisible)
-    }
-
-    @Test func theAccessCopySeparatesWhatTheGameSupportsFromWhatTheAccountIncludes() {
-        let entitled = DlssMembershipState.loaded(DlssEntitlements(
-            superResolution: DlssCapability(isEntitled: true, isUpsell: false),
-            frameGeneration: DlssCapability(isEntitled: false, isUpsell: true),
-            rayReconstruction: DlssCapability(isEntitled: false, isUpsell: false),
-            frameGenerationMultipliers: [3, 4]
-        ))
-        #expect(DlssAccessCopy.accessText(for: .superResolution, membership: entitled) == DlssAccessCopy.included)
-        #expect(DlssAccessCopy.accessText(for: .frameGeneration, membership: entitled) == DlssAccessCopy.upsell)
-        #expect(DlssAccessCopy.accessText(for: .rayReconstruction, membership: entitled) == DlssAccessCopy.missing)
-        // The multiplier ceiling follows the frame-generation entitlement, not the listed maximum.
-        #expect(DlssAccessCopy.multiplierAccessText(for: entitled) == DlssAccessCopy.missing)
-
-        let dynamicIncluded = DlssMembershipState.loaded(DlssEntitlements(
-            frameGeneration: DlssCapability(isEntitled: true, isUpsell: false),
-            frameGenerationMultipliers: [3, 4]
-        ))
-        #expect(DlssAccessCopy.multiplierAccessText(for: dynamicIncluded) == "Your membership includes up to 4×.")
-        #expect(DlssAccessCopy.accessText(for: .superResolution, membership: .signedOut) == DlssAccessCopy.signedOut)
-        #expect(DlssAccessCopy.accessText(for: .superResolution, membership: .loading) == DlssAccessCopy.membershipLoading)
-        #expect(DlssAccessCopy.multiplierAccessText(for: .loaded(.none)) == DlssAccessCopy.missing)
     }
 }

@@ -45,6 +45,13 @@ extension NativeNVSTHostViewModel {
             await bifrostFree.setSessionLimitUpdateHandler { [weak self] update in
                 self?.applyNativeSessionLimitUpdate(update)
             }
+            // The seat reports what it applied, not what was asked for. This is the only place the
+            // running session's DLSS state can come from: the launch payload never comes back.
+            await bifrostFree.setDlssStateHandler { [weak self] notification in
+                guard let self, !self.didEnd else { return }
+                self.nativeDlssState = notification
+                self.onDlssState?(notification)
+            }
         }
     }
 

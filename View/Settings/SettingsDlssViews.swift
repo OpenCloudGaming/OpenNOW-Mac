@@ -32,6 +32,10 @@ struct CloudDlssOverridesCard: View {
                 SettingsDivider(uiScale: uiScale)
                 SettingsInfoRow(label: DlssAccessCopy.summaryHeading, value: settingsState.summaryText, uiScale: uiScale)
             }
+            if settingsState.isAppliedSummaryVisible {
+                SettingsDivider(uiScale: uiScale)
+                SettingsInfoRow(label: DlssAccessCopy.appliedHeading, value: settingsState.appliedSummaryText, uiScale: uiScale)
+            }
         }
     }
 
@@ -155,16 +159,23 @@ struct CloudDlssOverridesCard: View {
     }
 
     private var rayReconstructionSection: some View {
-        VStack(alignment: .leading, spacing: 10 * uiScale) {
+        let values = DlssModelPreset.rayReconstructionModels
+        let help = DlssPresetHelp.rayReconstruction
+        return VStack(alignment: .leading, spacing: 10 * uiScale) {
             SettingsOptionRow(
                 title: "Ray Reconstruction",
-                subtitle: "Which DLSS model the cloud rig uses to replace the game's ray-traced denoisers. Only ray-traced games use it.",
-                options: DlssModelPreset.labels(for: DlssModelPreset.rayReconstructionModels),
-                selectedIndex: DlssModelPreset.rayReconstructionModels.firstIndex(of: settingsState.overrides.normalized().rayReconstructionModel) ?? 0,
-                enabled: DlssModelPreset.rayReconstructionModels.map { _ in settingsState.isRayReconstructionEnabled },
+                subtitle: DlssPresetHelp.legend(
+                    for: values,
+                    help: help,
+                    lead: "Which DLSS model the cloud rig uses to replace the game's ray-traced denoisers. Only ray-traced games use it."
+                ),
+                options: DlssModelPreset.labels(for: values),
+                selectedIndex: values.firstIndex(of: settingsState.overrides.normalized().rayReconstructionModel) ?? 0,
+                enabled: values.map { _ in settingsState.isRayReconstructionEnabled },
+                optionHelp: values.map { help[$0] ?? "" },
                 uiScale: uiScale
             ) { index in
-                viewModel.setDlssRayReconstructionModel(DlssModelPreset.rayReconstructionModels[index])
+                viewModel.setDlssRayReconstructionModel(values[index])
             }
             if !settingsState.isRayReconstructionEnabled { missingAccessNote }
         }
@@ -188,7 +199,7 @@ struct CloudDlssOverridesCard: View {
                 ) {
                     isModelPickersVisible.toggle()
                 }
-                .disabled(!isAnyModelPickerAvailable)
+                .disabled(!hasHiddenModelPickers)
             }
             modelPresetRow
             if isModelPickersVisible, settingsState.isSuperResolutionEnabled {
@@ -200,14 +211,20 @@ struct CloudDlssOverridesCard: View {
         }
     }
 
+    /// The pickers SHOW reveals. Ray Reconstruction has none of its own to reveal — its picker sits
+    /// in its own section — so a membership that includes only that has nothing hidden.
+    private var hasHiddenModelPickers: Bool {
+        settingsState.isSuperResolutionEnabled || settingsState.isFrameGenerationEnabled
+    }
+
     private var isAnyModelPickerAvailable: Bool {
-        settingsState.isSuperResolutionEnabled || settingsState.isFrameGenerationEnabled || settingsState.isRayReconstructionEnabled
+        hasHiddenModelPickers || settingsState.isRayReconstructionEnabled
     }
 
     private var modelPresetRow: some View {
         SettingsOptionRow(
             title: "Model Preset",
-            subtitle: "Applies to every feature your membership includes.",
+            subtitle: "Sets every feature your membership includes at once. Recommended lets NVIDIA pick the model per game; Custom exposes one picker per feature.",
             options: DlssModelPreset.Choice.allCases.map(\.label),
             selectedIndex: DlssModelPreset.Choice.allCases.firstIndex(of: viewModel.dlssModelPreset) ?? 0,
             enabled: DlssModelPreset.Choice.allCases.map { _ in isAnyModelPickerAvailable },
@@ -218,26 +235,32 @@ struct CloudDlssOverridesCard: View {
     }
 
     private var superResolutionModelRow: some View {
-        SettingsOptionRow(
+        let values = DlssModelPreset.superResolutionModels
+        let help = DlssPresetHelp.superResolution
+        return SettingsOptionRow(
             title: "Super Resolution Model",
-            subtitle: "Presets A-F and J-M, or let NVIDIA pick per game.",
-            options: DlssModelPreset.labels(for: DlssModelPreset.superResolutionModels),
-            selectedIndex: DlssModelPreset.superResolutionModels.firstIndex(of: settingsState.overrides.normalized().superResolutionModel) ?? 0,
+            subtitle: DlssPresetHelp.legend(for: values, help: help),
+            options: DlssModelPreset.labels(for: values),
+            selectedIndex: values.firstIndex(of: settingsState.overrides.normalized().superResolutionModel) ?? 0,
+            optionHelp: values.map { help[$0] ?? "" },
             uiScale: uiScale
         ) { index in
-            viewModel.setDlssSuperResolutionModel(DlssModelPreset.superResolutionModels[index])
+            viewModel.setDlssSuperResolutionModel(values[index])
         }
     }
 
     private var frameGenerationModelRow: some View {
-        SettingsOptionRow(
+        let values = DlssModelPreset.frameGenerationModels
+        let help = DlssPresetHelp.frameGeneration
+        return SettingsOptionRow(
             title: "Frame Generation Model",
-            subtitle: "Used when Frame Generation is Dynamic.",
-            options: DlssModelPreset.labels(for: DlssModelPreset.frameGenerationModels),
-            selectedIndex: DlssModelPreset.frameGenerationModels.firstIndex(of: settingsState.overrides.normalized().frameGenerationModel) ?? 0,
+            subtitle: DlssPresetHelp.legend(for: values, help: help, lead: "Used when Frame Generation is Dynamic."),
+            options: DlssModelPreset.labels(for: values),
+            selectedIndex: values.firstIndex(of: settingsState.overrides.normalized().frameGenerationModel) ?? 0,
+            optionHelp: values.map { help[$0] ?? "" },
             uiScale: uiScale
         ) { index in
-            viewModel.setDlssFrameGenerationModel(DlssModelPreset.frameGenerationModels[index])
+            viewModel.setDlssFrameGenerationModel(values[index])
         }
     }
 

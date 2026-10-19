@@ -73,7 +73,6 @@ struct DlssCompatibilitySection: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            // The indicator and the status are one element: the glyph carries no label of its own.
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(presentation.statusText)
             .accessibilityValue(presentation.statusSupportingText)

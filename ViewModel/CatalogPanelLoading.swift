@@ -315,14 +315,19 @@ extension CatalogViewModel {
         guard !userId.isEmpty else {
             subscriptionStatus = .unavailable
             dlssMembershipState = .signedOut
+            OPNStreamPreferences.clearDlssEntitlements()
             return
         }
         dlssMembershipState = .loading
+        // The stored copy is what every session request is filtered against, so it is cleared before
+        // the fetch rather than left holding the previous account's membership.
+        OPNStreamPreferences.clearDlssEntitlements()
         gameService.fetchSubscriptionInfo(userId: userId) { [weak self] success, subscription, error in
             guard let self else { return }
             guard success else {
                 if self.refreshAuthIfNeeded(error: error) { self.subscriptionStatus = .unavailable }
                 self.dlssMembershipState = .unavailable
+                OPNStreamPreferences.clearDlssEntitlements()
                 return
             }
             self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)

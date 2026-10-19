@@ -30,6 +30,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     let preventDisplaySleep: Bool
     let onProgress: StreamProgressHandler?
     let onEnd: StreamCompletionHandler
+    /// The seat's applied DLSS state, published to the session that owns this stream so the
+    /// settings card can report what the running session actually has.
+    let onDlssState: StreamDlssStateHandler?
     let sidebarCapabilities = StreamSidebarCapabilities.nativeNVST
 
     init(
@@ -37,12 +40,14 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         sessionProvider: any NativeNVSTSessionProvider,
         preventDisplaySleep: Bool,
         onProgress: StreamProgressHandler?,
+        onDlssState: StreamDlssStateHandler? = nil,
         onEnd: @escaping StreamCompletionHandler
     ) {
         self.configuration = configuration
         self.sessionProvider = sessionProvider
         self.preventDisplaySleep = preventDisplaySleep
         self.onProgress = onProgress
+        self.onDlssState = onDlssState
         self.onEnd = onEnd
     }
 
@@ -250,6 +255,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// The seat's last `0x010e` HDR mode word (`hdr`, `true-hdr`), empty while the game is SDR or
     /// the seat has said nothing. Informational: the drawable follows the bitstream's own tags.
     @Published var nativeHdrModeText = ""
+    /// The seat's applied DLSS override state for the running session, nil until it reports one.
+    /// The seat's own message is the only confirmation that an override took effect.
+    @Published var nativeDlssState: NvstDlssStateNotification?
     /// Rumble commands received from the seat this session, for the HUD's controllers panel.
     @Published var nativeHapticEventCount = 0
     /// True while the path is reconnecting to the same seat after a stall or a network change.

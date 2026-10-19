@@ -81,6 +81,38 @@ import Testing
         #expect(model.dlssCompactChip(for: game) == nil)
     }
 
+    /// A saved copy that is past its lifetime still has to be replaced by the refresh it triggered:
+    /// the section must not sit on "Updating…" once the fetch has answered.
+    @MainActor @Test func aStaleSavedCopyIsReplacedByTheRefreshItStarted() async {
+        let staleRows = [makeDlssListRow("Fortnite", ["NV, T", "", "", "", "NV, T"])]
+        let freshRows = [makeDlssListRow("Fortnite", ["Yes", "Yes", "NV, 6X", "NV, T", "Yes"])]
+        let clock = DlssTestClock()
+        let cache = DlssMemoryCache(DlssCachedList(
+            rows: staleRows,
+            checkedAt: clock.now.addingTimeInterval(-DlssCompatibilityLimits.cacheLifetime - 1)
+        ))
+        let transport = DlssGatedTransport(rows: freshRows)
+        let service = OPNDlssCompatibilityService(
+            transport: transport,
+            cache: cache,
+            clock: clock.compatibilityClock
+        )
+        let model = makeCatalogViewModelForTesting(dlssCompatibilityService: service)
+        let game = makeDlssGame(id: "1", title: "Fortnite")
+
+        model.beginDlssCompatibilityLookup(for: makeDlssGame(id: "1", title: "Fortnite"))
+        await transport.waitUntilRequested()
+        transport.release()
+        await model.dlssLookupTask?.value
+
+        // The saved row listed Super Resolution only; the refreshed row is the one that must land,
+        // and the section must leave the refreshing state it showed while the fetch was open.
+        #expect(model.dlssCompatibility.gameSupport?.superResolution == .native)
+        #expect(model.dlssCompatibility.gameSupport?.frameGeneration == .native)
+        #expect(model.dlssCompatibility.gameSupport?.multiFrameGeneration?.maxMultiplier == 6)
+        #expect(model.dlssCompatibility.freshnessGlyph == .clock)
+    }
+
     @MainActor private func makeModel(
         transport: DlssCompatibilityTransport,
         announcer: OPNDlssCompatibilityAnnouncer = OPNDlssCompatibilityAnnouncer(scheduler: DlssVirtualScheduler()) { _ in }

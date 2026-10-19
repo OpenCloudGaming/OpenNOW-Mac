@@ -225,6 +225,8 @@ struct NativeNVSTStatsOverlay: View {
     let detailLevel: StreamStatsDetailLevel
     /// The seat's last `0x010e` HDR mode word, empty while the game is SDR or has said nothing.
     let hdrModeText: String
+    /// The seat's applied DLSS override state, nil until it reports one.
+    let appliedDlssState: NvstDlssStateNotification?
 
     var body: some View {
         NativeNVSTStatsPanel(
@@ -269,12 +271,20 @@ struct NativeNVSTStatsOverlay: View {
         }
     }
 
-    /// The cloud DLSS overrides this Mac will ask the seat for when the next session starts.
-    ///
-    /// CloudMatch never echoes the override back, so there is no live value to report: this is the
-    /// request, and the group says so. The live stream statistics stay what they are - readings from
-    /// the session that is running now.
+    /// The DLSS overrides: what the running session has once the seat reports, and otherwise what
+    /// the next session will ask for.
     var nativeStatsDlssGroup: NativeNVSTStatsPanel.Group {
+        guard let appliedDlssState else { return nativeStatsNextSessionDlssGroup }
+        return NativeNVSTStatsPanel.Group(label: "DLSS · THIS SESSION", rows: [
+            NativeNVSTStatsPanel.Row(label: "Super Resolution", value: appliedDlssState.superResolutionLabel),
+            NativeNVSTStatsPanel.Row(label: "Frame Generation", value: appliedDlssState.frameGenerationLabel),
+            NativeNVSTStatsPanel.Row(label: "Ray Reconstruction", value: appliedDlssState.rayReconstructionLabel),
+        ])
+    }
+
+    /// The request the next session will carry, which is all there is to report until the seat
+    /// sends its own state. It composes the same labels the settings card's summary does.
+    private var nativeStatsNextSessionDlssGroup: NativeNVSTStatsPanel.Group {
         let overrides = OPNStreamPreferences.effectiveDlssOverrides()
         return NativeNVSTStatsPanel.Group(label: "DLSS · NEXT SESSION", rows: [
             NativeNVSTStatsPanel.Row(label: "Super Resolution", value: overrides.superResolutionRequestLabel),
@@ -597,7 +607,8 @@ extension NativeNVSTMediaStreamSurface {
             stats: model.stats,
             applicationID: configuration.applicationID,
             detailLevel: model.statsDetail,
-            hdrModeText: model.nativeHdrModeText
+            hdrModeText: model.nativeHdrModeText,
+            appliedDlssState: model.nativeDlssState
         )
         .opnTransition(.scale(scale: 0.94, anchor: model.statsPosition.transitionAnchor).combined(with: .opacity))
         .streamStatsHUDPosition(model.statsPosition, isSidebarVisible: model.unifiedHUDVisible)

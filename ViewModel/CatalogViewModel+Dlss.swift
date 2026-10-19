@@ -34,6 +34,7 @@ enum DlssAccessCopy {
     static let included = "Included with your membership"
     static let nextSessionOnly = "Saved for your next session. Your current stream is unchanged."
     static let summaryHeading = "Next session request"
+    static let appliedHeading = "Current session"
     static let resetAction = "Use game settings"
     static let notIncludedList = "Not included: %@. A membership with these overrides unlocks them."
 
@@ -85,11 +86,19 @@ struct DlssSettingsState: Equatable, Sendable {
     let upsellFeatureLabels: [String]
     let isSummaryVisible: Bool
     let summaryText: String
+    /// The running session's applied overrides as one line. Empty until the seat reports one, which
+    /// is also what keeps the row out of the card: the request is all there is to say until then.
+    let appliedSummaryText: String
     /// True while a stream is live, so an edit says it applies to the next session rather than now.
     let isNextSessionOnlyNoteVisible: Bool
     let overrides: DlssOverrides
 
-    static func make(overrides: DlssOverrides, membership: DlssMembershipState, isStreamRunning: Bool) -> DlssSettingsState {
+    static func make(
+        overrides: DlssOverrides,
+        membership: DlssMembershipState,
+        isStreamRunning: Bool,
+        appliedDlssState: NvstDlssStateNotification?
+    ) -> DlssSettingsState {
         let entitlements = membership.entitlements
         return DlssSettingsState(
             statusText: DlssAccessCopy.statusText(for: membership),
@@ -101,17 +110,25 @@ struct DlssSettingsState: Equatable, Sendable {
             upsellFeatureLabels: entitlements.upsellFeatureLabels,
             isSummaryVisible: entitlements.hasAnyEntitlement,
             summaryText: overrides.applyingAccess(entitlements).nextSessionRequestSummary,
+            appliedSummaryText: appliedDlssState?.currentSessionSummary ?? "",
             isNextSessionOnlyNoteVisible: isStreamRunning,
             overrides: overrides
         )
     }
+
+    var isAppliedSummaryVisible: Bool { !appliedSummaryText.isEmpty }
 }
 
 @MainActor
 extension CatalogViewModel {
     /// The card's derived state. Reads the live stream flag so an edit made mid-stream says so.
     var dlssSettingsState: DlssSettingsState {
-        DlssSettingsState.make(overrides: dlssOverrides, membership: dlssMembershipState, isStreamRunning: isStreamRunning)
+        DlssSettingsState.make(
+            overrides: dlssOverrides,
+            membership: dlssMembershipState,
+            isStreamRunning: isStreamRunning,
+            appliedDlssState: runningStreamDlssState
+        )
     }
 
     /// The three-way model preset the per-feature pickers sit under. "Custom" whenever the features
@@ -331,7 +348,9 @@ extension CatalogViewModel {
         let snapshot = await service.currentSnapshot(forTitle: title)
         applyDlssSnapshot(snapshot, key: key)
         isDlssCompatibilityWaiting = false
-        guard !snapshot.hasSavedData else { return }
+        // Wait for an in-flight refresh even when the saved copy is usable, so its success or
+        // failure replaces the cached snapshot instead of leaving the section on "Updating…".
+        guard snapshot.listState == .refreshing || !snapshot.hasSavedData else { return }
         // No usable data yet: wait for the background attempt so a slow first download still lands,
         // and so a failure can replace the loading state.
         await service.awaitPendingRefresh()

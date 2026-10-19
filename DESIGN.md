@@ -846,7 +846,13 @@ and stretched it to a hard-to-track measure. The tooltip keeps it one hover away
 
 The icon is a `Button` whose tooltip is driven by `onHover`, not `.help`: a help tag on these rows
 does not raise, while `onHover` fires for any view. Clicking pins the tooltip open; a click outside
-or another hover dismisses it.
+or another hover dismisses it. The popover scrolls past 420pt, because a legend — the model
+presets, say — is legitimately taller than a sentence and must not run off the window.
+
+An option row's chips carry their own explanation as an `accessibilityHint`, so a reader who lands on
+one chip hears what that option does rather than the whole row's legend. The chips deliberately do
+not raise a hover tooltip of their own: they sit edge to edge, and a popover per chip would fire and
+dismiss as the pointer crossed the row.
 
 A pad has no pointer, so controller mode does not use the icon at all. Each focusable row publishes
 its explanation through `SettingsFocusedHelpKey` while focused, and `SettingsView` shows it in a
@@ -964,16 +970,23 @@ a setting added in the current release; it expires by version and by use exactly
 
 ### Cloud DLSS Overrides (`CloudDlssOverridesCard`, `DlssCompatibilitySection`)
 
-The two DLSS surfaces share one rule: they present *information about a request*, never a measured
-state. `CloudDlssOverridesCard` sits full width under Settings → Video, after the display/codec/
-bandwidth columns and before Profile Maintenance, outside the generic Advanced disclosure and
-separate from MetalFX, because DLSS runs on the cloud rig rather than on this Mac. Its header is the
-one card heading that folds itself into a single accessibility element: `SettingsCard` takes
+The DLSS surfaces keep one rule: a request is never presented as an outcome. `CloudDlssOverridesCard`
+sits full width under Settings → Video, after the display/codec/bandwidth columns and before Profile
+Maintenance, outside the generic Advanced disclosure and separate from MetalFX, because DLSS runs on
+the cloud rig rather than on this Mac. Its header is the one card heading that folds itself into a
+single accessibility element: `SettingsCard` takes
 `headingAccessibilityLabel`, which makes the title and its BETA tag read as one heading
 ("Cloud DLSS Overrides, Beta") instead of leaving the tag as a second automatic announcement. The
 card's status line states the account's position — signed out, checking, missing access, or what the
 controls will do — and an unentitled feature carries "Not included with your membership" beside its
 own control rather than only in the card tooltip.
+
+The card's two summary rows are deliberately asymmetric. `Next session request` is always the saved
+preference, and it is the only row that exists until the seat reports. `Current session` appears
+underneath it only once the seat has sent its `DlssState` message, and it reports what the running
+session actually has: a feature the seat did not override reads "In-game", never the request that was
+sent. The row is absent rather than blank when nothing has been reported, so the card never states a
+claim it cannot back.
 
 `DlssCompatibilitySection` is the NVIDIA TECHNOLOGY sub-section on the full game info page. Its
 feature rows are the only place in the app that renders a three-way reported state: `native` (neutral
@@ -992,16 +1005,20 @@ The beta scope is data, not styling: `DlssBetaScope` names the card and the sect
 tagged surfaces, and lists the Video destination, the feature rows and the compact chip as untagged,
 so extending the tag is a deliberate edit rather than a local judgement.
 
-The ⌘N stats overlay (`NativeNVSTStatsOverlay`) carries a third DLSS surface: a `DLSS · NEXT SESSION`
-group of three rows, one per feature, whose values come from the same
+The ⌘N stats overlay (`NativeNVSTStatsOverlay`) carries a third DLSS surface: three rows, one per
+feature, that name the override in one of two states. Before the seat says anything the group is
+`DLSS · NEXT SESSION` and its values come from the same
 `DlssOverrides.superResolutionRequestLabel` / `frameGenerationRequestLabel` /
 `rayReconstructionRequestLabel` the settings card's "Next session request" summary composes, so the
-two can never disagree. This is the ⌘N statistics overlay, not the ⌘G unified dock the feature
-excludes. It is the one DLSS surface that reports no live value at all: CloudMatch never echoes the
-override back, so the group label states that these are the values the *next* session will request
-rather than readings from the session on screen. It lives in the Advanced detail level, which is the
-panel's "everything the surface can report" level and its default; Compact and Minimum are the
-readings a session is judged by and stay untouched.
+two can never disagree. Once the seat sends its `DlssState` message the group becomes
+`DLSS · THIS SESSION` and the same three rows report what the seat applied — `NvstDlssStateNotification`
+carries the per-feature override flags, the live multiplier and the values the seat settled on, and
+a feature it did not override reads "In-game" rather than the request that was sent. That message is
+the only confirmation an override took effect: CloudMatch strips `requestedStreamingFeatures` back
+out of the session it echoes, so the launch payload can never answer the question. The overlay is
+the ⌘N statistics overlay, not the ⌘G unified dock the feature excludes, and the group lives in the
+Advanced detail level, which is the panel's "everything the surface can report" level and its
+default; Compact and Minimum are the readings a session is judged by and stay untouched.
 
 ### Tags (`OPNBetaTag`, `OPNNewTag`)
 

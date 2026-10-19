@@ -87,6 +87,53 @@ public enum DlssModelPreset {
     }
 }
 
+/// What NVIDIA publishes about each model preset, keyed by the wire value a request carries.
+///
+/// A preset is a model revision, not a quality level: the mode sets the resolution, the preset the
+/// network behind it. The three tables are separate because the same letter means different things
+/// to different features — Super Resolution's `D` and Ray Reconstruction's `D` are not the same model.
+public enum DlssPresetHelp {
+    public static let superResolution: [Int: String] = [
+        0: "In-game — the model the game ships with.",
+        1: "Recommended — NVIDIA picks the model for the game and the mode.",
+        2: "A — an older CNN model for games whose inputs, such as motion vectors, are incomplete. Removed from current DLSS.",
+        3: "B — like A, tuned for Ultra Performance. Removed from current DLSS.",
+        4: "C — an older CNN model that favours the current frame, for fast-paced games. Removed from current DLSS.",
+        5: "D — an older CNN model that favours image stability. Removed from current DLSS.",
+        6: "E — the CNN model that was NVIDIA's default for Quality, Balanced and Performance. Deprecated.",
+        7: "F — the CNN model that was NVIDIA's default for Ultra Performance and DLAA. Deprecated.",
+        11: "J — a first-generation transformer. Less ghosting than K, at the cost of more flickering.",
+        12: "K — a transformer, and NVIDIA's default for DLAA, Quality and Balanced.",
+        13: "L — a second-generation transformer, and NVIDIA's default for Ultra Performance.",
+        14: "M — a second-generation transformer, and NVIDIA's default for Performance.",
+    ]
+
+    public static let frameGeneration: [Int: String] = [
+        0: "In-game — the model the game ships with.",
+        1: "Recommended — NVIDIA picks the model for the game.",
+        2: "A — the earlier of the two frame-generation models.",
+        3: "B — the newer model, which DLSS 4.5 Dynamic Multi Frame Generation uses.",
+    ]
+
+    public static let rayReconstruction: [Int: String] = [
+        0: "In-game — the model the game ships with.",
+        1: "Recommended — NVIDIA picks the model for the game.",
+        5: "D — NVIDIA's default Ray Reconstruction preset.",
+        7: "F — the latest Ray Reconstruction preset.",
+    ]
+
+    /// One line per preset a picker offers, under an optional lead sentence, for that row's tooltip.
+    /// Built from the picker's own values, so a legend cannot describe a preset the picker omits.
+    public static func legend(for values: [Int], help: [Int: String], lead: String = "") -> String {
+        let lines = values.compactMap { help[$0] }
+        let body = ([intro] + lines).joined(separator: "\n")
+        guard !lead.isEmpty else { return body }
+        return "\(lead)\n\n\(body)"
+    }
+
+    private static let intro = "Presets are model revisions, not quality levels: the mode sets the resolution, the preset the network behind it."
+}
+
 /// The whole `dlssOverrides` object. Every field is an integer wire value.
 public struct DlssOverrides: Equatable, Sendable {
     public static let superResolutionModelMaximum = 14
@@ -325,7 +372,11 @@ public struct DlssEntitlements: Equatable, Sendable {
         self.superResolution = superResolution
         self.frameGeneration = frameGeneration
         self.rayReconstruction = rayReconstruction
-        self.frameGenerationMultipliers = frameGenerationMultipliers.sorted()
+        // Only the multipliers this client can request are kept, so the request path cannot settle
+        // on a value the membership does not include.
+        self.frameGenerationMultipliers = frameGenerationMultipliers
+            .filter(DlssOverrides.frameGenerationMultipliers.contains)
+            .sorted()
     }
 
     public var hasAnyEntitlement: Bool {
