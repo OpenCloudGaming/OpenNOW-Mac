@@ -50,6 +50,15 @@ enum OPNVideoPresentationMode: Int, Sendable {
 
     /// Whether the frame is drawn the moment it decodes rather than on the display link's tick.
     var isDecodeDriven: Bool { self == .lowestLatency || self == .vrr }
+
+    /// How many drawables the layer keeps available for this pacing mode. The measurement behind it
+    /// and its memory/latency trade-offs are in `docs/StreamTransportArchitecture.md`.
+    var drawableCount: Int {
+        switch self {
+        case .balanced, .smooth, .vrr: 3
+        case .lowestLatency: 2
+        }
+    }
 }
 
 /// `lowestLatency` only: at most one decode-driven draw is on its way to the main actor.
@@ -97,6 +106,12 @@ struct OPNVideoRenderDiagnosticsSnapshot: Equatable, Sendable {
     var framesReceived: UInt64 = 0
     var framesDrawn: UInt64 = 0
     var presentationMode = ""
+    /// Drawables the layer keeps available for the active pacing mode, and the frame rate the
+    /// surface asks the display link for — the presentation policy as it is actually in effect.
+    var drawableCount = 0
+    var requestedFps = 0
+    /// The drawable the frame was presented into (`3274x1844`), as the render pass measured it.
+    var drawableResolution = ""
     /// Decode-to-glass: from the frame reaching the renderer to the drawable's presented time,
     /// mean and worst over the last diagnostics window; -1 with no presents in the window.
     var presentLatencyMs = -1.0
@@ -215,7 +230,8 @@ extension OPNMetalVideoView {
     }
 
     /// Switches how frames meet the display. Main actor: it reconfigures the layer and the
-    /// display link.
+    /// display link. The drawable pool is applied even for the mode already active, because the
+    /// launch path re-selects the mode the view was built with and no transition follows it.
     func setPresentationMode(_ mode: OPNVideoPresentationMode) {
         os_unfair_lock_lock(&frameLock)
         let previous = presentationMode
@@ -223,8 +239,9 @@ extension OPNMetalVideoView {
         pendingFrames.removeAll()
         arrivalQueue.removeAll()
         os_unfair_lock_unlock(&frameLock)
-        guard previous != mode else { return }
         let drawableLayer = metalView.layer as? CAMetalLayer
+        drawableLayer?.maximumDrawableCount = mode.drawableCount
+        guard previous != mode else { return }
         switch mode {
         case .lowestLatency, .vrr:
             // Our own draw() calls replace the display link; only `vrr` still presents on vsync.
@@ -236,7 +253,6 @@ extension OPNMetalVideoView {
             metalView.enableSetNeedsDisplay = false
             metalView.isPaused = false
         }
-        drawableLayer?.maximumDrawableCount = mode == .vrr ? 3 : 2
         drawableLayer?.allowsNextDrawableTimeout = mode == .vrr
         updateRenderThread()
         resetDrawCadence()

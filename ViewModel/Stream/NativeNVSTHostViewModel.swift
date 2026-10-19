@@ -483,8 +483,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         refreshAntiAFKMouseMovementTask()
         startReplayBufferIfEnabled()
         let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        // The renderer already holds these from the attach; this block publishes them to the HUD.
         pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
-        nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)
         upscalingModeIndex = launchProfile.upscalingModeIndex
         upscalingTargetIndex = launchProfile.upscalingTargetIndex
         upscalingSharpness = launchProfile.upscalingSharpness
@@ -492,11 +492,6 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         nativeStreamResolutionText = "\(launchProfile.resolution.width) x \(launchProfile.resolution.height)"
         nativeStreamFrameRateText = "\(launchProfile.fps) FPS"
         nativeStreamCodecText = launchProfile.codec.value.uppercased()
-        nativeView.setVideoEnhancement(mode: launchProfile.upscalingMode,
-                                       sharpness: launchProfile.upscalingSharpness,
-                                       denoise: launchProfile.upscalingDenoise,
-                                       targetHeight: launchProfile.upscalingTargetHeight)
-        nativeView.setPresentationMode(launchProfile.presentationMode)
         onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
         OPNStreamTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
         nativeConnectedAt = Date()
@@ -543,10 +538,21 @@ extension NativeNVSTHostViewModel {
     /// Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir receiver +
     /// VideoToolbox decode, drawn on the shared Metal surface.
     func makeTransport(nativeView: NativeStreamView, settings resolvedStreamSettings: ResolvedStreamSettings) -> any NativeNVSTTransport {
-        let bifrostFreeSink = nativeView.attachNvstBifrostFreeRenderer(targetFps: Int32(max(30, resolvedStreamSettings.fps))).frameSink
-        let launchPresentationMode = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID,
-                                                                        capabilities: OPNStreamPreferences.loadDeviceCapabilities()).presentationMode
+        // Read once, before the renderer exists: the renderer is created with these, so the first
+        // frames run the profile's pacing and upscaling rather than the view's defaults.
+        let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID,
+                                                               capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let bifrostFreeSink = nativeView.attachNvstBifrostFreeRenderer(targetFps: Int32(max(30, resolvedStreamSettings.fps)),
+                                                                      launchSettings: OPNStreamLaunchVideoSettings(profile: launchProfile)).frameSink
+        let launchPresentationMode = launchProfile.presentationMode
         let isVrrPresentation = OPNVideoPresentationMode(rawValue: launchPresentationMode) == .vrr
+        // Written once, before the first frame: a report that cannot say which display, pacing or
+        // input mode it was testing is a report nobody can reproduce.
+        let sessionSnapshot = OPNStreamSessionSnapshot.resolved(applicationID: configuration.applicationID,
+                                                                settings: resolvedStreamSettings,
+                                                                presentationMode: launchPresentationMode)
+        OPNLog.info(.stream, sessionSnapshot.logLine)
+        OPNStreamSessionSnapshot.recordLastSession(sessionSnapshot)
         // The unified log purges info-level lines within minutes, which has already cost one
         // session's counter timeline mid-investigation; the diagnostic file is the durable copy.
         let diagnosticLog = NvstDiagnosticLog()

@@ -48,7 +48,7 @@ extension OPNMetalVideoView {
         diagnostics.outputFormat = Self.outputFormatName(metalLayer?.pixelFormat ?? .bgra8Unorm)
         os_unfair_lock_lock(&frameLock)
         diagnostics.isHDR = appliedTransfer.isHDR
-        let presentationModeLabel = presentationMode.label
+        let activeMode = presentationMode
         os_unfair_lock_unlock(&frameLock)
         if let renderDiagnosticsHandler {
             os_unfair_lock_lock(&frameLock)
@@ -66,7 +66,10 @@ extension OPNMetalVideoView {
                 maxFrameIntervalMs: diagnostics.maxFrameIntervalMs,
                 framesReceived: received,
                 framesDrawn: framesDrawn,
-                presentationMode: presentationModeLabel,
+                presentationMode: activeMode.label,
+                drawableCount: activeMode.drawableCount,
+                requestedFps: targetFps,
+                drawableResolution: diagnostics.drawableResolution,
                 presentLatencyMs: present.latency,
                 presentLatencyMaxMs: present.maximum,
                 presentJitterMs: present.jitter

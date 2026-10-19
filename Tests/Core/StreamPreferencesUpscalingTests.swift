@@ -3,7 +3,6 @@ import Testing
 @testable import OpenNOW
 
 @Suite(.serialized) struct StreamPreferencesUpscalingTests {
-    private let preferenceDomain = "io.github.opencloudgaming.opennow"
     private let upscalingModeIndexKey = "OpenNOW.Stream.UpscalingModeIndex"
     private let upscalingSharpnessKey = "OpenNOW.Stream.UpscalingSharpness"
     private let upscalingDenoiseKey = "OpenNOW.Stream.UpscalingDenoise"
@@ -367,36 +366,6 @@ import Testing
         #expect(features["maxBitrateKbps"] as? Int == profile.maxBitrateMbps * 1_000)
     }
 
-    private func withPreservedPreferences(_ keys: [String], _ body: () throws -> Void) rethrows {
-        preferenceDomainTestLock.lock()
-        defer { preferenceDomainTestLock.unlock() }
-        let defaults = UserDefaults.standard
-        let previousValues = keys.map { ($0, defaults.object(forKey: $0)) }
-        let previousDomain = defaults.persistentDomain(forName: preferenceDomain)
-        let previousGlobalDomain = defaults.persistentDomain(forName: UserDefaults.globalDomain)
-        defer {
-            for (key, value) in previousValues {
-                if let value {
-                    defaults.set(value, forKey: key)
-                } else {
-                    defaults.removeObject(forKey: key)
-                }
-            }
-            if let previousDomain {
-                defaults.setPersistentDomain(previousDomain, forName: preferenceDomain)
-            } else {
-                defaults.removePersistentDomain(forName: preferenceDomain)
-            }
-            if let previousGlobalDomain {
-                defaults.setPersistentDomain(previousGlobalDomain, forName: UserDefaults.globalDomain)
-            } else {
-                defaults.removePersistentDomain(forName: UserDefaults.globalDomain)
-            }
-            defaults.synchronize()
-        }
-        try body()
-    }
-
     private var streamingProfileKeys: [String] {
         [
             "OpenNOW.Stream.AspectIndex",
@@ -415,17 +384,5 @@ import Testing
             "OpenNOW.Stream.HDREnabled",
             "OpenNOW.Stream.PowerSaverEnabled",
         ]
-    }
-
-    private func removePreferenceValue(_ key: String) {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: key)
-        var domain = defaults.persistentDomain(forName: preferenceDomain) ?? [:]
-        domain.removeValue(forKey: key)
-        defaults.setPersistentDomain(domain, forName: preferenceDomain)
-        var globalDomain = defaults.persistentDomain(forName: UserDefaults.globalDomain) ?? [:]
-        globalDomain.removeValue(forKey: key)
-        defaults.setPersistentDomain(globalDomain, forName: UserDefaults.globalDomain)
-        defaults.synchronize()
     }
 }

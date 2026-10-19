@@ -65,9 +65,12 @@ extension CatalogViewModel {
             "User ID: \(SettingsFormat.maskedIdentifier(account.userId))",
             "Streaming: NVST",
             "Cursor: \(streamProfile.cursorPolicy.label)",
-            "Cloudmatch: \(route.summary)",
-            "Logs: \(logURL?.absoluteString ?? "Not uploaded")"
+            "Cloudmatch: \(route.summary)"
         ]
+        if !OPNStreamSessionSnapshot.lastSessionLogLine.isEmpty {
+            lines.append(OPNStreamSessionSnapshot.lastSessionLogLine)
+        }
+        lines.append("Logs: \(logURL?.absoluteString ?? "Not uploaded")")
         if !diagnosticsErrorContext.isEmpty {
             lines.append("Reported Error: \(diagnosticsErrorContext)")
         }

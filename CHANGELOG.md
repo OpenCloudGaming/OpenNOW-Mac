@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.18.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.17.1...v0.18.0) (2026-10-18)
+
+
+### Features
+
+* Add 16:9 5K stream resolution ([#122](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/122)) ([fcd4a83](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/fcd4a833976862c591bafa1a4a3a9ba21b03cd66))
+* log the session configuration for support reports ([580098a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/580098ab914a31dce85df6a52a5cafccc32f11bb))
+
+## [0.17.1](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.17.0...v0.17.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* Triple buffering ([#118](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/118)) ([4d1b599](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/4d1b599119f2c44eef0eb86726bd73b7c3495a1c))
+
 ## [0.17.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.16.0...v0.17.0) (2026-10-13)
 
 
