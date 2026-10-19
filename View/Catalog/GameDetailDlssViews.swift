@@ -59,7 +59,7 @@ struct DlssCompatibilitySection: View {
                         glyph: presentation.statusGlyph,
                         isWaiting: viewModel.isDlssCompatibilityWaiting,
                         isMotionReduced: isMotionReduced,
-                        uiScale: uiScale
+                        relativeSize: 1
                     )
                     Text(presentation.statusText)
                         .catalogFont(size: 14, weight: .bold)
@@ -149,7 +149,7 @@ struct DlssCompatibilitySection: View {
                         glyph: presentation.freshnessGlyph,
                         isWaiting: viewModel.isDlssCompatibilityWaiting,
                         isMotionReduced: isMotionReduced,
-                        uiScale: uiScale * 0.85
+                        relativeSize: 0.85
                     )
                     Text(presentation.freshnessText)
                         .catalogFont(size: 11, weight: .bold)
@@ -204,7 +204,8 @@ struct DlssStatusGlyph: View {
     let glyph: DlssCompatibilityGlyph
     let isWaiting: Bool
     let isMotionReduced: Bool
-    let uiScale: CGFloat
+    /// The glyph's size relative to the 12pt base. `catalogFont` applies the interface scale itself.
+    let relativeSize: CGFloat
 
     var body: some View {
         switch glyph {
@@ -232,19 +233,19 @@ struct DlssStatusGlyph: View {
 
     private var clockGlyph: some View {
         Image(systemName: "clock")
-            .catalogFont(size: 12 * uiScale, weight: .bold)
+            .catalogFont(size: 12 * relativeSize, weight: .bold)
             .foregroundStyle(OPNDesign.Text.tertiary)
     }
 
     private var warningGlyph: some View {
         Image(systemName: "exclamationmark.triangle.fill")
-            .catalogFont(size: 12 * uiScale, weight: .bold)
+            .catalogFont(size: 12 * relativeSize, weight: .bold)
             .foregroundStyle(OPNDesign.Semantic.warning)
     }
 
     private func neutralGlyph(_ name: String) -> some View {
         Image(systemName: name)
-            .catalogFont(size: 12 * uiScale, weight: .bold)
+            .catalogFont(size: 12 * relativeSize, weight: .bold)
             .foregroundStyle(OPNDesign.Text.secondary)
     }
 }

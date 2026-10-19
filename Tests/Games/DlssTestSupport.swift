@@ -39,6 +39,7 @@ final class DlssGatedTransport: DlssCompatibilityTransport, @unchecked Sendable 
     private let rows: [DlssGamesRow]
     private let isReleasedImmediately: Bool
     private var isRequested = false
+    private var requests = 0
     private var isReleased = false
     private var gate: CheckedContinuation<Void, Never>?
 
@@ -49,7 +50,7 @@ final class DlssGatedTransport: DlssCompatibilityTransport, @unchecked Sendable 
 
     /// How many fetches the service has started.
     var requestCount: Int {
-        lock.withLock { isRequested ? 1 : 0 }
+        lock.withLock { requests }
     }
 
     func release() {
@@ -69,6 +70,7 @@ final class DlssGatedTransport: DlssCompatibilityTransport, @unchecked Sendable 
     }
 
     func fetchList(url: URL, timeout: TimeInterval) async throws -> Data {
+        lock.withLock { requests += 1 }
         if !isReleasedImmediately {
             await waitForRelease()
         }

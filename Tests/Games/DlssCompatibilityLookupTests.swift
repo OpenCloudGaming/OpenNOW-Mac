@@ -100,7 +100,7 @@ import Testing
         let model = makeCatalogViewModelForTesting(dlssCompatibilityService: service)
         let game = makeDlssGame(id: "1", title: "Fortnite")
 
-        model.beginDlssCompatibilityLookup(for: makeDlssGame(id: "1", title: "Fortnite"))
+        model.beginDlssCompatibilityLookup(for: game)
         await transport.waitUntilRequested()
         transport.release()
         await model.dlssLookupTask?.value

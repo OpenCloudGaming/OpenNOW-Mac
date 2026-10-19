@@ -323,7 +323,9 @@ extension CatalogViewModel {
         // the fetch rather than left holding the previous account's membership.
         OPNStreamPreferences.clearDlssEntitlements()
         gameService.fetchSubscriptionInfo(userId: userId) { [weak self] success, subscription, error in
-            guard let self else { return }
+            // A switch or sign-out can complete before this answers, and the stored entitlements are
+            // global: a stale success would filter the next account's requests with this one's.
+            guard let self, self.session.isActive else { return }
             guard success else {
                 if self.refreshAuthIfNeeded(error: error) { self.subscriptionStatus = .unavailable }
                 self.dlssMembershipState = .unavailable
