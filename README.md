@@ -28,6 +28,29 @@
 
 ---
 
+## OpenNOW or OpenNOW-Mac?
+
+There are two GeForce NOW clients under the OpenCloudGaming organization, and they are
+**separate, independent applications**. Neither is a fork, port, or version of the other,
+and neither carries the other's features over.
+
+| | **OpenNOW-Mac** (this repository) | **[OpenNOW](https://github.com/OpenCloudGaming/OpenNOW)** |
+| --- | --- | --- |
+| **Runs on** | Apple silicon Macs (macOS 15.6+) | Windows, Linux, and macOS |
+| **Built with** | Swift, SwiftUI and AppKit | C++ (Qt Quick) with a Rust core |
+| **Streaming stack** | A Mac-native stack: NVST control, raw SRTP, VideoToolbox decode, Metal presentation | A native Rust streamer with per-platform graphics backends |
+| **Direction** | Mac-native performance and Apple silicon features, controller-first | A cross-platform desktop client over a shared core |
+| **Download** | [`OpenNOW.dmg`](../../releases) | [`OpenNOW-Qt-*` packages](https://github.com/OpenCloudGaming/OpenNOW/releases) |
+
+The code bases share close to nothing - different languages, different architecture, different
+design decisions and direction. Features are built independently on each side, so a feature in
+one is not a promise of it in the other, and neither tracks the other's releases. Both are
+MIT-licensed community projects, and both need your own GeForce NOW account.
+
+If you came here looking for the cross-platform desktop client, that is
+[OpenCloudGaming/OpenNOW](https://github.com/OpenCloudGaming/OpenNOW). Everything below this
+point describes OpenNOW-Mac only.
+
 ## Why OpenNOW
 
 OpenNOW is written in SwiftUI from the ground up and streams GeForce NOW sessions over NVIDIA's native NVST protocol. The pitch is simple: **treat a Mac like a Mac, and treat a controller like a controller.** Browse your library and launch in seconds, stream at up to 5K, record the runs you want to keep, and play with a Steam Controller 2026 without ever installing Steam.
