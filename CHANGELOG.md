@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.18.0...v0.19.0) (2026-10-20)
+
+
+### Features
+
+* Add dlss overrides ([#116](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/116)) ([c15a8df](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c15a8df550eac9bc39b3e521d96bd7a697e22288))
+
+
+### Bug Fixes
+
+* Recording under pressure stutter recording ([#126](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/126)) ([f93af9c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f93af9c6d0ffc5fb304e26016b5ec86eb2c14f7e))
+* rounded borders ([0360e4b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0360e4be5a8768ba6bd9c50ae3f8036439132472))
+
 ## [0.18.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.17.1...v0.18.0) (2026-10-18)
 
 
