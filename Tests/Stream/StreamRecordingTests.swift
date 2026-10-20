@@ -48,8 +48,8 @@ struct StreamRecordingTests {
                 }
             }
             if sawRecording && framesAfterStart >= 8 { break }
-            // Pacing for the writer's spin-up only; the recorder's timestamps come from its own
-            // frame counter, so a faster feed does not change the recorded duration.
+            // This feed carries no source presentation time, so the writer stamps arrival time and
+            // the sleep sets the recorded cadence: a faster feed makes a shorter clip.
             try await Task.sleep(for: .milliseconds(12))
         }
         recorder.stop()
@@ -369,11 +369,7 @@ struct StreamRecordingTests {
         let feedDeadline = ContinuousClock.now + .seconds(15)
         while ContinuousClock.now < feedDeadline {
             if await statuses.terminalStatus() != nil { break }
-            guard let pixelBuffer = RecordingTestFixtures.makeNV12Frame(width: 64, height: 64, frameIndex: frameIndex) else {
-                Issue.record("Unable to create test NV12 pixel buffer")
-                return
-            }
-            recorder.appendNativePixelBuffer(pixelBuffer)
+            try RecordingTestFixtures.appendNativeFrame(to: recorder, frameIndex: frameIndex, rtpTimestamp: RecordingTestFixtures.nominalRtpTimestamp(frameIndex: frameIndex, frameRate: 30))
             // Interleaved stereo float, the shape the NVST Opus decoder produces when audio runs on
             // its own socket rather than through libwebrtc's audio device.
             recorder.appendGameAudioSamples(RecordingTestFixtures.makeSineSamples(frameCount: 480, frameIndex: frameIndex), sampleRate: 48_000, channels: 2)
@@ -386,8 +382,8 @@ struct StreamRecordingTests {
                 }
             }
             if sawRecording && framesAfterStart >= 8 { break }
-            // Pacing for the writer's spin-up only; the recorder's timestamps come from its own
-            // frame counter, so a faster feed does not change the recorded duration.
+            // Pacing for the writer's spin-up only; the recorder stamps the decoder's presentation
+            // time, so a faster feed does not change the recorded duration or the pts spacing.
             try await Task.sleep(for: .milliseconds(12))
         }
         recorder.stop()
@@ -420,5 +416,4 @@ struct StreamRecordingTests {
         // socket this is the recording's only audio source.
         #expect(try await asset.loadTracks(withMediaType: .audio).first != nil)
     }
-
 }

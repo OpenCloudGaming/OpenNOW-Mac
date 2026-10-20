@@ -52,7 +52,9 @@ extension NvstBifrostFreeTransport {
         let browserEgress = remoteCoOpBrowserEgress
         decoder.onPixelBuffer = { pixelBuffer, presentationTime, isKeyframe in
             screenshotCapture.deliver(pixelBuffer)
-            recorder.appendNativePixelBuffer(pixelBuffer)
+            // The recorder takes the decoder's presentation time so the file keeps the seat's
+            // cadence instead of this callback's arrival jitter.
+            recorder.appendNativePixelBuffer(pixelBuffer, sourcePresentationTime: presentationTime)
             replayBuffer.appendNativePixelBuffer(pixelBuffer)
             // The browser guest cannot decode the seat's HEVC, so it is sent a per-guest H.264
             // re-encode of this decoded picture. No-op while no browser guest is connected. The

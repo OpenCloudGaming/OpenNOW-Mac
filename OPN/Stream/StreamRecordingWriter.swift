@@ -9,60 +9,181 @@ import Foundation
 import QuartzCore
 
 extension StreamRecorder {
-    func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer, recordingId: UUID, source: VideoFrameSource, captureHostTime: CFTimeInterval) {
+    func appendPixelBuffer(_ pixelBuffer: CVPixelBuffer, recordingId: UUID, source: VideoFrameSource, arrivalHostTime: CFTimeInterval, sourcePresentationTime: CMTime?) {
         let retainedPixelBuffer = UInt(bitPattern: Unmanaged.passRetained(pixelBuffer).toOpaque())
         queue.async {
             defer { self.finishVideoFrameAppend(recordingId: recordingId, source: source) }
+            let queueDelayMilliseconds = (CACurrentMediaTime() - arrivalHostTime) * 1000
             guard let pixelBufferPointer = UnsafeRawPointer(bitPattern: retainedPixelBuffer) else { return }
             let pixelBuffer = Unmanaged<CVPixelBuffer>.fromOpaque(pixelBufferPointer).takeRetainedValue()
-            guard self.isActiveRecording(recordingId) else { return }
-            self.appendPixelBufferOnQueue(pixelBuffer, source: source, captureHostTime: captureHostTime)
+            guard self.isActiveRecording(recordingId) else {
+                self.recordVideoFrameRejected(.staleRecording, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
+                return
+            }
+            self.appendPixelBufferOnQueue(pixelBuffer,
+                                          source: source,
+                                          arrivalHostTime: arrivalHostTime,
+                                          queueDelayMilliseconds: queueDelayMilliseconds,
+                                          sourcePresentationTime: sourcePresentationTime)
         }
     }
 
-    func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer, source: VideoFrameSource, captureHostTime: CFTimeInterval) {
-        guard isRecording, selectVideoFrameSourceIfNeeded(source) else { return }
+    func appendPixelBufferOnQueue(_ pixelBuffer: CVPixelBuffer, source: VideoFrameSource, arrivalHostTime: CFTimeInterval, queueDelayMilliseconds: Double, sourcePresentationTime: CMTime?) {
+        guard isRecording else {
+            recordVideoFrameRejected(.notRecording, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
+            return
+        }
+        guard selectVideoFrameSourceIfNeeded(source) else {
+            recordVideoFrameRejected(.rejectedSource, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
+            return
+        }
         // The adaptor is declared from the first frame and the encoder takes NV12, P010 and BGRA.
         // A 4:4:4 or 4:2:2 surface is transferred to the 4:2:0 layout of its own depth here, so
         // the recording keeps 10 bits where the stream has them and the append never fails on
         // a format the writer was not declared for.
-        guard let pixelBuffer = Self.encoderCompatiblePixelBuffer(pixelBuffer, using: pixelTransfer) else { return }
+        guard let pixelBuffer = Self.encoderCompatiblePixelBuffer(pixelBuffer, using: pixelTransfer) else {
+            recordVideoFrameRejected(.rejectedFormat, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
+            return
+        }
         // Recorded before the writer is consulted: the first-frame watchdog needs to tell "no
         // frames are arriving" from "the encoder has not taken one yet".
-        offeredVideoFrame = true
+        videoFrameReachedWriter = true
         guard let configuration,
               let outputURL,
               prepareWriterIfNeeded(pixelBuffer: pixelBuffer, configuration: configuration, outputURL: outputURL),
               let writer,
               let input = videoInput,
-              let adaptor = pixelBufferAdaptor else { return }
+              let adaptor = pixelBufferAdaptor else {
+            recordVideoFrameRejected(.writerUnavailable, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
+            return
+        }
         if writer.status == .unknown {
             guard writer.startWriting() else {
+                recordVideoFrameRejected(.writerStartFailed, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
                 fail(writer.error)
                 return
             }
             writer.startSession(atSourceTime: .zero)
         }
-        guard input.isReadyForMoreMediaData else { return }
-        if !capturedVideoFrame {
-            capturedVideoFrame = true
-            startedAt = Date()
-            firstHostTime = captureHostTime
-            emit(.recording(startedAt: startedAt ?? createdAt, elapsedSeconds: 0))
-        }
-        guard let time = presentationTime(hostTime: captureHostTime) else { return }
-        let normalizedTime = CMTimeSubtract(time, firstPresentationTime)
-        guard adaptor.append(pixelBuffer, withPresentationTime: normalizedTime) else {
-            fail(writer.error)
+        guard input.isReadyForMoreMediaData else {
+            recordVideoFrameRejected(.encoderNotReady, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
             return
         }
-        lastPresentationTime = normalizedTime
+        let isFirstAppendedFrame = !capturedVideoFrame
+        if isFirstAppendedFrame {
+            capturedVideoFrame = true
+            startedAt = Date()
+            firstHostTime = arrivalHostTime
+            emit(.recording(startedAt: startedAt ?? createdAt, elapsedSeconds: 0))
+        }
+        guard let presentationTime = recordingPresentationTime(sourceTime: sourcePresentationTime, arrivalHostTime: arrivalHostTime) else {
+            recordVideoFrameRejected(.nonMonotonicPresentationTime, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
+            return
+        }
+        // The adaptor refuses a time that does not advance, and that refusal used to fail the whole
+        // recording. The frame goes instead, and the counters say it went.
+        guard isFirstAppendedFrame || CMTimeCompare(presentationTime, lastPresentationTime) > 0 else {
+            recordVideoFrameRejected(.nonMonotonicPresentationTime, source: source, queueDelayMilliseconds: queueDelayMilliseconds)
+            return
+        }
+        guard appendPixelBufferToEncoder(pixelBuffer,
+                                         adaptor: adaptor,
+                                         presentationTime: presentationTime,
+                                         source: source,
+                                         arrivalHostTime: arrivalHostTime,
+                                         queueDelayMilliseconds: queueDelayMilliseconds) else { return }
         emitElapsedIfNeeded()
     }
 
-    var firstPresentationTime: CMTime { .zero }
+    /// The append itself, timed: its latency is what the counters report, and a refusal here is the
+    /// one drop that also fails the recording, because it is the encoder giving up rather than the
+    /// timeline refusing a frame.
+    func appendPixelBufferToEncoder(_ pixelBuffer: CVPixelBuffer, adaptor: AVAssetWriterInputPixelBufferAdaptor, presentationTime: CMTime, source: VideoFrameSource, arrivalHostTime: CFTimeInterval, queueDelayMilliseconds: Double) -> Bool {
+        let appendStartedHostTime = CACurrentMediaTime()
+        guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
+            recordVideoFrameRejected(.appendFailure,
+                                     source: source,
+                                     queueDelayMilliseconds: queueDelayMilliseconds,
+                                     appendMilliseconds: (CACurrentMediaTime() - appendStartedHostTime) * 1000)
+            fail(writer?.error)
+            return false
+        }
+        lastPresentationTime = presentationTime
+        lastVideoArrivalHostTime = arrivalHostTime
+        recordVideoFrameAppended(StreamRecorderVideoFrameAppendMeasurement(
+            source: source,
+            presentationSeconds: presentationTime.seconds,
+            arrivalHostTime: arrivalHostTime,
+            queueDelayMilliseconds: queueDelayMilliseconds,
+            appendMilliseconds: (CACurrentMediaTime() - appendStartedHostTime) * 1000
+        ))
+        return true
+    }
 
-    func presentationTime(hostTime: CFTimeInterval = CACurrentMediaTime()) -> CMTime? {
+    /// This frame's place on the recording's timeline: the presentation time the decoder supplied
+    /// when there is one, its arrival time otherwise. Nil means the time does not advance and the
+    /// frame must not reach the encoder.
+    func recordingPresentationTime(sourceTime: CMTime?, arrivalHostTime: CFTimeInterval) -> CMTime? {
+        guard let sourceTime else { return presentationTime(hostTime: arrivalHostTime) }
+        switch sourceClock.recordingTime(forSourceTime: sourceTime) {
+        case .recordingTime(let time):
+            return time
+        case .wrapped(let time):
+            recordSourceClockWrap()
+            return time
+        case .restarted(let time):
+            recordSourceClockRestart()
+            return time
+        case .skipped:
+            return nil
+        }
+    }
+
+    /// Audio's place on the recording's timeline. Video owns that timeline — its frames carry the
+    /// seat's presentation clock — so audio scales its own arrival time by the rate that clock has
+    /// actually run at. Stamped with raw arrival time instead, audio drifts against the video track
+    /// by exactly the amount the two clocks disagree, which is worse than the cadence jitter that
+    /// moving video onto its source clock removed.
+    func audioPresentationTime(arrivalHostTime: CFTimeInterval) -> CMTime? {
+        guard capturedVideoFrame, let lastVideoArrivalHostTime else { return nil }
+        let wallSecondsSinceLastVideoFrame = max(0, arrivalHostTime - lastVideoArrivalHostTime)
+        let scaledTicks = CMTimeValue(wallSecondsSinceLastVideoFrame * videoClockRatio() * Double(StreamRecorderSourceClock.timescale))
+        // Audio never moves backwards on the timeline: a collision with the previous buffer costs
+        // one tick rather than the buffer itself.
+        let value = max(lastPresentationTime.value + scaledTicks, (lastAudioPresentationValue ?? -1) + 1)
+        lastAudioPresentationValue = value
+        return CMTime(value: value, timescale: StreamRecorderSourceClock.timescale)
+    }
+
+    /// Both audio feeds land here: one Int16 sample buffer append, timed from the video track's
+    /// timeline rather than from arrival time.
+    func appendAudioOnQueue(data: Data, frameCount: UInt32, sampleRate: Double, channels: UInt32, arrivalHostTime: CFTimeInterval) {
+        guard isRecording,
+              capturedVideoFrame,
+              writer?.status == .writing,
+              let input = audioInput,
+              input.isReadyForMoreMediaData else {
+            recordAudioBufferDropped()
+            return
+        }
+        guard let presentationTime = audioPresentationTime(arrivalHostTime: arrivalHostTime) else {
+            recordAudioBufferDropped()
+            return
+        }
+        guard let sampleBuffer = Self.makeAudioSampleBuffer(data: data, frameCount: frameCount, sampleRate: sampleRate, channels: channels, presentationTime: presentationTime) else {
+            recordAudioBufferDropped()
+            return
+        }
+        guard input.append(sampleBuffer) else {
+            recordAudioBufferDropped()
+            return
+        }
+        recordAudioBufferAppended(presentationSeconds: presentationTime.seconds)
+    }
+
+    /// The timeline's fallback clock: a frame's arrival time, used when its source supplies no
+    /// presentation time of its own.
+    func presentationTime(hostTime: CFTimeInterval) -> CMTime? {
         if firstHostTime == nil {
             firstHostTime = hostTime
             startedAt = Date()
@@ -78,12 +199,14 @@ extension StreamRecorder {
         finishing = true
         emit(.finishing)
         guard let writer else {
+            logDiagnosticsSummary(outcome: "cancelled")
             reset()
             emit(.failed(Self.message(for: StreamRecorderError.noFramesCaptured)))
             return
         }
         switch writer.status {
         case .unknown:
+            logDiagnosticsSummary(outcome: "cancelled")
             writer.cancelWriting()
             reset()
             emit(.failed(Self.message(for: StreamRecorderError.noFramesCaptured)))
@@ -98,6 +221,7 @@ extension StreamRecorder {
         case .failed, .cancelled:
             finishCompletedRecording()
         @unknown default:
+            logDiagnosticsSummary(outcome: "cancelled")
             writer.cancelWriting()
             reset()
             emit(.failed(Self.message(for: writer.error)))
@@ -107,6 +231,7 @@ extension StreamRecorder {
     func finishCompletedRecording() {
         defer { reset() }
         guard let writer, writer.status == .completed, let configuration, let outputURL else {
+            logDiagnosticsSummary(outcome: "failed")
             emit(.failed(Self.message(for: writer?.error)))
             return
         }
@@ -130,8 +255,10 @@ extension StreamRecorder {
         do {
             let data = try JSONEncoder.recordingEncoder.encode(recording)
             try data.write(to: recording.metadataURL, options: .atomic)
+            logDiagnosticsSummary(outcome: "finished")
             emit(.finished(recording))
         } catch {
+            logDiagnosticsSummary(outcome: "failed")
             emit(.failed(Self.message(for: error)))
         }
     }
@@ -143,6 +270,7 @@ extension StreamRecorder {
     }
 
     func fail(_ error: Error?) {
+        logDiagnosticsSummary(outcome: "failed")
         failed = true
         writer?.cancelWriting()
         reset()
@@ -161,10 +289,14 @@ extension StreamRecorder {
         startedAt = nil
         firstHostTime = nil
         capturedVideoFrame = false
-        offeredVideoFrame = false
+        videoFrameReachedWriter = false
         firstFrameTimeoutExtensions = 0
         finishing = false
         failed = false
+        lastVideoArrivalHostTime = nil
+        lastAudioPresentationValue = nil
+        sourceClock = StreamRecorderSourceClock()
+        resetDiagnostics()
         setActiveRecordingId(nil, enhancedVideoPreferred: false)
     }
 
@@ -337,9 +469,9 @@ extension StreamRecorder {
             // `AVAssetWriterInput` can report not-ready for seconds while it spins up, and killing
             // the recording then loses one that was working. Only "nothing offered at all" is the
             // failure this watchdog exists for.
-            if self.offeredVideoFrame, self.firstFrameTimeoutExtensions < Self.maxFirstFrameTimeoutExtensions {
+            if self.videoFrameReachedWriter, self.firstFrameTimeoutExtensions < Self.maxFirstFrameTimeoutExtensions {
                 self.firstFrameTimeoutExtensions += 1
-                self.offeredVideoFrame = false
+                self.videoFrameReachedWriter = false
                 self.scheduleFirstFrameTimeout(recordingId: recordingId)
                 return
             }
