@@ -174,9 +174,8 @@ final class StreamRecorder: @unchecked Sendable {
         set { statusHandlerLock.withLock { storedStatusHandler = newValue } }
     }
 
-    /// Where the writer's own diagnostic lines go: the frame accounting and the terminal summary.
-    /// Installed by whoever owns the recorder and read on `queue`, so locked for the same reason as
-    /// `onStatusChanged`.
+    /// Where the writer's own diagnostic lines go. Set by the recorder's owner, read on `queue`,
+    /// so locked for the same reason as `onStatusChanged`.
     var diagnosticsLogger: (@Sendable (String) -> Void)? {
         get { diagnosticsLoggerLock.withLock { storedDiagnosticsLogger } }
         set { diagnosticsLoggerLock.withLock { storedDiagnosticsLogger = newValue } }
@@ -215,10 +214,9 @@ final class StreamRecorder: @unchecked Sendable {
     var lastPresentationTime = CMTime.zero
     var lastStatusHostTime: CFTimeInterval = 0
     var capturedVideoFrame = false
-    /// A frame reached the writer, whether or not the encoder took it. Distinguishes a stalled
-    /// encoder from a video path that is delivering nothing. The cumulative count a support report
-    /// reads is the diagnostics' offered frames, not this.
-    var videoFrameReachedWriter = false
+    /// A frame reached the writer, whether or not the encoder took it, which distinguishes a
+    /// stalled encoder from a video path delivering nothing. The count a report reads is elsewhere.
+    var isVideoFrameOfferedToWriter = false
     /// The arrival time of the last appended video frame, which is the anchor audio scales from.
     var lastVideoArrivalHostTime: CFTimeInterval?
     var lastAudioPresentationValue: CMTimeValue?
@@ -266,7 +264,7 @@ final class StreamRecorder: @unchecked Sendable {
                 self.lastPresentationTime = .zero
                 self.lastStatusHostTime = 0
                 self.capturedVideoFrame = false
-                self.videoFrameReachedWriter = false
+                self.isVideoFrameOfferedToWriter = false
                 self.firstFrameTimeoutExtensions = 0
                 self.lastVideoArrivalHostTime = nil
                 self.lastAudioPresentationValue = nil
@@ -295,30 +293,27 @@ final class StreamRecorder: @unchecked Sendable {
     }
 
     /// A decoded frame plus the presentation time the decoder gave it, which is the seat's own
-    /// capture instant. Without one — the enhanced path has none — the writer falls back to the
-    /// frame's arrival time here.
+    /// capture instant. The enhanced path has none, so the writer stamps that frame's arrival.
     func appendNativePixelBuffer(_ pixelBuffer: CVPixelBuffer, sourcePresentationTime: CMTime? = nil) {
-        guard let recordingId = beginVideoFrameAppend(source: .native) else {
-            recordVideoFrameRejected(.gate, source: .native)
-            return
-        }
-        appendPixelBuffer(pixelBuffer,
-                          recordingId: recordingId,
-                          source: .native,
-                          arrivalHostTime: CACurrentMediaTime(),
-                          sourcePresentationTime: sourcePresentationTime)
+        appendPixelBufferFromVideoSource(pixelBuffer, source: .native, sourcePresentationTime: sourcePresentationTime)
     }
 
     func appendEnhancedPixelBuffer(_ pixelBuffer: CVPixelBuffer) {
-        guard let recordingId = beginVideoFrameAppend(source: .enhanced) else {
-            recordVideoFrameRejected(.gate, source: .enhanced)
+        appendPixelBufferFromVideoSource(pixelBuffer, source: .enhanced, sourcePresentationTime: nil)
+    }
+
+    /// The ingress gate both video feeds share: one frame in flight per source, and a refused frame
+    /// is counted rather than silently lost.
+    func appendPixelBufferFromVideoSource(_ pixelBuffer: CVPixelBuffer, source: VideoFrameSource, sourcePresentationTime: CMTime?) {
+        guard let recordingId = beginVideoFrameAppend(source: source) else {
+            recordVideoFrameRejected(.gate, source: source)
             return
         }
         appendPixelBuffer(pixelBuffer,
                           recordingId: recordingId,
-                          source: .enhanced,
+                          source: source,
                           arrivalHostTime: CACurrentMediaTime(),
-                          sourcePresentationTime: nil)
+                          sourcePresentationTime: sourcePresentationTime)
     }
 
     /// Appends decoded PCM that never passed through an audio device: interleaved `Float` samples,
@@ -336,7 +331,15 @@ final class StreamRecorder: @unchecked Sendable {
             initializedCount = samples.count
         }
         let frameCount = UInt32(samples.count / channelCount)
-        let data = interleaved.withUnsafeMutableBytes { Data($0) }
+        enqueueAudioAppend(data: interleaved.withUnsafeMutableBytes { Data($0) },
+                           frameCount: frameCount,
+                           sampleRate: sampleRate,
+                           channels: channels)
+    }
+
+    /// The queue hop both audio feeds share, taking the arrival time on the caller's thread so the
+    /// writer's own delay is measurable.
+    func enqueueAudioAppend(data: Data, frameCount: UInt32, sampleRate: Double, channels: UInt32) {
         let arrivalHostTime = CACurrentMediaTime()
         queue.async {
             self.appendAudioOnQueue(data: data,
@@ -351,14 +354,7 @@ final class StreamRecorder: @unchecked Sendable {
         guard let audioBufferList else { return }
         let copied = Self.audioData(from: audioBufferList.assumingMemoryBound(to: AudioBufferList.self), channels: max(1, Int(channels)))
         guard !copied.isEmpty else { return }
-        let arrivalHostTime = CACurrentMediaTime()
-        queue.async {
-            self.appendAudioOnQueue(data: copied,
-                                    frameCount: frameCount,
-                                    sampleRate: sampleRate,
-                                    channels: channels,
-                                    arrivalHostTime: arrivalHostTime)
-        }
+        enqueueAudioAppend(data: copied, frameCount: frameCount, sampleRate: sampleRate, channels: channels)
     }
 
 }

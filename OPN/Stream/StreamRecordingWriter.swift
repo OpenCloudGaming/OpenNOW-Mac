@@ -47,7 +47,7 @@ extension StreamRecorder {
         }
         // Recorded before the writer is consulted: the first-frame watchdog needs to tell "no
         // frames are arriving" from "the encoder has not taken one yet".
-        videoFrameReachedWriter = true
+        isVideoFrameOfferedToWriter = true
         guard let configuration,
               let outputURL,
               prepareWriterIfNeeded(pixelBuffer: pixelBuffer, configuration: configuration, outputURL: outputURL),
@@ -95,9 +95,8 @@ extension StreamRecorder {
         emitElapsedIfNeeded()
     }
 
-    /// The append itself, timed: its latency is what the counters report, and a refusal here is the
-    /// one drop that also fails the recording, because it is the encoder giving up rather than the
-    /// timeline refusing a frame.
+    /// The append itself, timed: its latency is what the counters report. A refusal here is the one
+    /// drop that also fails the recording, because it is the encoder giving up, not the timeline.
     func appendPixelBufferToEncoder(_ pixelBuffer: CVPixelBuffer, adaptor: AVAssetWriterInputPixelBufferAdaptor, presentationTime: CMTime, source: VideoFrameSource, arrivalHostTime: CFTimeInterval, queueDelayMilliseconds: Double) -> Bool {
         let appendStartedHostTime = CACurrentMediaTime()
         guard adaptor.append(pixelBuffer, withPresentationTime: presentationTime) else {
@@ -120,9 +119,8 @@ extension StreamRecorder {
         return true
     }
 
-    /// This frame's place on the recording's timeline: the presentation time the decoder supplied
-    /// when there is one, its arrival time otherwise. Nil means the time does not advance and the
-    /// frame must not reach the encoder.
+    /// This frame's place on the recording's timeline: the decoder's presentation time when it
+    /// supplied one, its arrival time otherwise. Nil means the time does not advance.
     func recordingPresentationTime(sourceTime: CMTime?, arrivalHostTime: CFTimeInterval) -> CMTime? {
         guard let sourceTime else { return presentationTime(hostTime: arrivalHostTime) }
         switch sourceClock.recordingTime(forSourceTime: sourceTime) {
@@ -139,11 +137,8 @@ extension StreamRecorder {
         }
     }
 
-    /// Audio's place on the recording's timeline. Video owns that timeline — its frames carry the
-    /// seat's presentation clock — so audio scales its own arrival time by the rate that clock has
-    /// actually run at. Stamped with raw arrival time instead, audio drifts against the video track
-    /// by exactly the amount the two clocks disagree, which is worse than the cadence jitter that
-    /// moving video onto its source clock removed.
+    /// Audio's place on the recording's timeline. Video owns that timeline, so audio scales its own
+    /// arrival time by the rate the seat's clock has run at; unstamped, the two tracks drift apart.
     func audioPresentationTime(arrivalHostTime: CFTimeInterval) -> CMTime? {
         guard capturedVideoFrame, let lastVideoArrivalHostTime else { return nil }
         let wallSecondsSinceLastVideoFrame = max(0, arrivalHostTime - lastVideoArrivalHostTime)
@@ -289,7 +284,7 @@ extension StreamRecorder {
         startedAt = nil
         firstHostTime = nil
         capturedVideoFrame = false
-        videoFrameReachedWriter = false
+        isVideoFrameOfferedToWriter = false
         firstFrameTimeoutExtensions = 0
         finishing = false
         failed = false
@@ -469,9 +464,9 @@ extension StreamRecorder {
             // `AVAssetWriterInput` can report not-ready for seconds while it spins up, and killing
             // the recording then loses one that was working. Only "nothing offered at all" is the
             // failure this watchdog exists for.
-            if self.videoFrameReachedWriter, self.firstFrameTimeoutExtensions < Self.maxFirstFrameTimeoutExtensions {
+            if self.isVideoFrameOfferedToWriter, self.firstFrameTimeoutExtensions < Self.maxFirstFrameTimeoutExtensions {
                 self.firstFrameTimeoutExtensions += 1
-                self.videoFrameReachedWriter = false
+                self.isVideoFrameOfferedToWriter = false
                 self.scheduleFirstFrameTimeout(recordingId: recordingId)
                 return
             }

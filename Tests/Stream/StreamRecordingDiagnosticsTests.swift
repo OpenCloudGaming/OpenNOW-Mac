@@ -43,7 +43,7 @@ struct StreamRecordingDiagnosticsTests {
     }
 
     @Test("the latency window reports the tail percentiles and the whole recording's extremes")
-    func latencyWindowReportsTheTailPercentilesAndTheWholeRecordingsExtremes() {
+    func latencyWindowReportsTailPercentilesWithWholeRecordingExtremes() {
         var window = StreamRecorderLatencyWindow()
         #expect(window.percentile(0.5) == -1)
         #expect(window.meanMilliseconds == 0)
@@ -101,34 +101,18 @@ struct StreamRecordingDiagnosticsTests {
     @Test("a finished recording reports its frame accounting to the session log")
     func aFinishedRecordingReportsItsFrameAccountingToTheSessionLog() async throws {
         let frameRate = 30
-        let recorder = StreamRecorder()
         let logged = StreamRecordingLogRecorder()
-        recorder.diagnosticsLogger = { line in Task { await logged.append(line) } }
-        let statuses = StreamRecordingStatusRecorder()
-        recorder.onStatusChanged = { status in Task { await statuses.append(status) } }
-        recorder.start(configuration: RecordingTestFixtures.nativeConfiguration(title: "Diagnostics Summary", frameRate: frameRate))
-
-        var frameIndex = 0
-        var hasStartedRecording = false
-        let warmUpDeadline = ContinuousClock.now + .seconds(15)
-        while !hasStartedRecording, ContinuousClock.now < warmUpDeadline {
-            if await statuses.terminalStatus() != nil { break }
-            try RecordingTestFixtures.appendNativeFrame(
-                to: recorder,
-                frameIndex: frameIndex,
-                rtpTimestamp: RecordingTestFixtures.nominalRtpTimestamp(frameIndex: frameIndex, frameRate: frameRate)
-            )
-            frameIndex += 1
-            hasStartedRecording = await statuses.hasStartedRecording()
-            try await Task.sleep(for: .milliseconds(12))
-        }
-        guard hasStartedRecording else {
+        let recording = RecordingTestFixtures.startNativeRecording(title: "Diagnostics Summary", frameRate: frameRate)
+        recording.recorder.diagnosticsLogger = { line in Task { await logged.append(line) } }
+        guard let warmUp = try await RecordingTestFixtures.warmUpNativeRecording(recording, frameRate: frameRate) else {
             Issue.record("Expected the recording to start")
             return
         }
+
+        var frameIndex = warmUp.nextFrameIndex
         for _ in 0..<10 {
             try RecordingTestFixtures.appendNativeFrame(
-                to: recorder,
+                to: recording.recorder,
                 frameIndex: frameIndex,
                 rtpTimestamp: RecordingTestFixtures.nominalRtpTimestamp(frameIndex: frameIndex, frameRate: frameRate)
             )
@@ -136,16 +120,11 @@ struct StreamRecordingDiagnosticsTests {
             try await Task.sleep(for: .milliseconds(12))
         }
 
-        // Read before the finish clears them, so the logged line can be checked against the
-        // accounting the recorder itself held.
-        try await Task.sleep(for: .milliseconds(300))
-        let diagnostics = recorder.diagnosticsSnapshot()
-        recorder.stop()
-        guard case .finished(let recording) = try await RecordingTestFixtures.waitForTerminalStatus(statuses) else {
-            Issue.record("Expected a finished recording, got \(String(describing: await statuses.terminalStatus()))")
+        guard let finished = try await RecordingTestFixtures.finishRecording(recording) else {
+            Issue.record("Expected a finished recording, got \(String(describing: await recording.statuses.terminalStatus()))")
             return
         }
-        defer { try? StreamRecordingLibrary.delete(recording) }
+        defer { try? StreamRecordingLibrary.delete(finished.file) }
 
         var summaries: [String] = []
         let summaryDeadline = ContinuousClock.now + .seconds(5)
@@ -159,9 +138,10 @@ struct StreamRecordingDiagnosticsTests {
         #expect(summary.contains("outcome=finished"))
         #expect(summary.contains("source=native"))
         #expect(summary.contains("appendMs[p50=") && summary.contains("queueMs[p50="))
-        #expect(Self.integer(after: "native[offered=", in: summary) == diagnostics.nativeVideo.offeredFrames)
-        #expect(Self.integer(after: "native[offered=\(diagnostics.nativeVideo.offeredFrames) appended=", in: summary) == diagnostics.nativeVideo.appendedFrames)
-        #expect(diagnostics.enhancedVideo.isIdle, "a native-only recording must not report enhanced frames")
+        #expect(Self.integer(after: "native[offered=", in: summary) == finished.diagnostics.nativeVideo.offeredFrames)
+        #expect(Self.integer(after: "native[offered=\(finished.diagnostics.nativeVideo.offeredFrames) appended=", in: summary)
+                == finished.diagnostics.nativeVideo.appendedFrames)
+        #expect(finished.diagnostics.enhancedVideo.isIdle, "a native-only recording must not report enhanced frames")
     }
 
     private static func integer(after marker: String, in line: String) -> Int? {

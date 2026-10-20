@@ -322,9 +322,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.preferredAudioChannelCount = preferredAudioChannelCount > 0 ? preferredAudioChannelCount : self.configuredAudioChannelCount
         self.logger = logger
         self.controlTimeout = controlTimeout
-        // The writer's frame accounting rides the session log like the decoder's and the receiver's
-        // diagnostics, and reports itself the moment a recording closes rather than waiting for the
-        // two-second tick.
+        // The writer's frame accounting rides the session log like the decoder's diagnostics, and
+        // reports itself the moment a recording closes rather than waiting for the two-second tick.
         if let logger {
             recorder.diagnosticsLogger = { message in logger("NVST \(message)") }
         }

@@ -18,14 +18,14 @@ actor StreamRecordingStatusRecorder {
         values.first { $0.isTerminal }
     }
 
-    func hasStartedRecording() -> Bool {
+    func isRecordingStarted() -> Bool {
         values.contains { status in
             if case .recording = status { return true }
             return false
         }
     }
 
-    func hasFailed() -> Bool {
+    func isFailed() -> Bool {
         values.contains { status in
             if case .failed = status { return true }
             return false
@@ -33,7 +33,63 @@ actor StreamRecordingStatusRecorder {
     }
 }
 
+/// A recorder writing a real file, plus every status it emits for the assertions to read.
+struct RecordingUnderTest {
+    let recorder: StreamRecorder
+    let statuses: StreamRecordingStatusRecorder
+}
+
 enum RecordingTestFixtures {
+    /// Starts a native recording writing a real file, keeping every status it emits.
+    static func startNativeRecording(title: String, frameRate: Int) -> RecordingUnderTest {
+        let recorder = StreamRecorder()
+        let statuses = StreamRecordingStatusRecorder()
+        recorder.onStatusChanged = { status in
+            Task { await statuses.append(status) }
+        }
+        recorder.start(configuration: nativeConfiguration(title: title, frameRate: frameRate))
+        return RecordingUnderTest(recorder: recorder, statuses: statuses)
+    }
+
+    /// Feeds nominal frames until the writer accepts one, so what a test measures starts on a
+    /// running recording rather than on the encoder's spin-up. Nil when the recording ended first.
+    static func warmUpNativeRecording(_ recording: RecordingUnderTest,
+                                      frameRate: Int,
+                                      firstRtpTimestamp: UInt32 = 0) async throws -> (nextFrameIndex: Int, lastRtpTimestamp: UInt32)? {
+        let ticksPerFrame = UInt32(NvstVideoToolboxDecoder.clockRate) / UInt32(max(1, frameRate))
+        var nextFrameIndex = 0
+        var lastRtpTimestamp = firstRtpTimestamp
+        var isFrameFed = false
+        let deadline = ContinuousClock.now + .seconds(15)
+        while ContinuousClock.now < deadline {
+            if await recording.statuses.isRecordingStarted() { break }
+            if await recording.statuses.terminalStatus() != nil { return nil }
+            if isFrameFed { lastRtpTimestamp = lastRtpTimestamp &+ ticksPerFrame }
+            try appendNativeFrame(to: recording.recorder, frameIndex: nextFrameIndex, rtpTimestamp: lastRtpTimestamp)
+            isFrameFed = true
+            nextFrameIndex += 1
+            try await Task.sleep(for: .milliseconds(12))
+        }
+        guard await recording.statuses.isRecordingStarted() else { return nil }
+        return (nextFrameIndex, lastRtpTimestamp)
+    }
+
+    /// Stops the recording and hands back the finished file with the counters captured just before
+    /// the finish cleared them. Nil when the recording did not finish.
+    static func finishRecording(_ recording: RecordingUnderTest) async throws -> (file: StreamRecording, diagnostics: StreamRecorderDiagnostics)? {
+        try await Task.sleep(for: .milliseconds(300))
+        let diagnostics = recording.recorder.diagnosticsSnapshot()
+        recording.recorder.stop()
+        guard case .finished(let file) = try await waitForTerminalStatus(recording.statuses) else { return nil }
+        return (file, diagnostics)
+    }
+
+    /// A gap that is a whole number of source frame intervals, which source-clock stamping produces
+    /// and arrival-time stamping does not.
+    static func isWholeFrameInterval(_ interval: Double) -> Bool {
+        abs(interval - interval.rounded()) < 0.05 && interval.rounded() >= 1
+    }
+
     static func nativeConfiguration(title: String, frameRate: Int) -> StreamRecordingConfiguration {
         StreamRecordingConfiguration(
             title: title,
@@ -67,11 +123,8 @@ enum RecordingTestFixtures {
         recorder.appendNativePixelBuffer(pixelBuffer, sourcePresentationTime: makeSourcePresentationTime(rtpTimestamp: rtpTimestamp))
     }
 
-    /// Every timed sample in a finished file's track, in the order the reader hands them back.
-    ///
-    /// That order is decode order, and the reader interleaves timing-less parameter-set buffers,
-    /// so a caller that needs playback order sorts what it gets. The writer also shifts the whole
-    /// video timeline by the encoder's B-frame delay, which leaves every gap exactly as appended.
+    /// Every timed sample in a finished file's track, in the reader's decode order and without the
+    /// timing-less parameter-set buffers. A caller needing playback order sorts what it gets.
     static func trackSamples(url: URL, mediaType: AVMediaType) async throws -> [(presentationTime: CMTime, duration: CMTime)] {
         let asset = AVURLAsset(url: url)
         guard let track = try await asset.loadTracks(withMediaType: mediaType).first else {
@@ -102,9 +155,8 @@ enum RecordingTestFixtures {
             .sorted { CMTimeCompare($0, $1) < 0 }
     }
 
-    /// Where a track's media ends: the latest sample's presentation time plus its own duration.
-    /// Audio comes back from the reader in buffers holding many samples at once, so a buffer's
-    /// presentation time alone is the start of its first sample rather than the end of the track.
+    /// Where a track's media ends: the latest sample's presentation time plus its own duration,
+    /// since audio arrives in buffers holding many samples rather than one per buffer.
     static func trackEndSeconds(url: URL, mediaType: AVMediaType) async throws -> Double {
         try await trackSamples(url: url, mediaType: mediaType)
             .map { sample in

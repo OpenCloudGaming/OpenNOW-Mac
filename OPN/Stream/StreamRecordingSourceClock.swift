@@ -4,14 +4,8 @@
 import CoreMedia
 import Foundation
 
-/// Maps the decoder's presentation clock onto the recording's timeline.
-///
-/// Stamping a frame with the moment its decode callback ran bakes that callback's jitter into the
-/// file: a loss-free 120 fps recording measured only 54.6 % nominal presentation gaps, with 28.5 %
-/// of them short (NEC-135). The decoder already carries the seat's capture instant, so the file
-/// keeps that spacing and this type's only other job is keeping the timeline strictly increasing —
-/// `AVAssetWriterInputPixelBufferAdaptor.append` refuses a time that does not advance, and that
-/// refusal used to cost the whole recording.
+/// Maps the decoder's presentation clock onto the recording's timeline and keeps that timeline
+/// strictly increasing: the adaptor refuses a time that does not advance, and that used to be fatal.
 struct StreamRecorderSourceClock {
     /// The recording's timescale. 600 divides the 90 kHz RTP clock into whole ticks at every frame
     /// rate the seat negotiates, so a 120 fps frame is exactly 5 ticks and a 30 fps frame exactly 20.

@@ -29,9 +29,8 @@ enum StreamRecorderVideoRejection: Sendable {
     case appendFailure
 }
 
-/// One video source's frame accounting. Every offered frame lands in exactly one bucket, so
-/// `offeredFrames` is the sum of the rest and a support report can reconcile the log against the
-/// number of frames in the produced file.
+/// One video source's frame accounting. Every offered frame lands in exactly one bucket, so the
+/// log reconciles against the number of frames in the produced file.
 struct StreamRecorderVideoFrameCounters: Equatable, Sendable {
     var offeredFrames = 0
     var appendedFrames = 0
@@ -102,8 +101,7 @@ struct StreamRecorderAudioCounters: Equatable, Sendable {
 }
 
 /// The last `capacity` measurements, frame-counted rather than time-windowed so the window covers
-/// the same slice of the recording whatever the frame rate. Same shape as
-/// `NvstVideoPipeline.RecentDecodeTimes`, and for the same reason: a lifetime mean hides the tail.
+/// the same slice of the recording at any frame rate. A lifetime mean hides the tail.
 struct StreamRecorderLatencyWindow: Equatable, Sendable {
     static let capacity = 1024
 
@@ -161,9 +159,8 @@ struct StreamRecorderVideoFrameAppendMeasurement {
     let appendMilliseconds: Double
 }
 
-/// Everything the writer counted for one recording, in the shape the periodic diagnostic line and
-/// the terminal summary report it. Counts and durations only: no identifiers and no paths, so the
-/// line needs no redaction before it goes into a support report.
+/// Everything the writer counted for one recording. Counts and durations only, no identifiers and
+/// no paths, so the line needs no redaction before it goes into a support report.
 struct StreamRecorderDiagnostics: Equatable, Sendable {
     var nativeVideo = StreamRecorderVideoFrameCounters()
     var enhancedVideo = StreamRecorderVideoFrameCounters()
@@ -188,10 +185,8 @@ struct StreamRecorderDiagnostics: Equatable, Sendable {
         return max(0, lastVideoArrivalHostTime - firstVideoArrivalHostTime)
     }
 
-    /// The seat's presentation clock against the host's wall clock. Audio scales its own arrival
-    /// time by this to stay on the video track's timeline, so anything other than 1.0000 is the
-    /// drift that stamping would otherwise introduce. Clamped so one odd interval cannot scale
-    /// audio into nonsense; a real disagreement between the two clocks is a fraction of a percent.
+    /// The seat's presentation clock against the host's wall clock, which is what audio's arrival
+    /// time is scaled by. Clamped so one odd interval cannot scale audio into nonsense.
     var videoClockRatio: Double {
         guard videoArrivalSeconds > 0, videoPresentationSeconds > 0 else { return 1 }
         return min(max(videoPresentationSeconds / videoArrivalSeconds, 0.25), 4)
