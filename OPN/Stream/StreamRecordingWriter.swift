@@ -137,16 +137,17 @@ extension StreamRecorder {
         }
     }
 
-    /// Audio's place on the recording's timeline. Video owns that timeline, so audio scales its own
-    /// arrival time by the rate the seat's clock has run at; unstamped, the two tracks drift apart.
-    func audioPresentationTime(arrivalHostTime: CFTimeInterval) -> CMTime? {
+    /// Audio's place on the recording's timeline. The sample-count cursor is the floor, so buffers
+    /// never overlap; the video target only pulls forward, keeping undelivered audio's gap intact.
+    func audioPresentationTime(arrivalHostTime: CFTimeInterval, frameCount: UInt32, sampleRate: Double) -> CMTime? {
         guard capturedVideoFrame, let lastVideoArrivalHostTime else { return nil }
+        let ticksPerSecond = Double(StreamRecorderSourceClock.timescale)
+        let bufferTicks = max(1, CMTimeValue(Double(frameCount) / max(1, sampleRate) * ticksPerSecond))
+        let contiguousStart = lastAudioBufferEndValue ?? lastPresentationTime.value
         let wallSecondsSinceLastVideoFrame = max(0, arrivalHostTime - lastVideoArrivalHostTime)
-        let scaledTicks = CMTimeValue(wallSecondsSinceLastVideoFrame * videoClockRatio() * Double(StreamRecorderSourceClock.timescale))
-        // Audio never moves backwards on the timeline: a collision with the previous buffer costs
-        // one tick rather than the buffer itself.
-        let value = max(lastPresentationTime.value + scaledTicks, (lastAudioPresentationValue ?? -1) + 1)
-        lastAudioPresentationValue = value
+        let videoTarget = lastPresentationTime.value + CMTimeValue(wallSecondsSinceLastVideoFrame * videoClockRatio() * ticksPerSecond)
+        let value = max(contiguousStart, videoTarget)
+        lastAudioBufferEndValue = value + bufferTicks
         return CMTime(value: value, timescale: StreamRecorderSourceClock.timescale)
     }
 
@@ -161,7 +162,9 @@ extension StreamRecorder {
             recordAudioBufferDropped()
             return
         }
-        guard let presentationTime = audioPresentationTime(arrivalHostTime: arrivalHostTime) else {
+        guard let presentationTime = audioPresentationTime(arrivalHostTime: arrivalHostTime,
+                                                           frameCount: frameCount,
+                                                           sampleRate: sampleRate) else {
             recordAudioBufferDropped()
             return
         }
@@ -289,7 +292,7 @@ extension StreamRecorder {
         finishing = false
         failed = false
         lastVideoArrivalHostTime = nil
-        lastAudioPresentationValue = nil
+        lastAudioBufferEndValue = nil
         sourceClock = StreamRecorderSourceClock()
         resetDiagnostics()
         setActiveRecordingId(nil, enhancedVideoPreferred: false)
@@ -305,19 +308,20 @@ extension StreamRecorder {
         }
     }
 
-    func beginVideoFrameAppend(source: VideoFrameSource) -> UUID? {
+    func beginVideoFrameAppend(source: VideoFrameSource) -> VideoFrameAdmission {
         frameLock.withLock {
-            guard let activeRecordingId else { return nil }
+            guard let activeRecordingId else { return .notRecording }
             switch source {
             case .native:
-                guard selectedVideoFrameSource != .enhanced, pendingNativeVideoRecordingId == nil else { return nil }
+                guard selectedVideoFrameSource != .enhanced else { return .wrongSource }
+                guard pendingNativeVideoRecordingId == nil else { return .queueFull }
                 pendingNativeVideoRecordingId = activeRecordingId
             case .enhanced:
-                guard enhancedVideoPreferred, selectedVideoFrameSource != .native else { return nil }
-                guard pendingEnhancedVideoFrameCount < maxQueuedEnhancedVideoFrames else { return nil }
+                guard enhancedVideoPreferred, selectedVideoFrameSource != .native else { return .wrongSource }
+                guard pendingEnhancedVideoFrameCount < maxQueuedEnhancedVideoFrames else { return .queueFull }
                 pendingEnhancedVideoFrameCount += 1
             }
-            return activeRecordingId
+            return .admitted(activeRecordingId)
         }
     }
 

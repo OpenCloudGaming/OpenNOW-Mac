@@ -258,7 +258,7 @@ extension StreamRecorder {
     }
 
     /// The rate the video track's timeline has been advancing at against the wall clock, which is
-    /// what audio's arrival time is scaled by. See `audioPresentationTime(arrivalHostTime:)`.
+    /// what audio's video-derived target is scaled by. See `audioPresentationTime`.
     func videoClockRatio() -> Double {
         diagnosticsLock.withLock { diagnostics.videoClockRatio }
     }

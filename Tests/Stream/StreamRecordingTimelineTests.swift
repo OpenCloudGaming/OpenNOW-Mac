@@ -8,8 +8,8 @@ import Foundation
 import Testing
 @testable import OpenNOW
 
-/// Serialized like `StreamRecordingTests`: every test drives a real `AVAssetWriter`, and concurrent
-/// encoders on a loaded runner change which frames a recording keeps.
+/// Serialized because the file tests drive a real `AVAssetWriter`, and concurrent encoders on a
+/// loaded runner change which frames a recording keeps.
 @Suite("Stream recording timeline", .serialized)
 struct StreamRecordingTimelineTests {
     /// The cadence in the file has to be the seat's, not the decode callback's: these frames arrive
@@ -182,5 +182,28 @@ struct StreamRecordingTimelineTests {
         #expect(abs(audioSeconds - videoSeconds) < 0.15, "audio ended at \(audioSeconds)s against video at \(videoSeconds)s")
         #expect(audioSeconds < feedSeconds * 0.75, "audio followed the wall clock (\(feedSeconds)s) instead of the video timeline")
         #expect(finished.diagnostics.videoClockRatio < 0.75)
+        let audioSamples = try await RecordingTestFixtures.trackSamples(url: finished.file.videoURL, mediaType: .audio)
+        #expect(RecordingTestFixtures.overlappingSampleCount(audioSamples) == 0, "audio buffers must not overlap in the file")
+    }
+
+    /// A buffer arriving sooner than its own duration cannot be stamped inside the previous one:
+    /// the sample-count cursor is the floor, whatever the arrival clock says.
+    @Test("audio buffers stay contiguous when they arrive faster than they play")
+    func audioBuffersStayContiguousWhenTheyArriveFasterThanTheyPlay() {
+        let bufferTicks = CMTimeValue(Double(480) / 48_000 * Double(StreamRecorderSourceClock.timescale))
+        let recorder = StreamRecorder()
+        recorder.capturedVideoFrame = true
+        recorder.lastPresentationTime = .zero
+        recorder.lastVideoArrivalHostTime = 100
+
+        let first = recorder.audioPresentationTime(arrivalHostTime: 100.010, frameCount: 480, sampleRate: 48_000)
+        let second = recorder.audioPresentationTime(arrivalHostTime: 100.012, frameCount: 480, sampleRate: 48_000)
+        let third = recorder.audioPresentationTime(arrivalHostTime: 100.500, frameCount: 480, sampleRate: 48_000)
+
+        #expect(first?.value == bufferTicks, "the first buffer lands where the video timeline puts it")
+        #expect(second?.value == (first?.value ?? 0) + bufferTicks,
+                "a buffer arriving 2 ms later still starts where the previous one ends")
+        #expect(third?.value ?? 0 > (second?.value ?? 0) + bufferTicks,
+                "a real gap in delivery stays a gap in the file")
     }
 }

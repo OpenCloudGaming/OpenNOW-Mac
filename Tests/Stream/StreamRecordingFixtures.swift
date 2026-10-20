@@ -166,6 +166,19 @@ enum RecordingTestFixtures {
             .max() ?? 0
     }
 
+    /// Samples that start before the previous one ends, which is what a timeline derived from
+    /// arrival time alone produces.
+    static func overlappingSampleCount(_ samples: [(presentationTime: CMTime, duration: CMTime)]) -> Int {
+        var previousEnd = CMTime(value: -1, timescale: StreamRecorderSourceClock.timescale)
+        var overlapCount = 0
+        for sample in samples.sorted(by: { CMTimeCompare($0.presentationTime, $1.presentationTime) < 0 }) {
+            if CMTimeCompare(sample.presentationTime, previousEnd) < 0 { overlapCount += 1 }
+            let end = sample.duration.isValid ? sample.presentationTime + sample.duration : sample.presentationTime
+            previousEnd = CMTimeCompare(end, previousEnd) > 0 ? end : previousEnd
+        }
+        return overlapCount
+    }
+
     /// The gaps between consecutive presentation times, in units of one frame interval of the
     /// configured frame rate: 1.0 is the nominal gap, 2.0 is one frame's worth of missing footage.
     static func frameIntervals(_ presentationTimes: [CMTime], frameRate: Int) -> [Double] {

@@ -197,6 +197,27 @@ final class StreamRecorder: @unchecked Sendable {
         case enhanced
     }
 
+    /// The ingress gate's answer for one offered frame.
+    enum VideoFrameAdmission: Sendable {
+        case admitted(UUID)
+        case notRecording
+        case wrongSource
+        case queueFull
+
+        /// The bucket this refusal is counted in. Nil for an admitted frame and for one that arrived
+        /// with no recording running, which is not a frame any recording refused.
+        var rejection: StreamRecorderVideoRejection? {
+            switch self {
+            case .admitted, .notRecording:
+                return nil
+            case .wrongSource:
+                return .rejectedSource
+            case .queueFull:
+                return .gate
+            }
+        }
+    }
+
     let queue = DispatchQueue(label: "io.opencg.opennow.recording.writer")
     let frameLock = NSLock()
     let firstFrameTimeout: DispatchTimeInterval
@@ -219,7 +240,7 @@ final class StreamRecorder: @unchecked Sendable {
     var isVideoFrameOfferedToWriter = false
     /// The arrival time of the last appended video frame, which is the anchor audio scales from.
     var lastVideoArrivalHostTime: CFTimeInterval?
-    var lastAudioPresentationValue: CMTimeValue?
+    var lastAudioBufferEndValue: CMTimeValue?
     /// The decoder's presentation clock mapped onto the recording's timeline. Touched on `queue`.
     var sourceClock = StreamRecorderSourceClock()
     let diagnosticsLock = NSLock()
@@ -267,7 +288,7 @@ final class StreamRecorder: @unchecked Sendable {
                 self.isVideoFrameOfferedToWriter = false
                 self.firstFrameTimeoutExtensions = 0
                 self.lastVideoArrivalHostTime = nil
-                self.lastAudioPresentationValue = nil
+                self.lastAudioBufferEndValue = nil
                 self.sourceClock = StreamRecorderSourceClock(frameRate: configuration.fps)
                 self.resetDiagnostics()
                 self.recordingWidth = 0
@@ -305,8 +326,10 @@ final class StreamRecorder: @unchecked Sendable {
     /// The ingress gate both video feeds share: one frame in flight per source, and a refused frame
     /// is counted rather than silently lost.
     func appendPixelBufferFromVideoSource(_ pixelBuffer: CVPixelBuffer, source: VideoFrameSource, sourcePresentationTime: CMTime?) {
-        guard let recordingId = beginVideoFrameAppend(source: source) else {
-            recordVideoFrameRejected(.gate, source: source)
+        let admission = beginVideoFrameAppend(source: source)
+        guard case .admitted(let recordingId) = admission else {
+            guard let rejection = admission.rejection else { return }
+            recordVideoFrameRejected(rejection, source: source)
             return
         }
         appendPixelBuffer(pixelBuffer,

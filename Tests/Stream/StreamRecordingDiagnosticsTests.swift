@@ -144,6 +144,31 @@ struct StreamRecordingDiagnosticsTests {
         #expect(finished.diagnostics.enhancedVideo.isIdle, "a native-only recording must not report enhanced frames")
     }
 
+    /// Which bucket a refused frame lands in, and that a frame arriving with no recording running
+    /// lands in none: counting idle frames logs a recording line for a session that never recorded.
+    @Test("a refused frame is counted by the gate that refused it")
+    func aRefusedFrameIsCountedByTheGateThatRefusedIt() async throws {
+        guard let pixelBuffer = RecordingTestFixtures.makeNV12Frame(width: 64, height: 64, frameIndex: 0) else {
+            throw StreamRecordingTestError.unableToCreatePixelBuffer
+        }
+        let idleRecorder = StreamRecorder()
+        idleRecorder.appendNativePixelBuffer(pixelBuffer, sourcePresentationTime: RecordingTestFixtures.makeSourcePresentationTime(rtpTimestamp: 0))
+        idleRecorder.appendEnhancedPixelBuffer(pixelBuffer)
+        #expect(idleRecorder.diagnosticsSnapshot().isIdle, "a frame with no recording running is not a recording's refused frame")
+
+        let recording = RecordingTestFixtures.startNativeRecording(title: "Gate Rejection Buckets", frameRate: 30)
+        let startDeadline = ContinuousClock.now + .seconds(5)
+        while await recording.statuses.values.isEmpty, ContinuousClock.now < startDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        recording.recorder.appendEnhancedPixelBuffer(pixelBuffer)
+        let snapshot = recording.recorder.diagnosticsSnapshot()
+        recording.recorder.stop()
+        #expect(snapshot.enhancedVideo.rejectedSourceRejections == 1, "the native source owns this recording")
+        #expect(snapshot.enhancedVideo.gateRejections == 0)
+        #expect(snapshot.nativeVideo.isIdle, "the refused frame belongs to the enhanced counters alone")
+    }
+
     private static func integer(after marker: String, in line: String) -> Int? {
         guard let start = line.range(of: marker)?.upperBound else { return nil }
         let digits = line[start...].prefix(while: \.isNumber)
