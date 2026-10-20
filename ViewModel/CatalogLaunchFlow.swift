@@ -24,6 +24,10 @@ extension CatalogViewModel {
 
     var activeStreamProgress: StreamProgress? { gameSession?.progress }
 
+    /// The DLSS overrides the running session's seat reported it applied, or nil when no stream is
+    /// running — an ended session's report describes a stream that is no longer on screen.
+    var runningStreamDlssState: NvstDlssStateNotification? { gameSession?.appliedDlssState }
+
     var isActiveStreamLaunchOverlayVisible: Bool { gameSession?.isLaunchOverlayVisible ?? false }
 
     var canResumeActiveLaunchSession: Bool { gameSession?.canResumeActiveSession ?? false }

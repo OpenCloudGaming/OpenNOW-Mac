@@ -225,6 +225,8 @@ struct NativeNVSTStatsOverlay: View {
     let detailLevel: StreamStatsDetailLevel
     /// The seat's last `0x010e` HDR mode word, empty while the game is SDR or has said nothing.
     let hdrModeText: String
+    /// The seat's applied DLSS override state, nil until it reports one.
+    let appliedDlssState: NvstDlssStateNotification?
 
     var body: some View {
         NativeNVSTStatsPanel(
@@ -264,8 +266,31 @@ struct NativeNVSTStatsOverlay: View {
                 NativeNVSTStatsPanel.Group(label: "TIMING", rows: nativeStatsTimingRows),
                 NativeNVSTStatsPanel.Group(label: "AUDIO", rows: nativeStatsAudioRows),
                 NativeNVSTStatsPanel.Group(label: "SESSION", rows: nativeStatsSessionRows),
+                nativeStatsDlssGroup,
             ]
         }
+    }
+
+    /// The DLSS overrides: what the running session has once the seat reports, and otherwise what
+    /// the next session will ask for.
+    var nativeStatsDlssGroup: NativeNVSTStatsPanel.Group {
+        guard let appliedDlssState else { return nativeStatsNextSessionDlssGroup }
+        return NativeNVSTStatsPanel.Group(label: "DLSS · THIS SESSION", rows: [
+            NativeNVSTStatsPanel.Row(label: "Super Resolution", value: appliedDlssState.superResolutionLabel),
+            NativeNVSTStatsPanel.Row(label: "Frame Generation", value: appliedDlssState.frameGenerationLabel),
+            NativeNVSTStatsPanel.Row(label: "Ray Reconstruction", value: appliedDlssState.rayReconstructionLabel),
+        ])
+    }
+
+    /// The request the next session will carry, which is all there is to report until the seat
+    /// sends its own state. It composes the same labels the settings card's summary does.
+    private var nativeStatsNextSessionDlssGroup: NativeNVSTStatsPanel.Group {
+        let overrides = OPNStreamPreferences.effectiveDlssOverrides()
+        return NativeNVSTStatsPanel.Group(label: "DLSS · NEXT SESSION", rows: [
+            NativeNVSTStatsPanel.Row(label: "Super Resolution", value: overrides.superResolutionRequestLabel),
+            NativeNVSTStatsPanel.Row(label: "Frame Generation", value: overrides.frameGenerationRequestLabel),
+            NativeNVSTStatsPanel.Row(label: "Ray Reconstruction", value: overrides.rayReconstructionRequestLabel),
+        ])
     }
 
     var nativeStatsNetworkRows: [NativeNVSTStatsPanel.Row] {
@@ -582,7 +607,8 @@ extension NativeNVSTMediaStreamSurface {
             stats: model.stats,
             applicationID: configuration.applicationID,
             detailLevel: model.statsDetail,
-            hdrModeText: model.nativeHdrModeText
+            hdrModeText: model.nativeHdrModeText,
+            appliedDlssState: model.nativeDlssState
         )
         .opnTransition(.scale(scale: 0.94, anchor: model.statsPosition.transitionAnchor).combined(with: .opacity))
         .streamStatsHUDPosition(model.statsPosition, isSidebarVisible: model.unifiedHUDVisible)

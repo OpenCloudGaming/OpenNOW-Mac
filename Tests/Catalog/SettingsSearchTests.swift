@@ -25,6 +25,9 @@ import Testing
         // These only exist while Recording Mode is Instant Replay, so their words ride that picker
         // rather than a result that would scroll to a control that is not on screen.
         "Replay Length", "Clip Length", "Replay Quality", "Storage Budget",
+        // The DLSS card's custom-resolution slider and its two per-feature model pickers only exist
+        // under Custom mode and the Advanced models disclosure, so their words ride the card entry.
+        "Input Resolution", "Frame Multiplier", "Super Resolution Model", "Frame Generation Model",
     ]
 
     private static var settingsDirectory: URL {
@@ -105,6 +108,9 @@ import Testing
             // The Maintenance Watch card is a SettingsCard whose rows are custom title-and-REMOVE
             // rows, so neither the card nor its per-title rows come from the scanned family.
             "Maintenance Watch",
+            // The Cloud DLSS Overrides card's own title: the card is a SettingsCard, and its rows
+            // are indexed by their own names.
+            "Cloud DLSS Overrides",
         ]
         // Keybinding rows draw their title from `KeybindingAction`, which the literal source scan
         // cannot read; the index builds those same titles from that same enum.

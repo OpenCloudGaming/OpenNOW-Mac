@@ -5,6 +5,7 @@ import SwiftUI
 struct StreamHostView: View {
     let configuration: StreamLaunchConfiguration
     let onProgress: StreamProgressHandler?
+    let onDlssState: StreamDlssStateHandler?
     let onEnd: StreamCompletionHandler
     private let coordinator: OPNStreamSessionCoordinator
 
@@ -12,9 +13,11 @@ struct StreamHostView: View {
          cloudmatchDeviceId: String,
          onProgress: StreamProgressHandler?,
          onRequiredSessionAd: (@Sendable (StreamSessionAdPresentation) async throws -> Int)? = nil,
+         onDlssState: StreamDlssStateHandler? = nil,
          onEnd: @escaping StreamCompletionHandler) {
         self.configuration = configuration
         self.onProgress = onProgress
+        self.onDlssState = onDlssState
         self.onEnd = onEnd
         coordinator = OPNStreamSessionCoordinator(
             adPresenter: InlineStreamSessionAdPresenter(handler: onRequiredSessionAd),
@@ -31,6 +34,7 @@ struct StreamHostView: View {
             sessionProvider: coordinator,
             preventDisplaySleep: Self.preventDisplaySleepWhileStreaming(applicationID: configuration.applicationID),
             onProgress: onProgress,
+            onDlssState: onDlssState,
             onEnd: onEnd
         )
     }
@@ -57,6 +61,7 @@ struct NativeNVSTMediaStreamSurface: View {
         sessionProvider: any NativeNVSTSessionProvider,
         preventDisplaySleep: Bool,
         onProgress: StreamProgressHandler?,
+        onDlssState: StreamDlssStateHandler? = nil,
         onEnd: @escaping StreamCompletionHandler
     ) {
         self.configuration = configuration
@@ -65,6 +70,7 @@ struct NativeNVSTMediaStreamSurface: View {
             sessionProvider: sessionProvider,
             preventDisplaySleep: preventDisplaySleep,
             onProgress: onProgress,
+            onDlssState: onDlssState,
             onEnd: onEnd
         ))
     }
