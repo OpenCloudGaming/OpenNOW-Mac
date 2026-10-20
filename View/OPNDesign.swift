@@ -152,6 +152,27 @@ enum OPNDesign {
             case capsule
         }
 
+        /// Which of a surface's four corners the Corner Style rounds. A surface pinned to a seam it
+        /// shares with a neighbour - a status band flush under the app bar, a band docked to a window
+        /// edge - squares the corners on that seam: a rounded corner there cuts a notch of background
+        /// out of the seam, which reads as a broken edge rather than as a rounded shape.
+        struct Corners: OptionSet, Hashable, Sendable {
+            let rawValue: Int
+
+            static let topLeading = Corners(rawValue: 1 << 0)
+            static let topTrailing = Corners(rawValue: 1 << 1)
+            static let bottomLeading = Corners(rawValue: 1 << 2)
+            static let bottomTrailing = Corners(rawValue: 1 << 3)
+
+            /// A free-standing surface, the default: all four corners follow the style.
+            static let all: Corners = [.topLeading, .topTrailing, .bottomLeading, .bottomTrailing]
+            /// A band pinned flush to the top of what it sits under: its top corners meet that seam.
+            static let bottom: Corners = [.bottomLeading, .bottomTrailing]
+            /// A band pinned flush to the bottom of what it sits in: its bottom corners meet that
+            /// seam.
+            static let top: Corners = [.topLeading, .topTrailing]
+        }
+
         private static let baseControl: CGFloat = 6
         private static let baseTile: CGFloat = 6
         private static let baseCard: CGFloat = 10
@@ -541,8 +562,15 @@ struct OPNCornerGeometry: Equatable, Sendable {
 
     static let square = OPNCornerGeometry(style: .square)
 
-    func shape(_ role: OPNDesign.CornerRole, scale: CGFloat = 1) -> OPNResolvedCornerShape {
-        OPNResolvedCornerShape(geometry: OPNDesign.Corner.geometry(role, style: style, scale: scale))
+    func shape(
+        _ role: OPNDesign.CornerRole,
+        scale: CGFloat = 1,
+        corners: OPNDesign.Corner.Corners = .all
+    ) -> OPNResolvedCornerShape {
+        OPNResolvedCornerShape(
+            geometry: OPNDesign.Corner.geometry(role, style: style, scale: scale),
+            corners: corners
+        )
     }
 }
 
@@ -553,14 +581,17 @@ private struct OPNCornerGeometryKey: EnvironmentKey {
 /// The corner shape with its geometry already resolved from the environment.
 struct OPNResolvedCornerShape: InsettableShape {
     let geometry: OPNDesign.Corner.Geometry
+    /// The corners the style rounds. Anything outside this set stays square.
+    let corners: OPNDesign.Corner.Corners
     private let inset: CGFloat
 
-    init(geometry: OPNDesign.Corner.Geometry) {
-        self.init(geometry: geometry, inset: 0)
+    init(geometry: OPNDesign.Corner.Geometry, corners: OPNDesign.Corner.Corners = .all) {
+        self.init(geometry: geometry, corners: corners, inset: 0)
     }
 
-    private init(geometry: OPNDesign.Corner.Geometry, inset: CGFloat) {
+    private init(geometry: OPNDesign.Corner.Geometry, corners: OPNDesign.Corner.Corners, inset: CGFloat) {
         self.geometry = geometry
+        self.corners = corners
         self.inset = inset
     }
 
@@ -569,23 +600,41 @@ struct OPNResolvedCornerShape: InsettableShape {
         switch geometry {
         case .radius(let radius):
             let resolved = max(radius - inset, 0)
-            return Path(
-                roundedRect: box,
-                cornerSize: CGSize(width: resolved, height: resolved),
-                style: .continuous
-            )
+            guard corners != .all else {
+                return Path(
+                    roundedRect: box,
+                    cornerSize: CGSize(width: resolved, height: resolved),
+                    style: .continuous
+                )
+            }
+            return unevenPath(in: box, radius: resolved, style: .continuous)
         case .capsule:
             let radius = min(box.width, box.height) / 2
-            return Path(
-                roundedRect: box,
-                cornerSize: CGSize(width: radius, height: radius),
-                style: .circular
-            )
+            guard corners != .all else {
+                return Path(
+                    roundedRect: box,
+                    cornerSize: CGSize(width: radius, height: radius),
+                    style: .circular
+                )
+            }
+            return unevenPath(in: box, radius: radius, style: .circular)
         }
     }
 
+    /// The same rounded rect with the squared corners at radius 0. A capsule's corners are arcs
+    /// rather than continuous curves, so the style is the caller's and not assumed here.
+    private func unevenPath(in box: CGRect, radius: CGFloat, style: RoundedCornerStyle) -> Path {
+        UnevenRoundedRectangle(
+            topLeadingRadius: corners.contains(.topLeading) ? radius : 0,
+            bottomLeadingRadius: corners.contains(.bottomLeading) ? radius : 0,
+            bottomTrailingRadius: corners.contains(.bottomTrailing) ? radius : 0,
+            topTrailingRadius: corners.contains(.topTrailing) ? radius : 0,
+            style: style
+        ).path(in: box)
+    }
+
     func inset(by amount: CGFloat) -> OPNResolvedCornerShape {
-        OPNResolvedCornerShape(geometry: geometry, inset: inset + amount)
+        OPNResolvedCornerShape(geometry: geometry, corners: corners, inset: inset + amount)
     }
 }
 
@@ -595,54 +644,65 @@ struct OPNResolvedCornerShape: InsettableShape {
 struct OPNCornerShape {
     let role: OPNDesign.CornerRole
     let scale: CGFloat
+    /// The corners the style rounds. Defaults to all four; a surface pinned to a seam passes the
+    /// free ones, so the style cannot round a corner that has no room to curve into.
+    let corners: OPNDesign.Corner.Corners
 
-    init(role: OPNDesign.CornerRole, scale: CGFloat = 1) {
+    init(
+        role: OPNDesign.CornerRole,
+        scale: CGFloat = 1,
+        corners: OPNDesign.Corner.Corners = .all
+    ) {
         self.role = role
         self.scale = scale
+        self.corners = corners
     }
 
     func fill<Fill: ShapeStyle>(_ fill: Fill) -> some View {
-        OPNCornerFillView(role: role, scale: scale, fill: fill)
+        OPNCornerFillView(role: role, scale: scale, corners: corners, fill: fill)
     }
 
     func strokeBorder<Stroke: ShapeStyle>(_ stroke: Stroke, lineWidth: CGFloat = 1) -> some View {
-        OPNCornerBorderView(role: role, scale: scale, stroke: stroke, lineWidth: lineWidth)
+        OPNCornerBorderView(role: role, scale: scale, corners: corners, stroke: stroke, lineWidth: lineWidth)
     }
 }
 
 private struct OPNCornerFillView<Fill: ShapeStyle>: View {
     let role: OPNDesign.CornerRole
     let scale: CGFloat
+    let corners: OPNDesign.Corner.Corners
     let fill: Fill
 
     @Environment(\.opnCornerGeometry) private var geometry
 
     var body: some View {
-        geometry.shape(role, scale: scale).fill(fill)
+        geometry.shape(role, scale: scale, corners: corners).fill(fill)
     }
 }
 
 private struct OPNCornerBorderView<Stroke: ShapeStyle>: View {
     let role: OPNDesign.CornerRole
     let scale: CGFloat
+    let corners: OPNDesign.Corner.Corners
     let stroke: Stroke
     let lineWidth: CGFloat
 
     @Environment(\.opnCornerGeometry) private var geometry
 
     var body: some View {
-        geometry.shape(role, scale: scale).strokeBorder(stroke, lineWidth: lineWidth)
+        geometry.shape(role, scale: scale, corners: corners).strokeBorder(stroke, lineWidth: lineWidth)
     }
 }
 
 private struct OPNCornerClipModifier: ViewModifier {
     let role: OPNDesign.CornerRole
     let scale: CGFloat
+    let corners: OPNDesign.Corner.Corners
 
     @Environment(\.opnCornerGeometry) private var geometry
 
     func body(content: Content) -> some View {
-        content.clipShape(geometry.shape(role, scale: scale))
+        content.clipShape(geometry.shape(role, scale: scale, corners: corners))
     }
 }
 
@@ -678,8 +738,12 @@ extension View {
         modifier(OPNCornerStyleInjectionModifier())
     }
 
-    func opnCornerClip(role: OPNDesign.CornerRole, scale: CGFloat = 1) -> some View {
-        modifier(OPNCornerClipModifier(role: role, scale: scale))
+    func opnCornerClip(
+        role: OPNDesign.CornerRole,
+        scale: CGFloat = 1,
+        corners: OPNDesign.Corner.Corners = .all
+    ) -> some View {
+        modifier(OPNCornerClipModifier(role: role, scale: scale, corners: corners))
     }
 }
 

@@ -161,12 +161,64 @@ import Testing
         let square = try #require(render(clippedShape(role: .callToAction, height: height, style: .square)))
         let rounded = try #require(render(clippedShape(role: .callToAction, height: height, style: .rounded)))
         let panel = try #require(render(clippedShape(role: .panel, height: height, style: .rounded)))
-        let squareInset = try #require(cornerInset(of: square))
-        let roundedInset = try #require(cornerInset(of: rounded))
-        let panelInset = try #require(cornerInset(of: panel))
+        let squareInset = try #require(cornerInset(of: square, edge: .top))
+        let roundedInset = try #require(cornerInset(of: rounded, edge: .top))
+        let panelInset = try #require(cornerInset(of: panel, edge: .top))
         #expect(squareInset == 0, "a call to action must stay square in Square")
         #expect(abs(roundedInset - height / 2) <= 4, "a call to action is not a pill, measured \(roundedInset)")
         #expect(roundedInset > panelInset * 2, "a call to action is no rounder than a panel radius")
+    }
+
+    /// A band pinned to a seam keeps the corners on that seam square, so the style rounds only the
+    /// free ones. A rounded corner has nowhere to curve into on a seam: it cuts a notch of whatever
+    /// is behind the band out of the seam, which is how the status band under the app bar read as a
+    /// broken top border.
+    @MainActor @Test func aPinnedBandRoundsOnlyItsFreeCorners() throws {
+        let rounded = try #require(render(pinnedBand(style: .rounded)))
+        let square = try #require(render(pinnedBand(style: .square)))
+
+        #expect(try #require(cornerInset(of: rounded, edge: .top)) == 0, "a pinned band rounded its seam corners")
+        #expect(try #require(cornerInset(of: rounded, edge: .bottom)) > 0, "a pinned band squared its free corners")
+        #expect(try #require(cornerInset(of: square, edge: .top)) == 0)
+        #expect(try #require(cornerInset(of: square, edge: .bottom)) == 0)
+    }
+
+    /// The shape the status banners draw their chrome with: a `card`-role clip whose top corners sit
+    /// on the app bar's seam.
+    @MainActor
+    private func pinnedBand(style: OPNThemePreferences.CornerStyle) -> some View {
+        Color.white
+            .frame(width: 160, height: 60)
+            .opnCornerClip(role: .card, corners: .bottom)
+            .environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))
+            .background(Color.black)
+    }
+
+    /// The same rule through the chrome helper, which is what a pinned band drawn with Liquid Glass
+    /// uses: the material's shape and the flat backing's clip take one corner set, so a band pinned to
+    /// the window's bottom edge keeps that seam square whichever path it draws. Rendered flat, the
+    /// path an offscreen render can show.
+    @MainActor @Test func aPinnedGlassBandSquaresItsSeamCornersOnTheFlatPath() throws {
+        let rounded = try #require(render(pinnedGlassBand(style: .rounded)))
+
+        #expect(try #require(cornerInset(of: rounded, edge: .top)) > 0, "a pinned band squared its free corners")
+        #expect(try #require(cornerInset(of: rounded, edge: .bottom)) == 0, "a pinned band rounded its seam corners")
+    }
+
+    /// Controller mode's hint strip: `control` geometry, pinned flush to the window's bottom edge.
+    @MainActor
+    private func pinnedGlassBand(style: OPNThemePreferences.CornerStyle) -> some View {
+        Color.clear
+            .frame(width: 160, height: 60)
+            .opnLiquidGlassChrome(
+                role: .control,
+                corners: .top,
+                fill: Color.white,
+                stroke: Color.clear
+            )
+            .environment(\.opnLiquidGlass, .off)
+            .environment(\.opnCornerGeometry, OPNCornerGeometry(style: style))
+            .background(Color.black)
     }
 
     /// The pill with no geometry of its own, so the caller supplies the environment.
@@ -187,9 +239,12 @@ import Testing
             .background(Color.black)
     }
 
-    /// The top-row inset of the bright shape on an opaque black background. A pill's inset is half
-    /// its height, which is what separates a capsule from any radius.
-    private func cornerInset(of image: NSImage) -> CGFloat? {
+    /// The top- or bottom-row inset of the bright shape on an opaque black background. A pill's
+    /// inset is half its height, which is what separates a capsule from any radius; a band pinned to
+    /// a seam has 0 on that seam and the role's radius on its free edge.
+    private enum ProbeEdge { case top, bottom }
+
+    private func cornerInset(of image: NSImage, edge: ProbeEdge) -> CGFloat? {
         guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
         let width = rep.pixelsWide
         let height = rep.pixelsHigh
@@ -206,7 +261,8 @@ import Testing
             }
         }
         guard maxX > minX, maxY > minY else { return nil }
-        for x in minX...maxX where isInside(x, minY) { return CGFloat(x - minX) / 2 }
+        let row = edge == .top ? minY : maxY
+        for x in minX...maxX where isInside(x, row) { return CGFloat(x - minX) / 2 }
         return nil
     }
 

@@ -252,6 +252,7 @@ extension OPNGameService {
         let features = subscriptionFeatureList(root["features"])
         info.entitledAudioChannelCount = entitledAudioChannelCount(features: features)
         info.isInGameSettingsPersistenceEntitled = Self.featureListIsEnabled(features, key: "IN_GAME_SETTINGS_PERSISTENCE_ENABLED")
+        info.dlssEntitlements = DlssEntitlements.parse(features: features, upsells: root["upsells"] as? [Any] ?? [])
         logSubscriptionShape(json, featureCount: features.count, entitled: info.isInGameSettingsPersistenceEntitled)
         return info
     }

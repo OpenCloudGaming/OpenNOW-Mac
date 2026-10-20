@@ -48,7 +48,11 @@ struct VendorStatusBannerChrome<Actions: View>: View {
                     .fill(OPNDesign.Stroke.subtle)
                     .frame(height: 1)
             }
-            .opnCornerClip(role: .card, scale: uiScale)
+            // Pinned flush under the app bar and spanning the page, so its top corners stay square:
+            // rounding them cut a notch of page background out of the seam the band shares with the
+            // bar above it, which read as a broken top border. The free bottom corners still follow
+            // the Corner Style, hairline included.
+            .opnCornerClip(role: .card, scale: uiScale, corners: .bottom)
         }
     }
 }

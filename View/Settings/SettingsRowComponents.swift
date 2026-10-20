@@ -48,6 +48,9 @@ struct SettingsOptionRow: View {
     /// One flag per option: the option's feature is shipped but still settling, so its chip wears
     /// BETA. Empty for every row whose options are all settled.
     var betaOptions: [Bool] = []
+    /// One explanation per option, carried as the chip's accessibility hint. The row's own tooltip
+    /// holds the same text as a legend, which is what a pointer can read.
+    var optionHelp: [String] = []
     var isNew = false
     let uiScale: CGFloat
     let action: (Int) -> Void
@@ -113,6 +116,7 @@ struct SettingsOptionRow: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!optionEnabled)
+                    .accessibilityHint(optionHelp.indices.contains(index) ? optionHelp[index] : "")
                 }
             }
         .frame(maxWidth: .infinity, alignment: .leading)

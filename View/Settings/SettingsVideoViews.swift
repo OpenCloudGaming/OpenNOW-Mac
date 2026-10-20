@@ -23,6 +23,9 @@ struct VideoSettingsPage: View {
                     .settingsSection("advanced")
             }
 
+            CloudDlssOverridesCard(viewModel: viewModel, uiScale: uiScale)
+                .settingsSection("dlss")
+
             maintenanceCard
                 .settingsSection("maintenance")
         }
@@ -226,6 +229,7 @@ extension VideoSettingsPage {
         SettingsSection("colour", "Codec & Colour"),
         SettingsSection("bandwidth", "Bandwidth"),
         SettingsSection("advanced", "Advanced"),
+        SettingsSection("dlss", "Cloud DLSS Overrides"),
         SettingsSection("maintenance", "Maintenance")
     ]
 }

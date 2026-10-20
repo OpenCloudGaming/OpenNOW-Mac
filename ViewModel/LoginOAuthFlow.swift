@@ -272,6 +272,9 @@ extension LoginViewModel {
         // Only the active account owns the shared Jarvis session; clearing it while signing out a
         // background account would sign out whoever is actually streaming.
         if wasActive { await jarvisAuthService.clearSession() }
+        // The stored DLSS entitlements belong to the account that is leaving: a later launch must not
+        // ask for an override that account used to include.
+        if wasActive { OPNStreamPreferences.clearDlssEntitlements() }
         // The login wall this uncovers is the picker's only reader.
         if activeSession == nil { refreshLoginProviders() }
         successMessage = "Signed out of \(account.displayName)."

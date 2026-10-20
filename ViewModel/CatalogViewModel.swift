@@ -29,6 +29,7 @@ struct CatalogSettingsPreferencesSnapshot: Sendable {
     let regionOptions: [OPNStreamRegionOption]
     let microphoneDeviceOptions: [OPNStreamAudioDeviceOption]
     let outputDeviceOptions: [OPNStreamAudioDeviceOption]
+    let dlssOverrides: DlssOverrides
 }
 
 @MainActor
@@ -326,6 +327,21 @@ final class CatalogViewModel {
         }
     }
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable
+    /// The saved global cloud DLSS override, mirrored here so the card renders from state.
+    var dlssOverrides = DlssOverrides.useGameSettings
+    /// What the account's membership includes, kept apart from the entitlements so a membership that
+    /// has not answered yet never renders as one that answered "no".
+    var dlssMembershipState = DlssMembershipState.signedOut
+    /// The selected game's compatibility presentation. Progress is drawn only while the UI is still
+    /// inside its bounded first wait.
+    var dlssCompatibility = DlssCompatibilityPresentation.checking
+    var isDlssCompatibilityWaiting = false
+    var dlssCompatibilityGameKey: String?
+    var isDlssLookupActive = false
+    let dlssCompatibilityService: OPNDlssCompatibilityService
+    let dlssAnnouncer: OPNDlssCompatibilityAnnouncer
+    var dlssLookupTask: Task<Void, Never>?
+    var lastDlssSnapshot: OPNDlssCompatibilityService.Snapshot?
     var favoriteGameIdentities: Set<String> = []
     var favoriteGames: [OPNCatalogGameObject] = [] {
         didSet { invalidateDerivedCatalogCaches() }
@@ -422,7 +438,7 @@ final class CatalogViewModel {
     /// Whether that work has landed; `startupContentGate` holds the splash until it has.
     var isAccountScopedStateLoaded = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, sessionResultStore: OPNGameSessionResultStore = .shared, onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onPresentAccountChooser: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, sessionResultStore: OPNGameSessionResultStore = .shared, dlssCompatibilityService: OPNDlssCompatibilityService = .shared, dlssAnnouncer: OPNDlssCompatibilityAnnouncer = OPNDlssCompatibilityAnnouncer(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onPresentAccountChooser: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
@@ -432,6 +448,8 @@ final class CatalogViewModel {
         self.systemIntegration = systemIntegration
         self.sessionRegistry = sessionRegistry
         self.sessionResultStore = sessionResultStore
+        self.dlssCompatibilityService = dlssCompatibilityService
+        self.dlssAnnouncer = dlssAnnouncer
         self.onSwitchAccount = onSwitchAccount
         self.onAddAccount = onAddAccount
         self.onPresentAccountChooser = onPresentAccountChooser

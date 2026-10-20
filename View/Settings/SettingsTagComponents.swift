@@ -64,10 +64,13 @@ struct SettingsHelpIcon: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel("About \(title)")
         .popover(isPresented: isShowingHelpBinding, arrowEdge: .bottom) {
-            SettingsHelpText(text: help, uiScale: uiScale)
-                .foregroundStyle(OPNDesign.Text.primary)
-                .frame(width: 300 * uiScale, alignment: .leading)
-                .padding(14 * uiScale)
+            ScrollView {
+                SettingsHelpText(text: help, uiScale: uiScale)
+                    .foregroundStyle(OPNDesign.Text.primary)
+                    .frame(width: 300 * uiScale, alignment: .leading)
+                    .padding(14 * uiScale)
+            }
+            .frame(maxHeight: 420 * uiScale)
         }
     }
 

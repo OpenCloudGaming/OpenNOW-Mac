@@ -20,7 +20,8 @@ extension CatalogViewModel {
                 selectedRegionUrl: OPNStreamPreferences.loadSelectedRegionUrl(),
                 regionOptions: Self.launchRegionOptions(from: OPNStreamPreferences.loadCachedRegions()),
                 microphoneDeviceOptions: OPNStreamPreferences.loadMicrophoneDeviceOptions(),
-                outputDeviceOptions: OPNStreamPreferences.loadOutputDeviceOptions()
+                outputDeviceOptions: OPNStreamPreferences.loadOutputDeviceOptions(),
+                dlssOverrides: OPNStreamPreferences.loadDlssOverrides()
             )
             await MainActor.run { [weak self] in
                 guard let self, generation == self.settingsPreferencesGeneration, !Task.isCancelled else { return }
@@ -32,6 +33,7 @@ extension CatalogViewModel {
                 self.unavailableSettingsRegionUrl = snapshot.selectedRegionUrl.isEmpty || snapshot.regionOptions.contains(where: { $0.url == snapshot.selectedRegionUrl }) ? "" : snapshot.selectedRegionUrl
                 self.microphoneDeviceOptions = snapshot.microphoneDeviceOptions
                 self.outputDeviceOptions = snapshot.outputDeviceOptions
+                self.dlssOverrides = snapshot.dlssOverrides
                 self.settingsPreferencesTask = nil
             }
         }

@@ -639,6 +639,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The seat's live session-limit timer (`0x0103`), for the HUD's countdown. Nil until the seat
     /// sends one; until then the countdown runs from the limit recorded at connect.
     public internal(set) var onSessionLimitUpdate: (@MainActor @Sendable (StreamSessionLimitUpdate) -> Void)?
+    /// The seat's applied DLSS override state (`DlssState`), for the HUD. Nil until the seat says
+    /// something, which is the honest reading before the first message.
+    public internal(set) var onDlssStateChanged: StreamDlssStateHandler?
+    public internal(set) var lastDlssState: NvstDlssStateNotification?
 }
 
 extension NvstBifrostFreeTransport {
