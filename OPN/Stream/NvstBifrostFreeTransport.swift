@@ -322,6 +322,11 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.preferredAudioChannelCount = preferredAudioChannelCount > 0 ? preferredAudioChannelCount : self.configuredAudioChannelCount
         self.logger = logger
         self.controlTimeout = controlTimeout
+        // The writer's frame accounting rides the session log like the decoder's diagnostics, and
+        // reports itself the moment a recording closes rather than waiting for the two-second tick.
+        if let logger {
+            recorder.diagnosticsLogger = { message in logger("NVST \(message)") }
+        }
     }
 
     // MARK: - Lifecycle
@@ -488,6 +493,12 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 + " decoderSessions=\(decoder?.sessionCreationCount ?? 0)"
                 + " hwDecode=\(decoder?.isHardwareAccelerated == true)"
                 + " decode\(decoder?.stageTimingSummary ?? "-")")
+        // Which frames the recording kept, and what the append cost. Absent while nothing has been
+        // offered a frame this session, so a stream that never records adds no line.
+        let recordingDiagnostics = recorder.diagnosticsSnapshot()
+        if !recordingDiagnostics.isIdle {
+            logger?("NVST recording \(recordingDiagnostics.summary)")
+        }
         if let controlRoundTrip = await session?.controlRoundTripMilliseconds() {
             receiver.useRetransmissionRoundTrip(milliseconds: controlRoundTrip)
         }
