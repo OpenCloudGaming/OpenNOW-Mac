@@ -186,7 +186,7 @@ final class OPNGameSession {
                 selectedStore: "",
                 resumeSessionID: sessionID,
                 resumeServer: server,
-                metadata: [:]
+                metadata: Self.hdrCatalogSupportMetadata(for: game)
             )
         )
     }
@@ -521,5 +521,17 @@ private extension OPNGameSession {
         replacementConfiguration = nil
         pendingGame = nil
         pendingVariantIndex = -1
+    }
+}
+
+/// The catalog facts a launch carries about the store edition it picked.
+private extension OPNGameSession {
+    /// The catalog's HDR answer for the store edition a launch of this game would pick. A resumed
+    /// seat keeps the catalog's answer so the session that rejoins it reads the same way.
+    static func hdrCatalogSupportMetadata(for game: OPNCatalogGameObject?) -> [String: String] {
+        guard let game else { return [:] }
+        let variantIndex = preferredVariantIndex(for: game)
+        guard game.variants.indices.contains(variantIndex) else { return [:] }
+        return [StreamLaunchConfiguration.hdrCatalogSupportKey: game.variants[variantIndex].catalogHdrSupport.rawValue]
     }
 }

@@ -575,6 +575,7 @@ extension OPNStreamPreferences {
         static let cachedCloudVariablesJSON = "OpenNOW.Stream.CloudVariablesJSON"
         static let cachedCloudVariablesTimestamp = "OpenNOW.Stream.CloudVariablesTimestamp"
         static let hdrEnabled = "OpenNOW.Stream.HDREnabled"
+        static let hdrNoticeShownGames = "OpenNOW.Stream.HdrNoticeShownGames"
         static let dlssOverrides = "OpenNOW.Stream.DlssOverrides"
         static let dlssEntitlements = "OpenNOW.Stream.DlssEntitlements"
         static let gameProfiles = "OpenNOW.Stream.GameProfiles"

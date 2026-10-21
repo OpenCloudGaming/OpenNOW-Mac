@@ -95,6 +95,9 @@ public struct StreamProfile: Equatable, Sendable {
     public var prefilterModel: Int
     public var enableL4S: Bool
     public var enableHdr: Bool
+    /// What the catalog said about HDR for the store edition this launch picked. Unknown leaves the
+    /// reader's own HDR preference exactly as it is.
+    public var catalogHdrSupport: HdrCatalogSupport
     public var enableReflex: Bool
     public var streamingQualityProfile: Int
     public var enableCloudGsync: Bool
@@ -149,6 +152,7 @@ public struct StreamProfile: Equatable, Sendable {
                 prefilterModel: Int = 0,
                 enableL4S: Bool = false,
                 enableHdr: Bool = false,
+                catalogHdrSupport: HdrCatalogSupport = .unknown,
                 enableReflex: Bool = true,
                 streamingQualityProfile: Int = 0,
                 enableCloudGsync: Bool = false,
@@ -200,6 +204,7 @@ public struct StreamProfile: Equatable, Sendable {
         self.prefilterModel = prefilterModel
         self.enableL4S = enableL4S
         self.enableHdr = enableHdr
+        self.catalogHdrSupport = catalogHdrSupport
         self.enableReflex = enableReflex
         self.streamingQualityProfile = streamingQualityProfile
         self.enableCloudGsync = enableCloudGsync
@@ -266,6 +271,8 @@ public struct ResolvedStreamSettings: Equatable, Sendable {
     public var prefilterModel: Int
     public var enableL4S: Bool
     public var enableHdr: Bool
+    /// Why this session streams SDR although HDR was asked for. Nil when nothing was downgraded.
+    public var hdrDowngrade: HdrDowngrade?
     public var enableReflex: Bool
     public var streamingQualityProfile: Int
     public var enableCloudGsync: Bool
@@ -392,31 +399,47 @@ public enum StreamSettingsResolver {
     private struct ResolvedTarget {
         let codec: String
         let enableHdr: Bool
+        let hdrDowngrade: HdrDowngrade?
         let colorQuality: String
         let prefilterMode: Int
         let maxBitrateMbps: Int
         let audioChannelCount: Int
     }
 
+    /// The catalog lists the store edition being launched without HDR, so this session streams SDR.
+    /// Only a display that could show HDR and a reader who asked for it make that a downgrade worth
+    /// reporting: a display without headroom was already streaming SDR, and unknown catalog
+    /// metadata keeps the request exactly as the reader left it.
+    static func isHdrDowngraded(profile: StreamProfile, capabilities: StreamDeviceCapabilities) -> Bool {
+        profile.enableHdr && capabilities.hdrDisplaySupported && profile.catalogHdrSupport == .unsupported
+    }
+
     private static func resolvedTarget(profile: StreamProfile,
                                        capabilities: StreamDeviceCapabilities,
                                        cloudVariables: StreamCloudVariables) -> ResolvedTarget {
-        let codec = permittedCodec(profile: profile, capabilities: capabilities, cloudVariables: cloudVariables)
+        // The downgrade is applied before the codec is chosen, so an edition without HDR negotiates
+        // the codec and colour of an SDR session instead of HDR's HEVC pin. The saved preference is
+        // untouched: this is a per-request copy.
+        let hdrDowngrade: HdrDowngrade? = isHdrDowngraded(profile: profile, capabilities: capabilities) ? .gameUnsupported : nil
+        var effectiveProfile = profile
+        if hdrDowngrade != nil { effectiveProfile.enableHdr = false }
+        let codec = permittedCodec(profile: effectiveProfile, capabilities: capabilities, cloudVariables: cloudVariables)
         // HDR is a 10-bit HEVC/AV1 stream by definition: an 8-bit request with HDR on would have
         // the seat encode PQ into a bit depth the decoder then flattens, so the tier is lifted here
         // and HDR is dropped where the codec cannot carry it at all.
-        let enableHdr = cloudVariables.allowHDR && capabilities.hdrDisplaySupported && profile.enableHdr && (codec == "H265" || codec == "AV1")
-        var colorQuality = resolvedColorQuality(profile.colorQuality, codec: codec)
+        let enableHdr = cloudVariables.allowHDR && capabilities.hdrDisplaySupported && effectiveProfile.enableHdr && (codec == "H265" || codec == "AV1")
+        var colorQuality = resolvedColorQuality(effectiveProfile.colorQuality, codec: codec)
         if enableHdr, !colorQuality.lowercased().hasPrefix("10bit") { colorQuality = "10bit_420" }
-        let prefilterMode = resolvedPrefilterMode(profile: profile, cloudVariables: cloudVariables)
-        let requestedMaxBitrateMbps = profile.enablePowerSaver ? min(profile.maxBitrateMbps, 15) : profile.maxBitrateMbps
+        let prefilterMode = resolvedPrefilterMode(profile: effectiveProfile, cloudVariables: cloudVariables)
+        let requestedMaxBitrateMbps = effectiveProfile.enablePowerSaver ? min(effectiveProfile.maxBitrateMbps, 15) : effectiveProfile.maxBitrateMbps
         return ResolvedTarget(
             codec: codec,
             enableHdr: enableHdr,
+            hdrDowngrade: hdrDowngrade,
             colorQuality: colorQuality,
             prefilterMode: prefilterMode,
             maxBitrateMbps: max(1, min(requestedMaxBitrateMbps, cloudVariables.maxBitrateMbps > 0 ? cloudVariables.maxBitrateMbps : Int.max)),
-            audioChannelCount: audioChannelCount(surroundMode: profile.surroundMode,
+            audioChannelCount: audioChannelCount(surroundMode: effectiveProfile.surroundMode,
                                                  deviceOutputChannels: capabilities.audioOutputChannelCount,
                                                  entitledChannels: cloudVariables.entitledAudioChannelCount)
         )
@@ -438,6 +461,7 @@ public enum StreamSettingsResolver {
             prefilterModel: target.prefilterMode == 0 ? 0 : profile.prefilterModel,
             enableL4S: cloudVariables.allowL4S && profile.enableL4S,
             enableHdr: target.enableHdr,
+            hdrDowngrade: target.hdrDowngrade,
             enableReflex: cloudVariables.allowReflex && profile.enableReflex,
             streamingQualityProfile: min(max(profile.streamingQualityProfile, 0), 4),
             enableCloudGsync: profile.enableCloudGsync,

@@ -312,7 +312,7 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
         let resolved = StreamSettingsResolver.resolve(
-            profile: streamProfile(from: profile),
+            profile: streamProfile(from: profile, catalogHdrSupport: configuration.hdrCatalogSupport(isStoreLauncherSession: profile.steamBigPictureMode)),
             capabilities: streamDeviceCapabilities(from: capabilities),
             cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )

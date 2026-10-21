@@ -192,7 +192,7 @@ struct VideoSettingsPage: View {
         guard viewModel.streamCapabilities.hdrDisplaySupported else {
             return "This display reports no HDR headroom, so sessions stay SDR."
         }
-        return "Streams a 10-bit HEVC or AV1 signal and presents it in extended range."
+        return "Streams a 10-bit HEVC or AV1 signal and presents it in extended range. A store edition the catalog lists without HDR streams SDR."
     }
 
     /// The official client's own guidance for the VSync picker, adapted to this app's terms:

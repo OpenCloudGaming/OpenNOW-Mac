@@ -137,6 +137,7 @@ extension OPNGameDataCache {
         if variant.installTimeInMinutes > 0 { dictionary["it"] = variant.installTimeInMinutes }
         putArray(variant.supportedLanguages, key: "sl", into: &dictionary)
         putArray(variant.gfnFeatureLabels, key: "gf", into: &dictionary)
+        if variant.catalogHdrSupport != .unknown { dictionary["hs"] = variant.catalogHdrSupport.rawValue }
         if variant.isPatching { dictionary["p"] = true }
         putString(variant.patchStatusPrimaryText, key: "pp", into: &dictionary)
         putString(variant.patchStatusSecondaryText, key: "ps2", into: &dictionary)
@@ -172,6 +173,7 @@ extension OPNGameDataCache {
             installTimeInMinutes: (dictionary["it"] as? NSNumber)?.intValue ?? 0,
             supportedLanguages: dictionary["sl"] as? [String] ?? [],
             gfnFeatureLabels: dictionary["gf"] as? [String] ?? [],
+            catalogHdrSupport: HdrCatalogSupport(rawValue: dictionary["hs"] as? String ?? "") ?? .unknown,
             isPatching: (dictionary["p"] as? NSNumber)?.boolValue ?? false,
             patchStatusPrimaryText: dictionary["pp"] as? String ?? "",
             patchStatusSecondaryText: dictionary["ps2"] as? String ?? "",

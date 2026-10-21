@@ -61,6 +61,9 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var installTimeInMinutes = 0
     public var supportedLanguages: [String] = []
     public var gfnFeatureLabels: [String] = []
+    /// Whether this store edition declares HDR in the vendor's own feature list. `unknown` is "the
+    /// catalog sent no list", which is not the same as an edition that listed its features without it.
+    public var catalogHdrSupport = HdrCatalogSupport.unknown
     public var isPatching = false
     public var patchStatusPrimaryText = ""
     public var patchStatusSecondaryText = ""

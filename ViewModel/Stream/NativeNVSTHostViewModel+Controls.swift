@@ -540,6 +540,7 @@ extension NativeNVSTHostViewModel {
                     _ = await finish(reason: .failed, message: failure.message)
                     return
                 }
+                if isConnected, !isEnding, !didEnd { announceHdrDowngradeIfNeeded() }
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
                 } catch {

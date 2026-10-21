@@ -46,9 +46,20 @@ extension StreamLaunchConfiguration {
     /// The catalog identity of the game this session runs, snapshotted at launch so its controller
     /// mappings follow its own game rather than whichever one started last.
     static let mappingGameIdentityKey = "mappingGameIdentity"
+    /// What the catalog said about HDR for the store edition this launch picked. Client-side only:
+    /// it describes the launch to this app, not to the vendor.
+    static let hdrCatalogSupportKey = "hdrCatalogSupport"
 
     var owningAccountDisplayName: String {
         (metadata[Self.owningAccountDisplayNameKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The catalog's HDR answer as the stream profile should read it. A store-launcher session
+    /// starts the game through the store's own launcher, so the catalog's per-edition answer does
+    /// not describe what will run and is not applied.
+    func hdrCatalogSupport(isStoreLauncherSession: Bool) -> HdrCatalogSupport {
+        guard !isStoreLauncherSession else { return .unknown }
+        return HdrCatalogSupport(rawValue: metadata[Self.hdrCatalogSupportKey] ?? "") ?? .unknown
     }
 
     var mappingGameIdentity: String {

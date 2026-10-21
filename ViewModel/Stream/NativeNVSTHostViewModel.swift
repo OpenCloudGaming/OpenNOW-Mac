@@ -294,6 +294,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// The settings the session actually started with, kept because the recording configuration is
     /// built from them (bitrates, fps, resolution) long after `prepareLaunch` returns.
     var resolvedStreamSettings: ResolvedStreamSettings?
+    /// Set once this session has considered the SDR note, so the stats poll's second tick does not
+    /// ask again.
+    var didAnnounceHdrDowngrade = false
     @Published var streamControlsFocusIndex = 0
     @Published var onScreenKeyboardVisible = false
     var restorePointerLockOnKeyboardHide = false
@@ -381,7 +384,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
         let resolvedStreamSettings = StreamSettingsResolver.resolve(
-            profile: streamProfile(from: profile),
+            profile: streamProfile(from: profile, catalogHdrSupport: configuration.hdrCatalogSupport(isStoreLauncherSession: profile.steamBigPictureMode)),
             capabilities: streamDeviceCapabilities(from: capabilities),
             cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
@@ -510,10 +513,26 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         return true
     }
 
+    /// The catalog listed the store edition being launched without HDR, so this session streams SDR
+    /// although HDR is on. Said once the first frame is up, and once per game: a title played daily
+    /// hears it at its first session and never again.
+    func announceHdrDowngradeIfNeeded() {
+        guard !didAnnounceHdrDowngrade, resolvedStreamSettings?.hdrDowngrade == .gameUnsupported else { return }
+        guard nativeStreamHealth.receivedFrames else { return }
+        didAnnounceHdrDowngrade = true
+        let identity = hdrNoticeGameIdentity
+        guard !OPNHdrDowngradeNotice.hasBeenShown(forGame: identity) else { return }
+        OPNHdrDowngradeNotice.recordShown(forGame: identity)
+        showNativeTransientStreamMessage(OPNHdrDowngradeNotice.message, duration: .seconds(4))
+    }
 
-
-
-
+    /// The game the SDR note is remembered against. The catalog identity names a game, where the
+    /// launch app id can differ between the store editions of one title: hearing the note again for
+    /// another store's copy of the same game is exactly what once per game must prevent.
+    private var hdrNoticeGameIdentity: String {
+        let catalogIdentity = configuration.mappingGameIdentity
+        return catalogIdentity.isEmpty ? configuration.applicationID : catalogIdentity
+    }
 
     func handleStartFailure(_ error: Error, diagnostics: [String: String]) {
         guard !(error is CancellationError), !Task.isCancelled else {
