@@ -49,6 +49,9 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     /// The `stateDetails.subType` companion (`GFN_DEVELOPER_MAINTENANCE`, `PATCHING_AUTO`, ...),
     /// which tells a maintenance window apart from an autopatch.
     public var catalogStateDetailsSubType = ""
+    /// The `stateDetails.endTime` companion: the completion time the vendor published for a patch on
+    /// this variant, parsed once. Nil for a record that carries no completion time.
+    public var patchCompletionDate: Date?
     public var serviceStatus = ""
     public var libraryStatus = ""
     public var libraryPlayStatus = ""
@@ -74,7 +77,11 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var libraryLastPlayedDate = ""
 
     public var catalogAvailability: CatalogAvailability {
-        CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
+        CatalogAvailability.classify(
+            catalogStatus: catalogStatus,
+            stateDetailsSubType: catalogStateDetailsSubType,
+            isPatchRecordElapsed: CatalogPatchRecord.isElapsed(completion: patchCompletionDate)
+        )
     }
 }
 

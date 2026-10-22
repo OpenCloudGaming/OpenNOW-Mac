@@ -115,6 +115,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var supportedControls: [String]
     public var catalogStatus: String
     public var catalogStateDetailsSubType: String
+    public var patchCompletionDate: Date?
     public var serviceStatus: String
     public var libraryStatus: String
     public var libraryPlayStatus: String
@@ -157,6 +158,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
         supportedControls = variant.supportedControls
         catalogStatus = variant.catalogStatus
         catalogStateDetailsSubType = variant.catalogStateDetailsSubType
+        patchCompletionDate = variant.patchCompletionDate
         serviceStatus = variant.serviceStatus
         libraryStatus = variant.libraryStatus
         libraryPlayStatus = variant.libraryPlayStatus
@@ -192,6 +194,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
             supportedControls: supportedControls,
             catalogStatus: catalogStatus,
             catalogStateDetailsSubType: catalogStateDetailsSubType,
+            patchCompletionDate: patchCompletionDate,
             serviceStatus: serviceStatus,
             libraryStatus: libraryStatus,
             libraryPlayStatus: libraryPlayStatus,
@@ -214,7 +217,11 @@ public final class OPNCatalogGameVariantObject: NSObject {
     }
 
     public var catalogAvailability: CatalogAvailability {
-        catalogAvailabilityOverride ?? CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
+        catalogAvailabilityOverride ?? CatalogAvailability.classify(
+            catalogStatus: catalogStatus,
+            stateDetailsSubType: catalogStateDetailsSubType,
+            isPatchRecordElapsed: CatalogPatchRecord.isElapsed(completion: patchCompletionDate)
+        )
     }
 }
 

@@ -130,17 +130,22 @@ extension OPNGameService {
                 guard !variantId.isEmpty else { continue }
                 let gfn = variantData["gfn"] as? NSDictionary
                 let library = gfn?["library"] as? NSDictionary
-                let variantIsPatching = currentStatusIsPatching(status: gfn?["status"], playabilityState: gfn?["playabilityState"], libraryStatus: library?["status"], stateDetails: gfn?["stateDetails"])
+                let stateDetails = gfn?["stateDetails"] as? NSDictionary
+                let variantIsPatching = currentStatusIsPatching(status: gfn?["status"], playabilityState: gfn?["playabilityState"], libraryStatus: library?["status"], stateDetails: stateDetails)
                 status.variantPatchingById[variantId] = variantIsPatching
                 // Availability rides the same payload the patching check already consumes. Classified
                 // only when the vendor actually said something: a missing status is "no data", not a
                 // silent `available` that would look like a maintenance watch coming back.
                 let catalogStatus = safeString(gfn?["status"]) ?? ""
-                let subtype = (gfn?["stateDetails"] as? NSDictionary).flatMap { safeString($0["subType"]) } ?? ""
+                let subtype = stateDetails.flatMap { safeString($0["subType"]) } ?? ""
                 if !catalogStatus.isEmpty || !subtype.isEmpty {
-                    status.availabilityById[variantId] = CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: subtype)
+                    status.availabilityById[variantId] = CatalogAvailability.classify(
+                        catalogStatus: catalogStatus,
+                        stateDetailsSubType: subtype,
+                        isPatchRecordElapsed: CatalogPatchRecord.isElapsed(endTime: patchEndTime(from: stateDetails))
+                    )
                 }
-                let patchText = patchStatusText(status: gfn?["status"] ?? library?["status"], stateDetails: gfn?["stateDetails"], isPatching: variantIsPatching)
+                let patchText = patchStatusText(status: gfn?["status"] ?? library?["status"], stateDetails: stateDetails, isPatching: variantIsPatching)
                 if !patchText.primary.isEmpty { status.primaryTextByVariantId[variantId] = patchText.primary }
                 if !patchText.secondary.isEmpty { status.secondaryTextByVariantId[variantId] = patchText.secondary }
                 status.isPatching = status.isPatching || variantIsPatching
@@ -163,21 +168,27 @@ extension OPNGameService {
         return false
     }
 
-    func currentStatusIsPatching(status: Any?, playabilityState: Any?, libraryStatus: Any?, stateDetails: Any?) -> Bool {
+    func currentStatusIsPatching(status: Any?, playabilityState: Any?, libraryStatus: Any?, stateDetails: NSDictionary?) -> Bool {
+        // A record past the completion time the vendor published no longer asserts a patch; trusting
+        // it forever is what kept a playable title blocked while the native client played it.
+        guard !CatalogPatchRecord.isElapsed(endTime: patchEndTime(from: stateDetails)) else { return false }
         if isAppPatchingStatus(status) || isAppPatchingStatus(playabilityState) || isAppPatchingStatus(libraryStatus) { return true }
         let hasExplicitStatus = safeString(status) != nil || safeString(playabilityState) != nil || safeString(libraryStatus) != nil
         return hasExplicitStatus ? false : isAppPatchingStatus(stateDetails)
     }
 
-    func patchStatusText(status: Any?, stateDetails: Any?, isPatching: Bool) -> (primary: String, secondary: String) {
+    func patchEndTime(from stateDetails: NSDictionary?) -> String {
+        stateDetails.flatMap { safeString($0["endTime"]) } ?? ""
+    }
+
+    func patchStatusText(status: Any?, stateDetails: NSDictionary?, isPatching: Bool) -> (primary: String, secondary: String) {
         guard isPatching else { return ("", "") }
         let statusText = safeString(status)?.lowercased() ?? ""
-        let details = stateDetails as? NSDictionary
-        let subtype = (safeString(details?["subType"]) ?? statusText).lowercased()
+        let subtype = (stateDetails.flatMap { safeString($0["subType"]) } ?? statusText).lowercased()
         let primary = subtype.contains("maintenance") ? "Maintenance" : "Patching"
-        let endTime = safeString(details?["endTime"]) ?? ""
-        if !endTime.isEmpty { return (primary, "Estimated completion: \(endTime)") }
-        let eta = safeInt(details?["historicalEtaMins"])
+        let completion = CatalogPatchRecord.completionText(endTime: patchEndTime(from: stateDetails))
+        if !completion.isEmpty { return (primary, "Estimated completion: \(completion)") }
+        let eta = safeInt(stateDetails?["historicalEtaMins"])
         if eta > 0 { return (primary, "Estimated completion: \(eta) min") }
         return (primary, "")
     }

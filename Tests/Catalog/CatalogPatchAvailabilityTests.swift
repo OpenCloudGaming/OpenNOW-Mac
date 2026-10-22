@@ -12,9 +12,12 @@ private func patchStatuses(_ json: [[String: Any]]) -> [String: OPNAppPatchStatu
     return OPNGameService.shared.parseAppPatchStatuses(raw)
 }
 
-private func app(id: String, status: String, subType: String? = nil) -> [String: Any] {
+private func app(id: String, status: String, subType: String? = nil, endTime: String? = nil) -> [String: Any] {
     var gfn: [String: Any] = ["status": status, "library": ["status": "AVAILABLE"]]
-    if let subType { gfn["stateDetails"] = ["subType": subType] }
+    var stateDetails: [String: Any] = [:]
+    if let subType { stateDetails["subType"] = subType }
+    if let endTime { stateDetails["endTime"] = endTime }
+    if !stateDetails.isEmpty { gfn["stateDetails"] = stateDetails }
     return [
         "id": id,
         "variants": [["id": "\(id)-v", "gfn": gfn]],
@@ -35,6 +38,24 @@ private func app(id: String, status: String, subType: String? = nil) -> [String:
     let statuses = patchStatuses([app(id: "fortnite", status: "PATCHING", subType: "PATCHING_AUTO")])
     #expect(statuses["fortnite"]?.isPatching == true)
     #expect(statuses["fortnite"]?.availability == .patching)
+}
+
+@Test func aPatchRecordPastItsCompletionTimeReleasesTheTitle() {
+    let statuses = patchStatuses([app(id: "mw4", status: "PATCHING", subType: "PATCHING_AUTO", endTime: "2020-01-01T00:00:00.000Z")])
+    let status = statuses["mw4"]
+
+    #expect(status?.isPatching == false)
+    #expect(status?.variantPatchingById["mw4-v"] == false)
+    #expect(status?.availability == .available)
+}
+
+@Test func aPatchEstimateReadsAsALocalCompletionTimeRatherThanTheVendorString() {
+    let endTime = vendorTimestamp(secondsFromNow: 3_600)
+    let statuses = patchStatuses([app(id: "fresh", status: "PATCHING", subType: "PATCHING_AUTO", endTime: endTime)])
+    let text = statuses["fresh"]?.secondaryTextByVariantId["fresh-v"] ?? ""
+
+    #expect(text.hasPrefix("Estimated completion: "))
+    #expect(!text.contains(endTime))
 }
 
 @Test func availableAndUnavailableAreClassified() {

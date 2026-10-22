@@ -137,10 +137,12 @@ extension OPNGameService {
     /// Service status and patch state for one variant.
     private func applyVariantGfn(_ gfn: NSDictionary, to variant: inout OPNGameVariant) {
         variant.catalogStatus = safeString(gfn["status"]) ?? ""
-        variant.catalogStateDetailsSubType = (gfn["stateDetails"] as? NSDictionary).flatMap { safeString($0["subType"]) } ?? ""
+        let stateDetails = gfn["stateDetails"] as? NSDictionary
+        variant.catalogStateDetailsSubType = stateDetails.flatMap { safeString($0["subType"]) } ?? ""
+        variant.patchCompletionDate = CatalogPatchRecord.completionDate(from: patchEndTime(from: stateDetails))
         variant.serviceStatus = safeString(gfn["status"]) ?? ""
-        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: gfn["stateDetails"])
-        let patchText = patchStatusText(status: gfn["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
+        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: stateDetails)
+        let patchText = patchStatusText(status: gfn["status"], stateDetails: stateDetails, isPatching: variant.isPatching)
         variant.patchStatusPrimaryText = patchText.primary
         variant.patchStatusSecondaryText = patchText.secondary
         variant.installTimeInMinutes = safeInt(gfn["installTimeInMinutes"])
@@ -160,9 +162,10 @@ extension OPNGameService {
         variant.libraryInstalled = safeBool(library["installed"])
         variant.librarySubscription = safeString(library["subscription"]) ?? ""
         variant.serviceStatus = libraryStatus.isEmpty ? variant.serviceStatus : libraryStatus
-        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: library["status"], stateDetails: gfn["stateDetails"])
+        let stateDetails = gfn["stateDetails"] as? NSDictionary
+        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: library["status"], stateDetails: stateDetails)
         if variant.patchStatusPrimaryText.isEmpty {
-            let patchText = patchStatusText(status: library["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
+            let patchText = patchStatusText(status: library["status"], stateDetails: stateDetails, isPatching: variant.isPatching)
             variant.patchStatusPrimaryText = patchText.primary
             variant.patchStatusSecondaryText = patchText.secondary
         }

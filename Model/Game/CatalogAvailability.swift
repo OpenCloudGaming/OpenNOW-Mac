@@ -14,10 +14,12 @@ public enum CatalogAvailability: String, Codable, Equatable, Sendable {
     /// Down for a vendor-side reason, which earns the offline notice in place of the play button.
     public var isOffline: Bool { self == .maintenance || self == .unavailable }
 
-    public static func classify(catalogStatus: String, stateDetailsSubType: String) -> CatalogAvailability {
+    /// `isPatchRecordElapsed` marks a patch record whose own completion time has passed, which no
+    /// longer counts as patching and falls through to the remaining signals.
+    public static func classify(catalogStatus: String, stateDetailsSubType: String, isPatchRecordElapsed: Bool = false) -> CatalogAvailability {
         let probe = "\(catalogStatus) \(stateDetailsSubType)".lowercased()
         if probe.contains("maintenance") { return .maintenance }
-        if probe.contains("patch") { return .patching }
+        if probe.contains("patch"), !isPatchRecordElapsed { return .patching }
         if probe.contains("offline") || probe.contains("unavailable") || probe.contains("unsupported") { return .unavailable }
         return .available
     }
