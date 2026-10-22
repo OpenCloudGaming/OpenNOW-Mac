@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.20.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.19.0...v0.20.0) (2026-10-22)
+
+
+### Features
+
+* stream SDR for store editions without HDR ([cddb393](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cddb393adf1e3863becff32952374d215274b6ac))
+
+
+### Bug Fixes
+
+* **catalog:** stop a stale patch record blocking a playable title ([#129](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/129)) ([105f28b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/105f28b4413cec87d7bfb037f218bfe27477bc2c))
+* **nvst:** keep the video punch alive and recover a stream with no video ([37d7c49](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/37d7c494edc22c8020cdd033755e29f65728b142))
+
 ## [0.19.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.18.0...v0.19.0) (2026-10-20)
 
 
