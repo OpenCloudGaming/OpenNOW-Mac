@@ -2,11 +2,11 @@ import Testing
 import Foundation
 @testable import OpenNOW
 
-// The stall watchdog behind `nvst.stream.health.failed`. These pin the behaviour that made
-// resetting the monitor on a nil snapshot a bug: its state has to survive gaps in the sample
-// stream, because `performanceSnapshot()` returns nil whenever there is no active session — which
-// is exactly what happens during a `.singleAttempt` recovery, when a stall is most likely.
+// The stall watchdog behind `nvst.stream.health.failed`. `available` is false until the first frame
+// lands, so a running transport with no frame must still be sampled — see the delivery tests below.
 
+/// `available` is the production flag for "a frame has been emitted at least once", so a running
+/// transport that has delivered nothing is `available: false`.
 private func snapshot(streamFps: Double, available: Bool = true) -> NativeNVSTPerformanceSnapshot {
     NativeNVSTPerformanceSnapshot(
         available: available,
@@ -29,17 +29,11 @@ private func snapshot(streamFps: Double, available: Bool = true) -> NativeNVSTPe
 @Test func nilSnapshotsAreIgnoredRatherThanTreatedAsAStall() {
     var monitor = NativeNVSTStreamHealthMonitor()
 
+    // A nil snapshot is the transport not being up yet, which says nothing about video.
     for _ in 0..<50 {
         #expect(monitor.observe(snapshot: nil, rendererReady: true) == nil)
     }
-}
-
-@Test func unavailableSnapshotsAreIgnoredToo() {
-    var monitor = NativeNVSTStreamHealthMonitor()
-
-    for _ in 0..<50 {
-        #expect(monitor.observe(snapshot: snapshot(streamFps: 0, available: false), rendererReady: true) == nil)
-    }
+    #expect(monitor.zeroFrameStreak == 0)
 }
 
 @Test func aStallTripsAfterTheStalledLimitOnceFramesHaveBeenSeen() {
@@ -58,9 +52,8 @@ private func snapshot(streamFps: Double, available: Bool = true) -> NativeNVSTPe
     var monitor = NativeNVSTStreamHealthMonitor()
     _ = monitor.observe(snapshot: snapshot(streamFps: 60), rendererReady: true)
 
-    // This is the regression: a session reset mid-stall used to rebuild the monitor, clearing
-    // `zeroFrameSamples`, so a stall punctuated by nil samples never reached the limit and the
-    // stream hung with no failure ever reported.
+    // The regression: rebuilding the monitor on a nil sample cleared the count, so a stall
+    // punctuated by nil samples never reached the limit and no failure was ever reported.
     var failure: NativeNVSTStreamHealthFailure?
     for index in 0..<(monitor.stalledSampleLimit * 2) {
         if index % 3 == 1 {
@@ -76,17 +69,26 @@ private func snapshot(streamFps: Double, available: Bool = true) -> NativeNVSTPe
     #expect(failure == .streamStalled)
 }
 
-@Test func aStreamThatNeverDeliveredAFrameUsesTheLongerFirstFrameBudget() {
+@Test func aRunningTransportThatDeliveredNothingUsesTheFirstFrameBudget() {
     var monitor = NativeNVSTStreamHealthMonitor()
 
-    // Past the stall limit, but no frame has ever arrived, so the first-frame budget applies.
-    for _ in 0..<monitor.stalledSampleLimit {
-        #expect(monitor.observe(snapshot: snapshot(streamFps: 0), rendererReady: true) == nil)
+    // The production shape of a black screen: the transport is up, no frame has landed and not one
+    // datagram reached the video socket. The stall budget cannot apply, because it never started.
+    for _ in 0..<(monitor.firstFrameSampleLimit - 1) {
+        #expect(monitor.observe(snapshot: snapshot(streamFps: 0, available: false), rendererReady: true) == nil)
     }
+    #expect(monitor.zeroFrameStreak >= monitor.stalledSampleLimit)
+    #expect(monitor.observe(snapshot: snapshot(streamFps: 0, available: false), rendererReady: true) == .firstFrameTimedOut)
+}
 
+@Test func aSilentVideoLegIsNotReportedAsAMissingRenderer() {
+    var monitor = NativeNVSTStreamHealthMonitor()
+
+    // A surface cannot report ready before a frame has rendered, so a not-ready renderer and a
+    // silent transport are the same observation until video arrives. The delivery verdict is right.
     var failure: NativeNVSTStreamHealthFailure?
-    for _ in 0..<(monitor.firstFrameSampleLimit - monitor.stalledSampleLimit) {
-        failure = monitor.observe(snapshot: snapshot(streamFps: 0), rendererReady: true)
+    for _ in 0..<monitor.firstFrameSampleLimit {
+        failure = monitor.observe(snapshot: snapshot(streamFps: 0, available: false), rendererReady: false)
     }
 
     #expect(failure == .firstFrameTimedOut)
@@ -113,4 +115,15 @@ private func snapshot(streamFps: Double, available: Bool = true) -> NativeNVSTPe
     }
 
     #expect(monitor.observe(snapshot: snapshot(streamFps: 60), rendererReady: false) == .rendererUnavailable)
+}
+
+@Test func videoDeliveryVerdictsAreRecoveredInPlaceAndARendererFaultIsNot() {
+    // The reconnect re-runs SETUP, ANNOUNCE, the punch and PLAY, so it can rebuild a media leg the
+    // seat never wired up. A missing surface is local, so reconnecting cannot repair it.
+    #expect(NativeNVSTStreamHealthFailure.firstFrameTimedOut.isRecoverableInPlace)
+    #expect(NativeNVSTStreamHealthFailure.streamStalled.isRecoverableInPlace)
+    #expect(NativeNVSTStreamHealthFailure.rendererUnavailable.isRecoverableInPlace == false)
+
+    #expect(NativeNVSTStreamHealthFailure.firstFrameTimedOut.recoveryReason == "no-first-frame")
+    #expect(NativeNVSTStreamHealthFailure.streamStalled.recoveryReason == "stall")
 }

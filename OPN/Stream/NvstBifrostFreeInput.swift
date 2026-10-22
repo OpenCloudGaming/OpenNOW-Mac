@@ -218,6 +218,9 @@ extension NvstBifrostFreeTransport {
         }
         return NativeNVSTPerformanceSnapshot(
             available: counters.framesEmitted > 0,
+            // Read here rather than derived from `available`: this is the field that separates a
+            // seat that never sent anything from one whose packets arrived but did not decode.
+            inboundVideoDatagrams: UInt64(receiver.inbound.total),
             gameFramesPerSecond: seatStats?.gameFramesPerSecond ?? -1,
             streamFramesPerSecond: instantFps,
             // Network round trip, not client decode cost — the decode number has its own field.

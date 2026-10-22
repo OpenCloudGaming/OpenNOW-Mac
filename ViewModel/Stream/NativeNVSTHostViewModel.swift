@@ -266,6 +266,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// of nothing is a dead link, not a quiet scene: a static picture still carries the seat's
     /// keyframe cadence, and the earlier ten-second verdict only ever ended the stream.
     static let stalledSamplesBeforeReconnect = 5
+    /// One-second stats samples with no frames at all before the stream is judged never to have
+    /// started. Longer than the stall budget, and only counted once the transport is up.
+    static let firstFrameSamplesBeforeReconnect = 15
     @Published var controllerBatteries: [ControllerBatteryInfo] = []
     var batteryAlertTracker = ControllerBatteryAlertTracker()
     @Published var showingControllerMapping = false
@@ -420,7 +423,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
         vsyncModeIndex = profile.vsyncModeIndex
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(resolvedStreamSettings.maxBitrateMbps * 1_000), l4sEnabled: resolvedStreamSettings.enableL4S)
-        nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: Self.firstFrameSamplesBeforeReconnect,
+                                                           stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()

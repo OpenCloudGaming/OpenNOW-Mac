@@ -38,4 +38,12 @@ extension NativeNVSTHostViewModel {
         let starved = bitrateStarvation.update(snapshot, now: now)
         if starved != stats.isNativeBitrateStarved { stats.isNativeBitrateStarved = starved }
     }
+
+    /// Names the verdict that no other reading can express: the video socket received no datagram at
+    /// all, so every other plane reporting healthy is expected rather than contradictory.
+    func reportVideoThatNeverArrived(_ failure: NativeNVSTStreamHealthFailure) {
+        guard failure == .firstFrameTimedOut else { return }
+        let snapshot = stats.latestNativeStats
+        OPNLog.warning(.stream, "NVST video received no frames: no video datagram reached this Mac (inboundVideoDatagrams=\(snapshot?.inboundVideoDatagrams ?? 0), resolution=\(snapshot?.resolution ?? "-"), codec=\(snapshot?.codec ?? "-")). Audio and control use a separate socket and may still be alive. Check OpenNOW's incoming-connection firewall permission, any VPN or split-tunnel route, and whether another process holds the video UDP port.")
+    }
 }
