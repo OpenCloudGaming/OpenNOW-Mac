@@ -97,7 +97,7 @@ public final class OPNGameLaunchBridge {
             apiToken: token,
             accountLinked: accountLinked,
             selectedStore: selectedStore,
-            metadata: launchMetadata
+            metadata: launchMetadata.merging(Self.hdrCatalogSupportMetadata(for: selectedVariant)) { current, _ in current }
         )
         let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
         OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl, deviceId: deviceId) { [weak self] ok, sessions, _ in
@@ -143,6 +143,14 @@ public final class OPNGameLaunchBridge {
         OPNActiveSessionService.stopSession(accessToken: accessToken, sessionId: session.id, serverIp: session.serverIp, streamingBaseUrl: session.streamingBaseUrl, deviceId: deviceId) { success, error in
             completion(success, success ? "Session ended." : (error.isEmpty ? "Unable to end the active session." : error))
         }
+    }
+
+    /// The catalog's HDR answer for the store edition this launch picked, carried to the session so
+    /// its request can stream SDR for an edition the catalog lists without HDR. A launch that never
+    /// asked carries nothing, which reads as unknown.
+    static func hdrCatalogSupportMetadata(for variant: OPNCatalogGameVariantObject?) -> [String: String] {
+        guard let variant else { return [:] }
+        return [StreamLaunchConfiguration.hdrCatalogSupportKey: variant.catalogHdrSupport.rawValue]
     }
 
     private func configureServices(token: String, userId: String) {

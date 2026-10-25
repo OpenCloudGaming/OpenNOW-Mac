@@ -137,15 +137,18 @@ extension OPNGameService {
     /// Service status and patch state for one variant.
     private func applyVariantGfn(_ gfn: NSDictionary, to variant: inout OPNGameVariant) {
         variant.catalogStatus = safeString(gfn["status"]) ?? ""
-        variant.catalogStateDetailsSubType = (gfn["stateDetails"] as? NSDictionary).flatMap { safeString($0["subType"]) } ?? ""
+        let stateDetails = gfn["stateDetails"] as? NSDictionary
+        variant.catalogStateDetailsSubType = stateDetails.flatMap { safeString($0["subType"]) } ?? ""
+        variant.patchCompletionDate = CatalogPatchRecord.completionDate(from: patchEndTime(from: stateDetails))
         variant.serviceStatus = safeString(gfn["status"]) ?? ""
-        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: gfn["stateDetails"])
-        let patchText = patchStatusText(status: gfn["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
+        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: nil, stateDetails: stateDetails)
+        let patchText = patchStatusText(status: gfn["status"], stateDetails: stateDetails, isPatching: variant.isPatching)
         variant.patchStatusPrimaryText = patchText.primary
         variant.patchStatusSecondaryText = patchText.secondary
         variant.installTimeInMinutes = safeInt(gfn["installTimeInMinutes"])
         variant.supportedLanguages = parseSupportedLanguages(gfn["supportedLanguages"])
         variant.gfnFeatureLabels = parseGfnFeatureLabels(gfn["features"])
+        variant.catalogHdrSupport = parseCatalogHdrSupport(gfn["features"])
         guard let library = gfn["library"] as? NSDictionary else { return }
         applyVariantLibrary(library, gfn: gfn, to: &variant)
     }
@@ -159,9 +162,10 @@ extension OPNGameService {
         variant.libraryInstalled = safeBool(library["installed"])
         variant.librarySubscription = safeString(library["subscription"]) ?? ""
         variant.serviceStatus = libraryStatus.isEmpty ? variant.serviceStatus : libraryStatus
-        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: library["status"], stateDetails: gfn["stateDetails"])
+        let stateDetails = gfn["stateDetails"] as? NSDictionary
+        variant.isPatching = currentStatusIsPatching(status: gfn["status"], playabilityState: gfn["playabilityState"], libraryStatus: library["status"], stateDetails: stateDetails)
         if variant.patchStatusPrimaryText.isEmpty {
-            let patchText = patchStatusText(status: library["status"], stateDetails: gfn["stateDetails"], isPatching: variant.isPatching)
+            let patchText = patchStatusText(status: library["status"], stateDetails: stateDetails, isPatching: variant.isPatching)
             variant.patchStatusPrimaryText = patchText.primary
             variant.patchStatusSecondaryText = patchText.secondary
         }
@@ -331,6 +335,37 @@ extension OPNGameService {
         return values
     }
 
+    /// Whether the vendor lists HDR among one variant's features. The list arrives as entries of
+    /// `key`/`value`; an edition with HDR names either `HDR_ENABLED` or an `SUPPORTED_HDR_VERSION`.
+    /// A list that was present and names neither is an edition without HDR. A missing list is
+    /// unknown, because the absence of an answer is not the answer "no".
+    func parseCatalogHdrSupport(_ rawValue: Any?) -> HdrCatalogSupport {
+        guard let rawValue, !(rawValue is NSNull), rawValue is [Any] || rawValue is NSDictionary else { return .unknown }
+        if Self.featureIsEnabled(rawValue, key: "HDR_ENABLED") { return .supported }
+        if Self.featureDeclaresValue(rawValue, key: "SUPPORTED_HDR_VERSION") { return .supported }
+        return .unsupported
+    }
+
+    /// Whether a feature list names this key with a value at all. The vendor reports an HDR version
+    /// as a `value` or a `values` list rather than as the boolean flag `featureIsEnabled` reads.
+    nonisolated static func featureDeclaresValue(_ value: Any?, key: String) -> Bool {
+        if let dictionary = value as? NSDictionary {
+            if let featureKey = dictionary["key"] as? String, featureKey == key,
+               declaredValueIsPresent(dictionary["value"]) || declaredValueIsPresent(dictionary["values"]) {
+                return true
+            }
+            return dictionary.allValues.contains { featureDeclaresValue($0, key: key) }
+        }
+        guard let array = value as? [Any] else { return false }
+        return array.contains { featureDeclaresValue($0, key: key) }
+    }
+
+    nonisolated private static func declaredValueIsPresent(_ value: Any?) -> Bool {
+        if let text = value as? String { return !text.isEmpty }
+        guard let array = value as? [Any] else { return false }
+        return array.contains { ($0 as? String).map { !$0.isEmpty } ?? false }
+    }
+
     func parseRatingMetadata(_ dictionary: NSDictionary?) -> RatingMetadata {
         var metadata = RatingMetadata()
         for entry in dictionary?["ratings"] as? [NSDictionary] ?? [] {
@@ -469,6 +504,10 @@ extension OPNGameService {
         }
         for field in Self.mergeableCountFields where target[keyPath: field] <= 0 && source[keyPath: field] > 0 {
             target[keyPath: field] = source[keyPath: field]
+            changed = true
+        }
+        if target.catalogHdrSupport == .unknown, source.catalogHdrSupport != .unknown {
+            target.catalogHdrSupport = source.catalogHdrSupport
             changed = true
         }
         return changed

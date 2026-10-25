@@ -28,6 +28,53 @@
 
 ---
 
+## OpenNOW or OpenNOW-Mac?
+
+There are two GeForce NOW clients under the OpenCloudGaming organization, and they are
+**separate, independent applications**. Neither is a fork, port, or version of the other,
+and neither carries the other's features over.
+
+| | **OpenNOW-Mac** (this repository) | **[OpenNOW](https://github.com/OpenCloudGaming/OpenNOW)** |
+| --- | --- | --- |
+| **Runs on** | Apple silicon Macs (macOS 15.6+) | Windows, Linux, and macOS |
+| **Built with** | Swift, SwiftUI and AppKit | C++ (Qt Quick) with a Rust core |
+| **Streaming stack** | A Mac-native stack: NVST control, raw SRTP, VideoToolbox decode, Metal presentation | A native Rust streamer with per-platform graphics backends |
+| **Direction** | Mac-native performance and Apple silicon features, controller-first | A cross-platform desktop client over a shared core |
+| **Download** | [`OpenNOW.dmg`](../../releases) | [`OpenNOW-Qt-*` packages](https://github.com/OpenCloudGaming/OpenNOW/releases) |
+
+### Feature highlights
+
+A snapshot of what most clearly separates the two, not a complete matrix - both projects move
+independently, and a row here reflects each project's own documentation.
+
+| **OpenNOW-Mac** | **OpenNOW** |
+| --- | --- |
+| Steam Controller (2015 and 2026) read directly over HID - haptics, back grips and trackpads - with no Steam installed | A desktop (keyboard and mouse) layout and a console (controller) layout in one app |
+| A visual controller mapping editor - any control to a gamepad button, a key, a mouse action or nothing, with combos and profiles | Controller settings stay global: stick dead zones, vibration intensity, an input-source picker and battery status |
+| Per-game controller mappings - a title uses its own profile for each controller type, leaving every other game on the default | — |
+| In-stream on-screen keyboard on any controller (Steam + X) | Windows, Linux and Apple silicon macOS from one codebase |
+| Six pillarbox-fill modes for 21:9 and 32:9 ultrawide, up to 5120×2160 | Crowdin-managed translations and installable themes |
+| Remote Co-Op - hand a friend a player slot from a browser link, with no server to run | First-run onboarding wizard and a free-tier queue-location selector |
+| Menu bar and windowless mode, plus Dock integration | Saved accounts with a profile PIN, and alliance (non-NVIDIA) providers |
+| Maintenance Watch for titles taken down for maintenance | Experimental local frame generation (2×) |
+| Raw Mouse Input (up to 1,000 Hz) and VRR frame pacing | Source-passthrough recording to Matroska, with a replay buffer and clips |
+| Upscaling: Off, Spatial or MetalFX, targeting 2K/4K/5K | Upscaling: Off or MetalFX (macOS only) |
+| 5.1 / 7.1 surround sound | Regional keyboard-layout mapping and a gamepad-friendly console launch mode |
+| Settings search across every page | macOS AWDL suppression helper, and clipboard paste into the stream |
+
+**Both, built separately:** a native NVST streaming stack, catalog browsing with favorites and a
+library, MetalFX upscaling on macOS, HDR, microphone, local recording, diagnostics export and
+Discord integration.
+
+The code bases share close to nothing - different languages, different architecture, different
+design decisions and direction. Features are built independently on each side, so a feature in
+one is not a promise of it in the other, and neither tracks the other's releases. Both are
+MIT-licensed community projects, and both need your own GeForce NOW account.
+
+If you came here looking for the cross-platform desktop client, that is
+[OpenCloudGaming/OpenNOW](https://github.com/OpenCloudGaming/OpenNOW). Everything below this
+point describes OpenNOW-Mac only.
+
 ## Why OpenNOW
 
 OpenNOW is written in SwiftUI from the ground up and streams GeForce NOW sessions over NVIDIA's native NVST protocol. The pitch is simple: **treat a Mac like a Mac, and treat a controller like a controller.** Browse your library and launch in seconds, stream at up to 5K, record the runs you want to keep, and play with a Steam Controller 2026 without ever installing Steam.
@@ -156,6 +203,7 @@ OpenNOW talks to Valve's controllers directly over HID, so you get the pad in yo
 - **Visual mapping editor** - click any control on the controller diagram and bind it to a gamepad button, a key, a mouse action, or nothing at all.
 - **Combos on any control** - bind a back grip to `B + R2`; the modifier lands first, the press follows a beat later, so games read it as a real combo.
 - **Profiles** - save as many as you like and switch between them.
+- **Per-game overrides** - bind a profile to one title only, per controller type, from the mapping surface mid-stream; every other game keeps the type default. Disabling an override keeps it, removing it is permanent. Settings → Input → Controller Tools lists them all.
 - **Built-in tester** - Settings → Input → Controller Tools shows every button, axis, and pad live; Steam Controllers draw their full shell, other pads a generic one.
 - **Lizard mode off** - the firmware's keyboard/mouse emulation is suppressed so nothing leaks to the desktop.
 

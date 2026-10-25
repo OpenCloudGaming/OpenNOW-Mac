@@ -18,6 +18,9 @@ public struct NativeNVSTTransportConnection: Equatable, Sendable {
 
 public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     public let available: Bool
+    /// Datagrams that reached the video socket, by any class. Zero is a delivery failure, which no
+    /// other field here can distinguish from a decode, codec or renderer one.
+    public let inboundVideoDatagrams: UInt64
     public let gameFramesPerSecond: Double
     public let streamFramesPerSecond: Double
     public let latencyMilliseconds: Double
@@ -94,6 +97,7 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     }
 
     public init(available: Bool,
+                inboundVideoDatagrams: UInt64 = 0,
                 gameFramesPerSecond: Double,
                 streamFramesPerSecond: Double,
                 latencyMilliseconds: Double,
@@ -131,6 +135,7 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
         self.bitstreamFormat = bitstreamFormat
         self.decoderOutputFormat = decoderOutputFormat
         self.available = available
+        self.inboundVideoDatagrams = inboundVideoDatagrams
         self.gameFramesPerSecond = gameFramesPerSecond
         self.streamFramesPerSecond = streamFramesPerSecond
         self.latencyMilliseconds = latencyMilliseconds
@@ -185,13 +190,15 @@ struct NativeNVSTStreamHealthMonitor: Equatable, Sendable {
     /// verdict when the picture has already stopped.
     var zeroFrameStreak: Int { zeroFrameSamples }
 
+    /// One sample of the video leg's liveness. A `nil` snapshot means the transport is not up yet;
+    /// a snapshot that exists is a running transport, whether or not it has produced a frame.
     mutating func observe(snapshot: NativeNVSTPerformanceSnapshot?, rendererReady: Bool) -> NativeNVSTStreamHealthFailure? {
-        guard let snapshot, snapshot.available else { return nil }
-        missingRendererSamples = rendererReady ? 0 : missingRendererSamples + 1
-        if missingRendererSamples >= rendererSampleLimit { return .rendererUnavailable }
+        guard let snapshot else { return nil }
+        if let rendererFailure = rendererFailureWhenVideoIsFlowing(snapshot, rendererReady: rendererReady) { return rendererFailure }
 
         guard snapshot.streamFramesPerSecond >= 0 else { return nil }
-        if snapshot.streamFramesPerSecond > 0 {
+        let framesThisSample = snapshot.available ? snapshot.streamFramesPerSecond : 0
+        if framesThisSample > 0 {
             receivedFrames = true
             zeroFrameSamples = 0
             return nil
@@ -202,6 +209,43 @@ struct NativeNVSTStreamHealthMonitor: Equatable, Sendable {
         }
         return zeroFrameSamples >= firstFrameSampleLimit ? .firstFrameTimedOut : nil
     }
+
+    /// The renderer verdict needs a picture to be missing from: before the first frame a not-ready
+    /// surface and a silent transport are the same observation, and the first-frame budget is right.
+    private mutating func rendererFailureWhenVideoIsFlowing(_ snapshot: NativeNVSTPerformanceSnapshot,
+                                                          rendererReady: Bool) -> NativeNVSTStreamHealthFailure? {
+        guard snapshot.available else { return nil }
+        missingRendererSamples = rendererReady ? 0 : missingRendererSamples + 1
+        guard missingRendererSamples >= rendererSampleLimit else { return nil }
+        return .rendererUnavailable
+    }
+}
+
+extension NativeNVSTStreamHealthFailure {
+    /// Whether the in-place reconnect is worth trying: it re-runs SETUP, ANNOUNCE, the punch and
+    /// PLAY, which is the only recovery for a media leg the seat never wired up.
+    var isRecoverableInPlace: Bool {
+        switch self {
+        case .firstFrameTimedOut, .streamStalled: true
+        case .rendererUnavailable: false
+        }
+    }
+
+    /// What the reconnect attempt records as its reason.
+    var recoveryReason: String {
+        switch self {
+        case .firstFrameTimedOut: "no-first-frame"
+        case .streamStalled: "stall"
+        case .rendererUnavailable: "renderer"
+        }
+    }
+}
+
+/// What the health check concluded about the running stream.
+enum NativeNVSTStreamHealthOutcome {
+    case healthy
+    case reconnected
+    case ended
 }
 
 public struct NativeNVSTTerminationValue: Equatable, Sendable {

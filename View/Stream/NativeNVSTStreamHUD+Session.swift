@@ -6,6 +6,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDSessionPanel: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.session.title,
+            focusID: OPNStreamHUDSection.session.focusID,
             spacing: 8,
             isCollapsed: model.isHUDSectionCollapsed(.session),
             isFocused: model.isHUDSectionHeaderFocused(.session),

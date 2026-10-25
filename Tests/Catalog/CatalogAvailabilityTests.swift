@@ -41,6 +41,32 @@ private func parseFixture(_ dictionary: [String: Any]) -> OPNGameInfo {
     #expect(variant?.serviceStatus == "MANUAL")
 }
 
+@Test func aPatchRecordPastItsCompletionTimeIsNeitherPatchingNorBlocked() {
+    let game = parseFixture(catalogGraphQLGame(
+        id: "mw4",
+        libraryStatus: "AVAILABLE",
+        librarySelected: true,
+        gfnStatus: "PATCHING",
+        gfnStateDetails: ["subType": "PATCHING_AUTO", "endTime": "2020-01-01T00:00:00.000Z"]
+    ))
+    let variant = game.variants.first
+
+    #expect(variant?.isPatching == false)
+    #expect(variant?.catalogAvailability == .available)
+}
+
+@Test func aPatchRecordInsideItsCompletionTimeStillReadsAsPatching() {
+    let game = parseFixture(catalogGraphQLGame(
+        id: "mw4",
+        gfnStatus: "PATCHING",
+        gfnStateDetails: ["subType": "PATCHING_AUTO", "endTime": vendorTimestamp(secondsFromNow: 3_600)]
+    ))
+    let variant = game.variants.first
+
+    #expect(variant?.isPatching == true)
+    #expect(variant?.catalogAvailability == .patching)
+}
+
 @Test func catalogObjectPreservesAvailabilityAcrossBridging() {
     var variant = OPNGameVariant(id: "v", appStore: "STEAM")
     variant.catalogStatus = "SERVER_MAINTENANCE"
@@ -64,6 +90,17 @@ private func parseFixture(_ dictionary: [String: Any]) -> OPNGameInfo {
     #expect(restored.catalogStatus == "SERVER_MAINTENANCE")
     #expect(restored.catalogStateDetailsSubType == "GFN_DEVELOPER_MAINTENANCE")
     #expect(restored.catalogAvailability == .maintenance)
+}
+
+@Test func catalogCacheKeepsAStalePatchRecordFromBlockingTheTitle() {
+    var variant = OPNGameVariant(id: "v", appStore: "STEAM")
+    variant.catalogStatus = "PATCHING"
+    variant.catalogStateDetailsSubType = "PATCHING_AUTO"
+    variant.patchCompletionDate = Date(timeIntervalSince1970: 0)
+
+    let restored = OPNGameDataCache.shared.gameVariant(OPNGameDataCache.shared.variantDictionary(variant))
+    #expect(restored.patchCompletionDate == Date(timeIntervalSince1970: 0))
+    #expect(restored.catalogAvailability == .available)
 }
 
 @Test func offlineAvailabilityReplacesThePlayMessageWithNotice() {

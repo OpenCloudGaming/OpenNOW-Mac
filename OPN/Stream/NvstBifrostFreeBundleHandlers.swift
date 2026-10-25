@@ -146,6 +146,13 @@ extension NvstBifrostFreeTransport {
                 }
             }
         }
+        bundle.onDlssState = { [weak self] notification in
+            Task {
+                await self?.withCurrentBundleGeneration(generation) { transport in
+                    transport.handleDlssState(notification)
+                }
+            }
+        }
         bundle.onSeatTermination = { [weak self] termination in
             Task {
                 await self?.withCurrentBundleGeneration(generation) { transport in

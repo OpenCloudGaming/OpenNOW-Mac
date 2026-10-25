@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.19.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.18.0...v0.19.0) (2026-10-20)
+
+
+### Features
+
+* Add dlss overrides ([#116](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/116)) ([c15a8df](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c15a8df550eac9bc39b3e521d96bd7a697e22288))
+
+
+### Bug Fixes
+
+* Recording under pressure stutter recording ([#126](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/126)) ([f93af9c](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/f93af9c6d0ffc5fb304e26016b5ec86eb2c14f7e))
+* rounded borders ([0360e4b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0360e4be5a8768ba6bd9c50ae3f8036439132472))
+
+## [0.18.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.17.1...v0.18.0) (2026-10-18)
+
+
+### Features
+
+* Add 16:9 5K stream resolution ([#122](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/122)) ([fcd4a83](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/fcd4a833976862c591bafa1a4a3a9ba21b03cd66))
+* log the session configuration for support reports ([580098a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/580098ab914a31dce85df6a52a5cafccc32f11bb))
+
+## [0.17.1](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.17.0...v0.17.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* Triple buffering ([#118](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/118)) ([4d1b599](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/4d1b599119f2c44eef0eb86726bd73b7c3495a1c))
+
+## [0.17.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.16.0...v0.17.0) (2026-10-13)
+
+
+### Features
+
+* add page change shortcuts ([#114](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/114)) ([1493a9a](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1493a9af124bd813e04bd0521989baf21295fe1e))
+
+
+### Bug Fixes
+
+* Default Device output switch settles on the resolved route ([#112](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/112)) ([bd7c715](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/bd7c715e531ddbd080fef821a17c1a1658f89297))
+* scroll the HUD dock to keep the pad's focus row visible ([#113](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/113)) ([a955c06](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a955c066bd80f11dbdb59b1bef22fe16eaa86678))
+
+## [0.16.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.15.0...v0.16.0) (2026-10-12)
+
+
+### Features
+
+* add corner style ([#104](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/104)) ([c542618](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c5426188a487e11b09d50d5283db0c864214db9e))
+* add liquid glass ([#107](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/107)) ([c959856](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c959856445f203b1833d00acbaab0501895b1cca))
+* per-stream controller enablement in the controller panel ([#109](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/109)) ([c4e2b3e](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c4e2b3e1f84cb0895b221266d074b40c4dcd0cc1))
+
+
+### Bug Fixes
+
+* bound what each home rail materializes on the first frame ([#106](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/106)) ([1d464fd](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1d464fd65ef883891404b163f32e2f9c4a9af3b8))
+* deliver catalog tile hover outside the view update pass ([#110](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/110)) ([2708633](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/2708633ab33f1d6bbfba8640bee52939c750bfaa))
+* replace the catalog hover timer with scroll-linked invalidation ([#103](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/103)) ([0a58b18](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/0a58b188e539c2c9ff534794ee6d67e1fe04920c))
+* route the launch loading artwork through the image cache ([#100](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/100)) ([e9d98ff](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/e9d98ffcb14411247d58f0a1c17d92a38f013925))
+
 ## [0.15.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.14.0...v0.15.0) (2026-10-06)
 
 

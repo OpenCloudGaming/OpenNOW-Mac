@@ -184,6 +184,9 @@ extension NativeNVSTMediaStreamSurface {
                 )
             }
         }
+        // The grid is one row of the pad's walk, and its tiles are the model's own entries in the
+        // same order, so the row anchors on the first tile it draws.
+        .hudFocusAnchor(tiles.first?.id)
     }
 
     /// Output above microphone. The standalone mute tiles are gone: the volume rows' leading icons
@@ -191,6 +194,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDAudioPanel: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.audio.title,
+            focusID: OPNStreamHUDSection.audio.focusID,
             spacing: 8,
             caption: nativeHUDCaption(for: [], extra: [
                 (NativeNVSTHostViewModel.outputDeviceDropdownID, model.outputDeviceCaption),
@@ -224,6 +228,7 @@ extension NativeNVSTMediaStreamSurface {
                 onToggleMute: model.toggleNativeLocalAudioMute,
                 onPercentChange: { model.updateNativeGameVolume(percent: $0) }
             )
+            .hudFocusAnchor(NativeNVSTHostViewModel.gameVolumeMuteFocusID)
             // Above the microphone rows rather than instead of them, so the rows the pad stands on
             // stay where they were and the reason is beside what it explains.
             microphoneUnavailableNotice
@@ -240,6 +245,7 @@ extension NativeNVSTMediaStreamSurface {
                 onToggleMute: model.toggleNativeMicrophone,
                 onPercentChange: { model.updateNativeMicrophoneVolume(percent: $0) }
             )
+            .hudFocusAnchor(NativeNVSTHostViewModel.microphoneVolumeMuteFocusID)
             nativeHUDMicrophoneLevelRow
             nativeHUDMicrophoneModeRow
         }
@@ -268,6 +274,7 @@ extension NativeNVSTMediaStreamSurface {
             visibleItemCount: 6,
             padDriver: model.padDropdown(dropdownID: dropdownID)
         )
+        .hudFocusAnchor(dropdownID)
     }
 
     /// The microphone the stream captures from: where the picker's saved choice reaches capture, and
@@ -327,6 +334,7 @@ extension NativeNVSTMediaStreamSurface {
         let tiles = nativeHUDCaptureTiles
         return StreamHUDSection(
             label: OPNStreamHUDSection.capture.title,
+            focusID: OPNStreamHUDSection.capture.focusID,
             spacing: 8,
             caption: nativeHUDCaption(for: tiles),
             isCollapsed: model.isHUDSectionCollapsed(.capture),
@@ -342,6 +350,7 @@ extension NativeNVSTMediaStreamSurface {
         let tiles = nativeHUDDisplayTiles
         return StreamHUDSection(
             label: OPNStreamHUDSection.display.title,
+            focusID: OPNStreamHUDSection.display.focusID,
             spacing: 8,
             caption: nativeHUDCaption(for: tiles),
             isCollapsed: model.isHUDSectionCollapsed(.display),
@@ -357,6 +366,7 @@ extension NativeNVSTMediaStreamSurface {
         let tiles = nativeHUDInputTiles
         return StreamHUDSection(
             label: OPNStreamHUDSection.input.title,
+            focusID: OPNStreamHUDSection.input.focusID,
             spacing: 8,
             caption: nativeHUDCaption(for: tiles, extra: [("mouse-sensitivity", "Mouse Sensitivity · A steps +25%")]),
             isCollapsed: model.isHUDSectionCollapsed(.input),
@@ -374,6 +384,7 @@ extension NativeNVSTMediaStreamSurface {
                 isFocused: model.hudVisibleFocusID == "mouse-sensitivity",
                 action: { model.updateNativeMouseSensitivity(percent: $0) }
             )
+            .hudFocusAnchor("mouse-sensitivity")
         }
     }
 }

@@ -9,6 +9,9 @@ struct StreamUnifiedSidebar<Content: View>: View {
     let sessionLimit: StreamSessionSidebarLimit?
     let powerAction: (() -> Void)?
     let isPowerFocused: Bool
+    /// The row the pad's ring stands on, which the dock scrolls into view. Nil while the ring is
+    /// hidden, so opening the dock does not move its list.
+    let scrollAnchorID: String?
     let isClockVisible: Bool
     let customizeAction: (() -> Void)?
     let shortcutsHelpAction: (() -> Void)?
@@ -21,6 +24,7 @@ struct StreamUnifiedSidebar<Content: View>: View {
         sessionLimit: StreamSessionSidebarLimit? = nil,
         powerAction: (() -> Void)? = nil,
         isPowerFocused: Bool = false,
+        scrollAnchorID: String? = nil,
         isClockVisible: Bool = true,
         customizeAction: (() -> Void)? = nil,
         shortcutsHelpAction: (() -> Void)? = nil,
@@ -32,6 +36,7 @@ struct StreamUnifiedSidebar<Content: View>: View {
         self.sessionLimit = sessionLimit
         self.powerAction = powerAction
         self.isPowerFocused = isPowerFocused
+        self.scrollAnchorID = scrollAnchorID
         self.isClockVisible = isClockVisible
         self.customizeAction = customizeAction
         self.shortcutsHelpAction = shortcutsHelpAction
@@ -44,10 +49,20 @@ struct StreamUnifiedSidebar<Content: View>: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 Rectangle().fill(StreamHUDTheme.divider).frame(height: 1)
-                ScrollView(.vertical, showsIndicators: false) {
-                    content
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 14)
+                ScrollViewReader { scrollProxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        content
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 14)
+                    }
+                    // A pad walks rows the dock has scrolled past; without this the ring leaves the
+                    // visible area and the list reads as frozen. No animation, for the same reason
+                    // an open dropdown's list has none: the row has to be in place before the next
+                    // press, not easing toward it while the pad is already moving on.
+                    .onChange(of: scrollAnchorID) { _, anchor in
+                        guard let anchor else { return }
+                        scrollProxy.scrollTo(anchor, anchor: .center)
+                    }
                 }
                 Rectangle().fill(StreamHUDTheme.divider).frame(height: 1)
                 footer

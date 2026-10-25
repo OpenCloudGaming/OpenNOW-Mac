@@ -110,6 +110,24 @@ import Testing
         #expect(OPNIssueReportComposer.submission(for: draft(target: .geforceNowStream), context: context()) == nil)
     }
 
+    /// The session's own configuration is the first thing a stutter or pacing report is read
+    /// against, and it only reaches the log if the reader opens the paste.
+    @Test func theBodyCarriesTheLastSessionsConfiguration() throws {
+        var withSession = context()
+        withSession.sessionConfiguration = "session.config app=1 display=\"AW3926QW\" framePacing=smooth vsync=Off"
+
+        let submission = try #require(OPNIssueReportComposer.submission(for: draft(target: .opennowClient), context: withSession))
+        #expect(submission.clipboardText.contains("Session: session.config app=1"))
+        #expect(submission.clipboardText.contains("framePacing=smooth"))
+        #expect(OPNIssueReportComposer.environmentLines(context: withSession).contains { $0.hasPrefix("Session: ") })
+    }
+
+    /// A report raised before any session has no configuration to describe, and the body must not
+    /// grow an empty `Session:` line for it.
+    @Test func theBodyDropsTheSessionLineWhenNoSessionHasRun() {
+        #expect(!OPNIssueReportComposer.environmentLines(context: context()).contains { $0.hasPrefix("Session:") })
+    }
+
     @Test func streamFallbackTextCarriesOnlyTheSessionFacts() {
         let text = OPNIssueReportComposer.streamReportText(context: context())
         #expect(!text.contains("Summary:"))

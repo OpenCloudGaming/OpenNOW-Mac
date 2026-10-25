@@ -553,17 +553,12 @@ extension NativeNVSTHostViewModel {
                     let adjustments = networkGovernor?.evaluate(snapshot) ?? []
                     for adjustment in adjustments { await applyNativeNetworkAdjustment(adjustment, path: path) }
                 }
-                if isConnected, !isEnding, !didEnd, !isReconnecting,
-                   let failure = nativeStreamHealth.observe(snapshot: snapshot, rendererReady: nativeView?.nativeNVSTRendererSurfaceReady == true) {
-                    // A stalled stream is a dead link far more often than a dead seat: reconnect
-                    // to the same session first, and only end the stream when that is exhausted.
-                    if failure == .streamStalled, await attemptInPlaceReconnect(path: path, reason: "stall") {
-                        continue
-                    }
-                    OPNStreamTelemetry.capture("nvst.stream.health.failed", level: .error, message: failure.message, attributes: ["applicationID": configuration.applicationID])
-                    _ = await finish(reason: .failed, message: failure.message)
-                    return
+                switch await handleStreamHealth(snapshot: snapshot, path: path) {
+                case .reconnected: continue
+                case .ended: return
+                case .healthy: break
                 }
+                if isConnected, !isEnding, !didEnd { announceHdrDowngradeIfNeeded() }
                 do {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
                 } catch {
@@ -627,6 +622,21 @@ extension NativeNVSTHostViewModel {
         }
     }
 
+    /// What the poll loop should do after a health sample: nothing, resume after a reconnect, or
+    /// stop because the stream was ended.
+    func handleStreamHealth(snapshot: NativeNVSTPerformanceSnapshot?, path: NativeNVSTStreamingPath) async -> NativeNVSTStreamHealthOutcome {
+        guard isConnected, !isEnding, !didEnd, !isReconnecting,
+              let failure = nativeStreamHealth.observe(snapshot: snapshot, rendererReady: nativeView?.nativeNVSTRendererSurfaceReady == true) else { return .healthy }
+        reportVideoThatNeverArrived(failure)
+        if failure.isRecoverableInPlace,
+           await attemptInPlaceReconnect(path: path, reason: failure.recoveryReason) {
+            return .reconnected
+        }
+        OPNStreamTelemetry.capture("nvst.stream.health.failed", level: .error, message: failure.message, attributes: ["applicationID": configuration.applicationID])
+        _ = await finish(reason: .failed, message: failure.message)
+        return .ended
+    }
+
     /// Reconnects to the same seat through the path's in-place recovery, keeping the HUD honest
     /// about it. Returns false when the path has spent its attempts, in which case the caller ends
     /// the stream with the failure it was about to report.
@@ -645,7 +655,8 @@ extension NativeNVSTHostViewModel {
         // A fresh transport: the watchdog starts over, the mic gate is re-applied (the new bundle
         // comes up muted), and input is live again. A key held across the recovery is not restored —
         // reopening capture on a stale press is the failure this whole gate exists to prevent.
-        nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: Self.firstFrameSamplesBeforeReconnect,
+                                                          stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
         isPushToTalkKeyHeld = false
         try? await path.setMicrophoneEnabled(nativeMicrophoneCaptureRequested)
         try? await path.setGameVolume(Double(gameVolumePercent) / 100)

@@ -115,6 +115,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var supportedControls: [String]
     public var catalogStatus: String
     public var catalogStateDetailsSubType: String
+    public var patchCompletionDate: Date?
     public var serviceStatus: String
     public var libraryStatus: String
     public var libraryPlayStatus: String
@@ -127,6 +128,9 @@ public final class OPNCatalogGameVariantObject: NSObject {
     public var installTimeInMinutes: Int
     public var supportedLanguages: [String]
     public var gfnFeatureLabels: [String]
+    /// Whether this store edition declares HDR in the vendor's feature list; unknown when the
+    /// catalog sent none.
+    public var catalogHdrSupport: HdrCatalogSupport
     public var isPatching: Bool
     /// The availability the 30-60s patch-status poll last classified for this variant. Transient:
     /// it lives only on this reference object, never in the cache or the vendor round-trip, and nil
@@ -154,6 +158,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
         supportedControls = variant.supportedControls
         catalogStatus = variant.catalogStatus
         catalogStateDetailsSubType = variant.catalogStateDetailsSubType
+        patchCompletionDate = variant.patchCompletionDate
         serviceStatus = variant.serviceStatus
         libraryStatus = variant.libraryStatus
         libraryPlayStatus = variant.libraryPlayStatus
@@ -166,6 +171,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
         installTimeInMinutes = variant.installTimeInMinutes
         supportedLanguages = variant.supportedLanguages
         gfnFeatureLabels = variant.gfnFeatureLabels
+        catalogHdrSupport = variant.catalogHdrSupport
         isPatching = variant.isPatching
         patchStatusPrimaryText = variant.patchStatusPrimaryText
         patchStatusSecondaryText = variant.patchStatusSecondaryText
@@ -188,6 +194,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
             supportedControls: supportedControls,
             catalogStatus: catalogStatus,
             catalogStateDetailsSubType: catalogStateDetailsSubType,
+            patchCompletionDate: patchCompletionDate,
             serviceStatus: serviceStatus,
             libraryStatus: libraryStatus,
             libraryPlayStatus: libraryPlayStatus,
@@ -200,6 +207,7 @@ public final class OPNCatalogGameVariantObject: NSObject {
             installTimeInMinutes: installTimeInMinutes,
             supportedLanguages: supportedLanguages,
             gfnFeatureLabels: gfnFeatureLabels,
+            catalogHdrSupport: catalogHdrSupport,
             isPatching: isPatching,
             patchStatusPrimaryText: patchStatusPrimaryText,
             patchStatusSecondaryText: patchStatusSecondaryText,
@@ -209,7 +217,11 @@ public final class OPNCatalogGameVariantObject: NSObject {
     }
 
     public var catalogAvailability: CatalogAvailability {
-        catalogAvailabilityOverride ?? CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
+        catalogAvailabilityOverride ?? CatalogAvailability.classify(
+            catalogStatus: catalogStatus,
+            stateDetailsSubType: catalogStateDetailsSubType,
+            isPatchRecordElapsed: CatalogPatchRecord.isElapsed(completion: patchCompletionDate)
+        )
     }
 }
 

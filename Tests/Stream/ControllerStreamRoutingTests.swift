@@ -56,7 +56,7 @@ import Testing
         monitor.stop()
     }
 
-    @Test func midStreamArrivalIsAdmittedDisabledUntilThisStreamEnablesIt() throws {
+    @Test func aMidStreamArrivalTakesAFreeSlotWithoutWaitingForThisStream() throws {
         let (store, defaults, suite) = try makeStore()
         defer { defaults.removePersistentDomain(forName: suite) }
         let first = GCController.withExtendedGamepad()
@@ -65,6 +65,7 @@ import Testing
         let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
         let firstID = try #require(registry.id(for: first))
         #expect(monitor.inputPaths().map(\.playerIndex) == [0])
+        monitor.markStreamLive()
 
         let second = GCController.withExtendedGamepad()
         natives = [first, second]
@@ -72,13 +73,58 @@ import Testing
         monitor.onStreamControllerArrival = { arrivals.append($0) }
         monitor.refreshInputState()
         let secondID = try #require(registry.id(for: second))
-        #expect(arrivals.count == 1)
-        #expect(monitor.streamControllerRows.first { $0.id == secondID }?.state == .newlyIdentified)
-        #expect(monitor.inputPaths().map(\.playerIndex) == [0])
-
-        monitor.setStreamEnabled(true, for: secondID)
-        #expect(monitor.topology.playerIndices == [0, 1])
+        #expect(arrivals.isEmpty, "a controller that took a slot needs no notice")
+        #expect(monitor.inputPaths().map(\.playerIndex) == [0, 1])
+        #expect(monitor.streamControllerRows.first { $0.id == secondID }?.state == .active(playerIndex: 1))
         #expect(registry.playerOrder.deviceIDs == [firstID, secondID])
+        monitor.stop()
+    }
+
+    @Test func aMidStreamArrivalWithNoFreeSlotWaitsForThisStreamToEnableIt() throws {
+        let (store, defaults, suite) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let playing = (0..<4).map { _ in GCController.withExtendedGamepad() }
+        var natives: [GCController] = playing
+        let registry = ControllerMappingDevices(discovery: .init(nativeControllers: { natives }, steamDeviceIDs: { [] }))
+        let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
+        #expect(monitor.topology.playerIndices == [0, 1, 2, 3])
+        monitor.markStreamLive()
+
+        let fifth = GCController.withExtendedGamepad()
+        natives = playing + [fifth]
+        var arrivals: [String] = []
+        monitor.onStreamControllerArrival = { arrivals.append($0) }
+        monitor.refreshInputState()
+        let fifthID = try #require(registry.id(for: fifth))
+        #expect(arrivals.count == 1, "the stream has to say so when there is no room")
+        #expect(monitor.streamControllerRows.first { $0.id == fifthID }?.state == .newlyIdentified)
+        #expect(monitor.topology.playerIndices == [0, 1, 2, 3])
+
+        monitor.setStreamEnabled(true, for: fifthID)
+        #expect(monitor.streamControllerRows.first { $0.id == fifthID }?.state == .waiting)
+        #expect(monitor.topology.playerIndices == [0, 1, 2, 3], "a fifth controller waits instead of taking a slot")
+        monitor.stop()
+    }
+
+    /// The surface is built when the stream view appears, which is well before the seat is ready; a
+    /// controller whose discovery lands in that window is connected at launch, so it plays.
+    @Test func aControllerDiscoveredDuringTheLaunchWindowStartsEnabled() throws {
+        let (store, defaults, suite) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var natives: [GCController] = []
+        let registry = ControllerMappingDevices(discovery: .init(nativeControllers: { natives }, steamDeviceIDs: { [] }))
+        let monitor = NativeGamepadMonitor(mappingProvider: store, registry: registry)
+        #expect(monitor.inputPaths().isEmpty)
+
+        let controller = GCController.withExtendedGamepad()
+        natives = [controller]
+        var arrivals: [String] = []
+        monitor.onStreamControllerArrival = { arrivals.append($0) }
+        monitor.refreshInputState()
+        let controllerID = try #require(registry.id(for: controller))
+        #expect(monitor.inputPaths().map(\.playerIndex) == [0])
+        #expect(monitor.streamControllerRows.first { $0.id == controllerID }?.state == .active(playerIndex: 0))
+        #expect(arrivals.isEmpty, "a launch-time controller is not announced as an arrival")
         monitor.stop()
     }
 

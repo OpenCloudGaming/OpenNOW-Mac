@@ -30,6 +30,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     let preventDisplaySleep: Bool
     let onProgress: StreamProgressHandler?
     let onEnd: StreamCompletionHandler
+    /// The seat's applied DLSS state, published to the session that owns this stream so the
+    /// settings card can report what the running session actually has.
+    let onDlssState: StreamDlssStateHandler?
     let sidebarCapabilities = StreamSidebarCapabilities.nativeNVST
 
     init(
@@ -37,12 +40,14 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         sessionProvider: any NativeNVSTSessionProvider,
         preventDisplaySleep: Bool,
         onProgress: StreamProgressHandler?,
+        onDlssState: StreamDlssStateHandler? = nil,
         onEnd: @escaping StreamCompletionHandler
     ) {
         self.configuration = configuration
         self.sessionProvider = sessionProvider
         self.preventDisplaySleep = preventDisplaySleep
         self.onProgress = onProgress
+        self.onDlssState = onDlssState
         self.onEnd = onEnd
     }
 
@@ -250,6 +255,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// The seat's last `0x010e` HDR mode word (`hdr`, `true-hdr`), empty while the game is SDR or
     /// the seat has said nothing. Informational: the drawable follows the bitstream's own tags.
     @Published var nativeHdrModeText = ""
+    /// The seat's applied DLSS override state for the running session, nil until it reports one.
+    /// The seat's own message is the only confirmation that an override took effect.
+    @Published var nativeDlssState: NvstDlssStateNotification?
     /// Rumble commands received from the seat this session, for the HUD's controllers panel.
     @Published var nativeHapticEventCount = 0
     /// True while the path is reconnecting to the same seat after a stall or a network change.
@@ -258,6 +266,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// of nothing is a dead link, not a quiet scene: a static picture still carries the seat's
     /// keyframe cadence, and the earlier ten-second verdict only ever ended the stream.
     static let stalledSamplesBeforeReconnect = 5
+    /// One-second stats samples with no frames at all before the stream is judged never to have
+    /// started. Longer than the stall budget, and only counted once the transport is up.
+    static let firstFrameSamplesBeforeReconnect = 15
     @Published var controllerBatteries: [ControllerBatteryInfo] = []
     var batteryAlertTracker = ControllerBatteryAlertTracker()
     @Published var showingControllerMapping = false
@@ -286,6 +297,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     /// The settings the session actually started with, kept because the recording configuration is
     /// built from them (bitrates, fps, resolution) long after `prepareLaunch` returns.
     var resolvedStreamSettings: ResolvedStreamSettings?
+    /// Set once this session has considered the SDR note, so the stats poll's second tick does not
+    /// ask again.
+    var didAnnounceHdrDowngrade = false
     @Published var streamControlsFocusIndex = 0
     @Published var onScreenKeyboardVisible = false
     var restorePointerLockOnKeyboardHide = false
@@ -373,7 +387,7 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
         let resolvedStreamSettings = StreamSettingsResolver.resolve(
-            profile: streamProfile(from: profile),
+            profile: streamProfile(from: profile, catalogHdrSupport: configuration.hdrCatalogSupport(isStoreLauncherSession: profile.steamBigPictureMode)),
             capabilities: streamDeviceCapabilities(from: capabilities),
             cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
         )
@@ -409,7 +423,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         antiAFKMouseMovementEnabled = profile.antiAFKMouseMovementEnabled
         vsyncModeIndex = profile.vsyncModeIndex
         networkGovernor = NativeNVSTNetworkGovernor(maximumBitrateKbps: UInt32(resolvedStreamSettings.maxBitrateMbps * 1_000), l4sEnabled: resolvedStreamSettings.enableL4S)
-        nativeStreamHealth = NativeNVSTStreamHealthMonitor(stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
+        nativeStreamHealth = NativeNVSTStreamHealthMonitor(firstFrameSampleLimit: Self.firstFrameSamplesBeforeReconnect,
+                                                           stalledSampleLimit: Self.stalledSamplesBeforeReconnect)
         lastAcceptedStreamInputAt = Date()
         beginStreamingPerformanceMode()
         startNetworkPathMonitoring()
@@ -462,6 +477,9 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
     func presentStream(session: StreamSessionDescriptor, path: NativeNVSTStreamingPath, nativeView: NativeStreamView) -> Bool {
         guard !Task.isCancelled, !didEnd, !isEnding else { return false }
         isConnected = true
+        // The stream is live, so a controller that turns up from here was not connected at launch and
+        // plays only while a slot is free; everything discovered during the queue plays outright.
+        nativeView.markStreamLive()
         sessionLimit = StreamSessionSidebarLimit(session: session)
         nativeView.remoteInputEnabled = !unifiedHUDVisible && !streamControlsVisible
         nativeView.setNativeNVSTVideoVisible(true)
@@ -480,8 +498,8 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         refreshAntiAFKMouseMovementTask()
         startReplayBufferIfEnabled()
         let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        // The renderer already holds these from the attach; this block publishes them to the HUD.
         pillarboxFillModeIndex = launchProfile.pillarboxFillModeIndex
-        nativeView.setPillarboxFill(mode: launchProfile.pillarboxFillModeIndex, dim: launchProfile.pillarboxFillDim)
         upscalingModeIndex = launchProfile.upscalingModeIndex
         upscalingTargetIndex = launchProfile.upscalingTargetIndex
         upscalingSharpness = launchProfile.upscalingSharpness
@@ -489,11 +507,6 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         nativeStreamResolutionText = "\(launchProfile.resolution.width) x \(launchProfile.resolution.height)"
         nativeStreamFrameRateText = "\(launchProfile.fps) FPS"
         nativeStreamCodecText = launchProfile.codec.value.uppercased()
-        nativeView.setVideoEnhancement(mode: launchProfile.upscalingMode,
-                                       sharpness: launchProfile.upscalingSharpness,
-                                       denoise: launchProfile.upscalingDenoise,
-                                       targetHeight: launchProfile.upscalingTargetHeight)
-        nativeView.setPresentationMode(launchProfile.presentationMode)
         onProgress?(StreamProgress(configuration: configuration, step: .connected, message: "Connected over native NVST.", isReady: true))
         OPNStreamTelemetry.capture("nvst.ui.connected", level: .info, message: "Native NVST stream connected.", attributes: ["sessionId": session.id])
         nativeConnectedAt = Date()
@@ -504,10 +517,26 @@ final class NativeNVSTHostViewModel: ObservableObject, OPNStreamWindowSessionSur
         return true
     }
 
+    /// The catalog listed the store edition being launched without HDR, so this session streams SDR
+    /// although HDR is on. Said once the first frame is up, and once per game: a title played daily
+    /// hears it at its first session and never again.
+    func announceHdrDowngradeIfNeeded() {
+        guard !didAnnounceHdrDowngrade, resolvedStreamSettings?.hdrDowngrade == .gameUnsupported else { return }
+        guard nativeStreamHealth.receivedFrames else { return }
+        didAnnounceHdrDowngrade = true
+        let identity = hdrNoticeGameIdentity
+        guard !OPNHdrDowngradeNotice.hasBeenShown(forGame: identity) else { return }
+        OPNHdrDowngradeNotice.recordShown(forGame: identity)
+        showNativeTransientStreamMessage(OPNHdrDowngradeNotice.message, duration: .seconds(4))
+    }
 
-
-
-
+    /// The game the SDR note is remembered against. The catalog identity names a game, where the
+    /// launch app id can differ between the store editions of one title: hearing the note again for
+    /// another store's copy of the same game is exactly what once per game must prevent.
+    private var hdrNoticeGameIdentity: String {
+        let catalogIdentity = configuration.mappingGameIdentity
+        return catalogIdentity.isEmpty ? configuration.applicationID : catalogIdentity
+    }
 
     func handleStartFailure(_ error: Error, diagnostics: [String: String]) {
         guard !(error is CancellationError), !Task.isCancelled else {
@@ -540,10 +569,21 @@ extension NativeNVSTHostViewModel {
     /// Bifrost-free (no NVIDIA libraries): our own RTSP control plane + raw-SRTP Mjolnir receiver +
     /// VideoToolbox decode, drawn on the shared Metal surface.
     func makeTransport(nativeView: NativeStreamView, settings resolvedStreamSettings: ResolvedStreamSettings) -> any NativeNVSTTransport {
-        let bifrostFreeSink = nativeView.attachNvstBifrostFreeRenderer(targetFps: Int32(max(30, resolvedStreamSettings.fps))).frameSink
-        let launchPresentationMode = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID,
-                                                                        capabilities: OPNStreamPreferences.loadDeviceCapabilities()).presentationMode
+        // Read once, before the renderer exists: the renderer is created with these, so the first
+        // frames run the profile's pacing and upscaling rather than the view's defaults.
+        let launchProfile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID,
+                                                               capabilities: OPNStreamPreferences.loadDeviceCapabilities())
+        let bifrostFreeSink = nativeView.attachNvstBifrostFreeRenderer(targetFps: Int32(max(30, resolvedStreamSettings.fps)),
+                                                                      launchSettings: OPNStreamLaunchVideoSettings(profile: launchProfile)).frameSink
+        let launchPresentationMode = launchProfile.presentationMode
         let isVrrPresentation = OPNVideoPresentationMode(rawValue: launchPresentationMode) == .vrr
+        // Written once, before the first frame: a report that cannot say which display, pacing or
+        // input mode it was testing is a report nobody can reproduce.
+        let sessionSnapshot = OPNStreamSessionSnapshot.resolved(applicationID: configuration.applicationID,
+                                                                settings: resolvedStreamSettings,
+                                                                presentationMode: launchPresentationMode)
+        OPNLog.info(.stream, sessionSnapshot.logLine)
+        OPNStreamSessionSnapshot.recordLastSession(sessionSnapshot)
         // The unified log purges info-level lines within minutes, which has already cost one
         // session's counter timeline mid-investigation; the diagnostic file is the durable copy.
         let diagnosticLog = NvstDiagnosticLog()

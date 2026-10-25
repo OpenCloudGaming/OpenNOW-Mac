@@ -9,6 +9,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDStatsPanel: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.stats.title,
+            focusID: OPNStreamHUDSection.stats.focusID,
             isCollapsed: model.isHUDSectionCollapsed(.stats),
             isFocused: model.isHUDSectionHeaderFocused(.stats),
             reorderPayload: OPNStreamHUDSection.stats.rawValue,

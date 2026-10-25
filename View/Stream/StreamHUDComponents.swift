@@ -209,6 +209,17 @@ struct StreamHUDFocusEntry {
         }
     }
 
+    /// The id the dock scrolls to for `id`: the row that holds it is the one the view stamped, and a
+    /// row is stamped with its first entry. Left/right moves within a row and up/down between rows,
+    /// so the row — not the control — is what has to be brought into view.
+    static func scrollAnchor(for id: String, in entries: [StreamHUDFocusEntry]) -> String? {
+        // A dock-wide action lives in the dock's header, outside the list the pad scrolls, so there
+        // is no row of it to bring into view.
+        guard let index = entries.firstIndex(where: { $0.id == id }), entries[index].kind != .globalAction else { return nil }
+        guard let row = rows(of: entries).first(where: { $0.contains(index) }), let first = row.first else { return nil }
+        return entries[first].id
+    }
+
     static func activatable(_ current: String?, in entries: [StreamHUDFocusEntry]) -> StreamHUDFocusEntry? {
         let enabled = entries.filter { !$0.isDisabled }
         return enabled.first(where: { $0.id == current }) ?? enabled.first

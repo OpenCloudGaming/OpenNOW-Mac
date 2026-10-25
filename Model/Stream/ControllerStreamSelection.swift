@@ -34,13 +34,21 @@ struct ControllerStreamSelection: Equatable, Sendable {
         }
     }
 
-    /// A device is known once this session has seen it, enabled only after an explicit decision, and
-    /// holds a slot only while it is both enabled and connected inside the first four of the order.
-    private(set) var isSessionStarted = false
+    /// How a device this session has not seen before is admitted.
+    enum ArrivalAdmission: Equatable, Sendable {
+        /// It was connected when the stream launched, so it plays — waiting once the four slots are taken.
+        case admitEnabled
+        /// It appeared after the stream went live, so it plays only while a slot is free and otherwise
+        /// waits for an explicit enable in this stream.
+        case admitEnabledWhenASlotIsFree
+    }
+
+    /// A device is known once this session has seen it, and holds a slot only while it is both
+    /// enabled and connected inside the first four of the shared order.
     private var names: [InputDeviceID: String] = [:]
     private var knownIDs: Set<InputDeviceID> = []
     private var enabledIDs: Set<InputDeviceID> = []
-    /// Connected devices first seen after the session began, still awaiting an explicit decision.
+    /// Arrivals the stream had no slot for, still awaiting an explicit decision in this stream.
     private var newlyIdentifiedIDs: Set<InputDeviceID> = []
     /// The shared order as of the last synchronization, so rows and slots read one snapshot.
     private var connectedIDs: [InputDeviceID] = []
@@ -49,40 +57,31 @@ struct ControllerStreamSelection: Equatable, Sendable {
 
     var isEmpty: Bool { knownIDs.isEmpty }
 
-    /// Opens the session with everything connected at stream launch admitted enabled and remembered.
-    mutating func beginSession(devices: [Device]) {
-        isSessionStarted = true
-        names = [:]
-        knownIDs = []
-        enabledIDs = []
-        newlyIdentifiedIDs = []
-        for device in devices {
-            names[device.id] = device.name
-            knownIDs.insert(device.id)
-            enabledIDs.insert(device.id)
-        }
-        connectedIDs = devices.map(\.id)
-        disconnectedIDs = []
-    }
-
     /// Folds the current discovery set, in shared order, into this session: a known device keeps its
-    /// choice, a first-seen one is admitted disabled, and the arrivals come back to be announced.
+    /// choice, a first-seen one is admitted by `admission`, and the arrivals come back to the caller.
     @discardableResult
-    mutating func synchronize(devices: [Device]) -> [Device] {
-        guard isSessionStarted else {
-            beginSession(devices: devices)
-            return []
-        }
+    mutating func synchronize(devices: [Device], admission: ArrivalAdmission) -> [Device] {
         let arrivals = devices.filter { !knownIDs.contains($0.id) }
         for device in devices { names[device.id] = device.name }
         for arrival in arrivals {
             knownIDs.insert(arrival.id)
-            enabledIDs.remove(arrival.id)
-            newlyIdentifiedIDs.insert(arrival.id)
+            enabledIDs.insert(arrival.id)
         }
         connectedIDs = devices.map(\.id)
         disconnectedIDs = knownIDs.subtracting(connectedIDs).sorted { $0.rawValue < $1.rawValue }
+        withdrawArrivalsWithoutASlot(arrivals, admission: admission)
         return arrivals
+    }
+
+    /// Capacity belongs to the whole admitted set, so arrivals are folded in enabled first and the
+    /// ones the stream had no room for are withdrawn once the slot map exists.
+    private mutating func withdrawArrivalsWithoutASlot(_ arrivals: [Device], admission: ArrivalAdmission) {
+        guard admission == .admitEnabledWhenASlotIsFree else { return }
+        let slots = playerIndices
+        for arrival in arrivals where slots[arrival.id] == nil {
+            enabledIDs.remove(arrival.id)
+            newlyIdentifiedIDs.insert(arrival.id)
+        }
     }
 
     /// Enabling clears the new-device prompt; disabling keeps the row and the remembered choice, so

@@ -56,6 +56,7 @@ struct OPNStreamWindowRootView: View {
                         onRequiredSessionAd: { ad in
                             try await session.presentRequiredAd(ad)
                         },
+                        onDlssState: { state in session.applyDlssState(state) },
                         onEnd: { success, message, report in
                             session.endStream(success: success, message: message, report: report)
                         }

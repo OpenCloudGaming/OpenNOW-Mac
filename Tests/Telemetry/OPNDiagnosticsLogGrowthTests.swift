@@ -21,6 +21,58 @@ import Testing
     #expect(trimmed.count < OPNDiagnostics.maxDiagnosticsLogBytes)
 }
 
+/// The head of the log is the only place the session's configuration, its negotiation and the
+/// launch lines are written.
+@Test func diagnosticsTrimKeepsTheStartOfTheLog() throws {
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+    let logURL = directory.appendingPathComponent("OpenNOW-diagnostics-current.log")
+    let head = "SESSION-CONFIGURATION-LINE\n"
+    var oversized = Data(head.utf8)
+    oversized.append(Data(repeating: UInt8(ascii: "x"), count: OPNDiagnostics.maxDiagnosticsLogBytes + 4096 - oversized.count))
+    try oversized.write(to: logURL)
+
+    OPNDiagnostics.trimDiagnosticsLogIfNeeded(url: logURL, writtenBytes: oversized.count)
+
+    let trimmed = try Data(contentsOf: logURL)
+    #expect(trimmed.count <= OPNDiagnostics.trimmedDiagnosticsLogBytes)
+    #expect(trimmed.count < OPNDiagnostics.maxDiagnosticsLogBytes)
+    let text = String(decoding: trimmed, as: UTF8.self)
+    #expect(text.hasPrefix(head))
+    #expect(text.contains("the middle of this run's log was trimmed"))
+}
+
+/// A second trim must not eat the head the first one preserved, nor grow it past the ceiling — the
+/// file is trimmed again every couple of megabytes written.
+@Test func aSecondTrimLeavesTheStartOfTheLogIntact() throws {
+    let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+    let logURL = directory.appendingPathComponent("OpenNOW-diagnostics-current.log")
+    let head = "SESSION-CONFIGURATION-LINE\n"
+    var oversized = Data(head.utf8)
+    let line = String(repeating: "y", count: 512) + "\n"
+    while oversized.count <= OPNDiagnostics.maxDiagnosticsLogBytes + 4096 {
+        oversized.append(Data(line.utf8))
+    }
+    try oversized.write(to: logURL)
+    OPNDiagnostics.trimDiagnosticsLogIfNeeded(url: logURL, writtenBytes: oversized.count)
+    let once = try Data(contentsOf: logURL)
+
+    try once.write(to: logURL)
+    OPNDiagnostics.trimDiagnosticsLogIfNeeded(url: logURL, writtenBytes: once.count)
+    let twice = try Data(contentsOf: logURL)
+
+    #expect(twice.count <= OPNDiagnostics.trimmedDiagnosticsLogBytes)
+    #expect(String(decoding: twice, as: UTF8.self).hasPrefix(head))
+    #expect(twice.count <= once.count + line.utf8.count + OPNDiagnostics.diagnosticsTrimMarker.utf8.count)
+}
+
 @Test func diagnosticsTrimLeavesAFileUnderTheCeilingAlone() throws {
     let directory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

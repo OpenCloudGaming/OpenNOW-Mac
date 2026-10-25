@@ -32,7 +32,7 @@ func streamCloudVariables(from variables: OPNStreamCloudVariables) -> StreamClou
     )
 }
 
-func streamProfile(from profile: OPNStreamPreferenceProfile) -> StreamProfile {
+func streamProfile(from profile: OPNStreamPreferenceProfile, catalogHdrSupport: HdrCatalogSupport = .unknown) -> StreamProfile {
     StreamProfile(
         resolution: StreamResolution(width: profile.resolution.width, height: profile.resolution.height),
         fps: profile.fps,
@@ -45,6 +45,7 @@ func streamProfile(from profile: OPNStreamPreferenceProfile) -> StreamProfile {
         prefilterModel: profile.prefilterModel,
         enableL4S: profile.enableL4S,
         enableHdr: profile.enableHdr,
+        catalogHdrSupport: catalogHdrSupport,
         enableReflex: profile.enableReflex,
         streamingQualityProfile: profile.streamingQualityProfile,
         enableCloudGsync: profile.enableCloudGsync,

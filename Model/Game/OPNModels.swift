@@ -28,6 +28,8 @@ public struct OPNSubscriptionInfo: Equatable, Sendable {
     public var entitledAudioChannelCount = 0
     /// Whether the membership includes NVIDIA's in-game settings persistence feature.
     public var isInGameSettingsPersistenceEntitled = false
+    /// Which cloud DLSS overrides the membership includes, read from the same feature list.
+    public var dlssEntitlements = DlssEntitlements.none
 }
 
 public struct OPNGameVariant: Codable, Equatable, Sendable {
@@ -47,6 +49,9 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     /// The `stateDetails.subType` companion (`GFN_DEVELOPER_MAINTENANCE`, `PATCHING_AUTO`, ...),
     /// which tells a maintenance window apart from an autopatch.
     public var catalogStateDetailsSubType = ""
+    /// The `stateDetails.endTime` companion: the completion time the vendor published for a patch on
+    /// this variant, parsed once. Nil for a record that carries no completion time.
+    public var patchCompletionDate: Date?
     public var serviceStatus = ""
     public var libraryStatus = ""
     public var libraryPlayStatus = ""
@@ -59,6 +64,9 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var installTimeInMinutes = 0
     public var supportedLanguages: [String] = []
     public var gfnFeatureLabels: [String] = []
+    /// Whether this store edition declares HDR in the vendor's own feature list. `unknown` is "the
+    /// catalog sent no list", which is not the same as an edition that listed its features without it.
+    public var catalogHdrSupport = HdrCatalogSupport.unknown
     public var isPatching = false
     public var patchStatusPrimaryText = ""
     public var patchStatusSecondaryText = ""
@@ -69,7 +77,11 @@ public struct OPNGameVariant: Codable, Equatable, Sendable {
     public var libraryLastPlayedDate = ""
 
     public var catalogAvailability: CatalogAvailability {
-        CatalogAvailability.classify(catalogStatus: catalogStatus, stateDetailsSubType: catalogStateDetailsSubType)
+        CatalogAvailability.classify(
+            catalogStatus: catalogStatus,
+            stateDetailsSubType: catalogStateDetailsSubType,
+            isPatchRecordElapsed: CatalogPatchRecord.isElapsed(completion: patchCompletionDate)
+        )
     }
 }
 

@@ -23,13 +23,17 @@ struct SettingsCard<Content: View>: View {
     /// The card qualifies a setting added in the current release, so its header wears the NEW tag.
     /// Expires by version and by use exactly as a row's does.
     let isNew: Bool
+    /// When set, the header is one accessibility element with this label instead of a title plus a
+    /// separate tag, so a badge in the heading is not a second automatic announcement.
+    let headingAccessibilityLabel: String?
     let uiScale: CGFloat
     private let content: Content
 
-    init(title: String, badge: SettingsCardBadge? = nil, isNew: Bool = false, uiScale: CGFloat, @ViewBuilder content: () -> Content) {
+    init(title: String, badge: SettingsCardBadge? = nil, isNew: Bool = false, headingAccessibilityLabel: String? = nil, uiScale: CGFloat, @ViewBuilder content: () -> Content) {
         self.title = title
         self.badge = badge
         self.isNew = isNew
+        self.headingAccessibilityLabel = headingAccessibilityLabel
         self.uiScale = uiScale
         self.content = content()
     }
@@ -55,6 +59,7 @@ struct SettingsCard<Content: View>: View {
             .padding(.horizontal, 18 * uiScale)
             .padding(.top, 17 * uiScale)
             .padding(.bottom, 12 * uiScale)
+            .modifier(SettingsHeadingAccessibility(label: headingAccessibilityLabel))
             VStack(alignment: .leading, spacing: 0) {
                 content
             }
@@ -75,6 +80,22 @@ struct SettingsCard<Content: View>: View {
         )
         .overlay { OPNCornerShape(role: .card, scale: uiScale).strokeBorder(OPNDesign.Stroke.subtle, lineWidth: 1) }
         .shadow(color: .black.opacity(0.26), radius: 16 * uiScale, y: 8 * uiScale)
+    }
+}
+
+/// Folds a card header into one accessibility element when the caller supplied a label for it.
+private struct SettingsHeadingAccessibility: ViewModifier {
+    let label: String?
+
+    func body(content: Content) -> some View {
+        if let label {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(label)
+                .accessibilityAddTraits(.isHeader)
+        } else {
+            content
+        }
     }
 }
 

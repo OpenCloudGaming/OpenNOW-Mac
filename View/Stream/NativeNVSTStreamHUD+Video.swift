@@ -6,6 +6,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDUpscalingPanel: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.upscaling.title,
+            focusID: OPNStreamHUDSection.upscaling.focusID,
             isCollapsed: model.isHUDSectionCollapsed(.upscaling),
             isFocused: model.isHUDSectionHeaderFocused(.upscaling),
             reorderPayload: OPNStreamHUDSection.upscaling.rawValue,
@@ -22,6 +23,7 @@ extension NativeNVSTMediaStreamSurface {
                     isFocused: model.hudVisibleFocusID == "upscaling-tier",
                     onSelect: { model.updateNativeUpscalingTier(value: $0) }
                 )
+                .hudFocusAnchor("upscaling-tier")
                 StreamHUDDropdown(
                     label: "Target Resolution",
                     options: Array(OPNStreamPreferences.upscalingTargetOptions.enumerated().map { ($0.offset, $0.element.label) }),
@@ -30,8 +32,11 @@ extension NativeNVSTMediaStreamSurface {
                     onSelect: { model.updateNativeUpscalingTarget(targetIndex: $0) },
                     isFocused: model.hudVisibleFocusID == "upscaling-target"
                 )
+                .hudFocusAnchor("upscaling-target")
                 nativeHUDSliderRow("Clarity", value: model.upscalingSharpness, range: 0...15, isFocused: model.hudVisibleFocusID == "clarity") { model.updateNativeUpscalingClarity(sharpness: $0) }
+                    .hudFocusAnchor("clarity")
                 nativeHUDSliderRow("Noise Reduction", value: model.upscalingDenoise, range: 0...20, isFocused: model.hudVisibleFocusID == "noise-reduction") { model.updateNativeUpscalingClarity(denoise: $0) }
+                    .hudFocusAnchor("noise-reduction")
             }
         }
     }
@@ -39,6 +44,7 @@ extension NativeNVSTMediaStreamSurface {
     var nativeHUDStreamInfoPanel: some View {
         StreamHUDSection(
             label: OPNStreamHUDSection.stream.title,
+            focusID: OPNStreamHUDSection.stream.focusID,
             isCollapsed: model.isHUDSectionCollapsed(.stream),
             isFocused: model.isHUDSectionHeaderFocused(.stream),
             reorderPayload: OPNStreamHUDSection.stream.rawValue,
@@ -53,6 +59,7 @@ extension NativeNVSTMediaStreamSurface {
                     onSelect: { model.updateNativePillarboxFill(modeIndex: $0) },
                     isFocused: model.hudVisibleFocusID == "pillarbox-fill"
                 )
+                .hudFocusAnchor("pillarbox-fill")
                 StreamHUDDropdown(
                     label: "VSync",
                     options: OPNStreamPreferences.vsyncModeOptions.map { ($0.value, $0.label) },
@@ -61,6 +68,7 @@ extension NativeNVSTMediaStreamSurface {
                     onSelect: { model.updateNativeVsyncMode(modeValue: $0) },
                     isFocused: model.hudVisibleFocusID == "vsync"
                 )
+                .hudFocusAnchor("vsync")
                 nativeHUDDetailRow(label: "Active", value: model.upscalingModeIndex == 0 ? "Native" : OPNStreamPreferences.upscalingModeOptions[model.upscalingModeIndex].label)
                 nativeHUDDetailRow(label: "Resolution", value: model.nativeStreamResolutionText)
                 nativeHUDDetailRow(label: "Frame Rate", value: model.nativeStreamFrameRateText)

@@ -18,10 +18,11 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
         }
     }
 
-    /// Captured official cadence: five punches ~27 ms apart, then a 100 ms keepalive, and the
-    /// socket stops punching altogether ~7 s in (69 packets over 6.7 s of a 25 s session).
+    /// The punch keeps a slow keepalive for the session instead of going quiet after the burst:
+    /// a lapsed NAT mapping is indistinguishable from a seat that never streamed.
     public static let pingIntervalBeforeConnection: TimeInterval = 0.027
     public static let pingIntervalAfterConnection: TimeInterval = 0.100
+    public static let pingIntervalAfterBurst: TimeInterval = 1
     public static let punchBurstCount = 5
     public static let punchDuration: TimeInterval = 7
 
@@ -50,6 +51,7 @@ public final class NvstMjolnirReceiver: @unchecked Sendable {
     private var connected = false
     private var punchStartedAt: Date?
     private var punchCount = 0
+    private var isPunchBurstComplete = false
     private var isStopped = false
     private var isStopRequested: Bool {
         sendLock.lock()
@@ -596,19 +598,24 @@ extension NvstMjolnirReceiver {
         pingTimer = timer
     }
 
+    /// The burst gives way to a keepalive, and the keepalive slows once the relay is up. It is
+    /// never cancelled, so a mapping the seat already learned cannot lapse.
+    private func advancePunchCadence() {
+        if punchCount == Self.punchBurstCount {
+            startHolePunch(interval: Self.pingIntervalAfterConnection)
+            return
+        }
+        guard !isPunchBurstComplete,
+              let punchStartedAt,
+              Date().timeIntervalSince(punchStartedAt) > Self.punchDuration else { return }
+        isPunchBurstComplete = true
+        startHolePunch(interval: Self.pingIntervalAfterBurst)
+    }
+
     private func sendHolePunch(credentials: NVSTHandoffIceCredentials) {
         guard !isStopRequested else { return }
         punchCount += 1
-        // The burst gives way to the keepalive, and the keepalive stops once the relay is up: the
-        // official client sends nothing on this socket after ~7 s.
-        if punchCount == Self.punchBurstCount {
-            startHolePunch(interval: Self.pingIntervalAfterConnection)
-        }
-        if let punchStartedAt, Date().timeIntervalSince(punchStartedAt) > Self.punchDuration {
-            pingTimer?.cancel()
-            pingTimer = nil
-            return
-        }
+        advancePunchCadence()
 
         // Captured from the official client (2026-08-23): the video socket sends STUN Binding
         // Requests whose USERNAME is `<raw ping payload>:<local ufrag>` — the bundle socket is the

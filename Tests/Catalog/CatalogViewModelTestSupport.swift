@@ -6,6 +6,8 @@ func makeCatalogViewModelForTesting(
     account: LoginAccount = makeLoginAccountForTesting(),
     sessionRegistry: OPNGameSessionRegistry = .shared,
     sessionResultStore: OPNGameSessionResultStore = .shared,
+    dlssCompatibilityService: OPNDlssCompatibilityService = .shared,
+    dlssAnnouncer: OPNDlssCompatibilityAnnouncer = OPNDlssCompatibilityAnnouncer(),
     onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in },
     onAddAccount: @escaping () -> Void = {}
 ) -> CatalogViewModel {
@@ -25,6 +27,8 @@ func makeCatalogViewModelForTesting(
         session: session,
         sessionRegistry: sessionRegistry,
         sessionResultStore: sessionResultStore,
+        dlssCompatibilityService: dlssCompatibilityService,
+        dlssAnnouncer: dlssAnnouncer,
         onSwitchAccount: onSwitchAccount,
         onAddAccount: onAddAccount,
         onRefreshAuth: { true }

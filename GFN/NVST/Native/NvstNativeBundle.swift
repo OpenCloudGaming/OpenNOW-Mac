@@ -81,6 +81,9 @@ public final class NvstNativeBundle: @unchecked Sendable {
     public var onSeatTermination: (@Sendable (NvstSeatTermination) -> Void)?
     public var onHapticEvents: (@Sendable ([NvstHapticEvent]) -> Void)?
     public var onHdrMode: (@Sendable (NvstHdrModeNotification) -> Void)?
+    /// The seat's DLSS override state (`DlssState`), which is what the running session actually
+    /// has rather than what the launch payload asked for.
+    public var onDlssState: (@Sendable (NvstDlssStateNotification) -> Void)?
     /// The seat's live session-limit timer (`0x0103`), parsed from the same JSON the vendor client reads.
     public var onSessionLimitUpdate: (@Sendable (StreamSessionLimitUpdate) -> Void)?
     /// Decoded game audio as it reaches the speaker, before any local mute, so a recording and a
@@ -129,7 +132,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
 
     private let handoff: NVSTVideoHandoff
     private let identity: NvstDtlsIdentity
-    private let logger: (@Sendable (String) -> Void)?
+    let logger: (@Sendable (String) -> Void)?
     private var microphoneSetup: MicrophoneSetup?
     /// The output picker's saved UID, held here because the device is opened long after the host
     /// applies it: `startAudioDevice` runs on the transport's post-handshake path.
@@ -507,6 +510,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
             onHdrMode?(hdrMode)
             return
         }
+        if handleCustomMessageCommand(command) { return }
         if handleSessionLimitCommand(command) { return }
         if command.code == NvstAudioSurroundInfo.commandCode {
             if let info = NvstAudioSurroundInfo.parse(command) {

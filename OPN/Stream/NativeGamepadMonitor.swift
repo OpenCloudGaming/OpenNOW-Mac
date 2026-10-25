@@ -112,13 +112,17 @@ public final class NativeGamepadMonitor {
     /// Returning true hands the raw snapshot to the on-screen keyboard instead of
     /// the binding engine. The keyboard also owns button navigation while active.
     public var onScreenKeyboardCapture: ((InputDeviceID, ControllerInputSnapshot) -> Bool)?
-    /// A controller that arrived mid-stream and is therefore admitted disabled in this stream. The
+    /// A controller that arrived with no free slot, so it needs an explicit enable in this stream. The
     /// host turns this into the brief arrival notice; admission itself still needs the HUD toggle.
     public var onStreamControllerArrival: ((String) -> Void)?
 
     /// This stream's admission decision, layered over the shared order; written only through
     /// `setStreamEnabled`, so another stream's selection cannot reach it.
     private(set) var streamSelection = ControllerStreamSelection()
+
+    /// Whether the session has been presented yet. The launch window is the whole run-up to it, so a
+    /// controller enumerated during startup is a launch-time controller rather than an arrival.
+    private var isStreamLive = false
 
     let mappingProvider: any ControllerMappingProviding
     /// The shared order and device list this monitor reads. Injected so a test can script discovery;
@@ -592,7 +596,9 @@ extension NativeGamepadMonitor {
         let previousSteamSlots = pollState.steamControllerSlots
         let previousControllerSlots = pollState.controllerSlots
         registry.refresh()
-        for arrival in synchronizeStreamSelection() { onStreamControllerArrival?(arrival.name) }
+        for arrival in synchronizeStreamSelection() where !streamSelection.isEnabled(arrival.id) {
+            onStreamControllerArrival?(arrival.name)
+        }
         let nativeIDs = registry.devices.reduce(into: [InputDeviceID: ObjectIdentifier]()) { result, device in
             if let controller = registry.controller(for: device.id) { result[device.id] = ObjectIdentifier(controller) }
         }
@@ -642,11 +648,19 @@ extension NativeGamepadMonitor {
         OPNStreamTelemetry.capture("webrtc.input.gamepad.controllers", level: .info, message: "Detected \(totalSlots) controller(s).", attributes: ["connected": String(totalSlots), "steam": String(newSteamSlots.count)])
     }
 
-    /// Folds current discovery into this stream's selection and returns whatever arrived new.
+    /// The session is presented, which ends the launch window: a controller that appears from here on
+    /// was not connected at launch, so it plays only while one of the four slots is free.
+    func markStreamLive() {
+        isStreamLive = true
+    }
+
+    /// Folds current discovery into this stream's selection and returns whatever arrived new. The
+    /// launch window spans the surface being built and the seat being ready, not the surface alone.
     private func synchronizeStreamSelection() -> [ControllerStreamSelection.Device] {
         let devices = registry.orderedDevices.map { ControllerStreamSelection.Device(id: $0.id, name: $0.name) }
         var next = streamSelection
-        let arrivals = next.synchronize(devices: devices)
+        let arrivals = next.synchronize(devices: devices,
+                                        admission: isStreamLive ? .admitEnabledWhenASlotIsFree : .admitEnabled)
         streamSelection = next
         return arrivals
     }

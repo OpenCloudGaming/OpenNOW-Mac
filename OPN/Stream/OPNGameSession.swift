@@ -35,6 +35,9 @@ final class OPNGameSession {
     var progress: StreamProgress?
     var isLaunchOverlayVisible = false
     var adPlayback: CatalogStreamAdPlayback?
+    /// What the seat reported it applied for this session's DLSS overrides, nil until it says
+    /// something. Cleared with the session, because it describes the stream that just ended.
+    private(set) var appliedDlssState: NvstDlssStateNotification?
     /// One ready alert per launch: allocation and the transport each publish a ready progress.
     var didNotifySessionReady = false
 
@@ -183,7 +186,7 @@ final class OPNGameSession {
                 selectedStore: "",
                 resumeSessionID: sessionID,
                 resumeServer: server,
-                metadata: [:]
+                metadata: Self.hdrCatalogSupportMetadata(for: game)
             )
         )
     }
@@ -282,6 +285,7 @@ final class OPNGameSession {
         ControllerMappingStore.shared.endSession()
         progress = nil
         isLaunchOverlayVisible = false
+        appliedDlssState = nil
         clearDiscordPresence()
         clearFlowState()
         registry.notifySessionDidChange()
@@ -312,6 +316,7 @@ final class OPNGameSession {
         progressGeneration += 1
         isLaunchOverlayVisible = true
         didNotifySessionReady = false
+        appliedDlssState = nil
         progress = StreamProgress(title: ownedConfiguration.title.isEmpty ? "GeForce NOW" : ownedConfiguration.title, message: launchFlowMessage, steps: [], currentStepIndex: -1, isReady: false)
         OPNSessionReadyAction.prepareAuthorizationIfNeeded()
         self.configuration = ownedConfiguration
@@ -339,6 +344,12 @@ final class OPNGameSession {
             guard generation == self.progressGeneration else { return }
             self.isLaunchOverlayVisible = false
         }
+    }
+
+    /// The seat reported the DLSS overrides it applied to this session. The only confirmation the
+    /// reader can get, because the launch payload is never echoed back.
+    func applyDlssState(_ state: NvstDlssStateNotification) {
+        appliedDlssState = state
     }
 
     func presentRequiredAd(_ ad: StreamSessionAdPresentation) async throws -> Int {
@@ -403,6 +414,7 @@ final class OPNGameSession {
         activeDiscordPresence = nil
         discordPresence.update(.idle)
         isLaunchOverlayVisible = false
+        appliedDlssState = nil
         clearFlowState()
         registry.notifySessionDidChange()
         publish(configuration: finishedConfiguration, success: success, message: message, report: report, wasCancelled: false)
@@ -412,6 +424,7 @@ final class OPNGameSession {
     private func failLaunch(_ message: String) {
         guard !isFinished else { return }
         isFinished = true
+        appliedDlssState = nil
         clearDiscordPresence()
         clearFlowState()
         publish(configuration: nil, success: false, message: message, report: nil, wasCancelled: false)
@@ -509,5 +522,17 @@ private extension OPNGameSession {
         replacementConfiguration = nil
         pendingGame = nil
         pendingVariantIndex = -1
+    }
+}
+
+/// The catalog facts a launch carries about the store edition it picked.
+private extension OPNGameSession {
+    /// The catalog's HDR answer for the store edition a launch of this game would pick. A resumed
+    /// seat keeps the catalog's answer so the session that rejoins it reads the same way.
+    static func hdrCatalogSupportMetadata(for game: OPNCatalogGameObject?) -> [String: String] {
+        guard let game else { return [:] }
+        let variantIndex = preferredVariantIndex(for: game)
+        guard game.variants.indices.contains(variantIndex) else { return [:] }
+        return [StreamLaunchConfiguration.hdrCatalogSupportKey: game.variants[variantIndex].catalogHdrSupport.rawValue]
     }
 }

@@ -22,6 +22,7 @@ struct StreamStatsHUDShapeControls: View {
                 onSelect: { onSelectDetail(.pickerCase(at: $0)) },
                 isFocused: focusedControlID == "stats-detail"
             )
+            .hudFocusAnchor("stats-detail")
             StreamHUDDropdown(
                 label: "Position",
                 options: StreamStatsHUDPosition.allCases.map { ($0.pickerValue, $0.title) },
@@ -30,6 +31,7 @@ struct StreamStatsHUDShapeControls: View {
                 onSelect: { onSelectPosition(.pickerCase(at: $0)) },
                 isFocused: focusedControlID == "stats-position"
             )
+            .hudFocusAnchor("stats-position")
         }
     }
 }

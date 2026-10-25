@@ -117,9 +117,7 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
         if let metalLayer = metalView.layer as? CAMetalLayer {
             metalLayer.presentsWithTransaction = false
             metalLayer.allowsNextDrawableTimeout = false
-            if #available(macOS 10.13, *) {
-                metalLayer.maximumDrawableCount = 2
-            }
+            metalLayer.maximumDrawableCount = presentationMode.drawableCount
         }
         addSubview(metalView)
         if let device = metalView.device {

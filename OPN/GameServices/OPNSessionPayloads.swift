@@ -150,6 +150,12 @@ extension OPNSessionManager {
     if let prefilterModel = chosenPrefilterModel(int(settings["prefilterModel"])) {
         features["prefilterModel"] = prefilterModel
     }
+    // Cloud DLSS overrides ride the same object, filtered against the stored entitlements at the
+    // single point where the payload is built: an unentitled override can never reach the wire.
+    let dlssPreference = settings["dlssOverrides"] as? [String: Any]
+    let dlssOverrides = (dlssPreference.map(DlssOverrides.init(stored:)) ?? OPNStreamPreferences.loadDlssOverrides())
+        .applyingAccess(OPNStreamPreferences.loadDlssEntitlements())
+    features["dlssOverrides"] = dlssOverrides.sessionRequestDictionary
     return features
     }
 

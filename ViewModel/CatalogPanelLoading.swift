@@ -314,21 +314,33 @@ extension CatalogViewModel {
         let userId = session.userId.isEmpty ? account.userId : session.userId
         guard !userId.isEmpty else {
             subscriptionStatus = .unavailable
+            dlssMembershipState = .signedOut
+            OPNStreamPreferences.clearDlssEntitlements()
             return
         }
+        dlssMembershipState = .loading
+        // The stored copy is what every session request is filtered against, so it is cleared before
+        // the fetch rather than left holding the previous account's membership.
+        OPNStreamPreferences.clearDlssEntitlements()
         gameService.fetchSubscriptionInfo(userId: userId) { [weak self] success, subscription, error in
-            guard let self else { return }
-            if success {
-                self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
-                OPNStreamPreferences.saveEntitledAudioChannelCount(subscription.entitledAudioChannelCount)
-                OPNStreamPreferences.saveEntitledInGameSettingsPersistence(subscription.isInGameSettingsPersistenceEntitled)
-                let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !membershipTier.isEmpty {
-                    self.account.membershipTier = membershipTier
-                }
-            } else if self.refreshAuthIfNeeded(error: error) {
-                self.subscriptionStatus = .unavailable
+            // A switch or sign-out can complete before this answers, and the stored entitlements are
+            // global: a stale success would filter the next account's requests with this one's.
+            guard let self, self.session.isActive else { return }
+            guard success else {
+                if self.refreshAuthIfNeeded(error: error) { self.subscriptionStatus = .unavailable }
+                self.dlssMembershipState = .unavailable
+                OPNStreamPreferences.clearDlssEntitlements()
+                return
             }
+            self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
+            OPNStreamPreferences.saveEntitledAudioChannelCount(subscription.entitledAudioChannelCount)
+            OPNStreamPreferences.saveEntitledInGameSettingsPersistence(subscription.isInGameSettingsPersistenceEntitled)
+            // Re-evaluated on every account change. The saved preference is kept whatever this says.
+            OPNStreamPreferences.saveDlssEntitlements(subscription.dlssEntitlements)
+            self.dlssMembershipState = .loaded(subscription.dlssEntitlements)
+            let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !membershipTier.isEmpty else { return }
+            self.account.membershipTier = membershipTier
         }
     }
 

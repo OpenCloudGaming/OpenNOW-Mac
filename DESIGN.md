@@ -210,6 +210,15 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   use `strokeBorder`, never `stroke`, so the 1pt line stays inside the frame. A full-width accent
   bar or rule that belongs to a panel is clipped with the panel's shape so it follows the corners,
   and shadows are applied outside the clip so they are not cut off.
+- **A corner on a seam stays square**: a surface pinned flush to a neighbour it shares an edge with
+  passes the free corners — `OPNDesign.Corner.Corners` (`.all` by default, `.bottom` for a band
+  under the app bar, `.top` for one on the window's bottom edge) — to `OPNCornerShape`,
+  `.opnCornerClip` and `.opnLiquidGlassChrome`, so the Corner Style rounds only the corners that have
+  room to curve into. A rounded corner on a seam cuts a notch of whatever is behind the surface out of
+  that seam: the running-stream and session status bands are pinned flush under the app bar and span
+  the page, so a rounded top corner showed the page background as a dark bite between the bar and the
+  band, and controller mode's hint strip sits on the window's bottom edge, where a rounded bottom
+  corner did the same. Square mode is unaffected either way — it is radius 0 on every corner.
 - **Fixed exceptions, whatever the setting** (annotate at the site with
   `swiftlint:disable:next design_no_corner_radius -- <why, referencing DESIGN.md>`): the avatar,
   the circular mic toggle and stream status dots, the login vendor icon buttons (`size * 0.32`),
@@ -247,7 +256,10 @@ interface scale multiplies every size on the chrome surfaces it wraps.
   glass. A surface with no backing of its own today passes `EmptyView()`, so Off is exactly today's
   appearance. `isInteractive` belongs to enabled, actionable controls only; panels and backings
   leave it off. `glassScrim` inserts a darkening layer between the material and the content, on the
-  glass path only. **Every glass panel backing takes it**, because every one of them carries text
+  glass path only, clipped to the surface's own role shape: unclipped, its square corners reached
+  past the rounded material and painted a black ring around every scrimmed panel — and squared off
+  the panel's shadow with them, since a shadow is cast from what the view actually draws. **Every
+  glass panel backing takes it**, because every one of them carries text
   over content the app does not control — video, artwork, or a scrim over either — and the bare
   material drops the dimmer tiers below their floor there (measured: 2.3:1 for Text Tertiary over
   bright video, 8.6:1 once the scrim is on). Small controls on the app's own opaque chrome do not.
@@ -834,7 +846,13 @@ and stretched it to a hard-to-track measure. The tooltip keeps it one hover away
 
 The icon is a `Button` whose tooltip is driven by `onHover`, not `.help`: a help tag on these rows
 does not raise, while `onHover` fires for any view. Clicking pins the tooltip open; a click outside
-or another hover dismisses it.
+or another hover dismisses it. The popover scrolls past 420pt, because a legend — the model
+presets, say — is legitimately taller than a sentence and must not run off the window.
+
+An option row's chips carry their own explanation as an `accessibilityHint`, so a reader who lands on
+one chip hears what that option does rather than the whole row's legend. The chips deliberately do
+not raise a hover tooltip of their own: they sit edge to edge, and a popover per chip would fire and
+dismiss as the pointer crossed the row.
 
 A pad has no pointer, so controller mode does not use the icon at all. Each focusable row publishes
 its explanation through `SettingsFocusedHelpKey` while focused, and `SettingsView` shows it in a
@@ -949,6 +967,58 @@ A destination in
 beta - one unsettled card in a settled tab is a card badge, not a destination tag.
 `SettingsCard(title:badge:isNew:uiScale:)` also lets a card wear the solid NEW tag when it qualifies
 a setting added in the current release; it expires by version and by use exactly as a row's does.
+
+### Cloud DLSS Overrides (`CloudDlssOverridesCard`, `DlssCompatibilitySection`)
+
+The DLSS surfaces keep one rule: a request is never presented as an outcome. `CloudDlssOverridesCard`
+sits full width under Settings → Video, after the display/codec/bandwidth columns and before Profile
+Maintenance, outside the generic Advanced disclosure and separate from MetalFX, because DLSS runs on
+the cloud rig rather than on this Mac. Its header is the one card heading that folds itself into a
+single accessibility element: `SettingsCard` takes
+`headingAccessibilityLabel`, which makes the title and its BETA tag read as one heading
+("Cloud DLSS Overrides, Beta") instead of leaving the tag as a second automatic announcement. The
+card's status line states the account's position — signed out, checking, missing access, or what the
+controls will do — and an unentitled feature carries "Not included with your membership" beside its
+own control rather than only in the card tooltip.
+
+The card's two summary rows are deliberately asymmetric. `Next session request` is always the saved
+preference, and it is the only row that exists until the seat reports. `Current session` appears
+underneath it only once the seat has sent its `DlssState` message, and it reports what the running
+session actually has: a feature the seat did not override reads "In-game", never the request that was
+sent. The row is absent rather than blank when nothing has been reported, so the card never states a
+claim it cannot back.
+
+`DlssCompatibilitySection` is the NVIDIA TECHNOLOGY sub-section on the full game info page. Its
+feature rows are the only place in the app that renders a three-way reported state: `native` (neutral
+gamepad glyph, normal contrast), `override` (adjustment-slider glyph, normal contrast) and "Not
+reported" (neutral minus-circle, secondary text, feature name kept visible). No row is dimmed to
+disabled opacity, and no state is carried by colour alone. Whole-game unknown replaces the table with
+"DLSS compatibility unknown" and a question-mark-circle — never an invented per-feature result, a
+crossed-out icon, or a membership lock. Freshness is a separate footer with its own clock, progress
+and warning glyphs, so a stale list never reads as an unsupported feature. The compact chip that the
+detail panel wears is `DlssCompactCompatibilityChip`: the same 23pt capability chip as its
+neighbours, with a warning glyph appended when the saved copy is stale, and no chip at all when
+compatibility is unknown. Reduce Motion swaps the spinner for a static clock glyph rather than
+animating.
+
+The beta scope is data, not styling: `DlssBetaScope` names the card and the section as the only two
+tagged surfaces, and lists the Video destination, the feature rows and the compact chip as untagged,
+so extending the tag is a deliberate edit rather than a local judgement.
+
+The ⌘N stats overlay (`NativeNVSTStatsOverlay`) carries a third DLSS surface: three rows, one per
+feature, that name the override in one of two states. Before the seat says anything the group is
+`DLSS · NEXT SESSION` and its values come from the same
+`DlssOverrides.superResolutionRequestLabel` / `frameGenerationRequestLabel` /
+`rayReconstructionRequestLabel` the settings card's "Next session request" summary composes, so the
+two can never disagree. Once the seat sends its `DlssState` message the group becomes
+`DLSS · THIS SESSION` and the same three rows report what the seat applied — `NvstDlssStateNotification`
+carries the per-feature override flags, the live multiplier and the values the seat settled on, and
+a feature it did not override reads "In-game" rather than the request that was sent. That message is
+the only confirmation an override took effect: CloudMatch strips `requestedStreamingFeatures` back
+out of the session it echoes, so the launch payload can never answer the question. The overlay is
+the ⌘N statistics overlay, not the ⌘G unified dock the feature excludes, and the group lives in the
+Advanced detail level, which is the panel's "everything the surface can report" level and its
+default; Compact and Minimum are the readings a session is judged by and stay untouched.
 
 ### Tags (`OPNBetaTag`, `OPNNewTag`)
 
@@ -1114,7 +1184,9 @@ banner was laid out centred on the inflated width, which left only its right-han
 Chrome and control are the active-session banner's, shared through `VendorStatusBannerChrome` and
 `VendorActiveSessionBannerButtonStyle`: `OPNDesign.Surface.chrome`, a 1px Stroke Subtle hairline
 along the bottom, `CatalogVendorLayout.sectionHeaderMargin` horizontal padding, a 8pt accent dot, a
-10pt bold accent eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold. Two
+10pt bold accent eyebrow ("STREAM RUNNING", tracking 1.2), then the game title at 14pt bold. The
+band is pinned flush under the app bar and spans the page, so its top corners stay square whatever
+the Corner Style says and only its free bottom corners follow it — see Radius. Two
 lines, not three: the stream's own status message under the title only restated that it plays in
 its own window, and cost the banner a row of height. Actions: **FOCUS** (accent fill, the one
 action the session banner has no equivalent for) and **END** (neutral fill, 1px Stroke Regular).
@@ -1145,7 +1217,12 @@ title, the remaining session-time pill (accent, warning under five minutes, mono
 digits), and the close button. Footer: the live clock (11pt bold monospaced digits, off
 until enabled under `OpenNOW.Stream.HUDClockVisible`), then the Customize and Shortcuts
 entries. Gamepad/keyboard focus moves across action rows and section headers with accent
-focus strokes; the power button is itself a focus row. Section content is collapsible and
+focus strokes; the power button is itself a focus row. The dock's list follows the ring: the row the
+pad lands on is scrolled into view, centred and unanimated, so a dock taller than the window can be
+walked past its visible area without the selection leaving the screen. A row that holds two controls
+(a volume's icon and its slider, a clipboard entry's copy and remove) is one row to the pad, so
+left/right inside it never moves the list. The power button sits in the dock's header, outside that
+list, so focus on it scrolls nothing. Section content is collapsible and
 reorderable — see HUD Section.
 
 The **HUD Layout editor** (footer → Customize, `nativeHUDCustomizeOverlay`) is a centered
