@@ -350,6 +350,8 @@ Run the package tests from the repository root so SwiftPM uses one shared `.buil
 swift test --scratch-path .build/shared
 ```
 
+`swift-collections` (a transitive dependency of swift-nio) is capped below 1.7 in `Package.swift`. Version 1.7.0 gates code on `compiler(>=6.4)` without an availability check, so on Xcode 27 the test bundle references `_swift_initBorrow` and fails to load on macOS 26, where that symbol is missing (it only ships in the macOS 27 runtime). Lift the cap once 1.7.x is safe on macOS 26 for the toolchains we build with.
+
 <details>
 <summary><b>Project layout, packages, and tooling</b></summary>
 
