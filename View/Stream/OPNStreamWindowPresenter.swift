@@ -364,7 +364,9 @@ final class OPNStreamWindowPresenter {
     /// A tiled window that is no longer where the layout put it was taken by the reader, and stays
     /// theirs: the layout stops placing it.
     private static func noteFrameChange(_ window: OPNStreamWindow) {
-        guard window.layoutState.isAutoTiled, !window.isAtLayoutFrame else { return }
+        // No layout frame yet means the placement is still waiting on the geometry gate, so a move
+        // that lands before it is not the reader's.
+        guard window.layoutState.isAutoTiled, window.layoutFrame != nil, !window.isAtLayoutFrame else { return }
         window.layoutState.isAutoTiled = false
         window.layoutState.isManuallyPlaced = true
         window.clearLayoutFrame()
