@@ -272,6 +272,10 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
     /// The session's colour tier (`8bit_420`, `10bit_420`, `10bit_444`, ...), announced as
     /// `video[0].bitDepth` / `chromaFormat` so the ANNOUNCE agrees with what the session PUT asked for.
     let configuredColorQuality: String?
+    /// Whether the session asked for HDR, announced as `video[0].dx9EnableHdr`.
+    let isHDREnabled: Bool
+    /// Whether the reader enabled Cloud G-Sync, announced as `video[0].cloudGsync`.
+    let isCloudGsyncEnabled: Bool
     /// The client's VSync mode, announced as `video[0].framePacing.mode` / `feedbackMode` and
     /// fed to the pipeline's `0x203` report cadence. `nil` (a transport that predates the
     /// setting) keeps the captured baseline's Adaptive behaviour end to end.
@@ -296,6 +300,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
                 configuredPrefilterDenoise: Int? = nil,
                 configuredPrefilterModel: Int? = nil,
                 configuredColorQuality: String? = nil,
+                isHDREnabled: Bool = false,
+                isCloudGsyncEnabled: Bool = false,
                 configuredVsyncMode: NvstVsyncMode? = nil,
                 isVrrPresentation: Bool = false,
                 configuredAudioChannelCount: Int = 2,
@@ -316,6 +322,8 @@ public actor NvstBifrostFreeTransport: NativeNVSTTransport {
         self.configuredPrefilterDenoise = configuredPrefilterDenoise
         self.configuredPrefilterModel = configuredPrefilterModel
         self.configuredColorQuality = configuredColorQuality
+        self.isHDREnabled = isHDREnabled
+        self.isCloudGsyncEnabled = isCloudGsyncEnabled
         self.configuredVsyncMode = configuredVsyncMode
         self.isVrrPresentation = isVrrPresentation
         self.configuredAudioChannelCount = NvstCoreAudioFormat.supportedPlayoutChannelCount(configuredAudioChannelCount)
@@ -699,6 +707,8 @@ extension NvstBifrostFreeTransport {
             prefilterDenoise: configuredPrefilterDenoise,
             prefilterModel: configuredPrefilterModel,
             colorQuality: configuredColorQuality,
+            isHDREnabled: isHDREnabled,
+            isCloudGsyncEnabled: isCloudGsyncEnabled,
             audioChannelCount: configuredAudioChannelCount,
             timeout: controlTimeout,
             // The negotiator raises this to 1 when the bundle comes up; false is the fallback that

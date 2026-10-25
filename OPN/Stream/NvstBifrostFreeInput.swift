@@ -156,16 +156,16 @@ extension NvstBifrostFreeTransport {
         return milliseconds
     }
 
-    /// Loss over the interval, computed the way the WebRTC path computes it, so the two HUDs
-    /// report the same quantity rather than one percent and one running count.
-    private func lossPercentSinceLastSnapshot(packetsNow: UInt64, lostNow: UInt64) -> Double {
+    /// Loss over the poll interval, the quantity a reader acts on now: the session's own
+    /// finalized-loss total only ever grows, so it cannot say whether loss is still happening.
+    private func samplePacketLoss(packetsNow: UInt64, lostNow: UInt64) -> (lostPackets: UInt64, lostPercent: Double) {
         let packetsDelta = packetsNow >= lastSnapshotPackets ? packetsNow - lastSnapshotPackets : 0
         let lostDelta = lostNow >= lastSnapshotLost ? lostNow - lastSnapshotLost : 0
         lastSnapshotPackets = packetsNow
         lastSnapshotLost = lostNow
-        return packetsDelta + lostDelta > 0 ? Double(lostDelta) * 100 / Double(packetsDelta + lostDelta) : 0
+        let expectedPackets = Double(packetsDelta) + Double(lostDelta)
+        return (lostDelta, expectedPackets > 0 ? Double(lostDelta) * 100 / expectedPackets : 0)
     }
-
 
     /// Feeds both the on-screen overlay and `NativeNVSTStreamHealthMonitor` from the receive path's
     /// own counters.
@@ -196,7 +196,7 @@ extension NvstBifrostFreeTransport {
         lastSnapshotBytes = counters.bytesReceived
 
         let stats = receiver.stats
-        let lossPercent = lossPercentSinceLastSnapshot(packetsNow: UInt64(stats.authenticatedPackets), lostNow: UInt64(stats.lastCumulativeLost))
+        let intervalLoss = samplePacketLoss(packetsNow: stats.authenticatedPackets, lostNow: stats.finalizedLossPackets)
 
         // The native bundle has no ICE candidate pair to time, so the latency the HUD shows comes
         // from the fallbacks below: the Mjolnir socket's own STUN round trip, then the control
@@ -228,9 +228,9 @@ extension NvstBifrostFreeTransport {
             jitterMilliseconds: Double(stats.lastJitter) * 1000 / Double(NvstVideoToolboxDecoder.clockRate),
             frameLoss: stats.abandonedFrames,
             totalFrameLoss: stats.abandonedFrames + UInt64(video?.missingParameterSetFrames ?? 0),
-            packetLoss: UInt64(stats.lastCumulativeLost),
-            totalPacketLoss: stats.droppedPackets,
-            packetLossPercent: lossPercent,
+            packetLoss: intervalLoss.lostPackets,
+            totalPacketLoss: stats.finalizedLossPackets,
+            packetLossPercent: intervalLoss.lostPercent,
             decodeMilliseconds: decodeMilliseconds,
             decodeP99Milliseconds: decodeP99Milliseconds,
             bitrateMegabitsPerSecond: instantMbps,
