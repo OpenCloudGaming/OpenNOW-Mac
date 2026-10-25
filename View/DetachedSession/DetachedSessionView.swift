@@ -318,10 +318,26 @@ private struct DetachedSessionWindowConfigurator: NSViewRepresentable {
 
     final class ConfigurationView: NSView {
         var title = ""
+        private var levelObserver: NSObjectProtocol?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            guard window != nil else {
+                if let levelObserver { NotificationCenter.default.removeObserver(levelObserver) }
+                levelObserver = nil
+                return
+            }
             apply()
+            // The level only matters when a stream window takes or gives up the covering level, and
+            // the stream windows say so. Reading it then keeps this window reachable without a timer.
+            if levelObserver == nil {
+                // swiftlint:disable:next view_owns_long_lived_effect -- removed when the view leaves its window; an NSView has no SwiftUI lifetime to tie it to
+                levelObserver = NotificationCenter.default.addObserver(
+                    forName: OPNStreamBorderless.coveringStateDidChange, object: nil, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.applyLevel() }
+                }
+            }
         }
 
         func apply() {
@@ -333,9 +349,15 @@ private struct DetachedSessionWindowConfigurator: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.isOpaque = true
             window.backgroundColor = .black
-            let hasCoveringStream = OPNStreamWindowPresenter.shared.windows.values.contains { $0.layoutState.isBorderless }
-            window.level = hasCoveringStream ? OPNStreamBorderless.aboveCoveringLevel : .normal
+            applyLevel()
             if window.title != title { window.title = title }
+        }
+
+        private func applyLevel() {
+            guard let window else { return }
+            let hasCoveringStream = OPNStreamWindowPresenter.shared.windows.values.contains { $0.layoutState.isBorderless }
+            let level = hasCoveringStream ? OPNStreamBorderless.aboveCoveringLevel : NSWindow.Level.normal
+            if window.level != level { window.level = level }
         }
     }
 }

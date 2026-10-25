@@ -95,4 +95,81 @@ import Testing
         window.clearLayoutFrame()
         #expect(!window.isAtLayoutFrame)
     }
+
+    @Test func tileCoverageDividesTheVisibleAreaOrTheWholeFrame() {
+        let frames = [NSRect(x: 0, y: 0, width: 1920, height: 1080)]
+        let visible = [NSRect(x: 0, y: 70, width: 1920, height: 985)]
+        #expect(OPNStreamTileCoverage.visibleArea.areas(frames: frames, visibleFrames: visible) == visible)
+        #expect(OPNStreamTileCoverage.fullScreen.areas(frames: frames, visibleFrames: visible) == frames)
+        #expect(OPNStreamTileCoverage.visibleArea.flipped == .fullScreen)
+        #expect(OPNStreamTileCoverage.fullScreen.flipped == .visibleArea)
+    }
+
+    @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
+    func aTileThatCoversTheMenuBarIsRaisedEvenWhenItSharesAScreen() async throws {
+        let suite = "OpenNOWTests.BorderlessCover.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let window = OPNStreamWindowFactory.make(sessionID: UUID(), defaults: defaults)
+        let half = NSRect(x: 0, y: 0, width: 960, height: 1080)
+
+        OPNStreamBorderless.enter(window, frame: half, coversMenuBar: true, screenFrames: screens)
+        #expect(window.level == OPNStreamBorderless.coveringLevel)
+
+        OPNStreamBorderless.enter(window, frame: half, coversMenuBar: false, screenFrames: screens)
+        #expect(window.level == .normal)
+        OPNStreamBorderless.exit(window)
+    }
+
+    @Test func enteringAndLeavingBorderlessAnnouncesTheCoveringStateChange() async throws {
+        let window = OPNStreamWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        var posts = 0
+        let token = NotificationCenter.default.addObserver(forName: OPNStreamBorderless.coveringStateDidChange, object: nil, queue: nil) { _ in posts += 1 }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        OPNStreamBorderless.enter(window, frame: NSRect(x: 0, y: 0, width: 640, height: 360), screenFrames: screens)
+        OPNStreamBorderless.exit(window)
+
+        #expect(posts == 2)
+    }
+
+    /// A tile whose placement is still waiting on the geometry gate has no layout frame yet. A move
+    /// that lands in that gap is not the reader taking the window.
+    @Test func aMoveBeforeTheFirstTileLandsKeepsTheWindowTiled() {
+        let window = OPNStreamWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        window.layoutState.isAutoTiled = true
+
+        OPNStreamWindowPresenter.noteFrameChange(window)
+
+        #expect(window.layoutState.isAutoTiled)
+        #expect(!window.layoutState.isManuallyPlaced)
+    }
+
+    @Test func aMoveAwayFromAPlacedTileHandsTheWindowToTheReader() {
+        let window = OPNStreamWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
+        window.layoutState.isAutoTiled = true
+        window.setFrameFromLayout(NSRect(x: 50, y: 50, width: 640, height: 360))
+
+        OPNStreamWindowPresenter.noteFrameChange(window)
+        #expect(window.layoutState.isAutoTiled)
+
+        window.setFrame(NSRect(x: 90, y: 50, width: 640, height: 360), display: false)
+        OPNStreamWindowPresenter.noteFrameChange(window)
+
+        #expect(!window.layoutState.isAutoTiled)
+        #expect(window.layoutState.isManuallyPlaced)
+    }
+
+    @Test func theRelaunchHelperWaitsForThisProcessAndOpensTheBundleFromAnArgument() {
+        let arguments = OPNAppRelaunch.helperArguments(pid: 4242)
+        #expect(arguments.first == "-c")
+        #expect(arguments[1].contains("kill -0 4242"))
+        #expect(arguments[1].contains("open \"$0\""))
+        #expect(arguments.last == Bundle.main.bundlePath)
+    }
+
+    @Test func onlyTheCouchCoopFlagAsksForARestart() {
+        #expect(OPNLabs.couchCoop.requiresRestart)
+        #expect(!OPNLabs.clipboardCapture.requiresRestart)
+    }
 }

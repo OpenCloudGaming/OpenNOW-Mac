@@ -303,8 +303,7 @@ final class OPNGameSession {
         )
         let ownedConfiguration = configuration.snapshottingSession(
             id: id,
-            ownerDisplayName: account.displayName,
-            ownerAccountID: accountID.rawValue,
+            ownerDisplayName: account.displayName, ownerAccountID: accountID.rawValue,
             mappingGameIdentity: ControllerMappingStore.shared.currentGameIdentity ?? ""
         )
         if activeDiscordPresence == nil {

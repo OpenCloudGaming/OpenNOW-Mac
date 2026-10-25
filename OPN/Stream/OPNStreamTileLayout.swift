@@ -32,6 +32,39 @@ enum OPNStreamTileOrientation: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Whether tiled windows stay below the menu bar and the Dock, or fill each screen over them.
+enum OPNStreamTileCoverage: String, CaseIterable, Identifiable, Sendable {
+    case visibleArea
+    case fullScreen
+
+    static let storageKey = "OpenNOW.CouchCoop.Coverage"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .visibleArea: "Below the Menu Bar"
+        case .fullScreen: "Full Screen"
+        }
+    }
+
+    static var stored: OPNStreamTileCoverage {
+        OPNAppPreferenceStorage.standard.string(forKey: storageKey).flatMap(Self.init(rawValue:)) ?? .visibleArea
+    }
+
+    static func store(_ coverage: OPNStreamTileCoverage) {
+        OPNAppPreferenceStorage.standard.set(coverage.rawValue, forKey: storageKey)
+    }
+
+    /// The area the tiles of each screen divide: the whole frame when covering, the part the menu
+    /// bar and Dock leave free otherwise. Both lists are in screen order.
+    func areas(frames: [CGRect], visibleFrames: [CGRect]) -> [CGRect] {
+        self == .fullScreen ? frames : visibleFrames
+    }
+
+    var flipped: OPNStreamTileCoverage { self == .fullScreen ? .visibleArea : .fullScreen }
+}
+
 struct OPNStreamTile: Equatable, Sendable {
     let frame: CGRect
     let screenIndex: Int

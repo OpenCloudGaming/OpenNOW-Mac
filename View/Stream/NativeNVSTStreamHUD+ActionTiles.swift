@@ -42,10 +42,10 @@ extension NativeNVSTMediaStreamSurface {
         guard model.isBorderlessTileAvailable else { return tiles }
         return tiles + [
             NativeHUDTile(id: "borderless-full-screen",
-                          title: model.isBorderlessWindow ? "Leave Borderless" : "Borderless Full Screen",
-                          subtitle: model.isBorderlessWindow ? "Borderless" : "Fill the screen, keep the Spaces",
+                          title: model.borderlessTileTitle,
+                          subtitle: model.borderlessTileSubtitle,
                           systemName: "rectangle.dashed",
-                          isActive: model.isBorderlessWindow,
+                          isActive: model.isBorderlessTileActive,
                           isDisabled: model.isBorderlessTileDisabled,
                           action: model.toggleBorderlessFullScreen),
         ]

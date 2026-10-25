@@ -191,6 +191,7 @@ final class OPNStreamWindowPresenter {
         hostingViews[sessionID] = nil
         windows[sessionID] = nil
         windowOrder.removeAll { $0 == sessionID }
+        OPNStreamBorderless.postCoveringStateChange()
         OPNStreamWindowCloseGuard.uninstall(from: window)
         window.closeRequestHandler = nil
         window.sessionSurface = nil
@@ -303,20 +304,30 @@ final class OPNStreamWindowPresenter {
             for window in ordered where window.layoutState.isAutoTiled { releaseTile(window) }
             return
         }
+        let coverage = OPNStreamTileCoverage.stored
         let tiles = OPNStreamTileLayout.tiles(
-            screens: NSScreen.screens.map(\.frame),
+            screens: coverage.areas(frames: NSScreen.screens.map(\.frame), visibleFrames: NSScreen.screens.map(\.visibleFrame)),
             windowCount: placeable.count,
             orientation: OPNStreamTileOrientation.stored
         )
         guard tiles.count == placeable.count else { return }
         for (window, tile) in zip(placeable, tiles) {
             window.layoutState.isAutoTiled = true
-            OPNStreamBorderless.enter(window, frame: tile.frame)
+            OPNStreamBorderless.enter(window, frame: tile.frame, coversMenuBar: coverage == .fullScreen)
         }
         for window in ordered where window.layoutState.isAutoTiled && !placeable.contains(where: { $0 === window }) {
             releaseTile(window)
         }
     }
+
+    /// Switches tiled windows between sitting below the menu bar and filling their screens, and
+    /// places them again at once.
+    func setTileCoverage(_ coverage: OPNStreamTileCoverage) {
+        OPNStreamTileCoverage.store(coverage)
+        retileWindows()
+    }
+
+    var hasTiledWindows: Bool { windows.values.contains { $0.layoutState.isAutoTiled } }
 
     private static func isPlaceableByLayout(_ window: OPNStreamWindow) -> Bool {
         !window.layoutState.isManuallyPlaced && !window.isPictureInPicture && !window.styleMask.contains(.fullScreen)
@@ -363,7 +374,7 @@ final class OPNStreamWindowPresenter {
 
     /// A tiled window that is no longer where the layout put it was taken by the reader, and stays
     /// theirs: the layout stops placing it.
-    private static func noteFrameChange(_ window: OPNStreamWindow) {
+    static func noteFrameChange(_ window: OPNStreamWindow) {
         // No layout frame yet means the placement is still waiting on the geometry gate, so a move
         // that lands before it is not the reader's.
         guard window.layoutState.isAutoTiled, window.layoutFrame != nil, !window.isAtLayoutFrame else { return }

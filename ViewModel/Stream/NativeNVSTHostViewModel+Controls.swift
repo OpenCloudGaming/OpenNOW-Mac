@@ -394,29 +394,6 @@ extension NativeNVSTHostViewModel {
     /// out: a PiP window is small and floating, and there is no full screen to enter from it.
     var isFullScreenTileDisabled: Bool { nativeView?.window == nil || isPictureInPicture || isBorderlessWindow }
 
-    private var streamLayoutState: OPNStreamWindowLayoutState? {
-        (nativeView?.window as? OPNStreamWindow)?.layoutState
-    }
-
-    var isBorderlessWindow: Bool { streamLayoutState?.isBorderless ?? false }
-
-    /// Borderless is a couch co-op mode, so the tile exists only behind the flag, and like full
-    /// screen it has nothing to act on in a small floating window or in a native full-screen Space.
-    var isBorderlessTileAvailable: Bool { OPNLabs.isCouchCoopEnabled }
-
-    var isBorderlessTileDisabled: Bool {
-        nativeView?.window == nil || isPictureInPicture || streamWindowIsFullScreen || isFullScreenTransitioning
-    }
-
-    /// The reader's own choice, so the layout stops placing this window: it stays where the toggle
-    /// left it, borderless or not.
-    func toggleBorderlessFullScreen() {
-        guard isBorderlessTileAvailable, !isBorderlessTileDisabled, !isEnding, !didEnd,
-              let window = nativeView?.window as? OPNStreamWindow else { return }
-        OPNStreamBorderless.toggleByReader(window)
-        showNativeTransientStreamMessage(window.layoutState.isBorderless ? "Borderless full screen" : "Leaving borderless full screen")
-    }
-
     /// The window owns the transition: nothing here touches the style mask, collection behaviour,
     /// aspect ratio or frame - `WindowFitting` grants `.fullScreenPrimary` before the window
     /// is first painted, which is the only point the window server takes it reliably.

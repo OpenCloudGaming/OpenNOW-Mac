@@ -200,10 +200,7 @@ public final class NativeStreamView: NSView {
     /// Couch co-op: this stream's pads keep playing while another stream window has the focus. Keyboard
     /// and mouse stay with the frontmost window either way. Set by the presenter as windows come and go.
     public internal(set) var allowsBackgroundGamepadInput = false {
-        didSet {
-            guard oldValue != allowsBackgroundGamepadInput else { return }
-            updateControllerMappingFocus()
-        }
+        didSet { if oldValue != allowsBackgroundGamepadInput { updateControllerMappingFocus() } }
     }
     public var locksPointerWhenRelativeModeSelected = false
     public var confinesCursorToWindowInAbsoluteMode = false {

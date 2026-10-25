@@ -31,8 +31,11 @@ enum OPNStreamBorderless {
     }
 
     /// Puts the window into borderless mode at `frame`, or moves an already borderless window to a
-    /// new one. What was there before the first entry is kept for the way out.
-    static func enter(_ window: OPNStreamWindow, frame: NSRect, screenFrames: [NSRect] = NSScreen.screens.map(\.frame)) {
+    /// new one. What was there before the first entry is kept for the way out. `coversMenuBar` raises
+    /// the window over the menu bar and the Dock even when it is only one tile of a screen, which is
+    /// how tiles fill a screen together; without it only a window that fills a screen is raised.
+    static func enter(_ window: OPNStreamWindow, frame: NSRect, coversMenuBar: Bool = false,
+                      screenFrames: [NSRect] = NSScreen.screens.map(\.frame)) {
         if window.borderlessRestoreState == nil {
             window.borderlessRestoreState = OPNStreamWindow.WindowedState(
                 level: window.level,
@@ -46,15 +49,17 @@ enum OPNStreamBorderless {
         window.layoutState.isBorderless = true
         StreamWindowGeometryGate.releaseAspectRatioLock(window)
         OPNStreamWindowChrome.applyBorderless(to: window, isBorderless: true)
-        let level = level(for: frame, screenFrames: screenFrames)
+        let level = coversMenuBar ? coveringLevel : level(for: frame, screenFrames: screenFrames)
         window.level = level
         for child in window.childWindows ?? [] { child.level = level }
         apply(frame: frame, to: window)
+        postCoveringStateChange()
     }
 
     static func exit(_ window: OPNStreamWindow) {
         guard window.layoutState.isBorderless else { return }
         window.layoutState.isBorderless = false
+        defer { postCoveringStateChange() }
         OPNStreamWindowChrome.applyBorderless(to: window, isBorderless: false)
         guard let state = window.borderlessRestoreState else {
             window.level = .normal
@@ -66,6 +71,14 @@ enum OPNStreamBorderless {
         for child in window.childWindows ?? [] { child.level = state.level }
         apply(frame: state.frame, to: window)
         if state.isMiniaturized { window.miniaturize(nil) }
+    }
+
+    /// Posted whenever a stream window takes or gives up the covering level, so a window that has to
+    /// stay reachable above it re-reads its level then instead of on a timer.
+    static let coveringStateDidChange = Notification.Name("OpenNOW.StreamBorderless.coveringStateDidChange")
+
+    static func postCoveringStateChange() {
+        NotificationCenter.default.post(name: coveringStateDidChange, object: nil)
     }
 
     /// The window's own toggle, from the HUD: the window is the reader's from here on, so the layout

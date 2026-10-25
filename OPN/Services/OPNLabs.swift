@@ -15,6 +15,9 @@ struct OPNLabsFlag: Identifiable, Equatable, Sendable {
     let summary: String
     /// The release it went on trial in, so a flag nobody promoted is visible as stale.
     let since: String
+    /// Whether the flag is only read as the app starts, so switching it asks for a restart rather
+    /// than trying to change what is already running.
+    var requiresRestart = false
 
     var storageKey: String { "OpenNOW.Labs.\(id)" }
 }
@@ -37,7 +40,8 @@ enum OPNLabs {
         id: "couchCoop",
         title: "Couch Co-op",
         summary: "Adds Stream > Detach New Session, which opens a window for a second or third account. Each window takes its own controllers, plays while another window is in front, and the stream windows tile across your screens.",
-        since: "0.15"
+        since: "0.15",
+        requiresRestart: true
     )
 
     /// Every trial in flight. Empty is the normal state, and the Settings rail drops the Labs
