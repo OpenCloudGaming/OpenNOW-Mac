@@ -319,6 +319,9 @@ final class OPNMetalVideoView: NSView, MTKViewDelegate {
             metalView.drawableSize = drawableSize
             resetDrawCadence()
         }
+        if let metalLayer, metalLayer.drawableSize != drawableSize {
+            metalLayer.drawableSize = drawableSize
+        }
         markDrawableSizeDirty(false)
     }
 

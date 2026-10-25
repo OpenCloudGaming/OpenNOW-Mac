@@ -27,10 +27,12 @@ public struct NativeNVSTPerformanceSnapshot: Equatable, Sendable {
     public let jitterMilliseconds: Double
     public let frameLoss: UInt64
     public let totalFrameLoss: UInt64
+    /// Missing video packets finalized since the previous performance poll.
     public let packetLoss: UInt64
+    /// Finalized missing packets for the session, excluding local rejections and repair-only gaps.
     public let totalPacketLoss: UInt64
-    /// Loss over the last poll interval, as the WebRTC path reports it: lost / (received + lost).
-    /// Negative when it cannot be computed yet.
+    /// Loss over the last poll interval: lost / (received + lost). 0 when the interval carried no
+    /// packets at all, so a healthy poll reads 0 rather than an unknown.
     public let packetLossPercent: Double
     /// Mean client-side decode cost per frame, over the whole session. Distinct from
     /// `latencyMilliseconds`, which is the network round trip — and easy to misread as "decode

@@ -75,6 +75,11 @@ extension NvstRtspSdp {
         return (bitDepth, chromaFormat)
     }
 
+    /// The wire form every boolean announce attribute takes: `1` on, `0` off.
+    private static func wireFlag(_ isOn: Bool) -> String {
+        isOn ? "1" : "0"
+    }
+
     public static func buildAnnounceSdp(_ options: AnnounceOptions) -> String {
         var lines: [String] = [
             "v=0",
@@ -253,6 +258,7 @@ extension NvstRtspSdp {
         if let chromaFormat = options.chromaFormat {
             attributes.set("x-nv-video[0].chromaFormat", String(chromaFormat))
         }
+        attributes.set("x-nv-video[0].dx9EnableHdr", wireFlag(options.isHDREnabled))
         // The seat's DESCRIBE is a 720p60 BASELINE (captured live: it offers clientViewport 1280x720
         // and video[0].maxFPS:60 even for a session we provisioned at 5120x2160@120). The client's
         // announce overrides that baseline — and we were overriding only the viewport (720->5K) while
@@ -286,15 +292,7 @@ extension NvstRtspSdp {
                 // alone too, so we match it and leave it alone.
             }
         }
-        // The captured official client also always sends this. "Cloud G-Sync" — the seat's own
-        // session response separately carries `finalizedStreamingFeatures.cloudGsync`, but that
-        // reflects account/GPU-tier eligibility, not confirmation this client asked for it. Never
-        // sent before; worth a direct test given the gameFps evidence (a captured official
-        // session's game engine itself rendered at ~120fps, matching the stream target, not the
-        // 155-160fps this repro's own sessions render at) that this may be the seat's real lever
-        // for keeping the source itself paced to the client instead of decode having to catch up
-        // to a faster one.
-        attributes.set("x-nv-video[0].cloudGsync", "1")
+        attributes.set("x-nv-video[0].cloudGsync", wireFlag(options.isCloudGsyncEnabled))
         // The captured baseline's frame-pacing pair is the Adaptive announce
         // (`mode:1`/`feedbackMode:1`, `FRAME_PACING_FEEDBACK_INTERVAL`). A different VSync mode
         // has to override both, in the same client-owned layer as everything else the client
@@ -420,9 +418,9 @@ extension NvstRtspSdp {
             // Video stays on the dedicated raw-SRTP Mjolnir socket; audio/mic/data ride the bundle.
             // Video always stays on the dedicated raw-SRTP Mjolnir socket.
             lines.append("a=x-nv-general.rtcVideoOnNativeBundle:0")
-            lines.append("a=x-nv-general.rtcAudioOnNativeBundle:\(options.carriesAudioOnBundle ? "1" : "0")")
-            lines.append("a=x-nv-general.rtcMicOnNativeBundle:\(options.carriesMicrophoneOnBundle ? "1" : "0")")
-            lines.append("a=x-nv-general.rtcDataChannelOnNativeBundle:\(options.carriesDataChannelOnBundle ? "1" : "0")")
+            lines.append("a=x-nv-general.rtcAudioOnNativeBundle:\(wireFlag(options.carriesAudioOnBundle))")
+            lines.append("a=x-nv-general.rtcMicOnNativeBundle:\(wireFlag(options.carriesMicrophoneOnBundle))")
+            lines.append("a=x-nv-general.rtcDataChannelOnNativeBundle:\(wireFlag(options.carriesDataChannelOnBundle))")
             lines.append("a=x-nv-general.enableUnifiedSocket:0")
         }
         // Only when explicitly asked for. The captured official ANNOUNCE does not carry this at
