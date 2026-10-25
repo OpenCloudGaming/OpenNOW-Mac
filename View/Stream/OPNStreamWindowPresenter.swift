@@ -363,8 +363,11 @@ final class OPNStreamWindowPresenter {
             }
         }
         let layoutTokens = [NSWindow.didMoveNotification, NSWindow.didResizeNotification].map { name in
-            center.addObserver(forName: name, object: window, queue: .main) { [weak window] _ in
-                MainActor.assumeIsolated { window.map(OPNStreamWindowPresenter.noteFrameChange) }
+            center.addObserver(forName: name, object: window, queue: .main) { [weak self, weak window] _ in
+                MainActor.assumeIsolated {
+                    guard let window, OPNStreamWindowPresenter.noteFrameChange(window) else { return }
+                    self?.retileWindows()
+                }
             }
         }
         presentation.observerTokens = [willEnter, didEnter, willExit, didExit] + layoutTokens
@@ -373,14 +376,17 @@ final class OPNStreamWindowPresenter {
     }
 
     /// A tiled window that is no longer where the layout put it was taken by the reader, and stays
-    /// theirs: the layout stops placing it.
-    static func noteFrameChange(_ window: OPNStreamWindow) {
+    /// theirs: the layout stops placing it. Returns whether the window was taken, so the caller can
+    /// retile the rest.
+    @discardableResult
+    static func noteFrameChange(_ window: OPNStreamWindow) -> Bool {
         // No layout frame yet means the placement is still waiting on the geometry gate, so a move
         // that lands before it is not the reader's.
-        guard window.layoutState.isAutoTiled, window.layoutFrame != nil, !window.isAtLayoutFrame else { return }
+        guard window.layoutState.isAutoTiled, window.layoutFrame != nil, !window.isAtLayoutFrame else { return false }
         window.layoutState.isAutoTiled = false
         window.layoutState.isManuallyPlaced = true
         window.clearLayoutFrame()
+        return true
     }
 
     private func setTransition(_ transition: FullScreenTransition, for id: ObjectIdentifier) {

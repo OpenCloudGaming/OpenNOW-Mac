@@ -139,7 +139,7 @@ import Testing
         let window = OPNStreamWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
         window.layoutState.isAutoTiled = true
 
-        OPNStreamWindowPresenter.noteFrameChange(window)
+        #expect(!OPNStreamWindowPresenter.noteFrameChange(window))
 
         #expect(window.layoutState.isAutoTiled)
         #expect(!window.layoutState.isManuallyPlaced)
@@ -150,11 +150,11 @@ import Testing
         window.layoutState.isAutoTiled = true
         window.setFrameFromLayout(NSRect(x: 50, y: 50, width: 640, height: 360))
 
-        OPNStreamWindowPresenter.noteFrameChange(window)
+        #expect(!OPNStreamWindowPresenter.noteFrameChange(window))
         #expect(window.layoutState.isAutoTiled)
 
         window.setFrame(NSRect(x: 90, y: 50, width: 640, height: 360), display: false)
-        OPNStreamWindowPresenter.noteFrameChange(window)
+        #expect(OPNStreamWindowPresenter.noteFrameChange(window))
 
         #expect(!window.layoutState.isAutoTiled)
         #expect(window.layoutState.isManuallyPlaced)

@@ -428,7 +428,10 @@ extension NativeNVSTHostViewModel {
     func togglePictureInPicture() {
         guard let window = nativeView?.window as? OPNStreamWindow, !isEnding, !didEnd else { return }
         guard !StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else { return }
-        if window.layoutState.isBorderless { OPNStreamBorderless.releaseToReader(window) }
+        if window.layoutState.isBorderless {
+            OPNStreamBorderless.releaseToReader(window)
+            OPNStreamWindowPresenter.shared.retileWindows()
+        }
         switch OPNStreamPictureInPicture.request(
             isPictureInPicture: isPictureInPicture,
             isFullScreen: window.styleMask.contains(.fullScreen),
