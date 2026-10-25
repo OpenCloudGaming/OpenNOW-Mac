@@ -196,7 +196,9 @@ struct OPNStreamPictureInPictureTests {
 
         window.makeKeyAndOrderFront(nil)
         await settleRunLoop()
-        window.standardWindowButton(.closeButton)?.performClick(nil)
+        // What the close button sends. `performClose(_:)` itself is not driven here: on macOS 26 it
+        // ends the test host's process once the run loop turns, taking the rest of the run with it.
+        #expect(window.delegate?.windowShouldClose?(window) == false)
         await settleRunLoop()
 
         #expect(handlerCalls == 1, "the close button has to reach the guard's handler")
