@@ -55,7 +55,7 @@ extension CatalogViewModel {
     }
 
     func toggleFavoriteSelectedGame() {
-        guard let selectedGame else { return }
+        guard let selectedGame, configureCatalogService() else { return }
         let appId = Self.favoriteAppId(for: selectedGame)
         let identity = Self.identity(for: selectedGame)
         guard !appId.isEmpty, !identity.isEmpty else { return }
@@ -223,7 +223,8 @@ extension CatalogViewModel {
     }
 
     func autoMarkFreeToPlaySelectedVariantThenLaunch() {
-        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty else { return }
+        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty,
+              configureCatalogService() else { return }
         let gameIdentity = Self.identity(for: selectedGame)
         let variantId = variant.id
         let variantIndex = selectedVariantIndex
@@ -247,7 +248,7 @@ extension CatalogViewModel {
     }
 
     func beginMarkSelectedVariantOwnedFlow() {
-        guard let selectedGame, selectedVariant(in: selectedGame) != nil else { return }
+        guard let selectedGame, selectedVariant(in: selectedGame) != nil, configureCatalogService() else { return }
         presentedModal = .storePicker(stage: .resyncing)
         ownershipFlowMessage = syncingOwnershipMessage(for: selectedGame)
         let stores = CatalogAccountParsing.uniqueNonEmpty(selectedGame.variants.map(\.appStore))
@@ -274,7 +275,8 @@ extension CatalogViewModel {
     }
 
     func confirmSelectedVariantOwned() {
-        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty else { return }
+        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty,
+              configureCatalogService() else { return }
         let gameIdentity = Self.identity(for: selectedGame)
         let variantId = variant.id
         let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
@@ -298,7 +300,8 @@ extension CatalogViewModel {
     }
 
     func removeSelectedVariantOwned() {
-        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty else { return }
+        guard let selectedGame, let variant = selectedVariant(in: selectedGame), !variant.id.isEmpty,
+              configureCatalogService() else { return }
         let gameIdentity = Self.identity(for: selectedGame)
         let variantId = variant.id
         let title = selectedGame.title.isEmpty ? "game" : selectedGame.title
@@ -316,7 +319,7 @@ extension CatalogViewModel {
     }
 
     func selectOwnedVariant(_ variant: OPNCatalogGameVariantObject) {
-        guard !variant.id.isEmpty else { return }
+        guard !variant.id.isEmpty, configureCatalogService() else { return }
         let variantId = variant.id
         gameService.selectOwnedVariant(variantId) { [weak self] success, error in
             guard let self else { return }
@@ -336,7 +339,7 @@ extension CatalogViewModel {
     }
 
     func syncStoreAccount(_ store: String) {
-        guard !store.isEmpty else { return }
+        guard !store.isEmpty, configureCatalogService() else { return }
         setActionMessage("Syncing \(displayName(forStore: store)) account...")
         gameService.syncAccountProvider(store: store) { [weak self] success, error in
             guard let self else { return }
@@ -358,7 +361,7 @@ extension CatalogViewModel {
     }
 
     func linkStoreAccount(_ store: String) {
-        guard !store.isEmpty else { return }
+        guard !store.isEmpty, configureCatalogService() else { return }
         setActionMessage("Opening \(displayName(forStore: store)) account linking...")
         gameService.startAccountLinking(store: store) { [weak self] success, error in
             guard let self else { return }

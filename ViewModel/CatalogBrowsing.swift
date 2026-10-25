@@ -152,6 +152,7 @@ extension CatalogViewModel {
     }
 
     func browseCatalog(forceRefresh: Bool) {
+        guard configureCatalogService() else { return }
         browseGeneration += 1
         let generation = browseGeneration
         let browseStartTime = CFAbsoluteTimeGetCurrent()
@@ -159,7 +160,6 @@ extension CatalogViewModel {
         isLoadingMoreCatalog = false
         catalogEndCursor = ""
         errorMessage = ""
-        configureCatalogService()
         let query = searchQuery.trimmed
         let resultCount = catalogGames.count
         gameService.browseCatalogObject(

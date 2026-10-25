@@ -2,6 +2,7 @@ import SwiftUI
 
 /// The support entry beside Support Diagnostics: one button into the two-channel report form.
 struct ReportIssueSettingsPage: View {
+    @Environment(\.opnReportIssuePresentation) private var reportIssuePresentation
     let viewModel: CatalogViewModel
     let uiScale: CGFloat
 
@@ -13,7 +14,7 @@ struct ReportIssueSettingsPage: View {
         SettingsCard(title: "Report an Issue", uiScale: uiScale) {
             HStack(alignment: .top, spacing: 10 * uiScale) {
                 SettingsActionButton(title: "REPORT AN ISSUE", uiScale: uiScale) {
-                    OPNReportIssuePresentation.shared.present(context: .current(viewModel: viewModel))
+                    (reportIssuePresentation ?? .shared).present(context: .current(viewModel: viewModel))
                 }
                 Text("Open a pre-filled OpenNOW client report on GitHub, or send a stream quality issue to NVIDIA with a copyable session summary.")
                     .font(.settingsFont(size: 12 * uiScale, weight: .medium))

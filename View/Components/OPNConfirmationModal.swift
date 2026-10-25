@@ -43,10 +43,18 @@ final class OPNConfirmationPresentation: ObservableObject {
 
     @Published private(set) var request: Request?
     private var onDismiss: (() -> Void)?
+    private var ownerID: UUID?
 
-    func present(_ request: Request, onDismiss: @escaping () -> Void) {
+    func present(_ request: Request, ownerID: UUID = UUID(), onDismiss: @escaping () -> Void) {
+        if self.ownerID != ownerID { dismiss() }
+        self.ownerID = ownerID
         self.request = request
         self.onDismiss = onDismiss
+    }
+
+    func dismiss(ownerID: UUID) {
+        guard self.ownerID == ownerID else { return }
+        dismiss()
     }
 
     /// Clears the modal and asks whoever presented it to clear its own state. Safe to call when
@@ -54,6 +62,7 @@ final class OPNConfirmationPresentation: ObservableObject {
     func dismiss() {
         guard request != nil else { return }
         request = nil
+        ownerID = nil
         let dismissHandler = onDismiss
         onDismiss = nil
         dismissHandler?()
@@ -97,7 +106,7 @@ struct OPNConfirmationPanel: View {
 /// Hosts the shared confirmation modal at the app root. The full-cover scrim sits behind the
 /// centered panel; the scrim, close control, Escape, and `.cancel` all dismiss.
 struct OPNConfirmationOverlay: View {
-    @ObservedObject private var presentation = OPNConfirmationPresentation.shared
+    @ObservedObject var presentation: OPNConfirmationPresentation = .shared
 
     var body: some View {
         ZStack {
@@ -113,6 +122,10 @@ struct OPNConfirmationOverlay: View {
         }
         .opnMotion(OPNDesign.Motion.panel, value: presentation.request != nil)
     }
+}
+
+extension EnvironmentValues {
+    @Entry var opnConfirmationPresentation: OPNConfirmationPresentation?
 }
 
 /// App-shell confirmation dialog following the modal spec: Panel background, 1px Stroke Regular,
@@ -252,6 +265,8 @@ extension View {
 }
 
 private struct OPNConfirmationPresenter: ViewModifier {
+    @Environment(\.opnConfirmationPresentation) private var scopedPresentation
+    @State private var ownerID = UUID()
     let isPresented: Binding<Bool>
     let eyebrow: String
     let title: String
@@ -262,21 +277,24 @@ private struct OPNConfirmationPresenter: ViewModifier {
         content
             .onAppear { syncPresentation(isPresented.wrappedValue) }
             .onChange(of: isPresented.wrappedValue) { _, presented in syncPresentation(presented) }
-            .onDisappear { OPNConfirmationPresentation.shared.dismiss() }
+            .onDisappear { presentation.dismiss(ownerID: ownerID) }
     }
+
+    private var presentation: OPNConfirmationPresentation { scopedPresentation ?? .shared }
 
     private func syncPresentation(_ presented: Bool) {
         guard presented else {
-            OPNConfirmationPresentation.shared.dismiss()
+            presentation.dismiss(ownerID: ownerID)
             return
         }
-        OPNConfirmationPresentation.shared.present(
+        presentation.present(
             OPNConfirmationPresentation.Request(
                 eyebrow: eyebrow,
                 title: title,
                 message: message,
                 actions: actions
             ),
+            ownerID: ownerID,
             onDismiss: { isPresented.wrappedValue = false }
         )
     }

@@ -327,6 +327,9 @@ final class CatalogViewModel {
         }
     }
     var subscriptionStatus = CatalogSubscriptionStatus.unavailable
+    var launchEntitlements = OPNLaunchEntitlements.none
+    var entitlementIdentity: CatalogAccountRequestIdentity?
+    var subscriptionRequestID = UUID()
     /// The saved global cloud DLSS override, mirrored here so the card renders from state.
     var dlssOverrides = DlssOverrides.useGameSettings
     /// What the account's membership includes, kept apart from the entitlements so a membership that
@@ -438,11 +441,11 @@ final class CatalogViewModel {
     /// Whether that work has landed; `startupContentGate` holds the splash until it has.
     var isAccountScopedStateLoaded = false
 
-    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService.shared, launchBridge: any GameLaunchBridging = OPNGameLaunchBridge.shared, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, sessionResultStore: OPNGameSessionResultStore = .shared, dlssCompatibilityService: OPNDlssCompatibilityService = .shared, dlssAnnouncer: OPNDlssCompatibilityAnnouncer = OPNDlssCompatibilityAnnouncer(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onPresentAccountChooser: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
+    init(account: LoginAccount, session: LoginSession, gameService: any CatalogGameServing = OPNGameService(), launchBridge: (any GameLaunchBridging)? = nil, imageCache: any CatalogImageServing = CatalogImageCache.shared, discordPresence: any DiscordPresenceServing = DiscordRichPresence.shared, systemIntegration: any SystemIntegrationServing = AppKitSystemIntegration(), sessionRegistry: OPNGameSessionRegistry = .shared, sessionResultStore: OPNGameSessionResultStore = .shared, dlssCompatibilityService: OPNDlssCompatibilityService = .shared, dlssAnnouncer: OPNDlssCompatibilityAnnouncer = OPNDlssCompatibilityAnnouncer(), onSwitchAccount: @escaping (LoginAccount) -> Void = { _ in }, onAddAccount: @escaping () -> Void = {}, onPresentAccountChooser: @escaping () -> Void = {}, onRefreshAuth: @escaping () async -> Bool) {
         self.account = account
         self.session = session
         self.gameService = gameService
-        self.launchBridge = launchBridge
+        self.launchBridge = launchBridge ?? OPNGameLaunchBridge(gameService: (gameService as? any GameLaunchServiceConfiguring) ?? OPNGameService())
         self.imageCache = imageCache
         self.discordPresence = discordPresence
         self.systemIntegration = systemIntegration
@@ -527,33 +530,6 @@ final class CatalogViewModel {
         cachedVisibleFilterGroups = nil
     }
 
-    var marqueeGames: [OPNCatalogGameObject] {
-        _ = marqueePanels
-        if let cachedMarqueeGames { return cachedMarqueeGames }
-        var games: [OPNCatalogGameObject] = []
-        var seen = Set<String>()
-        for panel in marqueePanels {
-            for section in panel.sections {
-                for game in section.games {
-                    let key = Self.identity(for: game)
-                    guard !key.isEmpty, !seen.contains(key) else { continue }
-                    seen.insert(key)
-                    games.append(game)
-                }
-            }
-        }
-        cachedMarqueeGames = games
-        return games
-    }
-
-    var heroRotationGames: [OPNCatalogGameObject] {
-        _ = marqueePanels
-        if let cachedHeroRotationGames { return cachedHeroRotationGames }
-        let games = Self.dedupedByTitleGrouping(marqueeGames.filter(Self.hasMarqueeHeroArtwork))
-        cachedHeroRotationGames = games
-        return games
-    }
-
     var isBrowseMode: Bool {
         !selectedFilterIds.isEmpty || searchQuery.contains { !$0.isWhitespace }
     }
@@ -593,13 +569,22 @@ final class CatalogViewModel {
     func refresh() {
         // An explicit refresh must hit the network, not re-adopt the panels the
         // launch prefetch already handed over.
-        CatalogLaunchPrefetch.shared.invalidate()
+        CatalogLaunchPrefetch.shared.invalidate(accountIdentifier: catalogAccountIdentifier)
         loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: true)
     }
 
     func loadCatalogDataAfterProviderConfiguration(forceCatalogRefresh: Bool = false) {
-        configureCatalogService()
-        Task { await configureCatalogProviderEndpoint() }
+        let identity = CatalogAccountRequestIdentity(account: account, session: session)
+        guard identity.isCurrent(account: account, session: session) else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await configureCatalogProviderEndpoint()
+            guard identity.isCurrent(account: account, session: session) else { return }
+            loadConfiguredCatalogData(forceCatalogRefresh: forceCatalogRefresh)
+        }
+    }
+
+    private func loadConfiguredCatalogData(forceCatalogRefresh: Bool) {
         // Claim the library and favorites rail slots up front rather than when their (deferred)
         // fetches start. Setting them later meant the rails appeared mid-load and pushed
         // everything under them down the page. This has to run before `loadPanels()`, whose
@@ -640,7 +625,7 @@ final class CatalogViewModel {
             self.loadFavorites()
             // Every launch attach point has now run, so the prefetch's copy of the panels and the
             // game lists is a duplicate from here on.
-            CatalogLaunchPrefetch.shared.recordLaunchResultsAdopted()
+            CatalogLaunchPrefetch.shared.recordLaunchResultsAdopted(accountIdentifier: self.catalogAccountIdentifier)
             self.loadAccount()
             self.loadStores()
         }

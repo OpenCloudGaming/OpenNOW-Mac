@@ -1,8 +1,7 @@
 //  The Detach New Session window: one more account streaming beside the ones already running.
 //
-//  Pick an account, choose the controllers this stream leaves out, then browse and launch from the
-//  account's own catalog. It never touches the main window's active account: the catalog is built
-//  for the chosen account explicitly and launches through the shared game session registry.
+//  Browse and launch from an account-owned catalog without activating it in the main window.
+//  Explicit account-management actions use the main window's login flow.
 
 import AppKit
 import SwiftData
@@ -10,6 +9,7 @@ import SwiftUI
 
 struct DetachedSessionView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     @Query(sort: \LoginAccount.lastLoginAt, order: .reverse) private var accounts: [LoginAccount]
     @Query(sort: \LoginSession.issuedAt, order: .reverse) private var sessions: [LoginSession]
     @AppStorage(OPNInterfacePreferences.uiScaleKey) private var uiScale = OPNInterfacePreferences.defaultUIScale
@@ -19,6 +19,11 @@ struct DetachedSessionView: View {
     @ObservedObject private var devices = ControllerMappingDevices.shared
     @State private var viewModel = DetachedSessionViewModel()
     @State private var windowTitle = "Detached Session"
+    // swiftlint:disable:next view_constructs_service -- window-owned UI state, not a service; DESIGN.md Confirmation Modal
+    @StateObject private var confirmation = OPNConfirmationPresentation()
+    // swiftlint:disable:next view_constructs_service -- window-owned UI state, not a service; DESIGN.md Report an Issue Modal
+    @StateObject private var reportIssue = OPNReportIssuePresentation()
+    @State private var windowReference = DetachedSessionWindowReference()
 
     private let registry = OPNGameSessionRegistry.shared
 
@@ -64,26 +69,49 @@ struct DetachedSessionView: View {
                 catalog(for: email)
             }
         }
+        .modifier(DetachedSessionModalHost(confirmation: confirmation, reportIssue: reportIssue))
         .frame(minWidth: 640, minHeight: 480)
         .ignoresSafeArea()
         .background(OPNDesign.Surface.app)
-        .background(DetachedSessionWindowConfigurator(title: windowTitle))
+        .background(DetachedSessionWindowConfigurator(title: windowTitle, reference: windowReference))
+        .background(OPNInterfaceScaleDensityBooster(scale: uiScale))
         .environment(\.opnUIScale, uiScale)
         .opnObservingCornerStyle()
         .opnObservingLiquidGlass()
         .preferredColorScheme(preferredColorScheme)
         .onAppear { devices.refresh() }
-        .onDisappear { viewModel.discardPendingSelection(for: selectedAccount?.storedAccountID) }
+        .onChange(of: viewModel.phase) { _, phase in
+            guard phase == .setup else { return }
+            windowTitle = "Detached Session"
+        }
+        .onDisappear {
+            viewModel.discardPendingSelection()
+            confirmation.dismiss()
+        }
     }
 
-    /// The sign-in belongs to the main window, so this window steps back to an ordinary level first:
-    /// raised above the stream windows it would sit over the main window and hide the very flow it
-    /// just started.
-    private static func addAccountInMainWindow() {
-        NSApp.keyWindow?.level = .normal
-        OPNMainWindow.reveal()
-        OPNMenuBarSessionModel.shared.requestAddAccount()
-        OPNMainWindow.bringForward()
+    private func requestMainAccountAction(_ request: OPNMainAccountActions.Request) {
+        OPNMainWindowAccountHandoff.shared.begin(from: windowReference.window)
+        if OPNMainWindow.needsPresentation {
+            OPNDockIconController.showDockIcon()
+            openWindow(id: OPNMainWindow.identifier)
+        }
+        OPNMainAccountActions.shared.request(request)
+    }
+
+    private func requestAccountMutation(_ account: LoginAccount, request: (OPNMainAccountActions.Target) -> OPNMainAccountActions.Request) {
+        guard let storedAccounts = try? modelContext.fetch(FetchDescriptor<LoginAccount>()),
+              let currentAccount = storedAccounts.first(where: { $0 === account }),
+              !modelContext.deletedModelsArray.contains(where: { $0 === account }) else {
+            confirmation.present(
+                .init(eyebrow: "ACCOUNT", title: "Account action unavailable",
+                      message: "This saved account changed or was removed. Choose the account again before continuing.",
+                      actions: [OPNConfirmationAction("BACK") { [weak confirmation = confirmation] in confirmation?.dismiss() }]),
+                onDismiss: viewModel.backToSetup
+            )
+            return
+        }
+        requestMainAccountAction(request(.init(account: currentAccount)))
     }
 
     private var selectedAccount: LoginAccount? {
@@ -134,7 +162,7 @@ struct DetachedSessionView: View {
                 accountRow(row)
             }
             Button {
-                Self.addAccountInMainWindow()
+                requestMainAccountAction(.addAccount)
             } label: {
                 Label("Add account…", systemImage: "person.badge.plus")
             }
@@ -277,14 +305,14 @@ struct DetachedSessionView: View {
             CatalogView(
                 account: account,
                 session: session,
-                accounts: [account],
-                signedOutAccountEmails: [],
+                accounts: accounts,
+                signedOutAccountEmails: Set(accounts.filter { savedSession(for: $0) == nil }.map(\.email)),
                 pendingGameShortcut: .constant(nil),
-                onSwitch: { _ in },
-                onAddAccount: { Self.addAccountInMainWindow() },
-                onPresentAccountChooser: {},
-                onSignOut: { _ in },
-                onForget: { _ in },
+                onSwitch: switchDetachedAccount,
+                onAddAccount: { requestMainAccountAction(.addAccount) },
+                onPresentAccountChooser: viewModel.backToSetup,
+                onSignOut: { requestAccountMutation($0, request: OPNMainAccountActions.Request.signOut) },
+                onForget: { requestAccountMutation($0, request: OPNMainAccountActions.Request.forget) },
                 onRefreshAuth: { await DetachedSessionRefresher(modelContext: modelContext).refresh(account: account, session: session) },
                 onWindowTitleChange: { windowTitle = $0 ?? account.displayName },
                 isDetached: true
@@ -294,21 +322,69 @@ struct DetachedSessionView: View {
         } else {
             VStack(spacing: OPNDesign.Spacing.medium(scale: uiScale)) {
                 note("This account has no saved session. Sign in again from the main window.")
-                Button("BACK") { viewModel.backToSetup(accountID: selectedAccount?.storedAccountID) }
+                Button("SIGN IN AGAIN") {
+                    guard let account = accounts.first(where: { $0.email == email }) else {
+                        viewModel.backToSetup()
+                        return
+                    }
+                    requestMainAccountAction(.reauthenticate(.init(account: account)))
+                }
+                .buttonStyle(VendorGetInButtonStyle(uiScale: uiScale))
+                Button("BACK", action: viewModel.backToSetup)
                     .buttonStyle(OPNModalSecondaryButtonStyle(uiScale: uiScale))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
+
+    private func switchDetachedAccount(_ account: LoginAccount) {
+        viewModel.backToSetup()
+        windowTitle = "Detached Session"
+        guard let storedAccounts = try? modelContext.fetch(FetchDescriptor<LoginAccount>()),
+              let currentAccount = storedAccounts.first(where: { $0 === account }),
+              let row = rows.first(where: { $0.email == currentAccount.email }) else { return }
+        guard savedSession(for: currentAccount) != nil else {
+            requestMainAccountAction(.reauthenticate(.init(account: currentAccount)))
+            return
+        }
+        guard row.availability.isSelectable, let accountID = currentAccount.storedAccountID else { return }
+        viewModel.confirm(row: row, accountID: accountID)
+    }
+}
+
+struct DetachedSessionModalHost: ViewModifier {
+    @ObservedObject var confirmation: OPNConfirmationPresentation
+    @ObservedObject var reportIssue: OPNReportIssuePresentation
+
+    func body(content: Content) -> some View {
+        ZStack {
+            content
+            OPNReportIssueOverlay(presentation: reportIssue)
+                .zIndex(92)
+            OPNConfirmationOverlay(presentation: confirmation)
+                .zIndex(95)
+        }
+        .environment(\.opnConfirmationPresentation, confirmation)
+        .environment(\.opnReportIssuePresentation, reportIssue)
+        .focusedSceneValue(\.opnReportIssuePresentation, reportIssue)
+    }
+}
+
+@MainActor
+private final class DetachedSessionWindowReference {
+    weak var window: NSWindow?
 }
 
 /// A detached window is an ordinary titled window with the catalog's transparent titlebar, raised
 /// above the borderless stream windows that cover the screens it is opened from.
 private struct DetachedSessionWindowConfigurator: NSViewRepresentable {
     let title: String
+    let reference: DetachedSessionWindowReference
 
     func makeNSView(context: Context) -> ConfigurationView {
-        ConfigurationView(frame: .zero)
+        let view = ConfigurationView(frame: .zero)
+        view.reference = reference
+        return view
     }
 
     func updateNSView(_ view: ConfigurationView, context: Context) {
@@ -316,15 +392,20 @@ private struct DetachedSessionWindowConfigurator: NSViewRepresentable {
         view.apply()
     }
 
+    static func dismantleNSView(_ view: ConfigurationView, coordinator: ()) {
+        view.unbind()
+    }
+
     final class ConfigurationView: NSView {
         var title = ""
+        weak var reference: DetachedSessionWindowReference?
         private var levelObserver: NSObjectProtocol?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
+            reference?.window = window
             guard window != nil else {
-                if let levelObserver { NotificationCenter.default.removeObserver(levelObserver) }
-                levelObserver = nil
+                unbind()
                 return
             }
             apply()
@@ -338,6 +419,12 @@ private struct DetachedSessionWindowConfigurator: NSViewRepresentable {
                     MainActor.assumeIsolated { self?.applyLevel() }
                 }
             }
+        }
+
+        func unbind() {
+            if let levelObserver { NotificationCenter.default.removeObserver(levelObserver) }
+            levelObserver = nil
+            reference?.window = nil
         }
 
         func apply() {

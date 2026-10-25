@@ -89,7 +89,7 @@ final class CatalogLaunchPrefetch {
         case failed
     }
 
-    let gameService = OPNGameService.shared
+    let gameService = OPNGameService()
     let imageCache = CatalogImageCache.shared
 
     private(set) var accountIdentifier = ""
@@ -103,13 +103,13 @@ final class CatalogLaunchPrefetch {
     private var didPrefetchHeroImages = false
     private var didPrefetchRailImages = false
 
-    private init() {}
+    init() {}
 
     var hasHomePanels: Bool { !(panels[.main] ?? []).isEmpty }
 
     var isFetching: Bool { isActiveState(panelStates[.marquee]) || isActiveState(panelStates[.main]) }
 
-    func start(accountIdentifier: String, accessToken: String, idToken: String) {
+    func start(accountIdentifier: String, accessToken: String, idToken: String, idpId: String = "") {
         guard !retention.isHandoverFinished else { return }
         guard (panelStates[.marquee] ?? .idle) == .idle, (panelStates[.main] ?? .idle) == .idle else { return }
         guard !accountIdentifier.isEmpty, !accessToken.isEmpty || !idToken.isEmpty else { return }
@@ -120,6 +120,17 @@ final class CatalogLaunchPrefetch {
         retention.recordDeliveriesStarted(deliveryKeys)
         startedAt = ContinuousClock.now
         StartupReadiness.shared.noteProgress()
+        guard !idpId.isEmpty else {
+            fetchLaunchData(accountIdentifier: accountIdentifier, accessToken: accessToken, idToken: idToken)
+            return
+        }
+        gameService.fetchProviderInfo(idpId: idpId) { [weak self] _, _, _, _ in
+            self?.fetchLaunchData(accountIdentifier: accountIdentifier, accessToken: accessToken, idToken: idToken)
+        }
+    }
+
+    private func fetchLaunchData(accountIdentifier: String, accessToken: String, idToken: String) {
+        guard accountIdentifier == self.accountIdentifier, !retention.isHandoverFinished else { return }
         // Also prewarms the vpcId lookup, which every catalog query waits on.
         gameService.configureCatalogSession(accessToken: accessToken, idToken: idToken, userId: accountIdentifier)
         OPNLog.info(.catalog, "Launch panel prefetch started")
@@ -170,7 +181,8 @@ final class CatalogLaunchPrefetch {
     /// delivered snapshot to every later caller, so without this a launch-time favorites list was
     /// re-adopted by every reload for the rest of the session: a favorite removed in this session
     /// came straight back on the next refresh, which made the control look dead.
-    func invalidate(_ kind: GameListKind) {
+    func invalidate(_ kind: GameListKind, accountIdentifier: String? = nil) {
+        guard accountIdentifier == nil || accountIdentifier == self.accountIdentifier else { return }
         gameLists[kind] = nil
         gameListStates[kind] = .idle
     }
@@ -211,16 +223,18 @@ final class CatalogLaunchPrefetch {
 
     /// Tells this prefetch the home catalog has run every launch attach point, so the graphs may go
     /// as soon as the last delivery lands.
-    func recordLaunchResultsAdopted() {
+    func recordLaunchResultsAdopted(accountIdentifier: String? = nil) {
+        guard accountIdentifier == nil || accountIdentifier == self.accountIdentifier else { return }
         retention.recordLaunchResultsAdopted()
         releaseRetainedGraphsWhenReady()
     }
 
     /// Drops everything so a later explicit refresh goes to the network instead
     /// of adopting launch-time results.
-    func invalidate() {
+    func invalidate(accountIdentifier: String? = nil) {
+        guard accountIdentifier == nil || accountIdentifier == self.accountIdentifier else { return }
         dropRetainedGraphs()
-        accountIdentifier = ""
+        self.accountIdentifier = ""
         panelStates = [:]
         gameListStates = [:]
         startedAt = nil

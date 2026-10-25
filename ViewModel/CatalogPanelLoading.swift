@@ -57,10 +57,10 @@ extension CatalogViewModel {
     }
 
     func loadPanels() {
+        guard configureCatalogService() else { return }
         isLoadingPanels = true
         isLoadingMarquee = true
         errorMessage = ""
-        configureCatalogService()
 
         // The launch prefetch may already own (or have finished) these queries;
         // adopt whatever it has instead of asking for the same panels twice.
@@ -190,7 +190,7 @@ extension CatalogViewModel {
     }
 
     func loadLibrary() {
-        configureCatalogService()
+        guard configureCatalogService() else { return }
         isLoadingLibrary = true
         // See `loadFavorites()`: the launch prefetch fires this alongside the home panels, under
         // the splash screen, so it has often already arrived by the time this gate lets it through.
@@ -221,7 +221,7 @@ extension CatalogViewModel {
     }
 
     func loadFavorites() {
-        configureCatalogService()
+        guard configureCatalogService() else { return }
         isLoadingFavorites = true
         // The launch prefetch fires this alongside the home panels, under the splash screen, so
         // by the time the panels rail unblocks this call it has often already arrived (or arrives
@@ -240,12 +240,12 @@ extension CatalogViewModel {
     /// Reloads a list the user has just changed. The launch snapshot is dropped first, so this
     /// goes to the network instead of adopting the state that existed before the change.
     func reloadFavoritesAfterChange() {
-        CatalogLaunchPrefetch.shared.invalidate(.favorites)
+        CatalogLaunchPrefetch.shared.invalidate(.favorites, accountIdentifier: catalogAccountIdentifier)
         loadFavorites()
     }
 
     func reloadLibraryAfterChange() {
-        CatalogLaunchPrefetch.shared.invalidate(.library)
+        CatalogLaunchPrefetch.shared.invalidate(.library, accountIdentifier: catalogAccountIdentifier)
         loadLibrary()
     }
 
@@ -300,9 +300,20 @@ extension CatalogViewModel {
     }
 
     func loadAccount() {
+        let identity = CatalogAccountRequestIdentity(account: account, session: session)
+        entitlementIdentity = nil
+        let requestID = UUID()
+        subscriptionRequestID = requestID
+        guard identity.isCurrent(account: account, session: session) else {
+            subscriptionStatus = .unavailable
+            dlssMembershipState = .signedOut
+            launchEntitlements = .none
+            return
+        }
         configureCatalogService()
         gameService.fetchUserAccount { [weak self] success, account, error in
-            guard let self else { return }
+            guard let self, self.subscriptionRequestID == requestID,
+                  identity.isCurrent(account: self.account, session: self.session) else { return }
             if success {
                 self.accountStores = CatalogAccountParsing.parseStoreAccounts(account)
                 self.accountSubscriptions = CatalogAccountParsing.parseAccountSubscriptions(account)
@@ -315,28 +326,25 @@ extension CatalogViewModel {
         guard !userId.isEmpty else {
             subscriptionStatus = .unavailable
             dlssMembershipState = .signedOut
-            OPNStreamPreferences.clearDlssEntitlements()
+            launchEntitlements = .none
             return
         }
         dlssMembershipState = .loading
-        // The stored copy is what every session request is filtered against, so it is cleared before
-        // the fetch rather than left holding the previous account's membership.
-        OPNStreamPreferences.clearDlssEntitlements()
+        launchEntitlements = .none
         gameService.fetchSubscriptionInfo(userId: userId) { [weak self] success, subscription, error in
-            // A switch or sign-out can complete before this answers, and the stored entitlements are
-            // global: a stale success would filter the next account's requests with this one's.
-            guard let self, self.session.isActive else { return }
+            guard let self, self.subscriptionRequestID == requestID,
+                  identity.isCurrent(account: self.account, session: self.session) else { return }
             guard success else {
-                if self.refreshAuthIfNeeded(error: error) { self.subscriptionStatus = .unavailable }
+                self.subscriptionStatus = .unavailable
+                _ = self.refreshAuthIfNeeded(error: error)
                 self.dlssMembershipState = .unavailable
-                OPNStreamPreferences.clearDlssEntitlements()
+                self.launchEntitlements = .none
                 return
             }
             self.subscriptionStatus = CatalogSubscriptionStatus(subscription: subscription)
-            OPNStreamPreferences.saveEntitledAudioChannelCount(subscription.entitledAudioChannelCount)
-            OPNStreamPreferences.saveEntitledInGameSettingsPersistence(subscription.isInGameSettingsPersistenceEntitled)
-            // Re-evaluated on every account change. The saved preference is kept whatever this says.
-            OPNStreamPreferences.saveDlssEntitlements(subscription.dlssEntitlements)
+            self.launchEntitlements = OPNLaunchEntitlements(subscription: subscription)
+            self.entitlementIdentity = identity
+            self.updateActiveAccountEntitlementMirror(subscription)
             self.dlssMembershipState = .loaded(subscription.dlssEntitlements)
             let membershipTier = subscription.membershipTier.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !membershipTier.isEmpty else { return }
@@ -344,8 +352,21 @@ extension CatalogViewModel {
         }
     }
 
+    var currentLaunchEntitlements: OPNLaunchEntitlements {
+        guard let entitlementIdentity,
+              entitlementIdentity.isCurrent(account: account, session: session) else { return .none }
+        return launchEntitlements
+    }
+
+    private func updateActiveAccountEntitlementMirror(_ subscription: OPNSubscriptionInfo) {
+        guard account.isActive, session.isActive else { return }
+        OPNStreamPreferences.saveEntitledAudioChannelCount(subscription.entitledAudioChannelCount)
+        OPNStreamPreferences.saveEntitledInGameSettingsPersistence(subscription.isInGameSettingsPersistenceEntitled)
+        OPNStreamPreferences.saveDlssEntitlements(subscription.dlssEntitlements)
+    }
+
     func loadStores() {
-        configureCatalogService()
+        guard configureCatalogService() else { return }
         gameService.fetchStoreDefinitions { [weak self] success, definitions, _ in
             guard let self else { return }
             if success { self.storeDefinitions = definitions.map(CatalogAccountParsing.parseStoreDefinition) }

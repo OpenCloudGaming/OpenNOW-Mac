@@ -227,6 +227,7 @@ struct NativeNVSTStatsOverlay: View {
     let hdrModeText: String
     /// The seat's applied DLSS override state, nil until it reports one.
     let appliedDlssState: NvstDlssStateNotification?
+    let dlssEntitlements: DlssEntitlements
 
     var body: some View {
         NativeNVSTStatsPanel(
@@ -285,7 +286,7 @@ struct NativeNVSTStatsOverlay: View {
     /// The request the next session will carry, which is all there is to report until the seat
     /// sends its own state. It composes the same labels the settings card's summary does.
     private var nativeStatsNextSessionDlssGroup: NativeNVSTStatsPanel.Group {
-        let overrides = OPNStreamPreferences.effectiveDlssOverrides()
+        let overrides = OPNStreamPreferences.loadDlssOverrides().applyingAccess(dlssEntitlements)
         return NativeNVSTStatsPanel.Group(label: "DLSS · NEXT SESSION", rows: [
             NativeNVSTStatsPanel.Row(label: "Super Resolution", value: overrides.superResolutionRequestLabel),
             NativeNVSTStatsPanel.Row(label: "Frame Generation", value: overrides.frameGenerationRequestLabel),
@@ -608,7 +609,8 @@ extension NativeNVSTMediaStreamSurface {
             applicationID: configuration.applicationID,
             detailLevel: model.statsDetail,
             hdrModeText: model.nativeHdrModeText,
-            appliedDlssState: model.nativeDlssState
+            appliedDlssState: model.nativeDlssState,
+            dlssEntitlements: model.configuration.launchEntitlements.dlss
         )
         .opnTransition(.scale(scale: 0.94, anchor: model.statsPosition.transitionAnchor).combined(with: .opacity))
         .streamStatsHUDPosition(model.statsPosition, isSidebarVisible: model.unifiedHUDVisible)

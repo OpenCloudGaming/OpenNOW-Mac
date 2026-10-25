@@ -51,7 +51,7 @@ extension OPNStreamPreferences {
 
     public static func runNetworkPreflight(token: String, providerStreamingBaseUrl: String, requestedMaxBitrateMbps: Int, completion: @escaping @MainActor @Sendable (OPNStreamNetworkPreflightResult) -> Void) {
         var initial = OPNStreamNetworkPreflightResult()
-        initial.streamingBaseUrl = loadSelectedStreamingBaseUrl()
+        initial.streamingBaseUrl = loadSelectedStreamingBaseUrl(providerStreamingBaseURL: providerStreamingBaseUrl)
         initial.networkType = currentNetworkType()
         initial.recommendedMaxBitrateMbps = max(1, requestedMaxBitrateMbps)
         let initialResult = initial

@@ -101,7 +101,13 @@ final class OPNGameService: @unchecked Sendable {
     var graphqlURL = "https://games.geforce.com/graphql"
     var persistedGraphqlURL = LCARS.productionAppsGraphQLURLString
     var streamingBaseUrl = ""
-    var providerStreamingBaseUrl = OPNGameService.defaultStreamingBaseUrl
+    let providerContextLock = NSLock()
+    var providerRequestID = UUID()
+    var storedProviderStreamingBaseURL = OPNGameService.defaultStreamingBaseUrl
+    var providerStreamingBaseUrl: String {
+        get { providerContextLock.withLock { storedProviderStreamingBaseURL } }
+        set { providerContextLock.withLock { storedProviderStreamingBaseURL = newValue } }
+    }
 
     init(sessionManager: any StreamSessionManaging = OPNSessionManager.shared, dataCache: any CatalogDataCaching = OPNGameDataCache.shared) {
         self.sessionManager = sessionManager

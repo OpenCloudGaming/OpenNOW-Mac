@@ -114,6 +114,7 @@ struct ContentView: View {
             .environment(\.opnTileDensity, tileDensity)
             .opnObservingCornerStyle()
             .opnObservingLiquidGlass()
+            .focusedSceneValue(\.opnReportIssuePresentation, OPNReportIssuePresentation.shared)
             .onDisappear { root.unbind() }
             // Binding happens inside the bootstrap, not in an `onAppear`: SwiftUI starts a `.task`
             // before it calls `onAppear`, so the two would race.
@@ -123,6 +124,10 @@ struct ContentView: View {
             .onChange(of: accounts.count) { _, _ in syncViewModel() }
             .onChange(of: sessions.count) { _, _ in syncViewModel() }
             .onChange(of: devices.count) { _, _ in syncViewModel() }
+            .onChange(of: viewModel.signInRequest) { previous, current in
+                guard previous != nil, current == nil else { return }
+                OPNMainWindowAccountHandoff.shared.end()
+            }
             .onOpenURL { url in root.handleOpenURL(url) }
     }
 
@@ -199,6 +204,7 @@ private struct WindowTitleConfigurator: NSViewRepresentable {
             if #available(macOS 11.0, *) {
                 window.titlebarSeparatorStyle = .none
             }
+            OPNMainWindowAccountHandoff.shared.attach(window)
         }
     }
 

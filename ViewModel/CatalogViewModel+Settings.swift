@@ -634,7 +634,7 @@ extension CatalogViewModel {
     /// default output device and the membership's entitlement.
     var surroundModeSubtitle: String {
         let deviceChannels = streamCapabilities.audioOutputChannelCount
-        let entitled = OPNStreamPreferences.loadEntitledAudioChannelCount()
+        let entitled = currentLaunchEntitlements.audioChannelCount
         let negotiated = StreamSettingsResolver.audioChannelCount(surroundMode: streamProfile.surroundMode.value, deviceOutputChannels: deviceChannels, entitledChannels: entitled)
         let layout = negotiated >= 8 ? "7.1" : (negotiated >= 6 ? "5.1" : "stereo")
         var text = "Output device has \(deviceChannels) channel\(deviceChannels == 1 ? "" : "s"); next session streams \(layout)."

@@ -180,7 +180,12 @@ struct OPNApp: App {
                 CatalogLaunchPrefetch.shared.primeFromCache(accountIdentifier: userId)
                 return
             }
-            CatalogLaunchPrefetch.shared.start(accountIdentifier: userId, accessToken: session.accessToken, idToken: session.idToken)
+            CatalogLaunchPrefetch.shared.start(
+                accountIdentifier: userId,
+                accessToken: session.accessToken,
+                idToken: session.idToken,
+                idpId: session.idpId.isEmpty ? (account?.providerIdpId ?? "") : session.idpId
+            )
         }
     }
 
@@ -252,13 +257,7 @@ struct OPNApp: App {
                 }
             }
             OPNCatalogCommands()
-            CommandGroup(replacing: .help) {
-                Button {
-                    OPNReportIssuePresentation.shared.present(context: .appEnvironment())
-                } label: {
-                    Label("Report an Issue…", systemImage: "exclamationmark.bubble")
-                }
-            }
+            OPNReportIssueCommands()
             CommandMenu("Stream") {
                 Button("Join Remote Co-Op as Guest…") {
                     openWindow(id: "remote-coop-guest")

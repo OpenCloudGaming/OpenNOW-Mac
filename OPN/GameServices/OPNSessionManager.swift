@@ -104,6 +104,10 @@ final class OPNSessionManager: NSObject, @unchecked Sendable {
                                     hdrEnabled: Bool,
                                     deviceId: String,
                                     selectedStore: String) -> [String: Any] {
+        let entitlements = OPNLaunchEntitlements(settings: effectiveSettings)
+        var effectiveSettings = effectiveSettings
+        effectiveSettings["audioChannelCount"] = min(requestedAudioChannelCount(effectiveSettings), entitlements.audioChannelCount)
+        effectiveSettings["enablePersistingInGameSettings"] = bool(effectiveSettings["enablePersistingInGameSettings"]) && entitlements.isInGameSettingsPersistenceEntitled
         let timezoneOffset = -TimeZone.current.secondsFromGMT() * 1000
         let metadata = [
             ["key": "SubSessionId", "value": UUID().uuidString.lowercased()],

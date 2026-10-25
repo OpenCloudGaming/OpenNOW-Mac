@@ -72,7 +72,7 @@ import Testing
         let row = DetachedAccountRow(email: "b@example.com", displayName: "B", membershipTier: "Free", availability: .available)
         viewModel.confirm(row: row, accountID: idB)
 
-        viewModel.backToSetup(accountID: idB)
+        viewModel.backToSetup()
 
         #expect(viewModel.phase == .setup)
         #expect(preset.peek(forAccount: idB.rawValue) == OPNStreamControllerSelection())
@@ -81,6 +81,37 @@ import Testing
     @Test func theHandOffToggleStartsOnOnlyWhenAnotherStreamIsRunning() {
         #expect(DetachedSessionViewModel(preset: OPNStreamControllerPreset(), hasOtherStreams: true).takesPadsFromOtherStreams)
         #expect(!DetachedSessionViewModel(preset: OPNStreamControllerPreset(), hasOtherStreams: false).takesPadsFromOtherStreams)
+    }
+
+    @Test func changingAccountsDropsThePreviousAccountsUnconsumedControllerChoice() throws {
+        let idA = try #require(accountA)
+        let idB = try #require(accountB)
+        let preset = OPNStreamControllerPreset()
+        let viewModel = DetachedSessionViewModel(preset: preset, hasOtherStreams: false, registry: OPNGameSessionRegistry())
+        viewModel.setController("pad-a", enabled: false)
+        viewModel.confirm(row: .init(email: "a@example.com", displayName: "A", membershipTier: "Free", availability: .available), accountID: idA)
+
+        viewModel.confirm(row: .init(email: "b@example.com", displayName: "B", membershipTier: "Free", availability: .available), accountID: idB)
+
+        #expect(preset.peek(forAccount: idA.rawValue) == OPNStreamControllerSelection())
+        #expect(preset.peek(forAccount: idB.rawValue).disabled == ["pad-a"])
+        #expect(viewModel.selectedEmail == "b@example.com")
+        viewModel.discardPendingSelection()
+        #expect(preset.peek(forAccount: idB.rawValue) == OPNStreamControllerSelection())
+    }
+
+    @Test func discardingAChoiceDoesNotEraseAReplacementMadeByAnotherWindow() throws {
+        let idB = try #require(accountB)
+        let preset = OPNStreamControllerPreset()
+        let viewModel = DetachedSessionViewModel(preset: preset, hasOtherStreams: false, registry: OPNGameSessionRegistry())
+        viewModel.setController("pad-a", enabled: false)
+        viewModel.confirm(row: .init(email: "b@example.com", displayName: "B", membershipTier: "Free", availability: .available), accountID: idB)
+        let replacement = OPNStreamControllerSelection(disabled: ["pad-b"], takesPadsFromOtherStreams: true)
+        preset.store(replacement, forAccount: idB.rawValue)
+
+        viewModel.discardPendingSelection()
+
+        #expect(preset.peek(forAccount: idB.rawValue) == replacement)
     }
 
     @Test func theCouchCoopFlagIsRegisteredAndOffByDefault() {

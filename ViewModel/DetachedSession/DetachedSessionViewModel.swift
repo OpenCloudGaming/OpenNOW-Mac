@@ -18,9 +18,13 @@ final class DetachedSessionViewModel {
     var takesPadsFromOtherStreams: Bool
 
     private let preset: OPNStreamControllerPreset
+    private let registry: OPNGameSessionRegistry
+    private var pendingAccountID: OPNAccountID?
+    private var pendingSelection: OPNStreamControllerSelection?
 
-    init(preset: OPNStreamControllerPreset = .shared, hasOtherStreams: Bool = OPNGameSessionRegistry.shared.hasSessions) {
+    init(preset: OPNStreamControllerPreset = .shared, hasOtherStreams: Bool = OPNGameSessionRegistry.shared.hasSessions, registry: OPNGameSessionRegistry = .shared) {
         self.preset = preset
+        self.registry = registry
         takesPadsFromOtherStreams = hasOtherStreams
     }
 
@@ -40,22 +44,30 @@ final class DetachedSessionViewModel {
     /// moves on to the catalog the account will launch from.
     func confirm(row: DetachedAccountRow, accountID: OPNAccountID) {
         guard row.availability.isSelectable else { return }
-        preset.store(
-            DetachedSessionModel.selection(disabled: disabledControllers, takesPadsFromOtherStreams: takesPadsFromOtherStreams),
-            forAccount: accountID.rawValue
-        )
+        discardPendingSelection()
+        let selection = DetachedSessionModel.selection(disabled: disabledControllers, takesPadsFromOtherStreams: takesPadsFromOtherStreams)
+        preset.store(selection, forAccount: accountID.rawValue)
+        pendingAccountID = accountID
+        pendingSelection = selection
+        selectedEmail = row.email
         phase = .catalog(email: row.email)
     }
 
-    func backToSetup(accountID: OPNAccountID?) {
-        discardPendingSelection(for: accountID)
+    func backToSetup() {
+        discardPendingSelection()
+        selectedEmail = nil
         phase = .setup
     }
 
     /// A choice made for a stream that never started must not reach a later launch by the same
     /// account. Once the account owns a game the stream has taken it, so there is nothing to drop.
-    func discardPendingSelection(for accountID: OPNAccountID?) {
-        guard let accountID, !OPNGameSessionRegistry.shared.isOwned(by: accountID) else { return }
+    func discardPendingSelection() {
+        let accountID = pendingAccountID
+        let selection = pendingSelection
+        pendingAccountID = nil
+        pendingSelection = nil
+        guard let accountID, let selection, !registry.isOwned(by: accountID),
+              preset.peek(forAccount: accountID.rawValue) == selection else { return }
         preset.store(OPNStreamControllerSelection(), forAccount: accountID.rawValue)
     }
 }

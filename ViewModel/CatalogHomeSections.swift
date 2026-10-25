@@ -268,6 +268,33 @@ extension CatalogViewModel {
 // rather than in the view model's class body: they are read from many bodies, and a cached getter
 // reads its inputs on the cached path so Observation still registers the dependency.
 extension CatalogViewModel {
+    var marqueeGames: [OPNCatalogGameObject] {
+        _ = marqueePanels
+        if let cachedMarqueeGames { return cachedMarqueeGames }
+        var games: [OPNCatalogGameObject] = []
+        var seen = Set<String>()
+        for panel in marqueePanels {
+            for section in panel.sections {
+                for game in section.games {
+                    let key = Self.identity(for: game)
+                    guard !key.isEmpty, !seen.contains(key) else { continue }
+                    seen.insert(key)
+                    games.append(game)
+                }
+            }
+        }
+        cachedMarqueeGames = games
+        return games
+    }
+
+    var heroRotationGames: [OPNCatalogGameObject] {
+        _ = marqueePanels
+        if let cachedHeroRotationGames { return cachedHeroRotationGames }
+        let games = Self.dedupedByTitleGrouping(marqueeGames.filter(Self.hasMarqueeHeroArtwork))
+        cachedHeroRotationGames = games
+        return games
+    }
+
     var visibleFilterGroups: [OPNCatalogFilterGroupObject] {
         _ = filterGroups
         if let cachedVisibleFilterGroups { return cachedVisibleFilterGroups }

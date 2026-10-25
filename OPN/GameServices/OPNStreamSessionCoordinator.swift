@@ -311,13 +311,17 @@ public final class OPNStreamSessionCoordinator: NativeNVSTSessionProvider, Strea
     func makeSettings(configuration: StreamLaunchConfiguration) -> [String: Any] {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
         let profile = OPNStreamPreferences.launchProfile(forGame: configuration.applicationID, capabilities: capabilities)
+        let entitlements = configuration.launchEntitlements
+        var cloudVariables = OPNStreamPreferences.loadCachedCloudVariables()
+        cloudVariables.entitledAudioChannelCount = entitlements.audioChannelCount
         let resolved = StreamSettingsResolver.resolve(
             profile: streamProfile(from: profile, catalogHdrSupport: configuration.hdrCatalogSupport(isStoreLauncherSession: profile.steamBigPictureMode)),
             capabilities: streamDeviceCapabilities(from: capabilities),
-            cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
+            cloudVariables: streamCloudVariables(from: cloudVariables)
         )
         var settings = resolved.dictionary(gameLanguage: OPNLocale.currentGFNLocale(), accountLinked: configuration.accountLinked, selectedStore: configuration.selectedStore)
-        settings["enablePersistingInGameSettings"] = bool(settings["enablePersistingInGameSettings"]) && OPNStreamPreferences.loadEntitledInGameSettingsPersistence()
+        settings[OPNLaunchEntitlements.settingsKey] = entitlements.storedDictionary
+        settings["enablePersistingInGameSettings"] = bool(settings["enablePersistingInGameSettings"]) && entitlements.isInGameSettingsPersistenceEntitled
         // The saved DLSS preference rides the launch settings flow unfiltered; the payload builder
         // is what applies membership access.
         settings["dlssOverrides"] = OPNStreamPreferences.loadDlssOverrides().storedDictionary

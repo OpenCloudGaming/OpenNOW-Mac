@@ -30,6 +30,8 @@ final class OPNGameSessionRegistry {
         launchBridge: any GameLaunchBridging,
         discordPresence: any DiscordPresenceServing,
         streamProfile: OPNStreamPreferenceProfile,
+        launchEntitlements: OPNLaunchEntitlements = .none,
+        providerStreamingBaseURL: String = OPNGameService.defaultStreamingBaseUrl,
         results: OPNGameSessionResultStore = .shared
     ) -> OPNGameSession? {
         guard let accountID = account.resolveStableAccountID() else {
@@ -45,6 +47,8 @@ final class OPNGameSessionRegistry {
             launchBridge: launchBridge,
             discordPresence: discordPresence,
             streamProfile: streamProfile,
+            launchEntitlements: launchEntitlements,
+            providerStreamingBaseURL: providerStreamingBaseURL,
             registry: self,
             results: results
         )

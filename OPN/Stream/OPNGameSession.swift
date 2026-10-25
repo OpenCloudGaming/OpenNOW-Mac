@@ -24,6 +24,8 @@ final class OPNGameSession {
     let account: LoginAccount
     let session: LoginSession
     let streamProfile: OPNStreamPreferenceProfile
+    let launchEntitlements: OPNLaunchEntitlements
+    let providerStreamingBaseURL: String
 
     private(set) var accountID: OPNAccountID
     var phase: OPNGameSessionPhase = .checkingSession
@@ -70,6 +72,8 @@ final class OPNGameSession {
         launchBridge: any GameLaunchBridging,
         discordPresence: any DiscordPresenceServing,
         streamProfile: OPNStreamPreferenceProfile,
+        launchEntitlements: OPNLaunchEntitlements = .none,
+        providerStreamingBaseURL: String = OPNGameService.defaultStreamingBaseUrl,
         registry: OPNGameSessionRegistry,
         results: OPNGameSessionResultStore
     ) {
@@ -81,6 +85,8 @@ final class OPNGameSession {
         self.launchBridge = launchBridge
         self.discordPresence = discordPresence
         self.streamProfile = streamProfile
+        self.launchEntitlements = launchEntitlements
+        self.providerStreamingBaseURL = providerStreamingBaseURL
         self.registry = registry
         self.results = results
     }
@@ -305,7 +311,7 @@ final class OPNGameSession {
             id: id,
             ownerDisplayName: account.displayName, ownerAccountID: accountID.rawValue,
             mappingGameIdentity: ControllerMappingStore.shared.currentGameIdentity ?? ""
-        )
+        ).snapshottingEntitlements(launchEntitlements, providerStreamingBaseURL: providerStreamingBaseURL)
         if activeDiscordPresence == nil {
             activeDiscordPresence = discordPresence(for: ownedConfiguration)
         }
@@ -467,6 +473,9 @@ final class OPNGameSession {
         return discordPresence(for: game)
     }
 
+}
+
+extension OPNGameSession {
     // MARK: - Shared launch helpers
 
     static func mediaConfiguration(from configuration: OPNStreamLaunchConfiguration, titleOverride: String = "", membershipTier: String = "") -> StreamLaunchConfiguration {

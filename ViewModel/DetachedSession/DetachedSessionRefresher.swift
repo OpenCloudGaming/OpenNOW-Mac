@@ -11,14 +11,28 @@ import SwiftData
 @MainActor
 struct DetachedSessionRefresher {
     let modelContext: ModelContext
+    private let refreshSession: @Sendable (JarvisSession) async throws -> JarvisSession
+
+    init(
+        modelContext: ModelContext,
+        refreshSession: @escaping @Sendable (JarvisSession) async throws -> JarvisSession = { session in
+            let service = JarvisAuthService(transport: JarvisURLSessionTransport(), session: session)
+            return try await service.refreshSession(force: !session.isIdTokenValid)
+        }
+    ) {
+        self.modelContext = modelContext
+        self.refreshSession = refreshSession
+    }
 
     func refresh(account: LoginAccount, session storedSession: LoginSession) async -> Bool {
-        guard !storedSession.accessToken.isEmpty else { return false }
+        guard contains(account: account, session: storedSession) else { return false }
+        let ownership = RefreshOwnership(account: account, session: storedSession)
+        guard isCurrent(ownership, account: account, session: storedSession) else { return false }
         var jarvisSession = JarvisSession(
             accessToken: storedSession.accessToken,
             idToken: storedSession.idToken,
             refreshToken: storedSession.refreshToken,
-            userId: storedSession.userId,
+            userId: storedSession.userId.isEmpty ? account.userId : storedSession.userId,
             displayName: account.displayName,
             email: account.email,
             membershipTier: account.membershipTier,
@@ -33,20 +47,54 @@ struct DetachedSessionRefresher {
         if jarvisSession.idTokenExpiry == 0 {
             jarvisSession.idTokenExpiry = JarvisSessionParser.idTokenExpiry(storedSession.idToken)
         }
-        let service = JarvisAuthService(transport: JarvisURLSessionTransport())
         do {
-            await service.setSession(jarvisSession)
-            let refreshed = try await service.refreshSession(force: !jarvisSession.isIdTokenValid)
-            store(refreshed, in: storedSession)
-            OPNLog.info(.auth, "Detached session refreshed account=\(account.email)")
+            let refreshed = try await refreshSession(jarvisSession)
+            guard !Task.isCancelled, isCurrent(ownership, account: account, session: storedSession) else { return false }
+            guard !refreshed.accessToken.isEmpty,
+                  jarvisSession.userId.isEmpty || refreshed.userId.isEmpty || refreshed.userId == jarvisSession.userId else { return false }
+            try store(refreshed, in: storedSession)
+            OPNLog.info(.auth, "Detached session refreshed account=\(ownership.email)")
             return true
         } catch {
-            OPNLog.warning(.auth, "Detached session refresh failed account=\(account.email) error=\(error.localizedDescription)")
+            OPNLog.warning(.auth, "Detached session refresh failed account=\(ownership.email) error=\(error.localizedDescription)")
+            guard !Task.isCancelled, isCurrent(ownership, account: account, session: storedSession) else { return false }
             return storedSession.canContinueOffline && !storedSession.isExpired
         }
     }
 
-    private func store(_ refreshed: JarvisSession, in storedSession: LoginSession) {
+    private func contains(account: LoginAccount, session: LoginSession) -> Bool {
+        guard !modelContext.deletedModelsArray.contains(where: { $0 === account || $0 === session }),
+              let accounts = try? modelContext.fetch(FetchDescriptor<LoginAccount>()),
+              let sessions = try? modelContext.fetch(FetchDescriptor<LoginSession>()) else { return false }
+        return accounts.contains { $0 === account } && sessions.contains { $0 === session }
+    }
+
+    private func isCurrent(_ ownership: RefreshOwnership, account: LoginAccount, session: LoginSession) -> Bool {
+        guard !ownership.accessToken.isEmpty,
+              !modelContext.deletedModelsArray.contains(where: {
+                  $0.persistentModelID == ownership.accountIdentifier || $0.persistentModelID == ownership.sessionIdentifier
+              }) else { return false }
+        let email = ownership.email
+        let sessionID = ownership.sessionID
+        guard let currentAccount = try? modelContext.fetch(FetchDescriptor<LoginAccount>(predicate: #Predicate { $0.email == email })).first,
+              let currentSession = try? modelContext.fetch(FetchDescriptor<LoginSession>(predicate: #Predicate { $0.id == sessionID })).first,
+              currentAccount === account, currentSession === session else { return false }
+        return currentAccount.persistentModelID == ownership.accountIdentifier
+            && currentSession.persistentModelID == ownership.sessionIdentifier
+            && currentAccount.stableAccountID == ownership.accountID
+            && currentAccount.userId == ownership.accountUserID
+            && currentAccount.providerIdpId == ownership.providerID
+            && currentSession.accountEmail == email
+            && currentSession.userId == ownership.userID
+            && currentSession.idpId == ownership.sessionProviderID
+            && currentSession.issuedAt == ownership.issuedAt
+            && currentSession.accessToken == ownership.accessToken
+            && currentSession.idToken == ownership.idToken
+            && currentSession.refreshToken == ownership.refreshToken
+            && currentSession.clientToken == ownership.clientToken
+    }
+
+    private func store(_ refreshed: JarvisSession, in storedSession: LoginSession) throws {
         let now = Date()
         let expiry = Date(timeIntervalSince1970: TimeInterval(refreshed.expiresAt > 0 ? refreshed.expiresAt : Int64(now.addingTimeInterval(86_400).timeIntervalSince1970)))
         let clientExpiry = refreshed.clientTokenExpiry > 0 ? Date(timeIntervalSince1970: TimeInterval(refreshed.clientTokenExpiry) / 1000.0) : expiry
@@ -66,10 +114,40 @@ struct DetachedSessionRefresher {
             isActive: storedSession.isActive,
             canContinueOffline: storedSession.canContinueOffline
         )
-        do {
-            try modelContext.save()
-        } catch {
-            OPNLog.warning(.auth, "Detached session refresh could not be saved: \(error.localizedDescription)")
+        try modelContext.save()
+    }
+
+    private struct RefreshOwnership {
+        let accountIdentifier: PersistentIdentifier
+        let sessionIdentifier: PersistentIdentifier
+        let accountID: String
+        let accountUserID: String
+        let providerID: String
+        let email: String
+        let sessionID: String
+        let userID: String
+        let sessionProviderID: String
+        let issuedAt: Date
+        let accessToken: String
+        let idToken: String
+        let refreshToken: String
+        let clientToken: String
+
+        init(account: LoginAccount, session: LoginSession) {
+            accountIdentifier = account.persistentModelID
+            sessionIdentifier = session.persistentModelID
+            accountID = account.stableAccountID
+            accountUserID = account.userId
+            providerID = account.providerIdpId
+            email = account.email
+            sessionID = session.id
+            userID = session.userId
+            sessionProviderID = session.idpId
+            issuedAt = session.issuedAt
+            accessToken = session.accessToken
+            idToken = session.idToken
+            refreshToken = session.refreshToken
+            clientToken = session.clientToken
         }
     }
 }

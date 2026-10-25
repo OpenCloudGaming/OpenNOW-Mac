@@ -222,7 +222,7 @@ extension CatalogViewModel: OPNMenuBarSessionSource {
     /// reopened from the menu bar starts fetching as it appears — so an unknown game is resolved by
     /// browsing for its title, the same way an unresolved shortcut is.
     func launchGame(_ game: OPNMenuBarGame) {
-        configureCatalogService()
+        guard configureCatalogService() else { return }
         let title = game.title.trimmingCharacters(in: .whitespacesAndNewlines)
         OPNLog.info(.launch, "Menu bar launching game appId=\(game.appId) title=\(title)")
         if let match = knownGame(matching: game, title: title) {

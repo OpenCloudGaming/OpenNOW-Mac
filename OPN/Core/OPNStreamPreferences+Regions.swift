@@ -9,10 +9,10 @@ extension OPNStreamPreferences {
         normalizedHTTPSBaseUrlOrEmpty(storage.string(forKey: k.selectedRegionUrl) ?? "")
     }
 
-    public static func loadSelectedStreamingBaseUrl() -> String {
+    public static func loadSelectedStreamingBaseUrl(providerStreamingBaseURL: String? = nil) -> String {
         let selected = loadSelectedRegionUrl()
         if !selected.isEmpty { return normalizedBaseUrl(selected) }
-        return defaultStreamingBaseUrl
+        return normalizedBaseUrl(providerStreamingBaseURL ?? defaultStreamingBaseUrl)
     }
 
     public static func loadSelectedRegionUrl(forGame appId: String) -> String {
@@ -20,12 +20,12 @@ extension OPNStreamPreferences {
         return normalizedHTTPSBaseUrlOrEmpty(string(dictionary[k.selectedRegionUrl], ""))
     }
 
-    public static func loadSelectedStreamingBaseUrl(forGame appId: String) -> String {
+    public static func loadSelectedStreamingBaseUrl(forGame appId: String, providerStreamingBaseURL: String? = nil) -> String {
         if let dictionary = gameProfileDictionary(for: appId), bool(dictionary[k.gameProfileEnabled], false) {
             let selected = string(dictionary[k.selectedRegionUrl], "")
             if !selected.isEmpty { return normalizedBaseUrl(selected) }
         }
-        return loadSelectedStreamingBaseUrl()
+        return loadSelectedStreamingBaseUrl(providerStreamingBaseURL: providerStreamingBaseURL)
     }
 
     public static func saveSelectedRegionUrl(_ url: String) {
