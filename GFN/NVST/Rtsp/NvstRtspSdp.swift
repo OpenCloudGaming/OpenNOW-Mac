@@ -264,6 +264,10 @@ public enum NvstRtspSdp {
         /// as 3 is inferred from that convention, not captured. nil leaves the captured values.
         public var bitDepth: Int?
         public var chromaFormat: Int?
+        /// Announced as `video[0].dx9EnableHdr`. The seat encodes HDR only when the reader asked.
+        public var isHDREnabled: Bool
+        /// Announced as `video[0].cloudGsync`: lets the seat pace the game's own frame rate.
+        public var isCloudGsyncEnabled: Bool
         /// Playback channels the bundle's audio section decodes (2, 6 or 8). Above 2 the announce
         /// carries `x-nv-audio.surround.enable:1` with the channel count and speaker mask so the
         /// seat encodes multi-channel Opus; the vendor stack names exactly these attributes.
@@ -328,6 +332,8 @@ public enum NvstRtspSdp {
                     prefilterModel: Int? = nil,
                     bitDepth: Int? = nil,
                     chromaFormat: Int? = nil,
+                    isHDREnabled: Bool = false,
+                    isCloudGsyncEnabled: Bool = false,
                     audioChannelCount: Int = 2,
                     encryptionKey: NvstRuntimeEncryptionKey? = nil,
                     iceCredentials: NvstRtspIceCredentials? = nil,
@@ -356,6 +362,8 @@ public enum NvstRtspSdp {
             self.announcesExtendedSettings = announcesExtendedSettings
             self.echoesOfferedAttributes = echoesOfferedAttributes
             self.vsyncMode = vsyncMode
+            self.isHDREnabled = isHDREnabled
+            self.isCloudGsyncEnabled = isCloudGsyncEnabled
             self.announceOverrides = announceOverrides
             self.offeredAttributes = offeredAttributes
             self.codec = codec

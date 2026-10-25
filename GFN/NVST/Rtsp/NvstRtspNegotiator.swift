@@ -544,6 +544,8 @@ extension NvstRtspNegotiator {
             prefilterModel: input.prefilterModel,
             bitDepth: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).bitDepth },
             chromaFormat: input.colorQuality.map { NvstRtspSdp.colorFormat(forColorQuality: $0).chromaFormat },
+            isHDREnabled: input.isHDREnabled,
+            isCloudGsyncEnabled: input.isCloudGsyncEnabled,
             audioChannelCount: audioChannelCount,
             encryptionKey: described.encryptionKey,
             iceCredentials: resolved.localIce,

@@ -495,6 +495,25 @@ private struct StubReserver: NvstBundleReserving {
         #expect(!body.contains("a=x-nv-general.clientBundlePort:49005"))
     }
 
+    @Test(arguments: [false, true], [false, true])
+    func videoPreferencesReachTheAnnounceThroughTheTransport(isHDREnabled: Bool, isCloudGsyncEnabled: Bool) async throws {
+        let transport = NvstBifrostFreeTransport(configuredColorQuality: "10bit_420",
+                                                isHDREnabled: isHDREnabled,
+                                                isCloudGsyncEnabled: isCloudGsyncEnabled)
+        let input = await transport.negotiationInput(sessionID: "session-1",
+                                                     endpoints: ["rtsps://seat.example.com:322"],
+                                                     profile: .init(resolution: "2560x1440", fps: 60, codec: "HEVC"))
+        let seat = Self.seat()
+        let session = try await Self.negotiator(seat).negotiate(input)
+        let request = try #require(await seat.requests("ANNOUNCE").first)
+        let lines = request.body.components(separatedBy: "\r\n")
+
+        #expect(lines.contains("a=x-nv-video[0].dx9EnableHdr:\(isHDREnabled ? 1 : 0)"))
+        #expect(lines.contains("a=x-nv-video[0].cloudGsync:\(isCloudGsyncEnabled ? 1 : 0)"))
+        #expect(lines.contains("a=x-nv-video[0].bitDepth:10"))
+        await session.release("test complete")
+    }
+
     @Test func announceReportsTheBundleIdentityAndRtcpOverSctp() async throws {
         let seat = Self.seat()
         _ = try await Self.negotiator(seat).negotiate(Self.input)

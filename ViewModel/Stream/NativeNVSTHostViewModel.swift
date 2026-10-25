@@ -602,6 +602,8 @@ extension NativeNVSTHostViewModel {
             configuredPrefilterDenoise: resolvedStreamSettings.prefilterDenoise,
             configuredPrefilterModel: chosenPrefilterModel(resolvedStreamSettings.prefilterModel),
             configuredColorQuality: resolvedStreamSettings.colorQuality,
+            isHDREnabled: resolvedStreamSettings.enableHdr,
+            isCloudGsyncEnabled: resolvedStreamSettings.enableCloudGsync,
             configuredVsyncMode: NvstVsyncMode(rawValue: resolvedStreamSettings.vsyncMode) ?? .adaptive,
             isVrrPresentation: isVrrPresentation,
             configuredAudioChannelCount: resolvedStreamSettings.audioChannelCount,
