@@ -80,10 +80,17 @@ import Testing
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
     view.mouseInputMode = .absolute
+    window.isReleasedWhenClosed = false
     window.contentView = view
-    defer { view.setPointerLocked(false) }
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
 
     view.setManualPointerCapture(true)
 
@@ -118,10 +125,17 @@ import Testing
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
     view.mouseInputMode = .absolute
+    window.isReleasedWhenClosed = false
     window.contentView = view
-    defer { view.setPointerLocked(false) }
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
 
     view.setManualPointerCapture(true)
     // Teardown and in-place reconnect both drop remote input, which releases the pointer.
@@ -155,10 +169,17 @@ import Testing
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
     view.mouseInputMode = .absolute
+    window.isReleasedWhenClosed = false
     window.contentView = view
-    defer { view.setPointerLocked(false) }
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
 
     // The game is in mouselook, so the client followed it into relative mode.
     view.setRemoteCursorVisible(false)
@@ -188,10 +209,17 @@ import Testing
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
     view.mouseInputMode = .absolute
+    window.isReleasedWhenClosed = false
     window.contentView = view
-    defer { view.setPointerLocked(false) }
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
 
     view.setManualPointerCapture(true)
     view.setRemoteCursorVisible(false)
@@ -282,10 +310,17 @@ import Testing
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 270), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
     view.mouseInputMode = .relative
+    window.isReleasedWhenClosed = false
     window.contentView = view
-    defer { view.setPointerLocked(false) }
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
 
     // The game is in mouselook, so the client is holding the pointer.
     view.setRemoteCursorVisible(false)

@@ -271,8 +271,17 @@ private actor ControlledNativeInputRecorder {
 @Test @MainActor func focusLossNeutralizesEveryActiveDeviceBeforePointerUnlock() throws {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
+    view.inputFocusProvider = { (true, true) }
+    view.cursorAssociationHandler = { _ in .success }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
+    window.isReleasedWhenClosed = false
     window.contentView = view
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
     var sequence: [String] = []
     view.onInputEvent = { event in
         switch event {

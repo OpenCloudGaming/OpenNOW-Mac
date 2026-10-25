@@ -146,11 +146,13 @@ extension NativeNVSTHostViewModel {
             }
             return
         }
-        guard path != nil, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
-        if view.remoteInputEnabled, !NativeNVSTInputDispatcher.isNeutralizing(event),
+        guard path != nil, isConnected, !isEnding, !didEnd else { return }
+        let isNeutralizing = NativeNVSTInputDispatcher.isNeutralizing(event)
+        guard isNeutralizing || (view.remoteInputEnabled && !view.localOverlayCapturesInput && !unifiedHUDVisible && !streamControlsVisible) else { return }
+        if !isNeutralizing,
            !Self.acceptsWhileNotFrontmost(event, isPictureInPictureMode: view.isPictureInPictureMode,
                                           allowsBackgroundGamepad: view.allowsBackgroundGamepadInput) {
-            guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
+            guard view.isFrontmostInputTarget else { return }
         }
         lastAcceptedStreamInputAt = Date()
         // The left button's edges bracket a text selection: everything between press and release is
@@ -160,16 +162,13 @@ extension NativeNVSTHostViewModel {
             clipboard.pointerSelection.noteLeftButton(isPressed: isPressed, at: Date())
         }
         if case .mouse = event {
-            if view.mouseInputMode == .relative, !view.isPointerLocked {
+            if view.mouseInputMode == .relative, !view.isPointerLocked, !isNeutralizing {
                 // The seat asked for mouselook but the capture is not held — an association macOS
                 // refused, or a focus change that released it. Dropping the event here is a mouse
                 // that does nothing at all, so a real user event retries the capture: a transient
                 // failure heals itself instead of stranding the session until the seat changes its
                 // mind. A neutralizing release, background input, or the HUD must never retake it.
-                let canRetakeCapture = view.remoteInputEnabled
-                    && view.isFrontmostInputTarget
-                    && !NativeNVSTInputDispatcher.isNeutralizing(event)
-                guard canRetakeCapture else { return }
+                guard view.canAcquirePointerCapture else { return }
                 view.setPointerLocked(true)
                 guard view.isPointerLocked else { return }
             }

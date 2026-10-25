@@ -114,21 +114,28 @@ import Testing
         let half = NSRect(x: 0, y: 0, width: 960, height: 1080)
 
         OPNStreamBorderless.enter(window, frame: half, coversMenuBar: true, screenFrames: screens)
+        try await Task.sleep(for: .milliseconds(200))
         #expect(window.level == OPNStreamBorderless.coveringLevel)
 
         OPNStreamBorderless.enter(window, frame: half, coversMenuBar: false, screenFrames: screens)
+        try await Task.sleep(for: .milliseconds(200))
         #expect(window.level == .normal)
         OPNStreamBorderless.exit(window)
+        try await Task.sleep(for: .milliseconds(200))
     }
 
     @Test func enteringAndLeavingBorderlessAnnouncesTheCoveringStateChange() async throws {
         let window = OPNStreamWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 300), styleMask: [.titled], backing: .buffered, defer: true)
         var posts = 0
-        let token = NotificationCenter.default.addObserver(forName: OPNStreamBorderless.coveringStateDidChange, object: nil, queue: nil) { _ in posts += 1 }
+        let token = NotificationCenter.default.addObserver(forName: OPNStreamBorderless.coveringStateDidChange, object: window, queue: .main) { _ in
+            MainActor.assumeIsolated { posts += 1 }
+        }
         defer { NotificationCenter.default.removeObserver(token) }
 
         OPNStreamBorderless.enter(window, frame: NSRect(x: 0, y: 0, width: 640, height: 360), screenFrames: screens)
+        try await Task.sleep(for: .milliseconds(200))
         OPNStreamBorderless.exit(window)
+        try await Task.sleep(for: .milliseconds(200))
 
         #expect(posts == 2)
     }

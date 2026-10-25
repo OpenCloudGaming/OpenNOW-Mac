@@ -36,6 +36,7 @@ enum OPNStreamBorderless {
     /// how tiles fill a screen together; without it only a window that fills a screen is raised.
     static func enter(_ window: OPNStreamWindow, frame: NSRect, coversMenuBar: Bool = false,
                       screenFrames: [NSRect] = NSScreen.screens.map(\.frame)) {
+        guard !window.isPresentationEnding, !window.isPictureInPicture else { return }
         if window.borderlessRestoreState == nil {
             window.borderlessRestoreState = OPNStreamWindow.WindowedState(
                 level: window.level,
@@ -45,21 +46,46 @@ enum OPNStreamBorderless {
             )
             OPNStreamWindowFrameStore.save(window.frame, isPictureInPicture: false, defaults: window.frameStoreDefaults)
         }
-        if window.isMiniaturized { window.deminiaturize(nil) }
         window.layoutState.isBorderless = true
-        StreamWindowGeometryGate.releaseAspectRatioLock(window)
-        OPNStreamWindowChrome.applyBorderless(to: window, isBorderless: true)
         let level = coversMenuBar ? coveringLevel : level(for: frame, screenFrames: screenFrames)
-        window.level = level
-        for child in window.childWindows ?? [] { child.level = level }
-        apply(frame: frame, to: window)
-        postCoveringStateChange()
+        window.scheduleLayoutChange { window in
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            StreamWindowGeometryGate.releaseAspectRatioLock(window)
+            OPNStreamWindowChrome.applyBorderless(to: window, isBorderless: true)
+            window.level = level
+            for child in window.childWindows ?? [] { child.level = level }
+            window.setFrameFromLayout(frame)
+            postCoveringStateChange(for: window)
+        }
     }
 
-    static func exit(_ window: OPNStreamWindow) {
-        guard window.layoutState.isBorderless else { return }
+    static func exit(_ window: OPNStreamWindow, completion: (@MainActor () -> Void)? = nil) {
+        guard !window.isPresentationEnding else { return }
+        guard window.layoutState.isBorderless || window.borderlessRestoreState != nil ||
+            StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) else {
+            window.cancelPendingLayout()
+            completion?()
+            return
+        }
+        window.scheduleLayoutChange { window in
+            restoreWindowedState(window, isFrameRestored: true)
+            guard !Task.isCancelled, !window.isPresentationEnding else { return }
+            completion?()
+        }
+        window.isBorderlessExitPending = window.layoutState.isBorderless
+    }
+
+    private static func restoreWindowedState(_ window: OPNStreamWindow, isFrameRestored: Bool) {
+        guard window.layoutState.isBorderless || window.borderlessRestoreState != nil else {
+            window.clearLayoutFrame()
+            return
+        }
+        let wasBorderless = window.layoutState.isBorderless
         window.layoutState.isBorderless = false
-        defer { postCoveringStateChange() }
+        defer {
+            window.clearLayoutFrame()
+            if wasBorderless { postCoveringStateChange(for: window) }
+        }
         OPNStreamWindowChrome.applyBorderless(to: window, isBorderless: false)
         guard let state = window.borderlessRestoreState else {
             window.level = .normal
@@ -69,7 +95,8 @@ enum OPNStreamBorderless {
         window.borderlessRestoreState = nil
         window.level = state.level
         for child in window.childWindows ?? [] { child.level = state.level }
-        apply(frame: state.frame, to: window)
+        guard isFrameRestored else { return }
+        window.setFrameFromLayout(state.frame)
         if state.isMiniaturized { window.miniaturize(nil) }
     }
 
@@ -77,39 +104,42 @@ enum OPNStreamBorderless {
     /// stay reachable above it re-reads its level then instead of on a timer.
     static let coveringStateDidChange = Notification.Name("OpenNOW.StreamBorderless.coveringStateDidChange")
 
-    static func postCoveringStateChange() {
-        NotificationCenter.default.post(name: coveringStateDidChange, object: nil)
+    static func postCoveringStateChange(for window: OPNStreamWindow? = nil) {
+        NotificationCenter.default.post(name: coveringStateDidChange, object: window)
     }
 
     /// The window's own toggle, from the HUD: the window is the reader's from here on, so the layout
     /// stops placing it whichever way it goes.
     static func toggleByReader(_ window: OPNStreamWindow) {
-        if window.layoutState.isBorderless {
+        if window.layoutState.isBorderless, !window.isBorderlessExitPending {
             releaseToReader(window)
             return
         }
         window.layoutState.isManuallyPlaced = true
         enter(window, frame: targetFrame(for: window))
+        window.layoutMembershipDidChange?()
     }
 
     /// Leaves borderless and the layout together, for a window that is about to become something
     /// else (Picture in Picture) or that the reader no longer wants tiled.
-    static func releaseToReader(_ window: OPNStreamWindow) {
+    static func releaseToReader(_ window: OPNStreamWindow, completion: (@MainActor () -> Void)? = nil) {
         window.layoutState.isManuallyPlaced = true
         window.layoutState.isAutoTiled = false
-        exit(window)
         window.clearLayoutFrame()
+        exit(window, completion: completion)
+        window.layoutMembershipDidChange?()
+    }
+
+    static func takePlacement(_ window: OPNStreamWindow) {
+        window.cancelPendingLayout()
+        window.layoutState.isManuallyPlaced = true
+        window.layoutState.isAutoTiled = false
+        restoreWindowedState(window, isFrameRestored: false)
+        window.layoutMembershipDidChange?()
     }
 
     /// The screen a borderless toggle fills when nothing else decided: the one the window is on.
     static func targetFrame(for window: NSWindow) -> NSRect {
         (window.screen ?? NSScreen.main)?.frame ?? window.frame
-    }
-
-    private static func apply(frame: NSRect, to window: OPNStreamWindow) {
-        StreamWindowGeometryGate.whenGeometryIsMutable { [weak window] in
-            guard let window else { return }
-            window.setFrameFromLayout(frame)
-        }
     }
 }

@@ -291,19 +291,18 @@ extension NativeStreamView {
     }
 
     func updateControllerMappingFocus() {
+        let focus = inputFocus
+        gamepadMonitor.setKeyboardMouseInputEnabled(isFrontmostInputTarget && remoteInputEnabled && !localOverlayCapturesInput)
         gamepadMonitor.setMappingsEnabled(ControllerMappingFocusPolicy.allowsMappings(
-            appIsActive: NSApplication.shared.isActive, windowIsKey: window?.isKeyWindow == true,
+            appIsActive: focus.isApplicationActive, windowIsKey: focus.isWindowKey,
             remoteInputEnabled: remoteInputEnabled, overlayCapturesInput: localOverlayCapturesInput,
             allowsBackgroundPads: allowsBackgroundGamepadInput
         ))
     }
 
     func handleFocusLoss() {
-        if allowsBackgroundGamepadInput {
-            updateControllerMappingFocus()
-        } else {
-            gamepadMonitor.setMappingsEnabled(false)
-        }
+        gamepadMonitor.setKeyboardMouseInputEnabled(false)
+        gamepadMonitor.setMappingsEnabled(allowsBackgroundGamepadInput && remoteInputEnabled && !localOverlayCapturesInput)
         releasePressedInputs(includingGamepads: !allowsBackgroundGamepadInput)
         setPointerLocked(false)
         applyLocalCursorPolicy()

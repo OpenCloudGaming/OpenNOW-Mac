@@ -27,6 +27,11 @@ final class OPNStreamWindowPresenter {
     /// Held so the observation is not dropped the moment it is installed.
     private var sessionChangeObserver: NSObjectProtocol?
     private var screenChangeObserver: NSObjectProtocol?
+    private let isNativeFullScreen: @MainActor (OPNStreamWindow) -> Bool
+
+    init(isNativeFullScreen: @escaping @MainActor (OPNStreamWindow) -> Bool = { $0.styleMask.contains(.fullScreen) }) {
+        self.isNativeFullScreen = isNativeFullScreen
+    }
 
     /// Per-window full-screen bookkeeping, tracked from `present` so a dismissal that lands
     /// mid-enter is recognised before AppKit sets `.fullScreen`.
@@ -162,12 +167,9 @@ final class OPNStreamWindowPresenter {
         }
         OPNStreamWindowCloseGuard.install(on: window)
 
-        windows[session.id] = window
-        windowOrder.append(session.id)
+        register(window, for: session.id)
         hostingViews[session.id] = hostingView
         presentedConfigurationIDs[session.id] = configuration.id
-        // Tracked for the window's whole life so a mid-enter dismissal sees the transition.
-        track(window)
         // A launch is not a "show me" action. `OPNMainWindow.present(activating:)` sets the rule the
         // whole app follows - a session launch leaves the app where it is, and the Session Ready
         // preference keeps the only say over whether OpenNOW comes forward - and an unconditional
@@ -183,15 +185,27 @@ final class OPNStreamWindowPresenter {
         OPNLog.info(.launch, "Stream window presented for \(configuration.applicationID) session=\(session.id)")
     }
 
+    func register(_ window: OPNStreamWindow, for sessionID: UUID) {
+        guard windows[sessionID] !== window else { return }
+        dismiss(sessionID)
+        windows[sessionID] = window
+        windowOrder.append(sessionID)
+        track(window)
+        window.layoutMembershipDidChange = { [weak self, weak window] in
+            guard let self, let window, self.windows[sessionID] === window else { return }
+            self.retileWindows()
+        }
+    }
+
     /// Takes one session's window away. A close button or a cancellation can both land here for the
     /// same ending; the second call has nothing left to do.
     func dismiss(_ sessionID: UUID) {
         guard let window = windows[sessionID] else { return }
+        window.endPresentation()
         presentedConfigurationIDs[sessionID] = nil
         hostingViews[sessionID] = nil
         windows[sessionID] = nil
         windowOrder.removeAll { $0 == sessionID }
-        OPNStreamBorderless.postCoveringStateChange()
         OPNStreamWindowCloseGuard.uninstall(from: window)
         window.closeRequestHandler = nil
         window.sessionSurface = nil
@@ -298,8 +312,11 @@ final class OPNStreamWindowPresenter {
     func retileWindows() {
         let ordered = windowOrder.compactMap { windows[$0] }
         let placeable = OPNLabs.isCouchCoopEnabled
-            ? ordered.filter { Self.isPlaceableByLayout($0) }
+            ? ordered.filter { isPlaceableByLayout($0) }
             : []
+        for window in ordered where window.layoutState.isAutoTiled && !placeable.contains(where: { $0 === window }) {
+            releaseTile(window)
+        }
         guard placeable.count >= 2 else {
             for window in ordered where window.layoutState.isAutoTiled { releaseTile(window) }
             return
@@ -315,9 +332,6 @@ final class OPNStreamWindowPresenter {
             window.layoutState.isAutoTiled = true
             OPNStreamBorderless.enter(window, frame: tile.frame, coversMenuBar: coverage == .fullScreen)
         }
-        for window in ordered where window.layoutState.isAutoTiled && !placeable.contains(where: { $0 === window }) {
-            releaseTile(window)
-        }
     }
 
     /// Switches tiled windows between sitting below the menu bar and filling their screens, and
@@ -329,8 +343,11 @@ final class OPNStreamWindowPresenter {
 
     var hasTiledWindows: Bool { windows.values.contains { $0.layoutState.isAutoTiled } }
 
-    private static func isPlaceableByLayout(_ window: OPNStreamWindow) -> Bool {
-        !window.layoutState.isManuallyPlaced && !window.isPictureInPicture && !window.styleMask.contains(.fullScreen)
+    private func isPlaceableByLayout(_ window: OPNStreamWindow) -> Bool {
+        let presentation = presentations[ObjectIdentifier(window)]
+        return !window.layoutState.isManuallyPlaced && !window.isPictureInPicture && !window.isPictureInPicturePending &&
+            !window.isMiniaturized && !window.isPresentationEnding && !isNativeFullScreen(window) &&
+            presentation?.transition == FullScreenTransition.none
     }
 
     private func releaseTile(_ window: OPNStreamWindow) {
@@ -367,7 +384,18 @@ final class OPNStreamWindowPresenter {
                 MainActor.assumeIsolated { window.map(OPNStreamWindowPresenter.noteFrameChange) }
             }
         }
-        presentation.observerTokens = [willEnter, didEnter, willExit, didExit] + layoutTokens
+        let willMiniaturize = center.addObserver(forName: NSWindow.willMiniaturizeNotification, object: window, queue: .main) { [weak window] _ in
+            MainActor.assumeIsolated {
+                guard let window, !window.isApplyingLayoutChange else { return }
+                OPNStreamBorderless.takePlacement(window)
+            }
+        }
+        let miniaturizationTokens = [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification].map { name in
+            center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.retileWindows() }
+            }
+        }
+        presentation.observerTokens = [willEnter, didEnter, willExit, didExit, willMiniaturize] + layoutTokens + miniaturizationTokens
         presentations[id] = presentation
         return presentation
     }
@@ -377,14 +405,19 @@ final class OPNStreamWindowPresenter {
     static func noteFrameChange(_ window: OPNStreamWindow) {
         // No layout frame yet means the placement is still waiting on the geometry gate, so a move
         // that lands before it is not the reader's.
-        guard window.layoutState.isAutoTiled, window.layoutFrame != nil, !window.isAtLayoutFrame else { return }
-        window.layoutState.isAutoTiled = false
-        window.layoutState.isManuallyPlaced = true
-        window.clearLayoutFrame()
+        guard !window.isApplyingLayoutChange, window.layoutState.isAutoTiled,
+              window.layoutFrame != nil, !window.isAtLayoutFrame else { return }
+        OPNStreamBorderless.takePlacement(window)
     }
 
     private func setTransition(_ transition: FullScreenTransition, for id: ObjectIdentifier) {
-        presentations[id]?.transition = transition
+        guard let presentation = presentations[id] else { return }
+        presentation.transition = transition
+        let window = presentation.window
+        if window.layoutState.isAutoTiled || window.layoutState.isBorderless {
+            OPNStreamBorderless.takePlacement(window)
+        }
+        retileWindows()
     }
 
     private func endTransition(_ transition: FullScreenTransition, for id: ObjectIdentifier) {
@@ -392,6 +425,7 @@ final class OPNStreamWindowPresenter {
         guard presentation.transition == transition else { return }
         presentation.transition = .none
         advanceDismissal(presentation)
+        retileWindows()
     }
 
     private func removeTransitionObservers(from presentation: WindowPresentation) {
@@ -412,11 +446,13 @@ final class OPNStreamWindowPresenter {
     private func tearDownWindow(_ window: OPNStreamWindow) {
         window.stopPersistingFrame()
         window.orderOut(nil)
+        OPNStreamBorderless.postCoveringStateChange(for: window)
         window.contentView = nil
         // A late re-presentation must not leave the contentless window on screen.
         Task { @MainActor [weak window] in
             guard let window, window.isVisible else { return }
             window.orderOut(nil)
+            OPNStreamBorderless.postCoveringStateChange(for: window)
         }
     }
 

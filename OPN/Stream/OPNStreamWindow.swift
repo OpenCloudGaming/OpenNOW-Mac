@@ -50,7 +50,62 @@ final class OPNStreamWindow: NSWindow {
     /// taking the window back, which a frame change alone cannot tell from the layout's own.
     private(set) var layoutFrame: NSRect?
 
+    private(set) var isApplyingLayoutChange = false
+    private(set) var isPresentationEnding = false
+    private var layoutTask: Task<Void, Never>?
+    private var layoutRequestID = UUID()
+    var isBorderlessExitPending = false
+    var pictureInPictureRequestID: UUID?
+    var isPictureInPicturePending: Bool { pictureInPictureRequestID != nil }
+    var hasPendingLayoutChange: Bool { layoutTask != nil }
+    var layoutMembershipDidChange: (@MainActor () -> Void)?
+
+    func cancelPendingLayout() {
+        layoutRequestID = UUID()
+        layoutTask?.cancel()
+        layoutTask = nil
+        pictureInPictureRequestID = nil
+        isBorderlessExitPending = false
+    }
+
+    func scheduleLayoutChange(_ body: @escaping @MainActor (OPNStreamWindow) -> Void) {
+        cancelPendingLayout()
+        guard !isPresentationEnding else { return }
+        let requestID = layoutRequestID
+        layoutTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.layoutRequestID == requestID {
+                    self.layoutTask = nil
+                    self.pictureInPictureRequestID = nil
+                    self.isBorderlessExitPending = false
+                }
+            }
+            guard await StreamWindowGeometryGate.waitUntilGeometryIsMutable(for: self),
+                  self.layoutRequestID == requestID, !self.isPresentationEnding,
+                  !self.styleMask.contains(.fullScreen) else { return }
+            self.isApplyingLayoutChange = true
+            defer { self.isApplyingLayoutChange = false }
+            body(self)
+        }
+    }
+
+    func endPresentation() {
+        isPresentationEnding = true
+        cancelPendingLayout()
+        layoutMembershipDidChange = nil
+    }
+
+    override func close() {
+        endPresentation()
+        super.close()
+        OPNStreamBorderless.postCoveringStateChange(for: self)
+    }
+
     func setFrameFromLayout(_ frame: NSRect) {
+        let wasApplyingLayoutChange = isApplyingLayoutChange
+        isApplyingLayoutChange = true
+        defer { isApplyingLayoutChange = wasApplyingLayoutChange }
         layoutFrame = frame
         setFrame(frame, display: true)
     }

@@ -69,4 +69,30 @@ import Testing
         let release = keyboard(ledger.events(for: key("plain", code: 0, down: false)))
         #expect(release.map(\.modifiers) == [.shift])
     }
+
+    @Test func focusReleaseClearsSharedDesktopOwnersWithoutTouchingGamepads() {
+        var ledger = ControllerBindingOutputLedger()
+        _ = ledger.events(for: key("second", code: 49, down: true, modifiers: .shift))
+        _ = ledger.events(for: key("first", code: 49, down: true, modifiers: .control))
+        _ = ledger.events(for: key("second", code: 0, down: true))
+        let mousePress = UserInputEvent.mouse(.button(deviceID: "first", button: .left, isPressed: true,
+                                                      timestamp: MediaTimestamp(nanoseconds: 1)))
+        _ = ledger.events(for: mousePress)
+        _ = ledger.events(for: .mouse(.button(deviceID: "second", button: .left, isPressed: true,
+                                             timestamp: MediaTimestamp(nanoseconds: 1))))
+        let stamp = MediaTimestamp(nanoseconds: 2)
+
+        let releases = ledger.releaseHeldOutputs(timestamp: stamp)
+
+        #expect(keyboard(releases).map(\.keyCode) == [0, 49])
+        #expect(keyboard(releases).allSatisfy { !$0.isPressed && $0.modifiers.isEmpty })
+        #expect(releases.last == .mouse(.button(deviceID: "first", button: .left, isPressed: false, timestamp: stamp)))
+        #expect(releases.count == 3)
+        #expect(ledger.releaseHeldOutputs(timestamp: stamp).isEmpty)
+        #expect(ledger.events(for: key("first", down: false)).isEmpty)
+        #expect(ledger.events(for: key("second", down: false)).isEmpty)
+        let pad = UserInputEvent.gamepad(GamepadState(deviceID: "first", playerIndex: 0, buttons: .south, timestamp: stamp))
+        #expect(ledger.events(for: pad) == [pad])
+        #expect(ledger.events(for: mousePress) == [mousePress])
+    }
 }

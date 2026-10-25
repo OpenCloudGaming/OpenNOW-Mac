@@ -53,8 +53,16 @@ private struct MouseButtonTransition: Equatable {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
+    window.isReleasedWhenClosed = false
     window.contentView = view
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
     var events: [UserInputEvent] = []
     var releaseObservedWhileLocked = false
     view.onInputEvent = { event in
@@ -83,13 +91,20 @@ private struct MouseButtonTransition: Equatable {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
+    window.isReleasedWhenClosed = false
     window.contentView = view
     var events: [UserInputEvent] = []
     view.onInputEvent = { events.append($0) }
     let mouseDown = try #require(makeMouseEvent(type: .leftMouseDown))
     let mouseUp = try #require(makeMouseEvent(type: .leftMouseUp))
-    defer { view.setPointerLocked(false) }
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
 
     view.mouseDown(with: mouseDown)
     view.mouseUp(with: mouseUp)
@@ -108,10 +123,17 @@ private struct MouseButtonTransition: Equatable {
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720), styleMask: .borderless, backing: .buffered, defer: false)
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
     view.cursorAssociationHandler = { _ in .success }
+    view.inputFocusProvider = { (true, true) }
+    view.cursorWarpHandler = { _ in }
     view.hidesCursorWhilePointerLocked = false
     view.mouseInputMode = .absolute
+    window.isReleasedWhenClosed = false
     window.contentView = view
-    defer { view.setPointerLocked(false) }
+    defer {
+        view.setPointerLocked(false)
+        window.contentView = nil
+        window.close()
+    }
 
     view.setRemoteCursorVisible(false)
 
@@ -187,7 +209,8 @@ private struct MouseButtonTransition: Equatable {
     let (window, view) = makeAbsoluteCursorCaptureWindow()
     defer {
         view.setPointerLocked(false)
-        withExtendedLifetime(window) {}
+        window.contentView = nil
+        window.close()
     }
     var events: [UserInputEvent] = []
     view.onInputEvent = { events.append($0) }

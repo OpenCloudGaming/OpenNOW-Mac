@@ -66,8 +66,21 @@ enum OPNStreamPictureInPicture {
         OPNStreamStageGeometry.centered(size: contentSize, within: visibleFrame)
     }
 
-    static func enter(_ window: OPNStreamWindow, aspectRatio: CGFloat) {
-        guard !window.isPictureInPicture else { return }
+    static func enter(_ window: OPNStreamWindow, aspectRatio: CGFloat,
+                      prepareForEntry: (@MainActor () -> Bool)? = nil,
+                      completion: (@MainActor () -> Void)? = nil) {
+        guard !window.isPictureInPicture, !window.isPresentationEnding, !window.styleMask.contains(.fullScreen) else { return }
+        OPNStreamBorderless.releaseToReader(window) { [weak window] in
+            guard let window, !window.isPresentationEnding, prepareForEntry?() != false else { return }
+            enterRestoredWindow(window, aspectRatio: aspectRatio)
+            completion?()
+        }
+        if !window.isPictureInPicture, window.hasPendingLayoutChange {
+            window.pictureInPictureRequestID = UUID()
+        }
+    }
+
+    private static func enterRestoredWindow(_ window: OPNStreamWindow, aspectRatio: CGFloat) {
         window.windowedState = OPNStreamWindow.WindowedState(
             level: window.level,
             collectionBehavior: window.collectionBehavior,
@@ -102,7 +115,12 @@ enum OPNStreamPictureInPicture {
     }
 
     static func exit(_ window: OPNStreamWindow) {
+        if window.isPictureInPicturePending {
+            OPNStreamBorderless.exit(window)
+            window.layoutMembershipDidChange?()
+        }
         guard window.isPictureInPicture else { return }
+        window.cancelPendingLayout()
         OPNStreamWindowFrameStore.save(window.frame, isPictureInPicture: true, defaults: window.frameStoreDefaults)
         window.isPictureInPicture = false
         OPNStreamWindowChrome.apply(to: window, isPictureInPicture: false)
@@ -110,6 +128,7 @@ enum OPNStreamPictureInPicture {
             window.level = .normal
             window.collectionBehavior = [.fullScreenPrimary]
             setAllSpacesMembership(onChildWindowsOf: window, isMember: false)
+            window.layoutMembershipDidChange?()
             return
         }
         window.windowedState = nil
@@ -118,6 +137,7 @@ enum OPNStreamPictureInPicture {
         setAllSpacesMembership(onChildWindowsOf: window, isMember: false)
         window.setFrame(state.frame, display: true)
         if state.isMiniaturized { window.miniaturize(nil) }
+        window.layoutMembershipDidChange?()
     }
 
     /// The carrier child windows are not children in the view hierarchy, so nothing else re-derives

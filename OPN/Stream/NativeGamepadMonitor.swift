@@ -78,6 +78,7 @@ public final class NativeGamepadMonitor {
     let pollingQueue = DispatchQueue(label: "com.opennow.gamepad-poll", qos: .userInteractive)
     var pollingAllowed = false
     var mappingsEnabled = false
+    var isKeyboardMouseInputEnabled = true
     private var mappingSubscription: AnyCancellable?
     private var orderSubscription: AnyCancellable?
     var bindingOutputLedger = ControllerBindingOutputLedger()
@@ -365,11 +366,7 @@ public final class NativeGamepadMonitor {
                 guard let self else { return }
                 self.pollState.pendingEvents.append(contentsOf: events)
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    let commands = self.pollingQueue.sync { self.pollState.takePendingCommands() }
-                    let pending = self.pollingQueue.sync { self.pollState.takePendingEvents() }
-                    for command in commands { self.onStreamCommand?(command) }
-                    for event in pending { self.emitInputEvent(event) }
+                    self?.dispatchPendingInput()
                 }
             }, onBatteryChange: { [weak self] changes in
                 guard let self else { return }

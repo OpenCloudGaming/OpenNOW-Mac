@@ -53,7 +53,8 @@ extension NativeNVSTHostViewModel {
             showNativeTransientStreamMessage(coverage == .fullScreen ? "Tiles fill the screen" : "Tiles below the menu bar")
             return
         }
+        let isLeavingBorderless = window.layoutState.isBorderless && !window.isBorderlessExitPending
         OPNStreamBorderless.toggleByReader(window)
-        showNativeTransientStreamMessage(window.layoutState.isBorderless ? "Borderless full screen" : "Leaving borderless full screen")
+        showNativeTransientStreamMessage(isLeavingBorderless ? "Leaving borderless full screen" : "Borderless full screen")
     }
 }

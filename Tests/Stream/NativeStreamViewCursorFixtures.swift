@@ -17,6 +17,8 @@ import AppKit
         defer: false
     )
     let view = NativeStreamView(frame: window.contentView?.bounds ?? .zero)
+    window.isReleasedWhenClosed = false
+    view.inputFocusProvider = { (true, true) }
     let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
     view.cursorLocationProvider = { center }
     view.cursorWarpHandler = { _ in }

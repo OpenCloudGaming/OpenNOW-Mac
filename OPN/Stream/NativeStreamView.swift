@@ -173,17 +173,12 @@ public final class NativeStreamView: NSView {
     }
     var cursorLocationProvider: () -> CGPoint = { NSEvent.mouseLocation }
     var cursorWarpHandler: ((CGPoint) -> Void)?
+    var inputFocusProvider: (() -> (isApplicationActive: Bool, isWindowKey: Bool))?
     // `internal(set)` rather than `private(set)`: the type's own extensions in the neighbouring
     // files write these, and the public contract is unchanged — nothing outside the module can.
     public internal(set) var isPointerLocked = false
     public internal(set) var isAbsoluteCursorConfined = false
     public internal(set) var isEmittingNeutralizingAbsolutePosition = false
-    public var isCursorCaptured: Bool { isPointerLocked || isAbsoluteCursorConfined }
-    /// A cursor rect and a pointer capture only mean anything for the key window of the active app.
-    /// Taking either while another app is frontmost steals a pointer this window cannot even draw in.
-    public var isFrontmostInputTarget: Bool {
-        NSApplication.shared.isActive && window?.isKeyWindow == true
-    }
     /// PiP is a small, floating viewing surface. While it is on screen the stream must not take the
     /// pointer - the cursor has to stay usable for the strip and for whatever else the user moved
     /// to - and the controller has to keep working even though the window is deliberately never
@@ -431,8 +426,9 @@ public final class NativeStreamView: NSView {
     /// which is what keeps two accounts' concurrent games from sharing one game's overrides.
     init(frame frameRect: NSRect,
          mappingProvider: any ControllerMappingProviding = ControllerMappingStore.shared,
-         initiallyDisabledControllers: Set<InputDeviceID> = []) {
-        gamepadMonitor = NativeGamepadMonitor(mappingProvider: mappingProvider)
+         initiallyDisabledControllers: Set<InputDeviceID> = [],
+         controllerRegistry: ControllerMappingDevices = .shared) {
+        gamepadMonitor = NativeGamepadMonitor(mappingProvider: mappingProvider, registry: controllerRegistry)
         gamepadMonitor.disableForStream(initiallyDisabledControllers)
         super.init(frame: frameRect)
         wantsLayer = true

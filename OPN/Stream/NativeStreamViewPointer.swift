@@ -5,8 +5,25 @@ import AppKit
 import QuartzCore
 
 extension NativeStreamView {
+    public var isCursorCaptured: Bool { isPointerLocked || isAbsoluteCursorConfined }
+
+    /// A cursor rect and a pointer capture only mean anything for the key window of the active app.
+    /// Taking either while another app is frontmost steals a pointer this window cannot even draw in.
+    public var isFrontmostInputTarget: Bool {
+        let focus = inputFocus
+        return focus.isApplicationActive && focus.isWindowKey
+    }
+
+    var inputFocus: (isApplicationActive: Bool, isWindowKey: Bool) {
+        inputFocusProvider?() ?? (NSApplication.shared.isActive, window?.isKeyWindow == true)
+    }
+
+    var canAcquirePointerCapture: Bool {
+        remoteInputEnabled && !localOverlayCapturesInput && isFrontmostInputTarget && !isPictureInPictureMode
+    }
+
     func enablePointerLock() {
-        guard window != nil else { return }
+        guard canAcquirePointerCapture, window != nil else { return }
         disableAbsoluteCursorConfinement()
         guard !isAbsoluteCursorConfined else { return }
         guard cursorAssociationHandler(false) == .success else {
@@ -89,9 +106,9 @@ extension NativeStreamView {
     }
 
     func captureAbsoluteCursorIfNeeded() {
-        guard remoteInputEnabled, directMouseInputEnabled, confinesCursorToWindowInAbsoluteMode,
+        guard canAcquirePointerCapture, directMouseInputEnabled, confinesCursorToWindowInAbsoluteMode,
               mouseInputMode == .absolute, !isPointerLocked, !isAbsoluteCursorConfined,
-              !isPictureInPictureMode, window != nil else { return }
+              window != nil else { return }
         guard Self.confinedCursorPoint(cursorLocationProvider(), to: window?.frame ?? .zero) != nil else { return }
         isAbsoluteCursorConfined = true
         window?.acceptsMouseMovedEvents = true
