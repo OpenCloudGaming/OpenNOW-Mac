@@ -26,7 +26,8 @@ let package = Package(
         // Hosted signaling (see RemoteCoOp/hosted-signaling-plan.md). Pinned exactly: this carries
         // the signaling for a live session, and an unattended minor bump is not something to
         // discover mid-stream.
-        .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.4.0")
+        .package(url: "https://github.com/ably/ably-cocoa.git", exact: "1.4.0"),
+        .package(url: "https://github.com/apple/swift-collections.git", "1.0.0"..<"1.7.0")
     ],
     targets: [
         // The native NVST bundle's protocol libraries (milestone 4), built as *static* frameworks

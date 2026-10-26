@@ -1,5 +1,5 @@
 {
-  "originHash" : "01123e69d8484f54232a3318f5e52e33432de29594af053dffbffb78d91e122b",
+  "originHash" : "9672e9ed34fe1ec686d49e0e3d5dcd539eda6e3d5190cfa0d1d2e0bd7da0cffa",
   "pins" : [
     {
       "identity" : "ably-cocoa",
@@ -60,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "a66de878e87ef5a3d5d390e0f6d9002aa5541a43",
-        "version" : "1.7.0"
+        "revision" : "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
+        "version" : "1.6.0"
       }
     },
     {
