@@ -242,7 +242,18 @@ final class LoginViewModel: ObservableObject {
             return
         }
         Task {
-            guard await restoreAccountSession(account) else { return }
+            // A sign-out or cancellation during the restore advances this; that outcome is the
+            // user's, not a dead credential, and must not raise a sign-in.
+            let generation = loginLaunchGeneration
+            guard await restoreAccountSession(account) else {
+                // The saved tokens can be rejected (an HTTP 401 refresh) even though the row looked
+                // restorable. The restore's message lands on the login wall, which this catalog
+                // switch never shows, so without this the click looks like a reload that changed nothing.
+                if generation == loginLaunchGeneration, !account.isActive {
+                    beginReauthentication(for: account, because: "\(account.displayName)'s saved session was rejected. Sign in again to switch to it.")
+                }
+                return
+            }
             announceRunningGameContinues(with: account)
         }
     }
@@ -270,11 +281,11 @@ final class LoginViewModel: ObservableObject {
     /// Another account is still signed in, so cancelling the re-sign-in has a session to return to.
     var canCancelReauthentication: Bool { activeSession != nil }
 
-    func beginReauthentication(for account: LoginAccount) {
+    func beginReauthentication(for account: LoginAccount, because reason: String? = nil) {
         selectRememberedAccount(account)
         refreshLoginProviders()
         successMessage = ""
-        validationMessage = "\(account.displayName) is signed out. Sign in again to switch to it."
+        validationMessage = reason ?? "\(account.displayName) is signed out. Sign in again to switch to it."
         signInRequest = .reauthenticate(email: account.email)
         OPNLog.info(.auth, "Account switch needs re-authentication account=\(account.email)")
     }

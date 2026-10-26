@@ -187,6 +187,37 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     #expect(await authService.status == .authorizationError)
 }
 
+@Test func jarvisAuthServiceFallsBackToTheRefreshTokenWhenTheClientTokenIsRejected() async throws {
+    let session = JarvisSession(
+        accessToken: "access",
+        refreshToken: "refresh",
+        userId: "user",
+        isAuthenticated: true,
+        clientToken: "client",
+        accessTokenExpiry: JarvisSession.currentEpochMs() - 1_000
+    )
+    let transport = SequencedJarvisTransport([
+        .success((status: 401, json: ["error": "unauthorized"])),
+        .success((status: 200, json: ["access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600])),
+        .success((status: 200, json: ["client_token": "new-client", "expires_in": 240])),
+    ])
+    let service = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: transport, session: session)
+    let refreshed = try await service.refreshSession(force: true)
+    #expect(refreshed.accessToken == "new-access")
+    #expect(refreshed.clientToken == "new-client")
+    #expect(await transport.requestCount == 3)
+
+    // Both grants rejected: the error still surfaces so the caller can send the user to sign in.
+    let rejecting = SequencedJarvisTransport([
+        .success((status: 401, json: ["error": "unauthorized"])),
+        .success((status: 401, json: ["error": "unauthorized"])),
+    ])
+    let deadService = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: rejecting, session: session)
+    await #expect(throws: JarvisAuthError.httpStatus(401)) {
+        _ = try await deadService.refreshSession(force: true)
+    }
+}
+
 @Test func jarvisOAuthCallbackValidationMatchesVendorStateFlow() async throws {
     let service = JarvisAuthService(transport: MockJarvisTransport { _ in [:] })
     let callback = try await service.parseCallback(query: "code=abc&state=expected", expectedState: "expected")

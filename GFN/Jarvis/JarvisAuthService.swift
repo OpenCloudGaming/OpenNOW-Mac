@@ -138,13 +138,19 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             guard isSessionRefreshable else { throw JarvisAuthError.noRefreshMechanism }
             if !session.clientToken.isEmpty {
                 let body = JarvisOAuthRequestFactory.clientTokenGrantBody(clientToken: session.clientToken, userId: session.userId, configuration: configuration)
-                let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
-                let enriched = try await ensureClientToken(refreshed)
-                setSessionInMemory(enriched)
-                try await persistSessionIfAutomatic(enriched)
-                telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "success", "grant_type": "client_token"])
-                span.finish(success: true)
-                return enriched
+                do {
+                    let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
+                    let enriched = try await ensureClientToken(refreshed)
+                    setSessionInMemory(enriched)
+                    try await persistSessionIfAutomatic(enriched)
+                    telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "success", "grant_type": "client_token"])
+                    span.finish(success: true)
+                    return enriched
+                } catch let error as JarvisAuthError where error.category == .authorization && !session.refreshToken.isEmpty {
+                    // A rejected client token does not say the refresh token is dead: the client token
+                    // is the short-lived one. Only when that grant fails too is the account signed out.
+                    telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "fallback", "grant_type": "client_token"])
+                }
             }
             let refreshed = try await refreshWithOAuthToken()
             telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "success", "grant_type": "refresh_token"])
