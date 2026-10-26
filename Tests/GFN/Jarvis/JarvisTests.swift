@@ -194,6 +194,8 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
         userId: "user",
         isAuthenticated: true,
         clientToken: "client",
+        clientTokenExpiry: JarvisSession.currentEpochMs() + 3_600_000,
+        clientTokenExpiryLength: 3_600_000,
         accessTokenExpiry: JarvisSession.currentEpochMs() - 1_000
     )
     let transport = SequencedJarvisTransport([
@@ -204,6 +206,7 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     let service = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: transport, session: session)
     let refreshed = try await service.refreshSession(force: true)
     #expect(refreshed.accessToken == "new-access")
+    // The rejected token is still unexpired, so only dropping it makes the fallback mint a new one.
     #expect(refreshed.clientToken == "new-client")
     #expect(await transport.requestCount == 3)
 

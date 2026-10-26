@@ -150,6 +150,11 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
                     // A rejected client token does not say the refresh token is dead: the client token
                     // is the short-lived one. Only when that grant fails too is the account signed out.
                     telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "fallback", "grant_type": "client_token"])
+                    // Drop the rejected token so the refresh-token merge cannot copy it (and its expiry)
+                    // back into the session; the fallback then mints a fresh one.
+                    session.clientToken = ""
+                    session.clientTokenExpiry = 0
+                    session.clientTokenExpiryLength = 0
                 }
             }
             let refreshed = try await refreshWithOAuthToken()
