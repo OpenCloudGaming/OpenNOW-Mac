@@ -19,7 +19,7 @@ private final class OfflineCatalogPresence: DiscordPresenceServing {
             defer { SessionManagerURLProtocol.uninstall(host: "login.nvidia.com") }
             let fixture = try DetachedAccountTestFixture()
             defer { fixture.tearDown() }
-            try expireIDTokens(in: fixture)
+            try fixture.expireIDTokens()
             let service = CatalogAccountServiceStub()
             let model = makeDetachedCatalog(fixture: fixture, service: service)
             let ownerCredentials = credentials(for: fixture.detachedSession)
@@ -55,7 +55,7 @@ private final class OfflineCatalogPresence: DiscordPresenceServing {
             }
             try expectDetachedResumeIsAdmitted(model, fixture: fixture)
             #expect(fixture.login.activeSession === fixture.mainSession)
-            #expect(SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").count == 2)
+            #expect(SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").count == 2 * (JarvisRetryPolicy.gfnPC.maxRetries + 1))
         }
     }
 
@@ -66,7 +66,7 @@ private final class OfflineCatalogPresence: DiscordPresenceServing {
             defer { SessionManagerURLProtocol.uninstall(host: "login.nvidia.com") }
             let fixture = try DetachedAccountTestFixture()
             defer { fixture.tearDown() }
-            try expireIDTokens(in: fixture)
+            try fixture.expireIDTokens()
             try await restoreOfflineSession(fixture.detachedAccount, fixture: fixture)
             try await restoreOfflineSession(fixture.mainAccount, fixture: fixture)
             let service = CatalogAccountServiceStub()
@@ -100,32 +100,22 @@ private final class OfflineCatalogPresence: DiscordPresenceServing {
 
     private func installOfflineRefreshResponse() {
         SessionManagerURLProtocol.install(host: "login.nvidia.com") { _ in
-            SessionManagerURLProtocol.response(json: ["error": "invalid_grant"], status: 401)
-        }
-    }
-
-    private func expireIDTokens(in fixture: DetachedAccountTestFixture) throws {
-        for session in [fixture.mainSession, fixture.detachedSession] {
-            let claims: [String: Any] = ["sub": session.userId, "email": session.accountEmail, "exp": 1]
-            let payload = try JSONSerialization.data(withJSONObject: claims).base64EncodedString()
-                .replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "=", with: "")
-            session.idToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.\(payload)."
-            try #require(JarvisSessionParser.idTokenExpiry(session.idToken) == 1_000)
-            try #require(session.canContinueOffline && !session.isExpired)
+            SessionManagerURLProtocol.response(json: ["error": "temporarily_unavailable"], status: 503)
         }
     }
 
     private func restoreOfflineSession(_ account: LoginAccount, fixture: DetachedAccountTestFixture) async throws {
+        let session = try #require(fixture.login.sessions.first { $0.accountEmail == account.email })
+        let originalTokens = fixture.tokens(for: session)
+        try #require(JarvisSessionParser.idTokenExpiry(session.idToken) == 1_000)
+        try #require(session.canContinueOffline && !session.isExpired)
         let previousRequestCount = SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").count
         try #require(await fixture.login.restoreAccountSession(account))
         try #require(fixture.login.successMessage.contains("offline session"))
         let refreshRequests = SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").dropFirst(previousRequestCount)
-        try #require(refreshRequests.count == 1)
-        let request = try #require(refreshRequests.first)
-        #expect(request.httpMethod == "POST")
-        #expect(request.url?.path == "/token")
+        try #require(refreshRequests.count == JarvisRetryPolicy.gfnPC.maxRetries + 1)
+        #expect(refreshRequests.allSatisfy { $0.httpMethod == "POST" && $0.url?.path == "/token" })
+        #expect(fixture.tokens(for: session) == originalTokens)
         #expect(fixture.login.activeAccount === account)
     }
 

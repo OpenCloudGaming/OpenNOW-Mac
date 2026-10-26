@@ -164,8 +164,24 @@ extension LoginViewModel {
         }
     }
 
+    /// Why a restore did not leave the account signed in. Only `rejected` says the saved tokens are
+    /// dead; the others must not send the user through a fresh sign-in.
+    enum AccountRestoreOutcome: Equatable {
+        case restored
+        /// No saved session, or the auth server refused the saved grants.
+        case rejected
+        /// The refresh failed for a reason that says nothing about the tokens, such as no network.
+        case unavailable
+        /// A sign-out or cancellation ran during the restore.
+        case cancelled
+    }
+
     @discardableResult
     func restoreAccountSession(_ account: LoginAccount) async -> Bool {
+        await restoreAccountSessionOutcome(account) == .restored
+    }
+
+    func restoreAccountSessionOutcome(_ account: LoginAccount) async -> AccountRestoreOutcome {
         validationMessage = ""
         successMessage = ""
         email = account.email
@@ -175,15 +191,54 @@ extension LoginViewModel {
         guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
             OPNLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
             validationMessage = "No saved session exists for this account. Sign in again."
-            return false
+            return .rejected
         }
 
-        isAuthenticating = true
-        defer { isAuthenticating = false }
         // Captured before the network round trips. A sign-out or cancellation during them advances
         // this, and the restore then discards its result instead of reactivating the account.
         let generation = loginLaunchGeneration
+        isAuthenticating = true
+        defer {
+            if generation == loginLaunchGeneration { isAuthenticating = false }
+        }
 
+        let jarvisSession = savedJarvisSession(account: account, storedSession: storedSession)
+
+        do {
+            OPNLog.info(.auth, "Refreshing saved session account=\(account.email)")
+            await jarvisAuthService.setSession(jarvisSession)
+            guard generation == loginLaunchGeneration else { return .cancelled }
+            let refreshed = try await jarvisAuthService.refreshSession(force: !jarvisSession.isIdTokenValid)
+            guard generation == loginLaunchGeneration else {
+                OPNLog.info(.auth, "Discarded a session refresh that completed after sign-out account=\(account.email)")
+                return .cancelled
+            }
+            persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
+            successMessage = "Session refreshed for \(account.displayName)."
+            OPNLog.info(.auth, "Session refreshed account=\(account.email)")
+            return .restored
+        } catch {
+            guard generation == loginLaunchGeneration else { return .cancelled }
+            if (error as? JarvisAuthError)?.category != .authorization && storedSession.canContinueOffline && !storedSession.isExpired {
+                markActive(accountEmail: account.email)
+                trySave()
+                refreshSignedOutAccounts()
+                successMessage = "Using saved offline session for \(account.displayName)."
+                OPNLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
+                return .restored
+            } else {
+                OPNLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
+                if (error as? JarvisAuthError)?.category == .authorization {
+                    validationMessage = "Saved session expired. Sign in again."
+                    return .rejected
+                }
+                validationMessage = "Couldn't refresh the saved session for \(account.displayName). Check your connection and try again."
+                return .unavailable
+            }
+        }
+    }
+
+    private func savedJarvisSession(account: LoginAccount, storedSession: LoginSession) -> JarvisSession {
         var jarvisSession = JarvisSession(
             accessToken: storedSession.accessToken,
             idToken: storedSession.idToken,
@@ -203,34 +258,7 @@ extension LoginViewModel {
         if jarvisSession.idTokenExpiry == 0 {
             jarvisSession.idTokenExpiry = JarvisSessionParser.idTokenExpiry(storedSession.idToken)
         }
-
-        do {
-            OPNLog.info(.auth, "Refreshing saved session account=\(account.email)")
-            await jarvisAuthService.setSession(jarvisSession)
-            let refreshed = try await jarvisAuthService.refreshSession(force: !jarvisSession.isIdTokenValid)
-            guard generation == loginLaunchGeneration else {
-                OPNLog.info(.auth, "Discarded a session refresh that completed after sign-out account=\(account.email)")
-                return false
-            }
-            persistSignedInSession(session: refreshed, userInfo: nil, authMethod: Jarvis.Operation.getSessionToken.rawValue)
-            successMessage = "Session refreshed for \(account.displayName)."
-            OPNLog.info(.auth, "Session refreshed account=\(account.email)")
-            return true
-        } catch {
-            if storedSession.canContinueOffline && !storedSession.isExpired {
-                guard generation == loginLaunchGeneration else { return false }
-                markActive(accountEmail: account.email)
-                trySave()
-                refreshSignedOutAccounts()
-                successMessage = "Using saved offline session for \(account.displayName)."
-                OPNLog.warning(.auth, "Using offline saved session account=\(account.email) refreshError=\(error.localizedDescription)")
-                return true
-            } else {
-                validationMessage = "Saved session expired. Sign in again."
-                OPNLog.warning(.auth, "Session restore failed account=\(account.email) error=\(error.localizedDescription)")
-                return false
-            }
-        }
+        return jarvisSession
     }
 
     func signOutAccount(_ account: LoginAccount) async {
@@ -244,8 +272,7 @@ extension LoginViewModel {
         OPNLog.info(.auth, "Signing out account=\(account.email)")
         // Invalidate anything already in flight before the purge below, so a refresh or restore that
         // completes afterwards cannot recreate the account or write its tokens back.
-        loginLaunchGeneration += 1
-        authService.invalidatePendingAuthentication()
+        invalidateLoginIntent()
         let wasActive = account.isActive
         let userId = account.userId
         let email = account.email

@@ -381,7 +381,10 @@ final class OPNStreamWindowPresenter {
         }
         let layoutTokens = [NSWindow.didMoveNotification, NSWindow.didResizeNotification].map { name in
             center.addObserver(forName: name, object: window, queue: .main) { [weak window] _ in
-                MainActor.assumeIsolated { window.map(OPNStreamWindowPresenter.noteFrameChange) }
+                MainActor.assumeIsolated {
+                    guard let window else { return }
+                    OPNStreamWindowPresenter.noteFrameChange(window)
+                }
             }
         }
         let willMiniaturize = center.addObserver(forName: NSWindow.willMiniaturizeNotification, object: window, queue: .main) { [weak window] _ in
@@ -400,14 +403,16 @@ final class OPNStreamWindowPresenter {
         return presentation
     }
 
-    /// A tiled window that is no longer where the layout put it was taken by the reader, and stays
-    /// theirs: the layout stops placing it.
-    static func noteFrameChange(_ window: OPNStreamWindow) {
+    /// A tiled window displaced by the reader stays theirs. Returns whether ownership changed;
+    /// the window's owning presenter retiles the rest.
+    @discardableResult
+    static func noteFrameChange(_ window: OPNStreamWindow) -> Bool {
         // No layout frame yet means the placement is still waiting on the geometry gate, so a move
         // that lands before it is not the reader's.
         guard !window.isApplyingLayoutChange, window.layoutState.isAutoTiled,
-              window.layoutFrame != nil, !window.isAtLayoutFrame else { return }
+              window.layoutFrame != nil, !window.isAtLayoutFrame else { return false }
         OPNStreamBorderless.takePlacement(window)
+        return true
     }
 
     private func setTransition(_ transition: FullScreenTransition, for id: ObjectIdentifier) {

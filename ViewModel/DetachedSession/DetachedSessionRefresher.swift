@@ -57,7 +57,8 @@ struct DetachedSessionRefresher {
             return true
         } catch {
             OPNLog.warning(.auth, "Detached session refresh failed account=\(ownership.email) error=\(error.localizedDescription)")
-            guard !Task.isCancelled, isCurrent(ownership, account: account, session: storedSession) else { return false }
+            guard !Task.isCancelled, isCurrent(ownership, account: account, session: storedSession),
+                  (error as? JarvisAuthError)?.category != .authorization else { return false }
             return storedSession.canContinueOffline && !storedSession.isExpired
         }
     }

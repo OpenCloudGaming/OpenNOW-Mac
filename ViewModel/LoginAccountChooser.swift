@@ -4,6 +4,37 @@
 import Foundation
 
 extension LoginViewModel {
+    func invalidateLoginIntent() {
+        loginLaunchGeneration += 1
+        authService.invalidatePendingAuthentication()
+        isLaunchingOAuth = false
+        isAuthenticating = false
+        isRequestingDeviceCode = false
+        deviceCodeUserCode = ""
+        deviceCodeVerificationURI = ""
+    }
+
+    @discardableResult
+    func restoreAccountSelection(_ account: LoginAccount) -> Task<Void, Never> {
+        invalidateLoginIntent()
+        let generation = loginLaunchGeneration
+        return Task {
+            guard generation == loginLaunchGeneration else { return }
+            let outcome = await restoreAccountSessionOutcome(account)
+            guard generation == loginLaunchGeneration else { return }
+            switch outcome {
+            case .restored:
+                announceRunningGameContinues(with: account)
+            case .rejected:
+                beginReauthentication(for: account, because: "\(account.displayName)'s saved session was rejected. Sign in again to switch to it.")
+            case .unavailable:
+                showAccountSwitchNotice(validationMessage)
+            case .cancelled:
+                return
+            }
+        }
+    }
+
     /// A fresh launch asks which account to browse with, when the reader asked to be asked and there
     /// is more than one saved account to choose between. Nothing is signed out or re-selected to ask.
     func presentStartupAccountChooser() {
@@ -51,7 +82,12 @@ extension LoginViewModel {
         let games = owners.count == 1
             ? "Your current game continues using \(owners[0])."
             : "Your current games continue using \(owners.formatted(.list(type: .and)))."
-        accountSwitchNotice = "Browsing now uses \(account.displayName). \(games)"
+        showAccountSwitchNotice("Browsing now uses \(account.displayName). \(games)")
+    }
+
+    /// Shows `text` in the switch notice and clears it after a while.
+    func showAccountSwitchNotice(_ text: String) {
+        accountSwitchNotice = text
         accountSwitchNoticeTask?.cancel()
         accountSwitchNoticeTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(12))

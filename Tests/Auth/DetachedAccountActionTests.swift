@@ -152,4 +152,114 @@ import Testing
         #expect(fixture.login.activeSession === fixture.mainSession)
         #expect(fixture.registry.sessions.first === gameSession)
     }
+
+    @Test(arguments: [false, true])
+    func rejectedSavedGrantsRevealTheExactAccountWithoutOfflineContinuation(_ isSavedSessionUnexpired: Bool) async throws {
+        try await networkTestIsolationLock.withLock { @MainActor @Sendable in
+            let fixture = try DetachedAccountTestFixture()
+            defer { fixture.tearDown() }
+            try fixture.expireIDTokens()
+            if !isSavedSessionUnexpired { fixture.detachedSession.expiresAt = .distantPast }
+            let mainTokens = fixture.tokens(for: fixture.mainSession)
+            let detachedTokens = fixture.tokens(for: fixture.detachedSession)
+            SessionManagerURLProtocol.install(host: "login.nvidia.com") { _ in
+                SessionManagerURLProtocol.response(json: ["error": "invalid_grant"], status: 401)
+            }
+            defer { SessionManagerURLProtocol.uninstall(host: "login.nvidia.com") }
+            fixture.login.accountChooserReason = .switchAccount
+
+            fixture.login.activateAccount(fixture.detachedAccount)
+            try await waitUntil { fixture.login.signInRequest == .reauthenticate(email: fixture.detachedEmail) }
+
+            #expect(fixture.login.accountChooserReason == nil)
+            #expect(fixture.login.reauthAccount === fixture.detachedAccount)
+            #expect(fixture.login.validationMessage.contains("saved session was rejected"))
+            #expect(fixture.login.successMessage.isEmpty)
+            #expect(fixture.login.activeSession === fixture.mainSession)
+            #expect(fixture.tokens(for: fixture.mainSession) == mainTokens)
+            #expect(fixture.tokens(for: fixture.detachedSession) == detachedTokens)
+            let authSession = await fixture.login.jarvisAuthService.session
+            #expect(authSession.clientToken.isEmpty)
+            let requests = SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com")
+            #expect(requests.count == 2)
+            #expect(requests.allSatisfy { $0.httpMethod == "POST" && $0.url?.path == "/token" })
+        }
+    }
+
+    @Test func aTransientFailureForAnExpiredSavedSessionShowsARetryNoticeInsteadOfSignIn() async throws {
+        try await networkTestIsolationLock.withLock { @MainActor @Sendable in
+            let fixture = try DetachedAccountTestFixture()
+            defer { fixture.tearDown() }
+            defer { fixture.login.dismissAccountSwitchNotice() }
+            fixture.detachedSession.expiresAt = .distantPast
+            let detachedTokens = fixture.tokens(for: fixture.detachedSession)
+            SessionManagerURLProtocol.install(host: "login.nvidia.com") { _ in
+                SessionManagerURLProtocol.response(json: ["error": "temporarily_unavailable"], status: 503)
+            }
+            defer { SessionManagerURLProtocol.uninstall(host: "login.nvidia.com") }
+
+            fixture.login.activateAccount(fixture.detachedAccount)
+            try await waitUntil { fixture.login.accountSwitchNotice != nil }
+
+            #expect(fixture.login.accountSwitchNotice == fixture.login.validationMessage)
+            #expect(fixture.login.validationMessage.contains("Check your connection"))
+            #expect(fixture.login.signInRequest == nil)
+            #expect(fixture.login.activeSession === fixture.mainSession)
+            #expect(fixture.tokens(for: fixture.detachedSession) == detachedTokens)
+            #expect(SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").count == JarvisRetryPolicy.gfnPC.maxRetries + 1)
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func aRejectedRestoreCannotDisplaceANewerExactAccountHandoffAfterSignOut() async throws {
+        try await networkTestIsolationLock.withLock { @MainActor @Sendable in
+            let fixture = try DetachedAccountTestFixture()
+            defer { fixture.tearDown() }
+            fixture.detachedSession.expiresAt = .distantPast
+            let mainTokens = fixture.tokens(for: fixture.mainSession)
+            let handoff = OPNMainWindowAccountHandoff(mainWindow: { nil }, coveringLevels: { [] })
+            defer { handoff.end() }
+            let actions = OPNMainAccountActions(confirmation: OPNConfirmationPresentation(), handoff: handoff)
+            await actions.bind(login: fixture.login).value
+            let revokeBeforeResponse: @MainActor @Sendable () async -> Void = {
+                await actions.request(.signOut(.init(account: fixture.detachedAccount)))?.value
+                await actions.request(.reauthenticate(.init(account: fixture.mainAccount)))?.value
+            }
+            SessionManagerURLProtocol.install(host: "login.nvidia.com") { _ in
+                if SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").count == 1 {
+                    let revocation = DispatchSemaphore(value: 0)
+                    Task { @MainActor in
+                        await revokeBeforeResponse()
+                        revocation.signal()
+                    }
+                    revocation.wait()
+                }
+                return SessionManagerURLProtocol.response(json: ["error": "invalid_grant"], status: 401)
+            }
+            defer { SessionManagerURLProtocol.uninstall(host: "login.nvidia.com") }
+            fixture.login.accountChooserReason = .switchAccount
+
+            fixture.login.activateAccount(fixture.detachedAccount)
+            try await waitUntil {
+                SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").count == 2 && !fixture.login.isAuthenticating
+            }
+
+            #expect(fixture.auth.endedEmails == [fixture.detachedEmail])
+            #expect(fixture.detachedSession.accessToken.isEmpty && fixture.detachedSession.refreshToken.isEmpty)
+            #expect(fixture.login.signInRequest == .reauthenticate(email: fixture.mainAccount.email))
+            #expect(fixture.login.reauthAccount === fixture.mainAccount)
+            #expect(fixture.login.email == fixture.mainAccount.email)
+            #expect(fixture.login.accountChooserReason == nil)
+            #expect(fixture.login.activeSession === fixture.mainSession)
+            #expect(fixture.tokens(for: fixture.mainSession) == mainTokens)
+        }
+    }
+
+    private func waitUntil(_ predicate: () -> Bool) async throws {
+        for _ in 0..<600 {
+            if predicate() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(predicate(), "The scripted account restore did not finish")
+    }
 }

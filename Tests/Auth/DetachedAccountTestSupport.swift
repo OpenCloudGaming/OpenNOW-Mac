@@ -69,6 +69,21 @@ final class DetachedAccountTestFixture {
         )
     }
 
+    func expireIDTokens() throws {
+        for session in [mainSession, detachedSession] {
+            let claims: [String: Any] = ["sub": session.userId, "email": session.accountEmail, "exp": 1]
+            let payload = try JSONSerialization.data(withJSONObject: claims).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            session.idToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.\(payload)."
+        }
+    }
+
+    func tokens(for session: LoginSession) -> GFNTokenStore.Tokens {
+        .init(accessToken: session.accessToken, idToken: session.idToken, refreshToken: session.refreshToken, clientToken: session.clientToken)
+    }
+
     func insertReplacementSession(id: String = UUID().uuidString) throws -> LoginSession {
         let replacement = makeLoginSessionForTesting(accountEmail: detachedEmail, id: id, userId: detachedAccount.userId)
         replacement.isActive = false

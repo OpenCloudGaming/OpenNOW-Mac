@@ -316,6 +316,7 @@ struct OPNApp: App {
                 .environmentObject(systemAppearance)
         }
         .defaultSize(width: 1100, height: 680)
+        .restorationBehavior(.disabled)
         .modelContainer(sharedModelContainer)
 
         Window("Join Remote Co-Op", id: "remote-coop-guest") {

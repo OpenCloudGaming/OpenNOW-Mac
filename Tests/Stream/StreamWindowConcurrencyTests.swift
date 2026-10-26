@@ -115,6 +115,70 @@ import Testing
         #expect(!windowA.layoutState.isBorderless)
     }
 
+    /// The reader taking one tiled window hands the layout back: the survivor is the only placeable
+    /// window left, which is not a layout, so it goes back to its own placement too.
+    @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
+    func movingOneTiledWindowRetilesTheOther() async throws {
+        try await withTiledPair { windowA, windowB in
+            windowA.setFrame(windowA.frame.offsetBy(dx: 40, dy: -40), display: false)
+            try await Task.sleep(for: .milliseconds(300))
+
+            #expect(windowA.layoutState.isManuallyPlaced)
+            #expect(!windowA.layoutState.isAutoTiled)
+            #expect(!windowB.layoutState.isAutoTiled)
+            #expect(!windowB.layoutState.isBorderless)
+        }
+    }
+
+    /// Sending a tiled window to Picture in Picture releases it the way the HUD does, and the other
+    /// window is retiled rather than left holding a half-screen frame.
+    @Test(.disabled(if: CIWindowTestGate.isHostedRunner, Comment(rawValue: CIWindowTestGate.skipReason)))
+    func releasingATiledWindowToPictureInPictureRetilesTheOther() async throws {
+        try await withTiledPair { windowA, windowB in
+            OPNStreamPictureInPicture.enter(windowA, aspectRatio: 16.0 / 9.0)
+            try await Task.sleep(for: .milliseconds(300))
+
+            #expect(windowA.isPictureInPicture)
+            #expect(!windowA.layoutState.isAutoTiled)
+            #expect(!windowB.layoutState.isAutoTiled)
+            #expect(!windowB.layoutState.isBorderless)
+        }
+    }
+
+    /// Runs `body` with two streams tiled by couch co-op, and puts the flag and sessions back after.
+    private func withTiledPair(_ body: @MainActor (OPNStreamWindow, OPNStreamWindow) async throws -> Void) async throws {
+        let previousFlag = OPNLabs.isCouchCoopEnabled
+        defer { OPNLabs.setEnabled(OPNLabs.couchCoop, previousFlag) }
+        let registry = OPNGameSessionRegistry.shared
+        let accountA = makeLoginAccountForTesting(email: "a@example.com", userId: "user-a")
+        let accountB = makeLoginAccountForTesting(email: "b@example.com", userId: "user-b", isActive: false)
+        let sessionA = makeLoginSessionForTesting(accountEmail: accountA.email, id: "retile-a", userId: "user-a")
+        let sessionB = makeLoginSessionForTesting(accountEmail: accountB.email, id: "retile-b", userId: "user-b")
+        defer {
+            sessionA.purgeTokens()
+            sessionB.purgeTokens()
+        }
+        let gameA = try #require(begin(registry: registry, account: accountA, session: sessionA))
+        let gameB = try #require(begin(registry: registry, account: accountB, session: sessionB))
+        defer {
+            OPNStreamWindowPresenter.shared.dismiss(gameA.id)
+            OPNStreamWindowPresenter.shared.dismiss(gameB.id)
+            registry.end(gameA)
+            registry.end(gameB)
+        }
+        gameA.configuration = Self.configuration(title: "Cyberpunk 2077")
+        gameB.configuration = Self.configuration(title: "Manor Lords")
+
+        OPNLabs.setEnabled(OPNLabs.couchCoop, true)
+        OPNStreamWindowPresenter.shared.syncWithOwnedSessions()
+        let windowA = try #require(OPNStreamWindowPresenter.shared.windows[gameA.id])
+        let windowB = try #require(OPNStreamWindowPresenter.shared.windows[gameB.id])
+        try await Task.sleep(for: .milliseconds(300))
+        try #require(windowA.layoutState.isAutoTiled && windowB.layoutState.isAutoTiled)
+
+        try await body(windowA, windowB)
+    }
+
     private static func configuration(title: String) -> StreamLaunchConfiguration {
         StreamLaunchConfiguration(
             title: title,
