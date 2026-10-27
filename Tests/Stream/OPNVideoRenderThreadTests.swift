@@ -192,6 +192,24 @@ import Testing
         #expect(isDrained)
     }
 
+    /// A drawable the render thread takes and then drops without presenting is autoreleased by
+    /// `nextDrawable`. If the worker never drains its autorelease pool, that drawable stays alive
+    /// and keeps its slot in the layer's pool for good, which is what stalled `vrr` (issue #120).
+    @Test func releasesWhatADrawAutoreleasedOnceTheDrawReturns() {
+        let tracker = OPNAutoreleaseTracker()
+        let drained = DispatchSemaphore(value: 0)
+        let thread = OPNVideoRenderThread {
+            tracker.autoreleaseTrackedObject()
+            drained.signal()
+        }
+        thread.signal()
+        let isDrained = drained.wait(timeout: .now() + 1) == .success
+        let isReleased = tracker.waitForRelease(timeout: 1)
+        thread.stop(timeout: 1)
+        #expect(isDrained)
+        #expect(isReleased)
+    }
+
     @Test func ignoresSignalsAfterStopping() {
         let drained = DispatchSemaphore(value: 0)
         let thread = OPNVideoRenderThread { drained.signal() }
@@ -247,5 +265,31 @@ import Testing
         #expect(isAlive)
         #expect(isExitReported)
         #expect(thread.isFinished)
+    }
+}
+
+/// Hands one object to the current autorelease pool and reports when the pool lets it go.
+private final class OPNAutoreleaseTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private weak var trackedObject: NSObject?
+
+    func autoreleaseTrackedObject() {
+        let object = NSObject()
+        lock.lock()
+        trackedObject = object
+        lock.unlock()
+        _ = Unmanaged.passRetained(object).autorelease()
+    }
+
+    func waitForRelease(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            lock.lock()
+            let isReleased = trackedObject == nil
+            lock.unlock()
+            if isReleased { return true }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        return false
     }
 }
