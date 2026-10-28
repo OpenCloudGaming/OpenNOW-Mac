@@ -466,6 +466,13 @@ public enum JarvisAuthError: LocalizedError, Equatable, Sendable {
         }
     }
 
+    static func rejectedGrant(statusCode: Int, body: Data) -> JarvisAuthError? {
+        guard statusCode == 400,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              json["error"] as? String == "invalid_grant" else { return nil }
+        return .oauthError("invalid_grant")
+    }
+
     public static func transportFailure(_ error: Error) -> JarvisAuthError {
         let nsError = error as NSError
         let category: JarvisAuthFailureCategory

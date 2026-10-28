@@ -534,7 +534,7 @@ extension JarvisAuthService {
         }
 
         guard response.statusCode == 200 else {
-            let error = Self.rejectedGrantError(statusCode: response.statusCode, body: data) ?? JarvisAuthError.httpStatus(response.statusCode)
+            let error = JarvisAuthError.rejectedGrant(statusCode: response.statusCode, body: data) ?? JarvisAuthError.httpStatus(response.statusCode)
             telemetry.recordError(error, operation: operation, attributes: ["status_code": String(response.statusCode), "category": error.category.rawValue])
             throw error
         }
@@ -543,13 +543,6 @@ extension JarvisAuthService {
             throw JarvisAuthError.invalidJSONResponse
         }
         return json
-    }
-
-    private static func rejectedGrantError(statusCode: Int, body: Data) -> JarvisAuthError? {
-        guard statusCode == 400,
-              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              json["error"] as? String == "invalid_grant" else { return nil }
-        return .oauthError("invalid_grant")
     }
 
     private func parseUserInfo(_ json: [String: Any], isNetworkCall: Bool) -> JarvisUserInfo {

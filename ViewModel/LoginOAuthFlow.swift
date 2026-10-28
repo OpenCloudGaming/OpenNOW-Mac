@@ -181,25 +181,7 @@ extension LoginViewModel {
         await restoreAccountSessionOutcome(account) == .restored
     }
 
-    func restoreAccountSessionOutcome(_ account: LoginAccount) async -> AccountRestoreOutcome {
-        validationMessage = ""
-        successMessage = ""
-        email = account.email
-        selectedProvider = providerOption(idpId: account.providerIdpId, fallbackName: account.providerName)
-        rememberSession = account.rememberSession
-
-        guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
-            OPNLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
-            validationMessage = "No saved session exists for this account. Sign in again."
-            return .rejected
-        }
-
-        isAuthenticating = true
-        defer { isAuthenticating = false }
-        // Captured before the network round trips. A sign-out or cancellation during them advances
-        // this, and the restore then discards its result instead of reactivating the account.
-        let generation = loginLaunchGeneration
-
+    private func restorableJarvisSession(for account: LoginAccount, stored storedSession: LoginSession) -> JarvisSession {
         var jarvisSession = JarvisSession(
             accessToken: storedSession.accessToken,
             idToken: storedSession.idToken,
@@ -219,6 +201,29 @@ extension LoginViewModel {
         if jarvisSession.idTokenExpiry == 0 {
             jarvisSession.idTokenExpiry = JarvisSessionParser.idTokenExpiry(storedSession.idToken)
         }
+        return jarvisSession
+    }
+
+    func restoreAccountSessionOutcome(_ account: LoginAccount) async -> AccountRestoreOutcome {
+        validationMessage = ""
+        successMessage = ""
+        email = account.email
+        selectedProvider = providerOption(idpId: account.providerIdpId, fallbackName: account.providerName)
+        rememberSession = account.rememberSession
+
+        guard let storedSession = sessions.first(where: { $0.accountEmail == account.email && !$0.accessToken.isEmpty }) else {
+            OPNLog.warning(.auth, "Session restore failed because no saved session exists for account=\(account.email)")
+            validationMessage = "No saved session exists for this account. Sign in again."
+            return .rejected
+        }
+
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+        // Captured before the network round trips. A sign-out or cancellation during them advances
+        // this, and the restore then discards its result instead of reactivating the account.
+        let generation = loginLaunchGeneration
+
+        let jarvisSession = restorableJarvisSession(for: account, stored: storedSession)
 
         do {
             OPNLog.info(.auth, "Refreshing saved session account=\(account.email)")
@@ -232,6 +237,8 @@ extension LoginViewModel {
             successMessage = "Session refreshed for \(account.displayName)."
             OPNLog.info(.auth, "Session refreshed account=\(account.email)")
             return .restored
+        } catch is CancellationError {
+            return .cancelled
         } catch {
             if storedSession.canContinueOffline && !storedSession.isExpired {
                 guard generation == loginLaunchGeneration else { return .cancelled }
