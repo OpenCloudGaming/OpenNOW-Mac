@@ -148,16 +148,10 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
                     span.finish(success: true)
                     return enriched
                 } catch let error as JarvisAuthError where error.category == .authorization && !session.refreshToken.isEmpty {
-                    // The actor can switch accounts while the request is in flight; the fallback must not
-                    // clear or refresh the other account's tokens on behalf of this caller.
                     guard session.userId == initiating.userId, session.refreshToken == initiating.refreshToken else {
                         throw CancellationError()
                     }
-                    // A rejected client token does not say the refresh token is dead: the client token
-                    // is the short-lived one. Only when that grant fails too is the account signed out.
                     telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "fallback", "grant_type": "client_token"])
-                    // Drop the rejected token so the refresh-token merge cannot copy it (and its expiry)
-                    // back into the session; the fallback then mints a fresh one.
                     session.clientToken = ""
                     session.clientTokenExpiry = 0
                     session.clientTokenExpiryLength = 0
@@ -540,7 +534,7 @@ extension JarvisAuthService {
         }
 
         guard response.statusCode == 200 else {
-            let error = JarvisAuthError.httpStatus(response.statusCode)
+            let error = Self.rejectedGrantError(statusCode: response.statusCode, body: data) ?? JarvisAuthError.httpStatus(response.statusCode)
             telemetry.recordError(error, operation: operation, attributes: ["status_code": String(response.statusCode), "category": error.category.rawValue])
             throw error
         }
@@ -549,6 +543,13 @@ extension JarvisAuthService {
             throw JarvisAuthError.invalidJSONResponse
         }
         return json
+    }
+
+    private static func rejectedGrantError(statusCode: Int, body: Data) -> JarvisAuthError? {
+        guard statusCode == 400,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              json["error"] as? String == "invalid_grant" else { return nil }
+        return .oauthError("invalid_grant")
     }
 
     private func parseUserInfo(_ json: [String: Any], isNetworkCall: Bool) -> JarvisUserInfo {

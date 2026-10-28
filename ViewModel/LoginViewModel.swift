@@ -244,10 +244,6 @@ final class LoginViewModel: ObservableObject {
         Task {
             let outcome = await restoreAccountSessionOutcome(account)
             guard outcome == .restored else {
-                // Only dead tokens warrant a sign-in. A cancellation is the user's own, and an
-                // unreachable server says nothing about the tokens. The restore's message lands on
-                // the login wall, which this catalog switch never shows, so a rejection has to raise
-                // the sign-in itself or the click looks like a reload that changed nothing.
                 if outcome == .rejected {
                     beginReauthentication(for: account, because: "\(account.displayName)'s saved session was rejected. Sign in again to switch to it.")
                 } else if outcome == .unavailable {

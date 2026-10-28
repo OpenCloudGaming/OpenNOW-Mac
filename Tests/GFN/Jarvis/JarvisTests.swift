@@ -206,11 +206,9 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     let service = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: transport, session: session)
     let refreshed = try await service.refreshSession(force: true)
     #expect(refreshed.accessToken == "new-access")
-    // The rejected token is still unexpired, so only dropping it makes the fallback mint a new one.
     #expect(refreshed.clientToken == "new-client")
     #expect(await transport.requestCount == 3)
 
-    // Both grants rejected: the error still surfaces so the caller can send the user to sign in.
     let rejecting = SequencedJarvisTransport([
         .success((status: 401, json: ["error": "unauthorized"])),
         .success((status: 401, json: ["error": "unauthorized"])),
@@ -219,6 +217,17 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     await #expect(throws: JarvisAuthError.httpStatus(401)) {
         _ = try await deadService.refreshSession(force: true)
     }
+    #expect(await rejecting.requestCount == 2)
+
+    let invalidGrant = SequencedJarvisTransport([
+        .success((status: 400, json: ["error": "invalid_grant"])),
+        .success((status: 200, json: ["access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600])),
+        .success((status: 200, json: ["client_token": "new-client", "expires_in": 240])),
+    ])
+    let grantService = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: invalidGrant, session: session)
+    let regranted = try await grantService.refreshSession(force: true)
+    #expect(regranted.accessToken == "new-access")
+    #expect(await invalidGrant.requestCount == 3)
 }
 
 private actor AccountSwitchingJarvisTransport: JarvisHTTPTransport {
