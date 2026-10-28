@@ -221,6 +221,45 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     }
 }
 
+private actor AccountSwitchingJarvisTransport: JarvisHTTPTransport {
+    private(set) var count = 0
+    var onFirstRequest: (@Sendable () async -> Void)?
+
+    func setOnFirstRequest(_ action: @escaping @Sendable () async -> Void) { onFirstRequest = action }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        count += 1
+        if count == 1 { await onFirstRequest?() }
+        let data = try JSONSerialization.data(withJSONObject: ["error": "unauthorized"])
+        return (data, HTTPURLResponse(url: request.url ?? URL(string: "https://login.nvidia.com")!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+    }
+}
+
+@Test func jarvisAuthServiceDoesNotFallBackOntoAnotherAccountAfterASwitchMidRefresh() async throws {
+    func makeSession(_ id: String) -> JarvisSession {
+        JarvisSession(
+            accessToken: "access-\(id)",
+            refreshToken: "refresh-\(id)",
+            userId: id,
+            isAuthenticated: true,
+            clientToken: "client-\(id)",
+            clientTokenExpiry: JarvisSession.currentEpochMs() + 3_600_000,
+            clientTokenExpiryLength: 3_600_000,
+            accessTokenExpiry: JarvisSession.currentEpochMs() - 1_000
+        )
+    }
+    let transport = AccountSwitchingJarvisTransport()
+    let service = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: transport, session: makeSession("a"))
+    let other = makeSession("b")
+    await transport.setOnFirstRequest { await service.setSession(other) }
+    await #expect(throws: CancellationError.self) {
+        _ = try await service.refreshSession(force: true)
+    }
+    // Account B keeps its client token and no refresh request was spent on it.
+    #expect(await service.session.clientToken == "client-b")
+    #expect(await transport.count == 1)
+}
+
 @Test func jarvisOAuthCallbackValidationMatchesVendorStateFlow() async throws {
     let service = JarvisAuthService(transport: MockJarvisTransport { _ in [:] })
     let callback = try await service.parseCallback(query: "code=abc&state=expected", expectedState: "expected")
