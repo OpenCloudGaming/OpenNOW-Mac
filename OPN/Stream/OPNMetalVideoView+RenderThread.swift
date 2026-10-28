@@ -194,7 +194,8 @@ final class OPNVideoRenderThread: @unchecked Sendable {
         let thread = Thread { [self] in
             while isStillRunning {
                 wake.wait()
-                if isStillRunning { drain() }
+                // No run loop drains this thread's pool; an unpresented drawable would hold its slot for good.
+                if isStillRunning { autoreleasepool { drain() } }
             }
             markFinished()
             finished.signal()

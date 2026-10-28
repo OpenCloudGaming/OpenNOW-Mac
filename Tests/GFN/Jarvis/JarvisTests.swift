@@ -206,11 +206,9 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     let service = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: transport, session: session)
     let refreshed = try await service.refreshSession(force: true)
     #expect(refreshed.accessToken == "new-access")
-    // The rejected token is still unexpired, so only dropping it makes the fallback mint a new one.
     #expect(refreshed.clientToken == "new-client")
     #expect(await transport.requestCount == 3)
 
-    // Both grants rejected: the error still surfaces so the caller can send the user to sign in.
     let rejecting = SequencedJarvisTransport([
         .success((status: 401, json: ["error": "unauthorized"])),
         .success((status: 401, json: ["error": "unauthorized"])),
@@ -219,6 +217,56 @@ private func jsonBody(_ request: URLRequest) throws -> [String: Any] {
     await #expect(throws: JarvisAuthError.httpStatus(401)) {
         _ = try await deadService.refreshSession(force: true)
     }
+    #expect(await rejecting.requestCount == 2)
+
+    let invalidGrant = SequencedJarvisTransport([
+        .success((status: 400, json: ["error": "invalid_grant"])),
+        .success((status: 200, json: ["access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600])),
+        .success((status: 200, json: ["client_token": "new-client", "expires_in": 240])),
+    ])
+    let grantService = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: invalidGrant, session: session)
+    let regranted = try await grantService.refreshSession(force: true)
+    #expect(regranted.accessToken == "new-access")
+    #expect(await invalidGrant.requestCount == 3)
+}
+
+private actor AccountSwitchingJarvisTransport: JarvisHTTPTransport {
+    private(set) var count = 0
+    var onFirstRequest: (@Sendable () async -> Void)?
+
+    func setOnFirstRequest(_ action: @escaping @Sendable () async -> Void) { onFirstRequest = action }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        count += 1
+        if count == 1 { await onFirstRequest?() }
+        let data = try JSONSerialization.data(withJSONObject: ["error": "unauthorized"])
+        return (data, HTTPURLResponse(url: request.url ?? URL(string: "https://login.nvidia.com")!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+    }
+}
+
+@Test func jarvisAuthServiceDoesNotFallBackOntoAnotherAccountAfterASwitchMidRefresh() async throws {
+    func makeSession(_ id: String) -> JarvisSession {
+        JarvisSession(
+            accessToken: "access-\(id)",
+            refreshToken: "refresh-\(id)",
+            userId: id,
+            isAuthenticated: true,
+            clientToken: "client-\(id)",
+            clientTokenExpiry: JarvisSession.currentEpochMs() + 3_600_000,
+            clientTokenExpiryLength: 3_600_000,
+            accessTokenExpiry: JarvisSession.currentEpochMs() - 1_000
+        )
+    }
+    let transport = AccountSwitchingJarvisTransport()
+    let service = JarvisAuthService(retryPolicy: JarvisRetryPolicy(maxRetries: 0, baseDelayMs: 0), transport: transport, session: makeSession("a"))
+    let other = makeSession("b")
+    await transport.setOnFirstRequest { await service.setSession(other) }
+    await #expect(throws: CancellationError.self) {
+        _ = try await service.refreshSession(force: true)
+    }
+    // Account B keeps its client token and no refresh request was spent on it.
+    #expect(await service.session.clientToken == "client-b")
+    #expect(await transport.count == 1)
 }
 
 @Test func jarvisOAuthCallbackValidationMatchesVendorStateFlow() async throws {

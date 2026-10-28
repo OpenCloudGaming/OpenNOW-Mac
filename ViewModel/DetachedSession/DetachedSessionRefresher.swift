@@ -55,6 +55,8 @@ struct DetachedSessionRefresher {
             try store(refreshed, in: storedSession)
             OPNLog.info(.auth, "Detached session refreshed account=\(ownership.email)")
             return true
+        } catch is CancellationError {
+            return false
         } catch {
             OPNLog.warning(.auth, "Detached session refresh failed account=\(ownership.email) error=\(error.localizedDescription)")
             guard !Task.isCancelled, isCurrent(ownership, account: account, session: storedSession),

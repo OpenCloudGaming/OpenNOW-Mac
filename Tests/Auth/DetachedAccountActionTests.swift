@@ -153,8 +153,8 @@ import Testing
         #expect(fixture.registry.sessions.first === gameSession)
     }
 
-    @Test(arguments: [false, true])
-    func rejectedSavedGrantsRevealTheExactAccountWithoutOfflineContinuation(_ isSavedSessionUnexpired: Bool) async throws {
+    @Test(arguments: [false, true], [400, 401])
+    func rejectedSavedGrantsRevealTheExactAccountWithoutOfflineContinuation(_ isSavedSessionUnexpired: Bool, _ status: Int) async throws {
         try await networkTestIsolationLock.withLock { @MainActor @Sendable in
             let fixture = try DetachedAccountTestFixture()
             defer { fixture.tearDown() }
@@ -163,7 +163,7 @@ import Testing
             let mainTokens = fixture.tokens(for: fixture.mainSession)
             let detachedTokens = fixture.tokens(for: fixture.detachedSession)
             SessionManagerURLProtocol.install(host: "login.nvidia.com") { _ in
-                SessionManagerURLProtocol.response(json: ["error": "invalid_grant"], status: 401)
+                SessionManagerURLProtocol.response(json: ["error": "invalid_grant"], status: status)
             }
             defer { SessionManagerURLProtocol.uninstall(host: "login.nvidia.com") }
             fixture.login.accountChooserReason = .switchAccount
@@ -252,6 +252,54 @@ import Testing
             #expect(fixture.login.accountChooserReason == nil)
             #expect(fixture.login.activeSession === fixture.mainSession)
             #expect(fixture.tokens(for: fixture.mainSession) == mainTokens)
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)), arguments: [400, 401])
+    func aJarvisSessionSwitchCancelsRestoreWithoutOfflineSuccess(_ status: Int) async throws {
+        try await networkTestIsolationLock.withLock { @MainActor @Sendable in
+            let fixture = try DetachedAccountTestFixture()
+            defer { fixture.tearDown() }
+            try fixture.expireIDTokens()
+            try #require(fixture.detachedSession.canContinueOffline && !fixture.detachedSession.isExpired)
+            let mainTokens = fixture.tokens(for: fixture.mainSession)
+            let detachedTokens = fixture.tokens(for: fixture.detachedSession)
+            let generation = fixture.login.loginLaunchGeneration
+            let replacement = JarvisSession(
+                accessToken: "new-owner-access", idToken: "new-owner-id", refreshToken: "new-owner-refresh",
+                userId: fixture.mainSession.userId, isAuthenticated: true, clientToken: "new-owner-client",
+                clientTokenExpiry: JarvisSession.currentEpochMs() + 3_600_000,
+                accessTokenExpiry: JarvisSession.currentEpochMs() + 3_600_000
+            )
+            SessionManagerURLProtocol.install(host: "login.nvidia.com") { _ in
+                if SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com").count == 1 {
+                    let sessionChanged = DispatchSemaphore(value: 0)
+                    Task { @MainActor in
+                        await fixture.login.jarvisAuthService.setSession(replacement)
+                        sessionChanged.signal()
+                    }
+                    sessionChanged.wait()
+                }
+                return SessionManagerURLProtocol.response(json: ["error": "invalid_grant"], status: status)
+            }
+            defer { SessionManagerURLProtocol.uninstall(host: "login.nvidia.com") }
+
+            let outcome = await fixture.login.restoreAccountSessionOutcome(fixture.detachedAccount)
+
+            #expect(outcome == .cancelled)
+            #expect(!Task.isCancelled)
+            #expect(fixture.login.loginLaunchGeneration == generation)
+            #expect(fixture.login.activeSession === fixture.mainSession)
+            #expect(!fixture.detachedAccount.isActive && !fixture.detachedSession.isActive)
+            #expect(!fixture.login.isAuthenticating)
+            #expect(fixture.login.successMessage.isEmpty && fixture.login.validationMessage.isEmpty)
+            #expect(fixture.login.signInRequest == nil)
+            #expect(fixture.tokens(for: fixture.mainSession) == mainTokens)
+            #expect(fixture.tokens(for: fixture.detachedSession) == detachedTokens)
+            #expect(await fixture.login.jarvisAuthService.session == replacement)
+            let requests = SessionManagerURLProtocol.recordedRequests(host: "login.nvidia.com")
+            #expect(requests.count == 1)
+            #expect(requests.first?.httpMethod == "POST" && requests.first?.url?.path == "/token")
         }
     }
 

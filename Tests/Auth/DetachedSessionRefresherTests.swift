@@ -138,7 +138,28 @@ import Testing
         #expect(!fixture.detachedSession.isActive)
     }
 
-    @Test(arguments: [401, 403, 503])
+    @Test func aServiceCancellationCannotOfferOfflineContinuationForUnexpiredCredentials() async throws {
+        let fixture = try DetachedAccountTestFixture()
+        defer { fixture.tearDown() }
+        try #require(fixture.detachedSession.canContinueOffline && !fixture.detachedSession.isExpired)
+        let mainTokens = fixture.tokens(for: fixture.mainSession)
+        let detachedTokens = fixture.tokens(for: fixture.detachedSession)
+        let issuedAt = fixture.detachedSession.issuedAt
+        let refresher = DetachedSessionRefresher(modelContext: fixture.container.mainContext) { _ in
+            throw CancellationError()
+        }
+
+        #expect(await refresher.refresh(account: fixture.detachedAccount, session: fixture.detachedSession) == false)
+        #expect(!Task.isCancelled)
+        #expect(fixture.tokens(for: fixture.mainSession) == mainTokens)
+        #expect(fixture.tokens(for: fixture.detachedSession) == detachedTokens)
+        #expect(GFNTokenStore.load(forIdentity: "session.\(fixture.detachedSessionID)") == detachedTokens)
+        #expect(fixture.detachedSession.issuedAt == issuedAt)
+        #expect(fixture.login.activeSession === fixture.mainSession)
+        #expect(!fixture.detachedAccount.isActive && !fixture.detachedSession.isActive)
+    }
+
+    @Test(arguments: [400, 401, 403, 503])
     func theDefaultRefresherOnlyContinuesOfflineForNonCredentialFailures(_ status: Int) async throws {
         try await networkTestIsolationLock.withLock { @MainActor @Sendable in
             let fixture = try DetachedAccountTestFixture()

@@ -202,7 +202,7 @@ extension LoginViewModel {
             if generation == loginLaunchGeneration { isAuthenticating = false }
         }
 
-        let jarvisSession = savedJarvisSession(account: account, storedSession: storedSession)
+        let jarvisSession = restorableJarvisSession(for: account, stored: storedSession)
 
         do {
             OPNLog.info(.auth, "Refreshing saved session account=\(account.email)")
@@ -217,6 +217,8 @@ extension LoginViewModel {
             successMessage = "Session refreshed for \(account.displayName)."
             OPNLog.info(.auth, "Session refreshed account=\(account.email)")
             return .restored
+        } catch is CancellationError {
+            return .cancelled
         } catch {
             guard generation == loginLaunchGeneration else { return .cancelled }
             if (error as? JarvisAuthError)?.category != .authorization && storedSession.canContinueOffline && !storedSession.isExpired {
@@ -238,7 +240,7 @@ extension LoginViewModel {
         }
     }
 
-    private func savedJarvisSession(account: LoginAccount, storedSession: LoginSession) -> JarvisSession {
+    private func restorableJarvisSession(for account: LoginAccount, stored storedSession: LoginSession) -> JarvisSession {
         var jarvisSession = JarvisSession(
             accessToken: storedSession.accessToken,
             idToken: storedSession.idToken,

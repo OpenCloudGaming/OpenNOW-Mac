@@ -137,6 +137,7 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
             }
             guard isSessionRefreshable else { throw JarvisAuthError.noRefreshMechanism }
             if !session.clientToken.isEmpty {
+                let initiating = session
                 let body = JarvisOAuthRequestFactory.clientTokenGrantBody(clientToken: session.clientToken, userId: session.userId, configuration: configuration)
                 do {
                     let refreshed = merge(saved: session, refreshed: try await requestSession(body: body, operation: .getSessionToken))
@@ -147,11 +148,10 @@ public actor JarvisAuthService<Transport: JarvisHTTPTransport> {
                     span.finish(success: true)
                     return enriched
                 } catch let error as JarvisAuthError where error.category == .authorization && !session.refreshToken.isEmpty {
-                    // A rejected client token does not say the refresh token is dead: the client token
-                    // is the short-lived one. Only when that grant fails too is the account signed out.
+                    guard session.userId == initiating.userId, session.refreshToken == initiating.refreshToken else {
+                        throw CancellationError()
+                    }
                     telemetry.recordCounter(name: "jarvis.auth.refresh.count", attributes: ["outcome": "fallback", "grant_type": "client_token"])
-                    // Drop the rejected token so the refresh-token merge cannot copy it (and its expiry)
-                    // back into the session; the fallback then mints a fresh one.
                     session.clientToken = ""
                     session.clientTokenExpiry = 0
                     session.clientTokenExpiryLength = 0
@@ -534,7 +534,7 @@ extension JarvisAuthService {
         }
 
         guard response.statusCode == 200 else {
-            let error = JarvisAuthError.httpStatus(response.statusCode)
+            let error = JarvisAuthError.rejectedGrant(statusCode: response.statusCode, body: data) ?? JarvisAuthError.httpStatus(response.statusCode)
             telemetry.recordError(error, operation: operation, attributes: ["status_code": String(response.statusCode), "category": error.category.rawValue])
             throw error
         }
