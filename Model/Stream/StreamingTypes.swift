@@ -49,9 +49,16 @@ extension StreamLaunchConfiguration {
     /// What the catalog said about HDR for the store edition this launch picked. Client-side only:
     /// it describes the launch to this app, not to the vendor.
     static let hdrCatalogSupportKey = "hdrCatalogSupport"
+    /// The stable id of the account that owns the session, so per-account choices made before the
+    /// stream existed (which controllers it plays with) find their way to it.
+    static let owningAccountIDKey = "owningAccountID"
 
     var owningAccountDisplayName: String {
         (metadata[Self.owningAccountDisplayNameKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var owningAccountID: String {
+        (metadata[Self.owningAccountIDKey] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The catalog's HDR answer as the stream profile should read it. A store-launcher session
@@ -70,9 +77,10 @@ extension StreamLaunchConfiguration {
     /// by, whose game it is, and which game's mappings it uses. The id has to come from the session
     /// that owns the launch - the stream surface registers its commands under the configuration's id,
     /// so a different one here would leave every targeted control reaching nothing.
-    func snapshottingSession(id: UUID, ownerDisplayName: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
+    func snapshottingSession(id: UUID, ownerDisplayName: String, ownerAccountID: String, mappingGameIdentity: String) -> StreamLaunchConfiguration {
         var metadata = metadata
         metadata[Self.owningAccountDisplayNameKey] = ownerDisplayName
+        metadata[Self.owningAccountIDKey] = ownerAccountID
         metadata[Self.mappingGameIdentityKey] = mappingGameIdentity
         return StreamLaunchConfiguration(
             id: id,

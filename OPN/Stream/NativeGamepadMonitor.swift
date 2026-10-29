@@ -78,6 +78,7 @@ public final class NativeGamepadMonitor {
     let pollingQueue = DispatchQueue(label: "com.opennow.gamepad-poll", qos: .userInteractive)
     var pollingAllowed = false
     var mappingsEnabled = false
+    var isKeyboardMouseInputEnabled = true
     private var mappingSubscription: AnyCancellable?
     private var orderSubscription: AnyCancellable?
     var bindingOutputLedger = ControllerBindingOutputLedger()
@@ -365,11 +366,7 @@ public final class NativeGamepadMonitor {
                 guard let self else { return }
                 self.pollState.pendingEvents.append(contentsOf: events)
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    let commands = self.pollingQueue.sync { self.pollState.takePendingCommands() }
-                    let pending = self.pollingQueue.sync { self.pollState.takePendingEvents() }
-                    for command in commands { self.onStreamCommand?(command) }
-                    for event in pending { self.emitInputEvent(event) }
+                    self?.dispatchPendingInput()
                 }
             }, onBatteryChange: { [weak self] changes in
                 guard let self else { return }
@@ -518,6 +515,20 @@ extension NativeGamepadMonitor {
                                    attributes: ["device": deviceID.rawValue, "enabled": String(isEnabled)])
         refreshControllerSlots()
         return true
+    }
+
+    /// Disables every listed device that this stream knows, in one slot refresh. The couch co-op
+    /// preset and the hand-off between windows both land here, so the pads another window plays
+    /// with are out of this one before its first poll.
+    func disableForStream(_ deviceIDs: Set<InputDeviceID>) {
+        var next = streamSelection
+        let changed = deviceIDs.filter { next.setEnabled(false, for: $0) }
+        guard !changed.isEmpty else { return }
+        streamSelection = next
+        OPNStreamTelemetry.capture("webrtc.input.gamepad.stream_selection", level: .info,
+                                   message: "Controllers left out of this stream.",
+                                   attributes: ["count": String(changed.count)])
+        refreshControllerSlots()
     }
 
     /// The HUD's rows for this stream: effective player per enabled device, plus the remembered rows

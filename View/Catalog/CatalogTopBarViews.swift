@@ -14,6 +14,7 @@ struct CatalogTopBar: View {
     let onForget: (LoginAccount) -> Void
     @Environment(\.opnUIScale) private var uiScale
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.opnReportIssuePresentation) private var reportIssuePresentation
     @AppStorage(OPNInterfacePreferences.controllerModeEnabledKey) private var controllerModeEnabled = false
     @ObservedObject private var keybindings = OPNKeybindingsObserver.shared
 
@@ -98,7 +99,7 @@ struct CatalogTopBar: View {
                             .opnTooltip("Search games (\(keybindings.combo(for: .openSearch).label))")
                             .matchedGeometryEffect(id: Self.searchGeometryID, in: searchTransition)
                         }
-                        Button { OPNReportIssuePresentation.shared.present(context: .current(viewModel: viewModel)) } label: {
+                        Button { (reportIssuePresentation ?? .shared).present(context: .current(viewModel: viewModel)) } label: {
                             CatalogTopBarIconLabel(systemName: "exclamationmark.bubble")
                         }
                         .buttonStyle(.opnPressable(scale: 0.90))

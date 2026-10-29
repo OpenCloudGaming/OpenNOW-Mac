@@ -304,9 +304,12 @@ extension CatalogViewModel {
         }
     }
 
-    func configureCatalogService() {
+    @discardableResult
+    func configureCatalogService() -> Bool {
+        guard CatalogAccountRequestIdentity(account: account, session: session).isCurrent(account: account, session: session) else { return false }
         let userId = session.userId.isEmpty ? account.userId : session.userId
         gameService.configureCatalogSession(accessToken: session.accessToken, idToken: session.idToken, userId: userId)
+        return true
     }
 
     func refreshAuthIfNeeded(error: String) -> Bool {

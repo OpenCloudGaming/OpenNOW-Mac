@@ -63,6 +63,7 @@ func expectReleaseCloudMatchRequestBody(_ requestData: [String: Any], metadata: 
     var settings = minimalSettings()
     settings["networkTestSessionId"] = "stale-session-id"
     settings["enablePersistingInGameSettings"] = true
+    settings[OPNLaunchEntitlements.settingsKey] = OPNLaunchEntitlements(isInGameSettingsPersistenceEntitled: true).storedDictionary
     settings["partnerCustomData"] = "partner-data"
     settings["userAge"] = 21
     settings["streamingQualityProfile"] = 4

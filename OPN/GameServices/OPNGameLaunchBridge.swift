@@ -99,7 +99,7 @@ public final class OPNGameLaunchBridge {
             selectedStore: selectedStore,
             metadata: launchMetadata.merging(Self.hdrCatalogSupportMetadata(for: selectedVariant)) { current, _ in current }
         )
-        let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId)
+        let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: appId, providerStreamingBaseURL: gameService.providerStreamingBaseURL())
         OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl, deviceId: deviceId) { [weak self] ok, sessions, _ in
             guard let self else { return }
             if ok {

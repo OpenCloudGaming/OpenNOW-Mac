@@ -38,11 +38,13 @@ private final class RecordingDiscordPresence: DiscordPresenceServing {
         let snapshotted = configuration.snapshottingSession(
             id: sessionID,
             ownerDisplayName: "Account A",
+            ownerAccountID: "account-a",
             mappingGameIdentity: "game-1"
         )
 
         #expect(snapshotted.id == sessionID)
         #expect(snapshotted.owningAccountDisplayName == "Account A")
+        #expect(snapshotted.owningAccountID == "account-a")
         #expect(snapshotted.mappingGameIdentity == "game-1")
         #expect(snapshotted.applicationID == configuration.applicationID)
         #expect(snapshotted.title == configuration.title)

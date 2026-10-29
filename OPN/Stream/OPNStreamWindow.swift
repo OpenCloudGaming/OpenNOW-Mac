@@ -39,6 +39,95 @@ final class OPNStreamWindow: NSWindow {
     /// What PiP entry replaced, so leaving PiP puts the window back exactly where it was.
     var windowedState: WindowedState?
 
+    /// What borderless entry replaced, so leaving it puts the window back where the reader left it.
+    var borderlessRestoreState: WindowedState?
+
+    /// Shared with the window's content, which letterboxes instead of locking its aspect while the
+    /// layout owns the frame.
+    let layoutState = OPNStreamWindowLayoutState()
+
+    /// The last frame the layout gave this window. A move or resize that leaves it is the reader
+    /// taking the window back, which a frame change alone cannot tell from the layout's own.
+    private(set) var layoutFrame: NSRect?
+
+    private(set) var isApplyingLayoutChange = false
+    private(set) var isPresentationEnding = false
+    private var layoutTask: Task<Void, Never>?
+    private var layoutRequestID = UUID()
+    var isBorderlessExitPending = false
+    var pictureInPictureRequestID: UUID?
+    var isPictureInPicturePending: Bool { pictureInPictureRequestID != nil }
+    var hasPendingLayoutChange: Bool { layoutTask != nil }
+    var layoutMembershipDidChange: (@MainActor () -> Void)?
+
+    func cancelPendingLayout() {
+        layoutRequestID = UUID()
+        layoutTask?.cancel()
+        layoutTask = nil
+        pictureInPictureRequestID = nil
+        isBorderlessExitPending = false
+    }
+
+    func scheduleLayoutChange(_ applyLayoutChange: @escaping @MainActor (OPNStreamWindow) -> Void) {
+        cancelPendingLayout()
+        guard !isPresentationEnding else { return }
+        let scheduledLayoutRequestID = layoutRequestID
+        layoutTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.clearFinishedLayoutRequest(scheduledLayoutRequestID) }
+            guard await StreamWindowGeometryGate.waitUntilGeometryIsMutable(for: self),
+                  self.layoutRequestID == scheduledLayoutRequestID, !self.isPresentationEnding,
+                  !self.styleMask.contains(.fullScreen) else { return }
+            self.isApplyingLayoutChange = true
+            defer { self.isApplyingLayoutChange = false }
+            applyLayoutChange(self)
+        }
+    }
+
+    private func clearFinishedLayoutRequest(_ finishedLayoutRequestID: UUID) {
+        guard layoutRequestID == finishedLayoutRequestID else { return }
+        layoutTask = nil
+        pictureInPictureRequestID = nil
+        isBorderlessExitPending = false
+    }
+
+    func endPresentation() {
+        isPresentationEnding = true
+        cancelPendingLayout()
+        layoutMembershipDidChange = nil
+    }
+
+    override func close() {
+        endPresentation()
+        super.close()
+        OPNStreamBorderless.postCoveringStateChange(for: self)
+    }
+
+    func setFrameFromLayout(_ frame: NSRect) {
+        let isApplyingEnclosingLayoutChange = isApplyingLayoutChange
+        isApplyingLayoutChange = true
+        defer { isApplyingLayoutChange = isApplyingEnclosingLayoutChange }
+        layoutFrame = frame
+        setFrame(frame, display: true)
+    }
+
+    func clearLayoutFrame() {
+        layoutFrame = nil
+    }
+
+    /// Whether the window is where the layout left it.
+    var isAtLayoutFrame: Bool {
+        guard let layoutFrame else { return false }
+        return abs(frame.minX - layoutFrame.minX) < 1 && abs(frame.minY - layoutFrame.minY) < 1
+            && abs(frame.width - layoutFrame.width) < 1 && abs(frame.height - layoutFrame.height) < 1
+    }
+
+    /// A titled window is pushed below the menu bar when it is placed. A borderless one is asked to
+    /// cover it, so the frame it was given is the frame it keeps.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        layoutState.isBorderless ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+
     /// The stream surface's answer to the close button, installed once the surface is up. Returning
     /// `true` keeps the window open - see `OPNStreamWindowCloseGuard` for why the window itself
     /// never decides.
@@ -48,6 +137,16 @@ final class OPNStreamWindow: NSWindow {
     /// it resolves. The close-button decision needs the session's state - whether there is one at
     /// all, and the controls panel it raises - and the surface is the only thing that has it.
     weak var sessionSurface: (any OPNStreamWindowSessionSurface)?
+
+    /// Couch co-op: the stream in this window keeps its pads while another stream window is in
+    /// front. Written by the presenter and handed to the stream surface, which may not have
+    /// resolved yet, so the surface also reads it when it attaches.
+    var allowsBackgroundGamepadInput = false {
+        didSet {
+            guard oldValue != allowsBackgroundGamepadInput else { return }
+            sessionSurface?.setBackgroundGamepadInput(allowsBackgroundGamepadInput)
+        }
+    }
 
     /// The close guard, held **strongly and by the window**.
     ///
@@ -88,7 +187,7 @@ final class OPNStreamWindow: NSWindow {
         // A full-screen frame belongs to the Space, not to the user: restoring it would open the
         // next session full-bleed. The exit re-fires the move, so the windowed placement is saved
         // once the window is back on the desktop.
-        guard !styleMask.contains(.fullScreen) else { return }
+        guard !styleMask.contains(.fullScreen), layoutState.persistsFrame else { return }
         OPNStreamWindowFrameStore.save(frame, isPictureInPicture: isPictureInPicture, defaults: frameStoreDefaults)
     }
 
@@ -107,6 +206,8 @@ final class OPNStreamWindow: NSWindow {
 protocol OPNStreamWindowSessionSurface: AnyObject {
     var isConnected: Bool { get }
     var isPictureInPicture: Bool { get }
+    func setBackgroundGamepadInput(_ isAllowed: Bool)
+    func disableControllersForStream(_ deviceIDs: Set<InputDeviceID>)
     /// Raises the stream controls panel. Called with a `nil` completion, which is what keeps the
     /// third button reading "End Stream" rather than "Quit OpenNOW". Deliberately written out
     /// rather than leaning on `showStreamControls`'s default argument: a defaulted parameter does

@@ -63,13 +63,17 @@ final class OPNPollClaimSessionContext: @unchecked Sendable {
 // exist elsewhere in the module.
 extension OPNSessionManager {
     func settingsByApplyingCloudVariables(_ settings: [String: Any], capabilities: OPNStreamDeviceCapabilities) -> [String: Any] {
+    let entitlements = OPNLaunchEntitlements(settings: settings)
+    var cloudVariables = OPNStreamPreferences.loadCachedCloudVariables()
+    cloudVariables.entitledAudioChannelCount = entitlements.audioChannelCount
     let resolved = StreamSettingsResolver.resolve(
         profile: streamProfile(from: settings),
         capabilities: streamDeviceCapabilities(from: capabilities),
-        cloudVariables: streamCloudVariables(from: OPNStreamPreferences.loadCachedCloudVariables())
+        cloudVariables: streamCloudVariables(from: cloudVariables)
     )
     var result = settings
     result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"]), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }
+    result["enablePersistingInGameSettings"] = bool(result["enablePersistingInGameSettings"]) && entitlements.isInGameSettingsPersistenceEntitled
     return result
     }
 
@@ -150,11 +154,9 @@ extension OPNSessionManager {
     if let prefilterModel = chosenPrefilterModel(int(settings["prefilterModel"])) {
         features["prefilterModel"] = prefilterModel
     }
-    // Cloud DLSS overrides ride the same object, filtered against the stored entitlements at the
-    // single point where the payload is built: an unentitled override can never reach the wire.
     let dlssPreference = settings["dlssOverrides"] as? [String: Any]
     let dlssOverrides = (dlssPreference.map(DlssOverrides.init(stored:)) ?? OPNStreamPreferences.loadDlssOverrides())
-        .applyingAccess(OPNStreamPreferences.loadDlssEntitlements())
+        .applyingAccess(OPNLaunchEntitlements(settings: settings).dlss)
     features["dlssOverrides"] = dlssOverrides.sessionRequestDictionary
     return features
     }

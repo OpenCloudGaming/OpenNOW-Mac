@@ -22,6 +22,14 @@ enum OPNMainWindow {
         }
     }
 
+    /// Puts the window in front of everything else, for a request that starts in another window and
+    /// ends in this one.
+    static func bringForward() {
+        guard let window = existing() else { return }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     /// Whether a surface outside the window has to build one before handing it work.
     ///
     /// The close button hides the window rather than tearing the scene down, so a hidden or minimized
@@ -67,6 +75,101 @@ enum OPNMainWindow {
     }
 }
 
+@MainActor
+final class OPNMainWindowAccountHandoff {
+    static let shared = OPNMainWindowAccountHandoff()
+
+    private weak var window: NSWindow?
+    private weak var sourceWindow: NSWindow?
+    private var originalLevel: NSWindow.Level?
+    private var isRequested = false
+    private var observerTokens: [NSObjectProtocol] = []
+    private var closeObserver: NSObjectProtocol?
+    private let mainWindow: () -> NSWindow?
+    private let coveringLevels: () -> [NSWindow.Level]
+
+    init(
+        mainWindow: @escaping () -> NSWindow? = { OPNMainWindow.existing() },
+        coveringLevels: @escaping () -> [NSWindow.Level] = {
+            NSApp.windows.compactMap { window in
+                guard let stream = window as? OPNStreamWindow,
+                      stream.layoutState.isBorderless, stream.isVisible else { return nil }
+                return stream.level
+            }
+        }
+    ) {
+        self.mainWindow = mainWindow
+        self.coveringLevels = coveringLevels
+    }
+
+    func begin(from sourceWindow: NSWindow?) {
+        isRequested = true
+        if let sourceWindow { self.sourceWindow = sourceWindow }
+        installObservers()
+        guard let window = mainWindow() else { return }
+        attach(window)
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func attach(_ window: NSWindow) {
+        guard isRequested else { return }
+        bindWindow(window)
+        applyLevel()
+    }
+
+    func end() {
+        let returnWindow = sourceWindow
+        let isReturningFocus = window?.isKeyWindow == true && NSApp.isActive
+        isRequested = false
+        restoreLevel()
+        window = nil
+        sourceWindow = nil
+        for token in observerTokens { NotificationCenter.default.removeObserver(token) }
+        observerTokens.removeAll()
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        closeObserver = nil
+        if isReturningFocus, let returnWindow, returnWindow.isVisible { returnWindow.makeKeyAndOrderFront(nil) }
+    }
+
+    private func bindWindow(_ window: NSWindow) {
+        guard self.window !== window else { return }
+        restoreLevel()
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        self.window = window
+        originalLevel = window.level
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.end() }
+        }
+    }
+
+    private func applyLevel() {
+        guard let window, let originalLevel else { return }
+        let coveringLevel = coveringLevels().map(\.rawValue).max() ?? NSWindow.Level.normal.rawValue
+        let sourceLevel = sourceWindow?.level.rawValue ?? NSWindow.Level.normal.rawValue
+        let obstructionLevel = max(coveringLevel, sourceLevel)
+        let requiredLevel = obstructionLevel > NSWindow.Level.normal.rawValue ? obstructionLevel + 1 : originalLevel.rawValue
+        window.level = NSWindow.Level(rawValue: max(originalLevel.rawValue, requiredLevel))
+    }
+
+    private func restoreLevel() {
+        if let window, let originalLevel { window.level = originalLevel }
+        originalLevel = nil
+    }
+
+    private func installObservers() {
+        guard observerTokens.isEmpty else { return }
+        observerTokens.append(NotificationCenter.default.addObserver(
+            forName: OPNStreamBorderless.coveringStateDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyLevel() }
+        })
+    }
+}
+
 /// Enforces `OPNWindowClosePreferences.behavior` on the main window's close button.
 ///
 /// The quit choice is enforced here rather than left to AppKit's last-window hook: a status item
@@ -104,6 +207,7 @@ enum OPNMainWindowCloseGuard {
     /// notification, and the Dock icon decision is `OPNDockIconController`'s: with nothing on screen
     /// and the menu-bar-only choice in force, the app leaves the Dock.
     static var hideMainWindow: @MainActor () -> Void = {
+        OPNMainWindowAccountHandoff.shared.end()
         OPNMainWindow.existing()?.orderOut(nil)
         OPNDockIconController.apply()
     }

@@ -28,6 +28,70 @@ struct LabsSettingsPage: View {
                 }
             }
             .settingsSection("labs")
+            if isCouchCoopEnabled {
+                CouchCoopTilingCard(uiScale: uiScale)
+            }
+        }
+    }
+
+    @AppStorage(OPNLabs.couchCoop.storageKey) private var isCouchCoopEnabled = false
+}
+
+/// How two or more stream windows share the screens. Shown only while Couch Co-op is on, since
+/// nothing else reads it. A change places the windows that are already open at once.
+struct CouchCoopTilingCard: View {
+    let uiScale: CGFloat
+
+    @State private var orientation = OPNStreamTileOrientation.auto
+    @State private var coverage = OPNStreamTileCoverage.visibleArea
+
+    var body: some View {
+        SettingsCard(title: "Couch Co-op Layout", badge: .experimental, uiScale: uiScale) {
+            Text("With two accounts on two screens each stream fills its own screen. When streams share a screen they split it, and this decides how.")
+                .font(.settingsFont(size: 12 * uiScale, weight: .medium))
+                .foregroundStyle(OPNDesign.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            SettingsDivider(uiScale: uiScale)
+            dropdownRow("Split shared screens", selection: orientation.title, items: OPNStreamTileOrientation.allCases.map { option in
+                OPNDropdownItem(id: option.id, title: option.title, isSelected: option == orientation) {
+                    orientation = option
+                    OPNStreamTileOrientation.store(option)
+                    OPNStreamWindowPresenter.shared.retileWindows()
+                }
+            })
+            SettingsDivider(uiScale: uiScale)
+            dropdownRow("Stream windows sit", selection: coverage.title, items: OPNStreamTileCoverage.allCases.map { option in
+                OPNDropdownItem(id: option.id, title: option.title, isSelected: option == coverage) {
+                    coverage = option
+                    OPNStreamWindowPresenter.shared.setTileCoverage(option)
+                }
+            })
+        }
+        .onAppear {
+            orientation = OPNStreamTileOrientation.stored
+            coverage = OPNStreamTileCoverage.stored
+        }
+    }
+
+    private func dropdownRow(_ title: String, selection: String, items: [OPNDropdownItem]) -> some View {
+        HStack {
+            Text(title)
+                .font(.settingsFont(size: 13 * uiScale, weight: .bold))
+                .foregroundStyle(OPNDesign.Text.primary)
+            Spacer(minLength: 0)
+            OPNDropdownMenu(items: items) {
+                HStack(spacing: OPNDesign.Spacing.xSmall(scale: uiScale)) {
+                    Text(selection)
+                        .font(.settingsFont(size: 12 * uiScale, weight: .bold))
+                        .foregroundStyle(OPNDesign.Text.primary)
+                    Image(systemName: "chevron.down")
+                        .font(.settingsFont(size: 9 * uiScale, weight: .bold))
+                }
+                .padding(.horizontal, OPNDesign.Spacing.controlRow(scale: uiScale))
+                .frame(height: 30 * uiScale)
+                .background(OPNCornerShape(role: .control, scale: uiScale).fill(OPNDesign.Fill.neutral(0.075)))
+                .overlay { OPNCornerShape(role: .control, scale: uiScale).strokeBorder(OPNDesign.Stroke.regular, lineWidth: 1) }
+            }
         }
     }
 }
@@ -37,6 +101,7 @@ struct LabsFlagRow: View {
     let uiScale: CGFloat
 
     @State private var isEnabled = false
+    @State private var isRestartPromptPresented = false
 
     var body: some View {
         SettingsToggleRow(
@@ -47,8 +112,22 @@ struct LabsFlagRow: View {
         ) { enabled in
             isEnabled = enabled
             OPNLabs.setEnabled(flag, enabled)
+            if flag.requiresRestart { isRestartPromptPresented = true }
         }
         .onAppear { isEnabled = OPNLabs.isEnabled(flag) }
+        .opnConfirmation(
+            isPresented: $isRestartPromptPresented,
+            eyebrow: "LABS",
+            title: "Restart to apply \(flag.title)?",
+            message: "\(flag.title) takes full effect when OpenNOW starts. Restarting ends any stream that is running.",
+            actions: [
+                OPNConfirmationAction("LATER", role: .cancel) { isRestartPromptPresented = false },
+                OPNConfirmationAction("RESTART NOW") {
+                    isRestartPromptPresented = false
+                    OPNAppRelaunch.relaunch()
+                }
+            ]
+        )
     }
 }
 

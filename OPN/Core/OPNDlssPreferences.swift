@@ -15,10 +15,12 @@ extension OPNStreamPreferences {
         storage.synchronize()
     }
 
-    /// The entitlements the launch path filters against, remembered so a session request does not
-    /// need a subscription fetch on its own path.
+    /// The active browsing account's presentation mirror. Launches carry their own snapshot.
     public static func loadDlssEntitlements() -> DlssEntitlements {
-        guard let dictionary = storage.object(forKey: k.dlssEntitlements) as? [String: Any] else { return .none }
+        dlssEntitlements(from: storage.object(forKey: k.dlssEntitlements) as? [String: Any] ?? [:])
+    }
+
+    static func dlssEntitlements(from dictionary: [String: Any]) -> DlssEntitlements {
         return DlssEntitlements(
             superResolution: capability(from: dictionary, key: "superResolution"),
             frameGeneration: capability(from: dictionary, key: "frameGeneration"),
@@ -28,14 +30,17 @@ extension OPNStreamPreferences {
     }
 
     public static func saveDlssEntitlements(_ entitlements: DlssEntitlements) {
-        let dictionary: [String: Any] = [
+        storage.set(dlssEntitlementsDictionary(entitlements), forKey: k.dlssEntitlements)
+        storage.synchronize()
+    }
+
+    static func dlssEntitlementsDictionary(_ entitlements: DlssEntitlements) -> [String: Any] {
+        [
             "superResolution": capabilityDictionary(entitlements.superResolution),
             "frameGeneration": capabilityDictionary(entitlements.frameGeneration),
             "rayReconstruction": capabilityDictionary(entitlements.rayReconstruction),
             "frameGenerationMultipliers": entitlements.frameGenerationMultipliers,
         ]
-        storage.set(dictionary, forKey: k.dlssEntitlements)
-        storage.synchronize()
     }
 
     /// Signing out drops the stored entitlements, so a later launch cannot ask for an override the

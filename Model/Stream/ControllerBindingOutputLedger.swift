@@ -24,6 +24,22 @@ struct ControllerBindingOutputLedger {
         }
     }
 
+    mutating func releaseHeldOutputs(timestamp: MediaTimestamp) -> [UserInputEvent] {
+        var releaseEvents: [UserInputEvent] = []
+        for keyCode in keys.keys.sorted() {
+            guard let ownerDeviceID = keys[keyCode]?.keys.sorted(by: { $0.rawValue < $1.rawValue }).first else { continue }
+            releaseEvents.append(.keyboard(KeyboardEvent(deviceID: ownerDeviceID, keyCode: keyCode, scanCode: keyCode,
+                                                         modifiers: [], isPressed: false, timestamp: timestamp)))
+        }
+        for mouseButton in mouseButtons.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let ownerDeviceID = mouseButtons[mouseButton]?.sorted(by: { $0.rawValue < $1.rawValue }).first else { continue }
+            releaseEvents.append(.mouse(.button(deviceID: ownerDeviceID, button: mouseButton, isPressed: false, timestamp: timestamp)))
+        }
+        keys.removeAll()
+        mouseButtons.removeAll()
+        return releaseEvents
+    }
+
     private mutating func keyboardEvents(for event: KeyboardEvent) -> [UserInputEvent] {
         let previous = keys
         let previousModifiers = modifiers

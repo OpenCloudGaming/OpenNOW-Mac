@@ -342,7 +342,7 @@ import Testing
                     frameGenerationMultipliers: [3, 4, 5, 6]
                 )
             )
-            let settings: [String: Any] = ["dlssOverrides": [
+            let settings: [String: Any] = [OPNLaunchEntitlements.settingsKey: OPNLaunchEntitlements(dlss: OPNStreamPreferences.loadDlssEntitlements()).storedDictionary, "dlssOverrides": [
                 "srMode": 6,
                 "srModel": 2,
                 "srScale": 80,
@@ -382,7 +382,8 @@ import Testing
                     rayReconstruction: DlssCapability(isEntitled: false, isUpsell: true)
                 )
             )
-            let features = OPNSessionManager().requestedStreamingFeatures([:], hdrEnabled: false)
+            let settings: [String: Any] = [OPNLaunchEntitlements.settingsKey: OPNLaunchEntitlements(dlss: OPNStreamPreferences.loadDlssEntitlements()).storedDictionary]
+            let features = OPNSessionManager().requestedStreamingFeatures(settings, hdrEnabled: false)
             let overrides = try #require(features["dlssOverrides"] as? [String: Any])
             #expect(overrides["srMode"] as? Int == DlssSuperResolutionMode.dlaa.rawValue)
             #expect(overrides["fgMode"] as? Int == 0)

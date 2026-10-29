@@ -3,7 +3,7 @@ import SwiftUI
 /// Window-level host for the Report an Issue modal. Mounted once at the app root so the form
 /// reaches the catalog, the login wall, and Settings through the same path.
 struct OPNReportIssueOverlay: View {
-    @ObservedObject private var presentation = OPNReportIssuePresentation.shared
+    @ObservedObject var presentation: OPNReportIssuePresentation = .shared
     @Environment(\.opnUIScale) private var uiScale
 
     var body: some View {
@@ -29,6 +29,14 @@ struct OPNReportIssueOverlay: View {
         }
         .opnMotion(OPNDesign.Motion.panel, value: presentation.isPresented)
     }
+}
+
+extension EnvironmentValues {
+    @Entry var opnReportIssuePresentation: OPNReportIssuePresentation?
+}
+
+extension FocusedValues {
+    @Entry var opnReportIssuePresentation: OPNReportIssuePresentation?
 }
 
 /// App-shell support form following the modal spec: Panel background, 1px Stroke Regular, 2px accent

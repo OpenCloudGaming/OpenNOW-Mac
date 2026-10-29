@@ -27,6 +27,7 @@ final class AppRootViewModel: ObservableObject {
 
     func bind(login: LoginViewModel) {
         self.login = login
+        OPNMainAccountActions.shared.bind(login: login)
         guard fileOpenObserver == nil else { return }
         fileOpenObserver = NotificationCenter.default
             .publisher(for: .opnDidOpenFile)
@@ -38,6 +39,7 @@ final class AppRootViewModel: ObservableObject {
 
     func unbind() {
         fileOpenObserver = nil
+        if let login { OPNMainAccountActions.shared.unbind(login: login) }
         login = nil
     }
 

@@ -187,16 +187,7 @@ final class LoginViewModel: ObservableObject {
 
     func cancelPendingLogin() {
         guard isLaunchingOAuth || isAuthenticating else { return }
-        loginLaunchGeneration += 1
-        // Invalidate the in-flight request at its source too: the generation check in the completion
-        // runs after a request that may still persist credentials, so cancellation has to reach the
-        // service before that persistence.
-        authService.invalidatePendingAuthentication()
-        isLaunchingOAuth = false
-        isAuthenticating = false
-        isRequestingDeviceCode = false
-        deviceCodeUserCode = ""
-        deviceCodeVerificationURI = ""
+        invalidateLoginIntent()
         validationMessage = "Sign-in cancelled. Choose GET IN to try again."
         OPNLog.info(.auth, "User cancelled pending sign-in")
     }
@@ -241,10 +232,7 @@ final class LoginViewModel: ObservableObject {
             beginReauthentication(for: account)
             return
         }
-        Task {
-            guard await restoreAccountSession(account) else { return }
-            announceRunningGameContinues(with: account)
-        }
+        restoreAccountSelection(account)
     }
 
     func hasUsableSession(for account: LoginAccount) -> Bool {
@@ -270,11 +258,12 @@ final class LoginViewModel: ObservableObject {
     /// Another account is still signed in, so cancelling the re-sign-in has a session to return to.
     var canCancelReauthentication: Bool { activeSession != nil }
 
-    func beginReauthentication(for account: LoginAccount) {
+    func beginReauthentication(for account: LoginAccount, because reason: String? = nil) {
+        invalidateLoginIntent()
         selectRememberedAccount(account)
         refreshLoginProviders()
         successMessage = ""
-        validationMessage = "\(account.displayName) is signed out. Sign in again to switch to it."
+        validationMessage = reason ?? "\(account.displayName) is signed out. Sign in again to switch to it."
         signInRequest = .reauthenticate(email: account.email)
         OPNLog.info(.auth, "Account switch needs re-authentication account=\(account.email)")
     }
@@ -291,14 +280,19 @@ final class LoginViewModel: ObservableObject {
             beginSignInAgain(for: account)
             return
         }
+        invalidateLoginIntent()
+        let generation = loginLaunchGeneration
         Task {
+            guard generation == loginLaunchGeneration else { return }
             guard await restoreAccountSession(account) else { return }
+            guard generation == loginLaunchGeneration else { return }
             announceRunningGameContinues(with: account)
         }
     }
 
     /// Picks the account's provider and starts the browser leg, which is what its row promises.
     func beginSignInAgain(for account: LoginAccount) {
+        invalidateLoginIntent()
         selectRememberedAccount(account)
         refreshLoginProviders()
         successMessage = ""
@@ -313,6 +307,7 @@ final class LoginViewModel: ObservableObject {
     /// Signs in an additional account. The account that is signed in keeps its tokens, so it stays
     /// in the list and switchable once the new one is added.
     func beginAddAccount() {
+        invalidateLoginIntent()
         dismissAccountChooser()
         email = ""
         selectedProvider = providers.first ?? LoginProvider.nvidia

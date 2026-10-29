@@ -170,7 +170,7 @@ extension OPNStreamSessionCoordinator {
         let cloudVariables = await fetchCloudVariables(configuration: configuration)
         var settings = settingsByApplyingCloudVariables(baseSettings, variables: cloudVariables)
         let requestedMaxBitrateMbps = int(settings["maxBitrateMbps"])
-        let preflight = await runNetworkPreflight(token: configuration.accessToken, requestedMaxBitrateMbps: requestedMaxBitrateMbps)
+        let preflight = await runNetworkPreflight(token: configuration.accessToken, requestedMaxBitrateMbps: requestedMaxBitrateMbps, providerStreamingBaseURL: configuration.metadata[OPNLaunchEntitlements.providerMetadataKey] ?? OPNGameService.defaultStreamingBaseUrl)
         if preflight.serverReportedWarning || !preflight.continueRecommended || !preflight.warningMessage.isEmpty {
             OPNTelemetryRecorder.record(OPNTelemetryEvent(name: .networkTest, parameters: [
                 "status": "warning",
@@ -185,7 +185,7 @@ extension OPNStreamSessionCoordinator {
         if preflight.recommendedMaxBitrateMbps > 0 {
             settings["maxBitrateMbps"] = min(int(settings["maxBitrateMbps"]), preflight.recommendedMaxBitrateMbps)
         }
-        let streamingBaseUrl = preflight.streamingBaseUrl.isEmpty ? OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: configuration.applicationID) : preflight.streamingBaseUrl
+        let streamingBaseUrl = preflight.streamingBaseUrl.isEmpty ? OPNStreamPreferences.loadSelectedStreamingBaseUrl(forGame: configuration.applicationID, providerStreamingBaseURL: configuration.metadata[OPNLaunchEntitlements.providerMetadataKey]) : preflight.streamingBaseUrl
         return PreparedStreamLaunch(settings: settings, streamingBaseUrl: streamingBaseUrl)
     }
 
@@ -197,11 +197,11 @@ extension OPNStreamSessionCoordinator {
         }
     }
 
-    func runNetworkPreflight(token: String, requestedMaxBitrateMbps: Int) async -> OPNStreamNetworkPreflightResult {
+    func runNetworkPreflight(token: String, requestedMaxBitrateMbps: Int, providerStreamingBaseURL: String = OPNGameService.defaultStreamingBaseUrl) async -> OPNStreamNetworkPreflightResult {
         await withCheckedContinuation { continuation in
             OPNStreamPreferences.runNetworkPreflight(
                 token: token,
-                providerStreamingBaseUrl: OPNGameService.shared.providerStreamingBaseURL(),
+                providerStreamingBaseUrl: providerStreamingBaseURL,
                 requestedMaxBitrateMbps: requestedMaxBitrateMbps,
                 completion: { preflight in continuation.resume(returning: preflight) }
             )
@@ -210,6 +210,9 @@ extension OPNStreamSessionCoordinator {
 
     func settingsByApplyingCloudVariables(_ settings: [String: Any], variables: OPNStreamCloudVariables) -> [String: Any] {
         let capabilities = OPNStreamPreferences.loadDeviceCapabilities()
+        let entitlements = OPNLaunchEntitlements(settings: settings)
+        var variables = variables
+        variables.entitledAudioChannelCount = entitlements.audioChannelCount
         let resolved = StreamSettingsResolver.resolve(
             profile: streamProfile(from: settings),
             capabilities: streamDeviceCapabilities(from: capabilities),
@@ -217,6 +220,7 @@ extension OPNStreamSessionCoordinator {
         )
         var result = settings
         result.merge(resolved.dictionary(gameLanguage: string(settings["gameLanguage"], fallback: OPNLocale.currentGFNLocale()), accountLinked: bool(settings["accountLinked"], fallback: true), selectedStore: string(settings["selectedStore"]))) { _, new in new }
+        result["enablePersistingInGameSettings"] = bool(result["enablePersistingInGameSettings"]) && entitlements.isInGameSettingsPersistenceEntitled
         return result
     }
 }

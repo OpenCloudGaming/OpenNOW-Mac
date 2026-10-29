@@ -141,6 +141,14 @@ extension NativeNVSTHostViewModel {
     static let clipboardCaptureModeFocusID = "clipboard-capture-mode"
 
     private var displayFocusEntries: [StreamHUDFocusEntry] {
+        let entries = baseDisplayFocusEntries
+        guard isBorderlessTileAvailable else { return entries }
+        return entries + [
+            StreamHUDFocusEntry(id: "borderless-full-screen", isDisabled: isBorderlessTileDisabled, group: "display", columns: 4, action: toggleBorderlessFullScreen),
+        ]
+    }
+
+    private var baseDisplayFocusEntries: [StreamHUDFocusEntry] {
         [
             StreamHUDFocusEntry(id: "floating-stats", isDisabled: !sidebarCapabilities.supports(.floatingStats), group: "display", columns: 4, action: toggleNativeStatsHUD),
             StreamHUDFocusEntry(id: "full-screen", isDisabled: isFullScreenTileDisabled, group: "display", columns: 4, action: toggleNativeFullScreen),

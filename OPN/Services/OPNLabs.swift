@@ -15,6 +15,9 @@ struct OPNLabsFlag: Identifiable, Equatable, Sendable {
     let summary: String
     /// The release it went on trial in, so a flag nobody promoted is visible as stale.
     let since: String
+    /// Whether the flag is only read as the app starts, so switching it asks for a restart rather
+    /// than trying to change what is already running.
+    var requiresRestart = false
 
     var storageKey: String { "OpenNOW.Labs.\(id)" }
 }
@@ -30,13 +33,26 @@ enum OPNLabs {
         since: "0.15"
     )
 
+    /// Couch co-op on one Mac: extra accounts stream in their own windows, each window gets its own
+    /// controllers, and the windows tile themselves. Off by default because it changes how the stream
+    /// windows are placed and lets pads keep playing while another window has the keyboard focus.
+    static let couchCoop = OPNLabsFlag(
+        id: "couchCoop",
+        title: "Couch Co-op",
+        summary: "Adds Stream > Detach New Session, which opens a window for a second or third account. Each window takes its own controllers, plays while another window is in front, and the stream windows tile across your screens.",
+        since: "0.15",
+        requiresRestart: true
+    )
+
     /// Every trial in flight. Empty is the normal state, and the Settings rail drops the Labs
     /// destination while it is.
-    static let flags: [OPNLabsFlag] = [clipboardCapture]
+    static let flags: [OPNLabsFlag] = [clipboardCapture, couchCoop]
 
     /// Whether the in-stream clipboard history is switched on. Read at every point the feature is
     /// offered — the HUD panel, the Settings card, the binding and the capture path itself.
     static var isClipboardCaptureEnabled: Bool { isEnabled(clipboardCapture) }
+
+    static var isCouchCoopEnabled: Bool { isEnabled(couchCoop) }
 
     static var hasFlags: Bool { !flags.isEmpty }
 

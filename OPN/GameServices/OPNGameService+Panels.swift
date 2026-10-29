@@ -28,7 +28,7 @@ extension OPNGameService {
         // once (and the vpcId correction below asks again), so identical requests join
         // one fetch instead of each paying for a 660KB response. A late joiner is
         // replayed whatever the fetch has delivered so far.
-        let groupKey = "\(cacheKind)|\(accountIdentifier)|\(locale)"
+        let groupKey = "\(cacheKind)|\(accountIdentifier)|\(providerBaseUrl)|\(accessToken.hashValue)|\(locale)"
         Self.panelFetchLock.lock()
         if let existing = Self.pendingPanelFetches[groupKey] {
             Self.panelFetchLock.unlock()

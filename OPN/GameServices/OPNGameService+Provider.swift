@@ -2,37 +2,49 @@ import AppKit
 import Foundation
 
 extension OPNGameService {
-    // The service-urls document is global reference data, but it is looked up by both
-    // the login provider picker and the catalog session setup, so a single launch
-    // requested it twice (measured 1280ms + 1028ms). Memoized per idpId with in-flight
-    // coalescing; the streaming base URL side effect is replayed on every hit.
     func fetchProviderInfo(idpId: String, completion: @escaping OPNProviderInfoCallback) {
+        let requestID = UUID()
+        let requestedAccessToken = accessToken
+        let requestedUserID = userId
+        providerContextLock.withLock { providerRequestID = requestID }
+        let deliverProviderInfo: OPNProviderInfoCallback = { [weak self] isSuccessful, providerInfo, providerEndpoint, errorMessage in
+            guard let self else { return }
+            let isCurrentProviderRequest = self.providerContextLock.withLock {
+                guard self.providerRequestID == requestID, self.accessToken == requestedAccessToken,
+                      self.userId == requestedUserID else { return false }
+                self.storedProviderStreamingBaseURL = providerEndpoint.streamingServiceUrl
+                return true
+            }
+            guard isCurrentProviderRequest else {
+                completion(false, providerInfo, providerEndpoint, "Provider lookup superseded")
+                return
+            }
+            completion(isSuccessful, providerInfo, providerEndpoint, errorMessage)
+        }
         Self.referenceDataLock.lock()
         if let entry = Self.providerInfoCache[idpId], Date().timeIntervalSince(entry.timestamp) <= Self.referenceDataFreshSeconds {
             Self.referenceDataLock.unlock()
             let (info, endpoint) = entry.value
-            providerStreamingBaseUrl = endpoint.streamingServiceUrl
-            dispatchProviderInfo(completion, true, info, endpoint, "")
+            dispatchProviderInfo(deliverProviderInfo, true, info, endpoint, "")
             return
         }
         if Self.pendingProviderInfoCallbacks[idpId] != nil {
-            Self.pendingProviderInfoCallbacks[idpId]?.append(completion)
+            Self.pendingProviderInfoCallbacks[idpId]?.append(deliverProviderInfo)
             Self.referenceDataLock.unlock()
             return
         }
-        Self.pendingProviderInfoCallbacks[idpId] = [completion]
+        Self.pendingProviderInfoCallbacks[idpId] = [deliverProviderInfo]
         Self.referenceDataLock.unlock()
 
-        fetchProviderInfoUncached(idpId: idpId) { [weak self] success, info, endpoint, error in
+        fetchProviderInfoUncached(idpId: idpId) { success, info, endpoint, error in
             Self.referenceDataLock.lock()
             if success {
                 Self.providerInfoCache[idpId] = ReferenceDataEntry(value: (info, endpoint), timestamp: Date())
             }
             let callbacks = Self.pendingProviderInfoCallbacks.removeValue(forKey: idpId) ?? []
             Self.referenceDataLock.unlock()
-            guard let self else { return }
             for callback in callbacks {
-                self.dispatchProviderInfo(callback, success, info, endpoint, error)
+                callback(success, info, endpoint, error)
             }
         }
     }
@@ -47,14 +59,12 @@ extension OPNGameService {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Self.gfnUserAgent, forHTTPHeaderField: "User-Agent")
         let networkStart = OPNNetworkLog.start(request, operation: "provider.serviceUrls")
-        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { [weak self] data, response, error in
+        OPNSessionProxySessionProvider.shared.controlPlaneURLSession().dataTask(with: request) { [self] data, response, error in
             OPNNetworkLog.finish(operation: "provider.serviceUrls", startedAt: networkStart, data: data, response: response, error: error)
-            guard let self else { return }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard error == nil, let data, statusCode == 200 else {
                 var endpoint = OPNGameProviderEndpoint()
                 endpoint.streamingServiceUrl = Self.defaultStreamingBaseUrl
-                self.providerStreamingBaseUrl = endpoint.streamingServiceUrl
                 self.dispatchProviderInfo(completion, false, OPNGameProviderInfo(), endpoint, error?.localizedDescription ?? "Provider info request failed")
                 return
             }
@@ -63,9 +73,8 @@ extension OPNGameService {
             let info = self.parseGameProviderInfo(json)
             var endpoint = self.selectGameProviderEndpoint(info, idpId: idpId)
             if endpoint.streamingServiceUrl.isEmpty { endpoint.streamingServiceUrl = Self.defaultStreamingBaseUrl }
-            self.providerStreamingBaseUrl = self.normalizeStreamingBaseUrl(endpoint.streamingServiceUrl)
-            if self.providerStreamingBaseUrl.isEmpty { self.providerStreamingBaseUrl = Self.defaultStreamingBaseUrl }
-            endpoint.streamingServiceUrl = self.providerStreamingBaseUrl
+            let normalizedStreamingBaseURL = self.normalizeStreamingBaseUrl(endpoint.streamingServiceUrl)
+            endpoint.streamingServiceUrl = normalizedStreamingBaseURL.isEmpty ? Self.defaultStreamingBaseUrl : normalizedStreamingBaseURL
             self.dispatchProviderInfo(completion, true, info, endpoint, "")
         }.resume()
     }

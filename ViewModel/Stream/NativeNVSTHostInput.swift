@@ -57,6 +57,7 @@ extension NativeNVSTHostViewModel {
     func attachStreamWindow(_ window: NSWindow?) {
         guard let window = window as? OPNStreamWindow, !didEnd else { return }
         window.sessionSurface = self
+        nativeView?.allowsBackgroundGamepadInput = window.allowsBackgroundGamepadInput
     }
 
     /// The HUD's full-screen tile reads `streamWindowIsFullScreen` rather than the style mask, so it
@@ -145,10 +146,13 @@ extension NativeNVSTHostViewModel {
             }
             return
         }
-        guard path != nil, isConnected, !unifiedHUDVisible, !streamControlsVisible, !isEnding, !didEnd else { return }
-        if view.remoteInputEnabled, !NativeNVSTInputDispatcher.isNeutralizing(event),
-           !Self.acceptsWhileNotFrontmost(event, isPictureInPictureMode: view.isPictureInPictureMode) {
-            guard NSApplication.shared.isActive, view.window?.isKeyWindow == true else { return }
+        guard path != nil, isConnected, !isEnding, !didEnd else { return }
+        let isNeutralizing = NativeNVSTInputDispatcher.isNeutralizing(event)
+        guard isNeutralizing || (view.remoteInputEnabled && !view.localOverlayCapturesInput && !unifiedHUDVisible && !streamControlsVisible) else { return }
+        if !isNeutralizing,
+           !Self.acceptsWhileNotFrontmost(event, isPictureInPictureMode: view.isPictureInPictureMode,
+                                          allowsBackgroundGamepad: view.allowsBackgroundGamepadInput) {
+            guard view.isFrontmostInputTarget else { return }
         }
         lastAcceptedStreamInputAt = Date()
         // The left button's edges bracket a text selection: everything between press and release is
@@ -157,35 +161,25 @@ extension NativeNVSTHostViewModel {
         if case .mouse(.button(_, let button, let isPressed, _)) = event, button == .left {
             clipboard.pointerSelection.noteLeftButton(isPressed: isPressed, at: Date())
         }
-        if case .mouse = event {
-            if view.mouseInputMode == .relative, !view.isPointerLocked {
-                // The seat asked for mouselook but the capture is not held — an association macOS
-                // refused, or a focus change that released it. Dropping the event here is a mouse
-                // that does nothing at all, so a real user event retries the capture: a transient
-                // failure heals itself instead of stranding the session until the seat changes its
-                // mind. A neutralizing release, background input, or the HUD must never retake it.
-                let canRetakeCapture = view.remoteInputEnabled
-                    && view.isFrontmostInputTarget
-                    && !NativeNVSTInputDispatcher.isNeutralizing(event)
-                guard canRetakeCapture else { return }
-                view.setPointerLocked(true)
-                guard view.isPointerLocked else { return }
-            }
-            inputDispatcher?.enqueue(event)
-            return
+        if case .mouse = event, view.mouseInputMode == .relative, !view.isPointerLocked, !isNeutralizing {
+            // Real mouse input retries transient capture failures; neutral releases must never recapture.
+            guard view.canAcquirePointerCapture else { return }
+            view.setPointerLocked(true)
+            guard view.isPointerLocked else { return }
         }
         inputDispatcher?.enqueue(event)
     }
 
     /// Whether an event reaches the game without this window being frontmost.
     ///
-    /// Only the gamepad, and only in PiP. PiP is a small floating surface that never activates the
+    /// Only the gamepad, and only in PiP or while couch co-op has several streams running. PiP is a small floating surface that never activates the
     /// app, so a game pad - a device the system delivers to the process rather than to a window -
     /// has to keep working while the user is in another app; that is the mode's whole point. The
     /// keyboard and mouse stay gated: typing or clicking in the app the user moved to must not reach
     /// the game.
-    static func acceptsWhileNotFrontmost(_ event: UserInputEvent, isPictureInPictureMode: Bool) -> Bool {
-        guard isPictureInPictureMode else { return false }
+    static func acceptsWhileNotFrontmost(_ event: UserInputEvent, isPictureInPictureMode: Bool,
+                                         allowsBackgroundGamepad: Bool = false) -> Bool {
+        guard isPictureInPictureMode || allowsBackgroundGamepad else { return false }
         if case .gamepad = event { return true }
         return false
     }

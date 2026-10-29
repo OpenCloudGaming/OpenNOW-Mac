@@ -1,6 +1,14 @@
 import Foundation
 
 extension NativeGamepadMonitor {
+    func dispatchPendingInput() {
+        let (commands, events) = pollingQueue.sync {
+            (pollState.takePendingCommands(), pollState.takePendingEvents())
+        }
+        for command in commands { onStreamCommand?(command) }
+        for event in events { emitInputEvent(event) }
+    }
+
     /// While the Guide/Steam button is held, `includePointerMotion` is false — trackpad
     /// and stick pointer motion is suppressed here so `SteamControllerLocalCursorInjector`
     /// can drive the real macOS cursor from the right pad instead. Buttons/triggers/sticks
@@ -34,7 +42,7 @@ extension NativeGamepadMonitor {
     }
 
     func emitInputEvent(_ event: UserInputEvent) {
-        if !mappingsEnabled || !pollingAllowed {
+        if !mappingsEnabled || !pollingAllowed || !isKeyboardMouseInputEnabled {
             switch event {
             case .keyboard(let key) where key.isPressed: return
             case .mouse(.button(_, _, true, _)), .mouse(.moved), .mouse(.wheel), .mouse(.horizontalWheel): return
@@ -42,6 +50,14 @@ extension NativeGamepadMonitor {
             }
         }
         for output in bindingOutputLedger.events(for: event) { onInputEvent?(output) }
+    }
+
+    func setKeyboardMouseInputEnabled(_ isEnabled: Bool) {
+        guard isKeyboardMouseInputEnabled != isEnabled else { return }
+        isKeyboardMouseInputEnabled = isEnabled
+        guard !isEnabled else { return }
+        let timestamp = MediaTimestamp(nanoseconds: DispatchTime.now().uptimeNanoseconds)
+        for event in bindingOutputLedger.releaseHeldOutputs(timestamp: timestamp) { onInputEvent?(event) }
     }
 
     func setMappingsEnabled(_ enabled: Bool) {

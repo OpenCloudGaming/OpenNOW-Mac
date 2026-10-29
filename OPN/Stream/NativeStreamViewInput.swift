@@ -245,17 +245,17 @@ extension NativeStreamView {
         onInputEvent?(.mouse(.button(deviceID: "mouse", button: button, isPressed: isPressed, timestamp: Self.timestamp())))
     }
 
-    func releasePressedInputs() {
+    func releasePressedInputs(includingGamepads: Bool = true) {
         let timestamp = Self.timestamp()
         let keyboardEvents = pressedKeyboardEvents.values
         let mouseButtons = pressedMouseButtons
-        let gamepadStates = activeGamepadStates.values
+        let gamepadStates = includingGamepads ? Array(activeGamepadStates.values) : []
         pressedKeyboardEvents.removeAll()
         textInputKeyCodes.removeAll()
         pushToTalkState?.release()
         textInputState.cancel()
         updateCompositionBar()
-        activeGamepadStates.removeAll()
+        if includingGamepads { activeGamepadStates.removeAll() }
         preciseScrollRemainder = 0
         preciseHorizontalScrollRemainder = 0
         lastEmittedAbsoluteMouseEvent = nil
@@ -291,15 +291,19 @@ extension NativeStreamView {
     }
 
     func updateControllerMappingFocus() {
+        let inputFocusState = inputFocus
+        gamepadMonitor.setKeyboardMouseInputEnabled(isFrontmostInputTarget && remoteInputEnabled && !localOverlayCapturesInput)
         gamepadMonitor.setMappingsEnabled(ControllerMappingFocusPolicy.allowsMappings(
-            appIsActive: NSApplication.shared.isActive, windowIsKey: window?.isKeyWindow == true,
-            remoteInputEnabled: remoteInputEnabled, overlayCapturesInput: localOverlayCapturesInput
+            appIsActive: inputFocusState.isApplicationActive, windowIsKey: inputFocusState.isWindowKey,
+            remoteInputEnabled: remoteInputEnabled, overlayCapturesInput: localOverlayCapturesInput,
+            allowsBackgroundPads: allowsBackgroundGamepadInput
         ))
     }
 
     func handleFocusLoss() {
-        gamepadMonitor.setMappingsEnabled(false)
-        releasePressedInputs()
+        gamepadMonitor.setKeyboardMouseInputEnabled(false)
+        gamepadMonitor.setMappingsEnabled(allowsBackgroundGamepadInput && remoteInputEnabled && !localOverlayCapturesInput)
+        releasePressedInputs(includingGamepads: !allowsBackgroundGamepadInput)
         setPointerLocked(false)
         applyLocalCursorPolicy()
     }

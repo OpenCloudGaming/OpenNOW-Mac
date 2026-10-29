@@ -13,6 +13,7 @@ protocol GameLaunchServiceConfiguring {
     func setAccountLinkingToken(_ token: String)
     func setUserId(_ id: String)
     func setVpcId(_ id: String)
+    func providerStreamingBaseURL() -> String
     func resolveLaunchAppId(game: OPNGameInfo, variantIndex: Int, completion: @escaping OPNLaunchAppIdCallback)
 }
 

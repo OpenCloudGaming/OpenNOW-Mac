@@ -103,7 +103,7 @@ extension CatalogViewModel {
     }
 
     func openGameShortcut(_ shortcut: GFNGameShortcut) {
-        configureCatalogService()
+        guard configureCatalogService() else { return }
         let title = shortcut.lookupTitle.isEmpty ? shortcut.displayName : shortcut.lookupTitle
         OPNLog.info(.shortcut, "CatalogViewModel resolving shortcut cmsId=\(shortcut.cmsId) shortName=\(shortcut.shortName) parentGameId=\(shortcut.parentGameId) title=\(title)")
         setActionMessage("Opening \(title.isEmpty ? "GeForce NOW shortcut" : title)...")
@@ -182,6 +182,10 @@ extension CatalogViewModel {
     /// and before any window is replaced, or reports why it could not. Another account's game is not
     /// in the way: the limit is one game per account.
     private func beginOwnedSession() -> OPNGameSession? {
+        guard CatalogAccountRequestIdentity(account: account, session: session).isCurrent(account: account, session: session) else {
+            reportLaunchFailure("Sign in again before launching a game.")
+            return nil
+        }
         guard let accountID = account.resolveStableAccountID() else {
             reportLaunchFailure("This account has no saved identity to start a game with. Sign in again.")
             return nil
@@ -192,7 +196,9 @@ extension CatalogViewModel {
             gameService: gameService,
             launchBridge: launchBridge,
             discordPresence: discordPresence,
-            streamProfile: streamProfile
+            streamProfile: streamProfile,
+            launchEntitlements: currentLaunchEntitlements,
+            providerStreamingBaseURL: gameService.providerStreamingBaseURL()
         ) else {
             reportLaunchFailure(refusalMessage(for: accountID))
             return nil
@@ -264,7 +270,7 @@ extension CatalogViewModel {
         guard launchFlowState == .idle, activeStreamConfiguration == nil, !isCheckingHomeSession else { return }
         isCheckingHomeSession = true
         let token = launchToken
-        let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl()
+        let streamingBaseUrl = OPNStreamPreferences.loadSelectedStreamingBaseUrl(providerStreamingBaseURL: gameService.providerStreamingBaseURL())
         OPNActiveSessionService.fetchActiveSessions(accessToken: token, streamingBaseUrl: streamingBaseUrl, deviceId: resolveCloudmatchDeviceId()) { [weak self] ok, sessions, _ in
             guard let self else { return }
             self.isCheckingHomeSession = false

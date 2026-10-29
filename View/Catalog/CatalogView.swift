@@ -138,6 +138,9 @@ struct CatalogView: View {
     let onForget: (LoginAccount) -> Void
     let onRefreshAuth: () async -> Bool
     let onWindowTitleChange: (String?) -> Void
+    /// A catalog hosted in a Detach New Session window. It belongs to one account and one window, so
+    /// it never takes over the menu bar's session source or its account list from the main window.
+    private let isDetached: Bool
 
     @Binding private var pendingGameShortcut: GFNGameShortcut?
 
@@ -269,8 +272,10 @@ struct CatalogView: View {
         onSignOut: @escaping (LoginAccount) -> Void,
         onForget: @escaping (LoginAccount) -> Void,
         onRefreshAuth: @escaping () async -> Bool,
-        onWindowTitleChange: @escaping (String?) -> Void
+        onWindowTitleChange: @escaping (String?) -> Void,
+        isDetached: Bool = false
     ) {
+        self.isDetached = isDetached
         self.accounts = accounts
         self.signedOutAccountEmails = signedOutAccountEmails
         self.onSwitch = onSwitch
@@ -454,7 +459,7 @@ struct CatalogView: View {
             await viewModel.awaitAccountScopedState()
             // Bound for as long as this window is on screen: the menu bar surface follows the
             // launch flow through it, and can hand a launch back to it while it exists.
-            viewModel.attachMenuBarSurface()
+            if !isDetached { viewModel.attachMenuBarSurface() }
         }
         // Reported from the view rather than from the fetch callbacks: the point of the signal is
         // that a frame carrying real content has been built, not that bytes arrived.
@@ -464,6 +469,7 @@ struct CatalogView: View {
         }
         .onChange(of: pendingGameShortcut) { @MainActor _, _ in consumePendingGameShortcut() }
         .onChange(of: menuBarAccountsSignature, initial: true) { @MainActor _, _ in
+            guard !isDetached else { return }
             viewModel.updateMenuBarAccounts(accounts, signedOutAccountEmails: signedOutAccountEmails)
         }
         .onChange(of: viewModel.activeStreamConfiguration) { @MainActor _, _ in
@@ -494,7 +500,7 @@ struct CatalogView: View {
         .onChange(of: cloudSync.pendingConflicts) { @MainActor _, _ in refreshSyncConflictAlert() }
         .onAppear { @MainActor in refreshSyncConflictAlert() }
         .onDisappear { @MainActor in
-            viewModel.detachMenuBarSurface()
+            if !isDetached { viewModel.detachMenuBarSurface() }
             onWindowTitleChange(nil)
         }
         .opnConfirmation(

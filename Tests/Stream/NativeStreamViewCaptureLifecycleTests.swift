@@ -13,6 +13,7 @@ import Testing
     defer {
         view.setPointerLocked(false)
         window.contentView = nil
+        window.close()
     }
     view.captureAbsoluteCursorIfNeeded()
     try #require(view.isAbsoluteCursorConfined)
@@ -54,6 +55,7 @@ import Testing
     defer {
         view.setPointerLocked(false)
         window.contentView = nil
+        window.close()
     }
     view.captureAbsoluteCursorIfNeeded()
     try #require(view.isAbsoluteCursorConfined)
@@ -79,6 +81,7 @@ import Testing
     defer {
         view.setPointerLocked(false)
         window.contentView = nil
+        window.close()
     }
     view.captureAbsoluteCursorIfNeeded()
     view.setRemoteCursorVisible(true)
@@ -94,6 +97,7 @@ import Testing
     defer {
         view.setPointerLocked(false)
         window.contentView = nil
+        window.close()
     }
     view.remoteInputEnabled = false
     view.locksPointerWhenRelativeModeSelected = true
@@ -110,7 +114,9 @@ import Testing
     defer {
         view.setPointerLocked(false)
         window.contentView = nil
+        window.close()
     }
+    view.inputFocusProvider = nil
     try #require(!window.isKeyWindow)
     view.locksPointerWhenRelativeModeSelected = true
     view.mouseInputMode = .relative
@@ -125,6 +131,7 @@ import Testing
     defer {
         view.setPointerLocked(false)
         window.contentView = nil
+        window.close()
     }
     view.localOverlayCapturesInput = true
     view.locksPointerWhenRelativeModeSelected = true

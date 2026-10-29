@@ -66,6 +66,20 @@ enum StreamWindowGeometryGate {
         window.resizeIncrements = onePointIncrements
     }
 
+    @MainActor
+    static func waitUntilGeometryIsMutable(for window: NSWindow) async -> Bool {
+        for _ in 0..<200 {
+            guard !Task.isCancelled else { return false }
+            guard shouldDeferGeometryMutation(for: window) else { return true }
+            do {
+                try await Task.sleep(for: .milliseconds(50))
+            } catch {
+                return false
+            }
+        }
+        return !Task.isCancelled && !shouldDeferGeometryMutation(for: window)
+    }
+
     /// Runs `body` once the nested loop ends, and drops it if that never happens.
     ///
     /// A zoom animation has no "did end" notification to observe, so this polls at roughly its own

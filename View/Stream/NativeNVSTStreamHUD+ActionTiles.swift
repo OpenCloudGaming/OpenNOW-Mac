@@ -38,6 +38,20 @@ extension NativeNVSTMediaStreamSurface {
     }
 
     var nativeHUDDisplayTiles: [NativeHUDTile] {
+        let tiles = nativeHUDBaseDisplayTiles
+        guard model.isBorderlessTileAvailable else { return tiles }
+        return tiles + [
+            NativeHUDTile(id: "borderless-full-screen",
+                          title: model.borderlessTileTitle,
+                          subtitle: model.borderlessTileSubtitle,
+                          systemName: "rectangle.dashed",
+                          isActive: model.isBorderlessTileActive,
+                          isDisabled: model.isBorderlessTileDisabled,
+                          action: model.toggleBorderlessFullScreen),
+        ]
+    }
+
+    private var nativeHUDBaseDisplayTiles: [NativeHUDTile] {
         [
             NativeHUDTile(id: "floating-stats",
                           title: model.nativeStatsVisible ? "Hide Floating Stats" : "Show Floating Stats",

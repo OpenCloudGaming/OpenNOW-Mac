@@ -1321,7 +1321,7 @@ The screen renders at 100 % interface scale like every other transient splash.
 ### Confirmation Modal (`OPNConfirmationModal`)
 
 The app-shell replacement for the native `.confirmationDialog` and `.alert`, which render rounded
-macOS system chrome. Raised through the `opnConfirmation` modifier and rendered once at the app root
+macOS system chrome. Raised through the `opnConfirmation` modifier and rendered once at its window root
 by `OPNConfirmationOverlay` — above the update prompt, below the splash — so it covers the whole
 surface even when the page that raised it lives inside a scroll view. Full-cover Scrim behind a
 centered panel following the modal spec (Panel background, 1px Stroke Regular, 2px accent top bar,
@@ -1336,10 +1336,16 @@ actions trailing. Actions are `OPNConfirmationAction`s in visual order: `.cancel
 centered panel springs up from 0.96 scale with a fade. Reduce Motion collapses both to a plain
 cross-fade.
 
+Detached catalogs own a separate confirmation and report presenter through `DetachedSessionModalHost`.
+The host injects these references into its descendants and the focused scene's Help command; it never
+observes the main window's shared requests. Confirmation modifiers dismiss only their own request, so
+an unrelated page disappearing cannot clear another page's dialog. Main-window update prompts keep
+their existing host and ordering.
+
 ### Report an Issue Modal (`OPNReportIssueModal`)
 
-The two-channel support form, raised through `OPNReportIssuePresentation.shared.present(context:)`
-and rendered once at the app root by `OPNReportIssueOverlay` — above the update prompt, below the
+The two-channel support form, raised through the window's `OPNReportIssuePresentation.present(context:)`
+(the shared presenter in the main window) and rendered once at that window root by `OPNReportIssueOverlay` — above the update prompt, below the
 confirmation modal — so it covers the whole surface even when the page that raised it lives inside a
 scroll view. It reuses the confirmation modal's shell exactly (Panel background, 1px Stroke Regular,
 2px accent top bar, modal shadow #000000 @ 0.58 radius 28 y 20, App Bar header with a 10pt bold

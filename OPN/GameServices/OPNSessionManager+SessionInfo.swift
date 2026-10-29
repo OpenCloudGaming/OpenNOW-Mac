@@ -56,7 +56,7 @@ extension OPNSessionManager {
     /// so a stream that looks like it forgot the setting can be told apart from an unsent one.
     func logInGameSettingsPersistenceRequest(_ settings: [String: Any]) {
         let toggle = OPNStreamPreferences.loadPersistInGameSettings()
-        let entitled = OPNStreamPreferences.loadEntitledInGameSettingsPersistence()
+        let entitled = OPNLaunchEntitlements(settings: settings).isInGameSettingsPersistenceEntitled
         let sent = bool(settings["enablePersistingInGameSettings"])
         OPNDiagnostics.logInfoMessage(OPNDiagnostics.formattedLogMessage(level: "info", area: "SessionManager", message: "In-game settings persistence sent=\(sent ? "on" : "off") toggle=\(toggle ? "on" : "off") membership=\(entitled ? "entitled" : "not-entitled")"))
     }
