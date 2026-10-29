@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.20.0...v0.21.0) (2026-10-29)
+
+
+### Features
+
+* add multi-account couch co-op with independent stream windows ([#82](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/82)) ([7097b51](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/7097b511f757eca240cae1e76067c2184a938d8f))
+
 ## [0.20.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.19.0...v0.20.0) (2026-10-29)
 
 
