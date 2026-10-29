@@ -68,23 +68,23 @@ enum OPNStreamBorderless {
             return
         }
         window.scheduleLayoutChange { window in
-            restoreWindowedState(window, isFrameRestored: true)
+            restoreWindowedState(window, isFrameRestorationEnabled: true)
             guard !Task.isCancelled, !window.isPresentationEnding else { return }
             completion?()
         }
         window.isBorderlessExitPending = window.layoutState.isBorderless
     }
 
-    private static func restoreWindowedState(_ window: OPNStreamWindow, isFrameRestored: Bool) {
+    private static func restoreWindowedState(_ window: OPNStreamWindow, isFrameRestorationEnabled: Bool) {
         guard window.layoutState.isBorderless || window.borderlessRestoreState != nil else {
             window.clearLayoutFrame()
             return
         }
-        let wasBorderless = window.layoutState.isBorderless
+        let isBorderlessBeforeRestoration = window.layoutState.isBorderless
         window.layoutState.isBorderless = false
         defer {
             window.clearLayoutFrame()
-            if wasBorderless { postCoveringStateChange(for: window) }
+            if isBorderlessBeforeRestoration { postCoveringStateChange(for: window) }
         }
         OPNStreamWindowChrome.applyBorderless(to: window, isBorderless: false)
         guard let state = window.borderlessRestoreState else {
@@ -95,7 +95,7 @@ enum OPNStreamBorderless {
         window.borderlessRestoreState = nil
         window.level = state.level
         for child in window.childWindows ?? [] { child.level = state.level }
-        guard isFrameRestored else { return }
+        guard isFrameRestorationEnabled else { return }
         window.setFrameFromLayout(state.frame)
         if state.isMiniaturized { window.miniaturize(nil) }
     }
@@ -134,7 +134,7 @@ enum OPNStreamBorderless {
         window.cancelPendingLayout()
         window.layoutState.isManuallyPlaced = true
         window.layoutState.isAutoTiled = false
-        restoreWindowedState(window, isFrameRestored: false)
+        restoreWindowedState(window, isFrameRestorationEnabled: false)
         window.layoutMembershipDidChange?()
     }
 

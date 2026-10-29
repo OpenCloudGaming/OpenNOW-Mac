@@ -161,19 +161,11 @@ extension NativeNVSTHostViewModel {
         if case .mouse(.button(_, let button, let isPressed, _)) = event, button == .left {
             clipboard.pointerSelection.noteLeftButton(isPressed: isPressed, at: Date())
         }
-        if case .mouse = event {
-            if view.mouseInputMode == .relative, !view.isPointerLocked, !isNeutralizing {
-                // The seat asked for mouselook but the capture is not held — an association macOS
-                // refused, or a focus change that released it. Dropping the event here is a mouse
-                // that does nothing at all, so a real user event retries the capture: a transient
-                // failure heals itself instead of stranding the session until the seat changes its
-                // mind. A neutralizing release, background input, or the HUD must never retake it.
-                guard view.canAcquirePointerCapture else { return }
-                view.setPointerLocked(true)
-                guard view.isPointerLocked else { return }
-            }
-            inputDispatcher?.enqueue(event)
-            return
+        if case .mouse = event, view.mouseInputMode == .relative, !view.isPointerLocked, !isNeutralizing {
+            // Real mouse input retries transient capture failures; neutral releases must never recapture.
+            guard view.canAcquirePointerCapture else { return }
+            view.setPointerLocked(true)
+            guard view.isPointerLocked else { return }
         }
         inputDispatcher?.enqueue(event)
     }

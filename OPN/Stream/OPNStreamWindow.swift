@@ -68,26 +68,27 @@ final class OPNStreamWindow: NSWindow {
         isBorderlessExitPending = false
     }
 
-    func scheduleLayoutChange(_ body: @escaping @MainActor (OPNStreamWindow) -> Void) {
+    func scheduleLayoutChange(_ applyLayoutChange: @escaping @MainActor (OPNStreamWindow) -> Void) {
         cancelPendingLayout()
         guard !isPresentationEnding else { return }
-        let requestID = layoutRequestID
+        let scheduledLayoutRequestID = layoutRequestID
         layoutTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer {
-                if self.layoutRequestID == requestID {
-                    self.layoutTask = nil
-                    self.pictureInPictureRequestID = nil
-                    self.isBorderlessExitPending = false
-                }
-            }
+            defer { self.clearFinishedLayoutRequest(scheduledLayoutRequestID) }
             guard await StreamWindowGeometryGate.waitUntilGeometryIsMutable(for: self),
-                  self.layoutRequestID == requestID, !self.isPresentationEnding,
+                  self.layoutRequestID == scheduledLayoutRequestID, !self.isPresentationEnding,
                   !self.styleMask.contains(.fullScreen) else { return }
             self.isApplyingLayoutChange = true
             defer { self.isApplyingLayoutChange = false }
-            body(self)
+            applyLayoutChange(self)
         }
+    }
+
+    private func clearFinishedLayoutRequest(_ finishedLayoutRequestID: UUID) {
+        guard layoutRequestID == finishedLayoutRequestID else { return }
+        layoutTask = nil
+        pictureInPictureRequestID = nil
+        isBorderlessExitPending = false
     }
 
     func endPresentation() {
@@ -103,9 +104,9 @@ final class OPNStreamWindow: NSWindow {
     }
 
     func setFrameFromLayout(_ frame: NSRect) {
-        let wasApplyingLayoutChange = isApplyingLayoutChange
+        let isApplyingEnclosingLayoutChange = isApplyingLayoutChange
         isApplyingLayoutChange = true
-        defer { isApplyingLayoutChange = wasApplyingLayoutChange }
+        defer { isApplyingLayoutChange = isApplyingEnclosingLayoutChange }
         layoutFrame = frame
         setFrame(frame, display: true)
     }

@@ -115,17 +115,7 @@ final class OPNMainWindowAccountHandoff {
 
     func attach(_ window: NSWindow) {
         guard isRequested else { return }
-        if self.window !== window {
-            restoreLevel()
-            if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
-            self.window = window
-            originalLevel = window.level
-            closeObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.willCloseNotification, object: window, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.end() }
-            }
-        }
+        bindWindow(window)
         applyLevel()
     }
 
@@ -141,6 +131,19 @@ final class OPNMainWindowAccountHandoff {
         if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
         closeObserver = nil
         if isReturningFocus, let returnWindow, returnWindow.isVisible { returnWindow.makeKeyAndOrderFront(nil) }
+    }
+
+    private func bindWindow(_ window: NSWindow) {
+        guard self.window !== window else { return }
+        restoreLevel()
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        self.window = window
+        originalLevel = window.level
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.end() }
+        }
     }
 
     private func applyLevel() {

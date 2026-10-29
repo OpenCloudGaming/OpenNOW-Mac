@@ -45,10 +45,10 @@ final class DetachedSessionViewModel {
     func confirm(row: DetachedAccountRow, accountID: OPNAccountID) {
         guard row.availability.isSelectable else { return }
         discardPendingSelection()
-        let selection = DetachedSessionModel.selection(disabled: disabledControllers, takesPadsFromOtherStreams: takesPadsFromOtherStreams)
-        preset.store(selection, forAccount: accountID.rawValue)
+        let controllerSelection = DetachedSessionModel.selection(disabled: disabledControllers, takesPadsFromOtherStreams: takesPadsFromOtherStreams)
+        preset.store(controllerSelection, forAccount: accountID.rawValue)
         pendingAccountID = accountID
-        pendingSelection = selection
+        pendingSelection = controllerSelection
         selectedEmail = row.email
         phase = .catalog(email: row.email)
     }
@@ -62,12 +62,12 @@ final class DetachedSessionViewModel {
     /// A choice made for a stream that never started must not reach a later launch by the same
     /// account. Once the account owns a game the stream has taken it, so there is nothing to drop.
     func discardPendingSelection() {
-        let accountID = pendingAccountID
-        let selection = pendingSelection
+        let selectionAccountID = pendingAccountID
+        let controllerSelection = pendingSelection
         pendingAccountID = nil
         pendingSelection = nil
-        guard let accountID, let selection, !registry.isOwned(by: accountID),
-              preset.peek(forAccount: accountID.rawValue) == selection else { return }
-        preset.store(OPNStreamControllerSelection(), forAccount: accountID.rawValue)
+        guard let selectionAccountID, let controllerSelection, !registry.isOwned(by: selectionAccountID),
+              preset.peek(forAccount: selectionAccountID.rawValue) == controllerSelection else { return }
+        preset.store(OPNStreamControllerSelection(), forAccount: selectionAccountID.rawValue)
     }
 }

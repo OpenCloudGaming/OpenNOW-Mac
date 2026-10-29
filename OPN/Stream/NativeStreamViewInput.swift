@@ -291,10 +291,10 @@ extension NativeStreamView {
     }
 
     func updateControllerMappingFocus() {
-        let focus = inputFocus
+        let inputFocusState = inputFocus
         gamepadMonitor.setKeyboardMouseInputEnabled(isFrontmostInputTarget && remoteInputEnabled && !localOverlayCapturesInput)
         gamepadMonitor.setMappingsEnabled(ControllerMappingFocusPolicy.allowsMappings(
-            appIsActive: focus.isApplicationActive, windowIsKey: focus.isWindowKey,
+            appIsActive: inputFocusState.isApplicationActive, windowIsKey: inputFocusState.isWindowKey,
             remoteInputEnabled: remoteInputEnabled, overlayCapturesInput: localOverlayCapturesInput,
             allowsBackgroundPads: allowsBackgroundGamepadInput
         ))

@@ -25,19 +25,19 @@ struct ControllerBindingOutputLedger {
     }
 
     mutating func releaseHeldOutputs(timestamp: MediaTimestamp) -> [UserInputEvent] {
-        var events: [UserInputEvent] = []
-        for code in keys.keys.sorted() {
-            guard let owner = keys[code]?.keys.sorted(by: { $0.rawValue < $1.rawValue }).first else { continue }
-            events.append(.keyboard(KeyboardEvent(deviceID: owner, keyCode: code, scanCode: code,
-                                                  modifiers: [], isPressed: false, timestamp: timestamp)))
+        var releaseEvents: [UserInputEvent] = []
+        for keyCode in keys.keys.sorted() {
+            guard let ownerDeviceID = keys[keyCode]?.keys.sorted(by: { $0.rawValue < $1.rawValue }).first else { continue }
+            releaseEvents.append(.keyboard(KeyboardEvent(deviceID: ownerDeviceID, keyCode: keyCode, scanCode: keyCode,
+                                                         modifiers: [], isPressed: false, timestamp: timestamp)))
         }
-        for button in mouseButtons.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
-            guard let owner = mouseButtons[button]?.sorted(by: { $0.rawValue < $1.rawValue }).first else { continue }
-            events.append(.mouse(.button(deviceID: owner, button: button, isPressed: false, timestamp: timestamp)))
+        for mouseButton in mouseButtons.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
+            guard let ownerDeviceID = mouseButtons[mouseButton]?.sorted(by: { $0.rawValue < $1.rawValue }).first else { continue }
+            releaseEvents.append(.mouse(.button(deviceID: ownerDeviceID, button: mouseButton, isPressed: false, timestamp: timestamp)))
         }
         keys.removeAll()
         mouseButtons.removeAll()
-        return events
+        return releaseEvents
     }
 
     private mutating func keyboardEvents(for event: KeyboardEvent) -> [UserInputEvent] {

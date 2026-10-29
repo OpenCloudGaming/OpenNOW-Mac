@@ -52,9 +52,9 @@ struct OPNLaunchEntitlements: Equatable, Sendable {
     }
 
     var metadataValue: String {
-        guard let encoded = try? JSONSerialization.data(withJSONObject: storedDictionary, options: .sortedKeys),
-              let value = String(data: encoded, encoding: .utf8) else { return "{}" }
-        return value
+        guard let encodedEntitlements = try? JSONSerialization.data(withJSONObject: storedDictionary, options: .sortedKeys),
+              let entitlementsJSON = String(data: encodedEntitlements, encoding: .utf8) else { return "{}" }
+        return entitlementsJSON
     }
 }
 

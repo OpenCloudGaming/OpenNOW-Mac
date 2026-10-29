@@ -45,10 +45,10 @@ final class OPNMainAccountActions {
     @discardableResult
     func bind(login: LoginViewModel) -> Task<Void, Never> {
         self.login = login
-        let requests = pendingRequests
+        let queuedRequests = pendingRequests
         pendingRequests.removeAll()
         return Task {
-            for request in requests {
+            for request in queuedRequests {
                 await perform(request, login: login)
             }
         }
@@ -96,12 +96,12 @@ final class OPNMainAccountActions {
     }
 
     private func reload(login: LoginViewModel) throws {
-        guard let context = login.modelContext else { throw ActionError.missingContext }
+        guard let modelContext = login.modelContext else { throw ActionError.missingContext }
         login.update(
-            modelContext: context,
-            accounts: try context.fetch(FetchDescriptor<LoginAccount>()),
-            sessions: try context.fetch(FetchDescriptor<LoginSession>()),
-            devices: try context.fetch(FetchDescriptor<LoginDeviceRegistration>())
+            modelContext: modelContext,
+            accounts: try modelContext.fetch(FetchDescriptor<LoginAccount>()),
+            sessions: try modelContext.fetch(FetchDescriptor<LoginSession>()),
+            devices: try modelContext.fetch(FetchDescriptor<LoginDeviceRegistration>())
         )
     }
 

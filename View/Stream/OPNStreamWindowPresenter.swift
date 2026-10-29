@@ -344,10 +344,10 @@ final class OPNStreamWindowPresenter {
     var hasTiledWindows: Bool { windows.values.contains { $0.layoutState.isAutoTiled } }
 
     private func isPlaceableByLayout(_ window: OPNStreamWindow) -> Bool {
-        let presentation = presentations[ObjectIdentifier(window)]
+        let windowPresentation = presentations[ObjectIdentifier(window)]
         return !window.layoutState.isManuallyPlaced && !window.isPictureInPicture && !window.isPictureInPicturePending &&
             !window.isMiniaturized && !window.isPresentationEnding && !isNativeFullScreen(window) &&
-            presentation?.transition == FullScreenTransition.none
+            windowPresentation?.transition == FullScreenTransition.none
     }
 
     private func releaseTile(_ window: OPNStreamWindow) {
@@ -387,24 +387,23 @@ final class OPNStreamWindowPresenter {
                 }
             }
         }
-        let willMiniaturize = center.addObserver(forName: NSWindow.willMiniaturizeNotification, object: window, queue: .main) { [weak window] _ in
+        let willMiniaturizeObserver = center.addObserver(forName: NSWindow.willMiniaturizeNotification, object: window, queue: .main) { [weak window] _ in
             MainActor.assumeIsolated {
                 guard let window, !window.isApplyingLayoutChange else { return }
                 OPNStreamBorderless.takePlacement(window)
             }
         }
-        let miniaturizationTokens = [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification].map { name in
+        let miniaturizationObserverTokens = [NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification].map { name in
             center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.retileWindows() }
             }
         }
-        presentation.observerTokens = [willEnter, didEnter, willExit, didExit, willMiniaturize] + layoutTokens + miniaturizationTokens
+        presentation.observerTokens = [willEnter, didEnter, willExit, didExit, willMiniaturizeObserver] + layoutTokens + miniaturizationObserverTokens
         presentations[id] = presentation
         return presentation
     }
 
-    /// A tiled window displaced by the reader stays theirs. Returns whether ownership changed;
-    /// the window's owning presenter retiles the rest.
+    /// The owner callback retiles survivors; the observer must not issue a second retile.
     @discardableResult
     static func noteFrameChange(_ window: OPNStreamWindow) -> Bool {
         // No layout frame yet means the placement is still waiting on the geometry gate, so a move

@@ -10,8 +10,8 @@ extension NativeStreamView {
     /// A cursor rect and a pointer capture only mean anything for the key window of the active app.
     /// Taking either while another app is frontmost steals a pointer this window cannot even draw in.
     public var isFrontmostInputTarget: Bool {
-        let focus = inputFocus
-        return focus.isApplicationActive && focus.isWindowKey
+        let inputFocusState = inputFocus
+        return inputFocusState.isApplicationActive && inputFocusState.isWindowKey
     }
 
     var inputFocus: (isApplicationActive: Bool, isWindowKey: Bool) {

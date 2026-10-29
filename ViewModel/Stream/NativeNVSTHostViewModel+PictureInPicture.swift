@@ -66,10 +66,8 @@ extension NativeNVSTHostViewModel {
 
     private func leaveFullScreenThenEnterPictureInPicture(_ window: OPNStreamWindow, requestID: UUID, attempt: Int) {
         guard attempt < Self.sessionReadyFullScreenAttemptLimit else {
-            if window.pictureInPictureRequestID == requestID {
-                window.pictureInPictureRequestID = nil
-                window.layoutMembershipDidChange?()
-            }
+            guard window.pictureInPictureRequestID == requestID else { return }
+            Self.cancelPictureInPictureRequest(in: window)
             return
         }
         Task { @MainActor [weak self, weak window] in
@@ -77,8 +75,7 @@ extension NativeNVSTHostViewModel {
             guard let window, window.pictureInPictureRequestID == requestID else { return }
             guard let self, !self.isEnding, !self.didEnd, !window.isPresentationEnding,
                   self.nativeView?.window === window else {
-                window.pictureInPictureRequestID = nil
-                window.layoutMembershipDidChange?()
+                NativeNVSTHostViewModel.cancelPictureInPictureRequest(in: window)
                 return
             }
             if self.isFullScreenTransitioning || StreamWindowGeometryGate.shouldDeferGeometryMutation(for: window) {
@@ -92,5 +89,10 @@ extension NativeNVSTHostViewModel {
             }
             self.enterPictureInPicture(window)
         }
+    }
+
+    private static func cancelPictureInPictureRequest(in window: OPNStreamWindow) {
+        window.pictureInPictureRequestID = nil
+        window.layoutMembershipDidChange?()
     }
 }

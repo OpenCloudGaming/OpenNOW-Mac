@@ -75,9 +75,8 @@ enum OPNStreamPictureInPicture {
             enterRestoredWindow(window, aspectRatio: aspectRatio)
             completion?()
         }
-        if !window.isPictureInPicture, window.hasPendingLayoutChange {
-            window.pictureInPictureRequestID = UUID()
-        }
+        guard !window.isPictureInPicture, window.hasPendingLayoutChange else { return }
+        window.pictureInPictureRequestID = UUID()
     }
 
     private static func enterRestoredWindow(_ window: OPNStreamWindow, aspectRatio: CGFloat) {

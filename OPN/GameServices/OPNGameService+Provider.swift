@@ -4,36 +4,36 @@ import Foundation
 extension OPNGameService {
     func fetchProviderInfo(idpId: String, completion: @escaping OPNProviderInfoCallback) {
         let requestID = UUID()
-        let token = accessToken
-        let requestingUserID = userId
+        let requestedAccessToken = accessToken
+        let requestedUserID = userId
         providerContextLock.withLock { providerRequestID = requestID }
-        let delivery: OPNProviderInfoCallback = { [weak self] success, info, endpoint, error in
+        let deliverProviderInfo: OPNProviderInfoCallback = { [weak self] isSuccessful, providerInfo, providerEndpoint, errorMessage in
             guard let self else { return }
-            let isCurrent = self.providerContextLock.withLock {
-                guard self.providerRequestID == requestID, self.accessToken == token,
-                      self.userId == requestingUserID else { return false }
-                self.storedProviderStreamingBaseURL = endpoint.streamingServiceUrl
+            let isCurrentProviderRequest = self.providerContextLock.withLock {
+                guard self.providerRequestID == requestID, self.accessToken == requestedAccessToken,
+                      self.userId == requestedUserID else { return false }
+                self.storedProviderStreamingBaseURL = providerEndpoint.streamingServiceUrl
                 return true
             }
-            guard isCurrent else {
-                completion(false, info, endpoint, "Provider lookup superseded")
+            guard isCurrentProviderRequest else {
+                completion(false, providerInfo, providerEndpoint, "Provider lookup superseded")
                 return
             }
-            completion(success, info, endpoint, error)
+            completion(isSuccessful, providerInfo, providerEndpoint, errorMessage)
         }
         Self.referenceDataLock.lock()
         if let entry = Self.providerInfoCache[idpId], Date().timeIntervalSince(entry.timestamp) <= Self.referenceDataFreshSeconds {
             Self.referenceDataLock.unlock()
             let (info, endpoint) = entry.value
-            dispatchProviderInfo(delivery, true, info, endpoint, "")
+            dispatchProviderInfo(deliverProviderInfo, true, info, endpoint, "")
             return
         }
         if Self.pendingProviderInfoCallbacks[idpId] != nil {
-            Self.pendingProviderInfoCallbacks[idpId]?.append(delivery)
+            Self.pendingProviderInfoCallbacks[idpId]?.append(deliverProviderInfo)
             Self.referenceDataLock.unlock()
             return
         }
-        Self.pendingProviderInfoCallbacks[idpId] = [delivery]
+        Self.pendingProviderInfoCallbacks[idpId] = [deliverProviderInfo]
         Self.referenceDataLock.unlock()
 
         fetchProviderInfoUncached(idpId: idpId) { success, info, endpoint, error in
@@ -73,8 +73,8 @@ extension OPNGameService {
             let info = self.parseGameProviderInfo(json)
             var endpoint = self.selectGameProviderEndpoint(info, idpId: idpId)
             if endpoint.streamingServiceUrl.isEmpty { endpoint.streamingServiceUrl = Self.defaultStreamingBaseUrl }
-            let normalized = self.normalizeStreamingBaseUrl(endpoint.streamingServiceUrl)
-            endpoint.streamingServiceUrl = normalized.isEmpty ? Self.defaultStreamingBaseUrl : normalized
+            let normalizedStreamingBaseURL = self.normalizeStreamingBaseUrl(endpoint.streamingServiceUrl)
+            endpoint.streamingServiceUrl = normalizedStreamingBaseURL.isEmpty ? Self.defaultStreamingBaseUrl : normalizedStreamingBaseURL
             self.dispatchProviderInfo(completion, true, info, endpoint, "")
         }.resume()
     }
