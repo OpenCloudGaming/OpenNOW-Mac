@@ -391,7 +391,7 @@ public final class NvstNativeBundle: @unchecked Sendable {
     /// device can change under a running session when the default output does.
     private func startAudioDevice() {
         let layout = audioLayout
-        let device = NvstCoreAudioDevice(playoutChannelCount: layout.channels,
+        let device = NvstCoreAudioDevice(playoutChannelCount: layout.channels, capturesMicrophone: microphoneSetup != nil,
                                          preferredInputDeviceUID: microphoneSetup?.deviceUniqueID,
                                          preferredOutputDeviceUID: outputDeviceUniqueID)
         device.playoutGain = Float(gameVolume)
