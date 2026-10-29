@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.20.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.19.0...v0.20.0) (2026-10-29)
+
+
+### Features
+
+* stream SDR for store editions without HDR ([cddb393](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/cddb393adf1e3863becff32952374d215274b6ac))
+
+
+### Bug Fixes
+
+* **catalog:** stop a stale patch record blocking a playable title ([#129](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/129)) ([105f28b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/105f28b4413cec87d7bfb037f218bfe27477bc2c))
+* **deps:** cap swift-collections below 1.7 so tests load on macos 26 ([#132](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/132)) ([1ebdd9f](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/1ebdd9fee009ff025d9142df6051bde83dbddbdf))
+* honor HDR/G-Sync settings and correct packet-loss reporting ([c710f6d](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/c710f6daca4a534d312f1929816e9deaf47a10f2))
+* **nvst:** keep the video punch alive and recover a stream with no video ([37d7c49](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/37d7c494edc22c8020cdd033755e29f65728b142))
+* release drawables on the vrr render thread ([#134](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/134)) ([a895714](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/a895714b1215d0115c38015ecdb306da9db50223))
+* skip microphone capture when disabled at stream startup ([b1c6e5b](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/b1c6e5b200b2676df6c07501269eb340e44c7640))
+* synchronize metal layer drawable sizing for vrr ([298bdf7](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/298bdf79d84252d3ee3b1226114befa3ba5c71a0))
+
 ## [0.19.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.18.0...v0.19.0) (2026-10-20)
 
 

@@ -77,6 +77,9 @@ import Testing
         #expect(!bundleSeat.bundle.microphoneNegotiation.negotiated, "a microphone was advertised without being requested")
         #expect(bundleSeat.bundle.microphoneNegotiation.senderSsrc == nil)
         #expect(bundleSeat.audioTracks.reportedCount == 2, "the audio-armed callback reported \(String(describing: bundleSeat.audioTracks.reportedCount))")
+        try await waitUntil(timeout: 5) { bundleSeat.audioTracks.deviceStartup != nil }
+        let deviceStartup = try #require(bundleSeat.audioTracks.deviceStartup)
+        #expect(deviceStartup.contains("capture=false"), "disabled microphone opened hardware: \(deviceStartup)")
 
         try await sendSeatAudio(transport: bundleSeat.transport)
         try await drainUntilDecoded(bundleSeat.bundle)
@@ -171,9 +174,9 @@ import Testing
         -> (bundle: NvstNativeBundle, transport: NvstDtlsTransport, peer: SctpAcceptingPeer, audioTracks: AudioTrackBox) {
         let serverSocket = try LoopbackDatagramSocket()
         let clientIdentity = try NvstDtlsIdentity()
-        let bundle = NvstNativeBundle(handoff: Self.seatHandoff(peerPort: serverSocket.port), identity: clientIdentity)
-        // Set before the handshake so the audio-armed callback is observed deterministically.
         let audioTracks = AudioTrackBox()
+        let bundle = NvstNativeBundle(handoff: Self.seatHandoff(peerPort: serverSocket.port), identity: clientIdentity,
+                                      logger: { audioTracks.recordDeviceStartup($0) })
         bundle.onRemoteAudio = { audioTracks.record($0) }
         bundle.setRemoteAudioMuted(true)
         let identity = try await bundle.prepare(microphone: microphone, audioLayout: .stereo)
@@ -425,6 +428,12 @@ private final class ProtocolVersionBox: @unchecked Sendable {
 private final class AudioTrackBox: @unchecked Sendable {
     private let lock = NSLock()
     private var trackCount: Int?
+    private var startupMessage: String?
     var reportedCount: Int? { lock.withLock { trackCount } }
+    var deviceStartup: String? { lock.withLock { startupMessage } }
     func record(_ count: Int) { lock.withLock { trackCount = count } }
+    func recordDeviceStartup(_ message: String) {
+        guard message.hasPrefix("NVST native audio device ") else { return }
+        lock.withLock { startupMessage = message }
+    }
 }
