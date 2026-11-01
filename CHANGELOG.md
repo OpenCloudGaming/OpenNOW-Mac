@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.20.0...v0.21.0) (2026-11-01)
+
+
+### Features
+
+* add multi-account couch co-op with independent stream windows ([#82](https://github.com/OpenCloudGaming/OpenNOW-Mac/issues/82)) ([7097b51](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/7097b511f757eca240cae1e76067c2184a938d8f))
+
+
+### Bug Fixes
+
+* prevent audio sequence underflow and validate sample rates ([8ba20e5](https://github.com/OpenCloudGaming/OpenNOW-Mac/commit/8ba20e509920b6ef41a3dd207e7b30a594a2c24e))
+
 ## [0.20.0](https://github.com/OpenCloudGaming/OpenNOW-Mac/compare/v0.19.0...v0.20.0) (2026-10-29)
 
 
