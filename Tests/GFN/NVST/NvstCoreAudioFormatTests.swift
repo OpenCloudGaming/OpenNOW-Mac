@@ -99,6 +99,7 @@ import Testing
 
     @Test func theStreamFormatIsSixteenBitInterleaved() {
         let format = NvstCoreAudioFormat.linear16Format(sampleRate: 48_000, channels: 2)
+        #expect(format.mSampleRate == 48_000)
         #expect(format.mFormatID == kAudioFormatLinearPCM)
         #expect(format.mBitsPerChannel == 16)
         #expect(format.mChannelsPerFrame == 2)
@@ -108,6 +109,26 @@ import Testing
         #expect(format.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0)
         // A zero channel count is nonsense the hardware would reject; one channel is the floor.
         #expect(NvstCoreAudioFormat.linear16Format(sampleRate: 48_000, channels: 0).mChannelsPerFrame == 1)
+    }
+
+    @Test(arguments: [Double.zero, -1, -48_000, .nan, .infinity, -.infinity])
+    func invalidSampleRatesUseTheDefault(sampleRate: Double) {
+        let format = NvstCoreAudioFormat.linear16Format(sampleRate: sampleRate, channels: 2)
+        #expect(format.mSampleRate == NvstCoreAudioFormat.sampleRate)
+        #expect(NvstCoreAudioFormat.preferredIOBufferFrames(sampleRate: sampleRate) == 240)
+    }
+
+    @Test(arguments: [(1.0, UInt32(1)), (8_000, 40), (44_100, 221), (96_000, 480), (192_000, 960)])
+    func finitePositiveSampleRatesArePreserved(sampleRate: Double, expectedFrames: UInt32) {
+        let format = NvstCoreAudioFormat.linear16Format(sampleRate: sampleRate, channels: 2)
+        #expect(format.mSampleRate == sampleRate)
+        #expect(NvstCoreAudioFormat.preferredIOBufferFrames(sampleRate: sampleRate) == expectedFrames)
+    }
+
+    @Test func bufferFrameCountsBeyondUInt32SaturateAtTheMaximum() {
+        let sampleRate = Double.greatestFiniteMagnitude
+        #expect(NvstCoreAudioFormat.linear16Format(sampleRate: sampleRate, channels: 2).mSampleRate == sampleRate)
+        #expect(NvstCoreAudioFormat.preferredIOBufferFrames(sampleRate: sampleRate) == UInt32.max)
     }
 
     @Test func theLevelMatchesTheSettingsMeterScale() {

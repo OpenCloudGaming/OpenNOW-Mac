@@ -71,6 +71,33 @@ import Testing
         #expect(buffer.lostPacketCount == 0)
     }
 
+    @Test(arguments: [UInt16(0), 1, 32_766])
+    func packetsFromAnUnrepresentablePreviousCycleLeavePlayoutUnchanged(firstSequence: UInt16) {
+        var buffer = NvstAudioJitterBuffer(targetDepth: 1)
+        buffer.insert(sequenceNumber: firstSequence, payload: payload(1))
+        buffer.insert(sequenceNumber: 65_535, payload: payload(99))
+
+        #expect(buffer.bufferedCount == 1)
+        #expect(buffer.advance().isEmpty)
+
+        buffer.insert(sequenceNumber: firstSequence + 1, payload: payload(2))
+        #expect(buffer.advance() == [.payload(payload(1))])
+        #expect(buffer.flush() == [.payload(payload(2))])
+        #expect(buffer.lostPacketCount == 0)
+        #expect(buffer.jitterBufferEmittedCount == 2)
+    }
+
+    @Test func reorderedPacketsAcrossRolloverAreEmittedInSequence() {
+        var buffer = NvstAudioJitterBuffer(targetDepth: 1)
+        buffer.insert(sequenceNumber: 65_534, payload: payload(1))
+        buffer.insert(sequenceNumber: 0, payload: payload(3))
+        buffer.insert(sequenceNumber: 65_535, payload: payload(2))
+
+        #expect(buffer.advance() == [.payload(payload(1)), .payload(payload(2))])
+        #expect(buffer.flush() == [.payload(payload(3))])
+        #expect(buffer.lostPacketCount == 0)
+    }
+
     @Test func aBurstBeyondTheCeilingDropsTheOldestAndCountsItLost() {
         var buffer = NvstAudioJitterBuffer(targetDepth: 4, maximumDepth: 3)
         for index in 0..<6 {

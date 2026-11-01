@@ -50,7 +50,7 @@ public struct NvstAudioJitterBuffer: Sendable {
     /// Takes one in-order packet. Duplicates and packets older than what has already been emitted
     /// are discarded rather than rewinding the stream.
     public mutating func insert(sequenceNumber: UInt16, payload: Data) {
-        let extended = extend(sequenceNumber)
+        guard let extended = extend(sequenceNumber) else { return }
         let highest = max(highestExtended ?? extended, extended)
         highestExtended = highest
         let expected = nextExpected ?? extended
@@ -121,12 +121,13 @@ public struct NvstAudioJitterBuffer: Sendable {
 
     /// Maps a 16-bit sequence number onto an extended one, so a wrap at 65535 does not read as a
     /// jump backwards and flush the buffer.
-    private func extend(_ sequenceNumber: UInt16) -> UInt64 {
+    private func extend(_ sequenceNumber: UInt16) -> UInt64? {
         let value = UInt64(sequenceNumber)
         guard let highest = highestExtended else { return value }
-        var candidate = (highest & ~0xFFFF) | value
-        if candidate + 0x8000 < highest { candidate += 0x1_0000 }
-        else if candidate > highest + 0x8000 { candidate -= 0x1_0000 }
-        return candidate
+        let candidate = (highest & ~0xFFFF) | value
+        if candidate + 0x8000 < highest { return candidate + 0x1_0000 }
+        guard candidate > highest + 0x8000 else { return candidate }
+        guard candidate >= 0x1_0000 else { return nil }
+        return candidate - 0x1_0000
     }
 }

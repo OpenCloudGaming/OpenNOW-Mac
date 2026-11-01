@@ -62,7 +62,9 @@ public enum NvstCoreAudioFormat {
     public static let preferredIOBufferSeconds: TimeInterval = 0.005
 
     public static func preferredIOBufferFrames(sampleRate: Double) -> UInt32 {
-        UInt32(max(1, (preferredIOBufferSeconds * (sampleRate > 0 ? sampleRate : sampleRate)).rounded()))
+        let resolvedSampleRate = Self.resolvedSampleRate(sampleRate)
+        let preferredFrames = (preferredIOBufferSeconds * resolvedSampleRate).rounded()
+        return UInt32(min(Double(UInt32.max), max(1, preferredFrames)))
     }
 
     /// Clamps the preferred IO buffer into what the device actually offers, so a request the
@@ -75,9 +77,10 @@ public enum NvstCoreAudioFormat {
     }
 
     public static func linear16Format(sampleRate: Double, channels: UInt32) -> AudioStreamBasicDescription {
+        let resolvedSampleRate = Self.resolvedSampleRate(sampleRate)
         let channelCount = max(1, channels)
         return AudioStreamBasicDescription(
-            mSampleRate: sampleRate > 0 ? sampleRate : sampleRate,
+            mSampleRate: resolvedSampleRate,
             mFormatID: kAudioFormatLinearPCM,
             mFormatFlags: kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked,
             mBytesPerPacket: channelCount * UInt32(MemoryLayout<Int16>.size),
@@ -87,6 +90,10 @@ public enum NvstCoreAudioFormat {
             mBitsPerChannel: 16,
             mReserved: 0
         )
+    }
+
+    private static func resolvedSampleRate(_ requestedSampleRate: Double) -> Double {
+        requestedSampleRate.isFinite && requestedSampleRate > 0 ? requestedSampleRate : Self.sampleRate
     }
 
     /// RMS of an interleaved Int16 buffer, normalised 0…1 and scaled the same way as the Settings
